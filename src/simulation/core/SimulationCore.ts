@@ -170,6 +170,7 @@ export class SimulationCore {
     }
   }
 
+
   private generateTraffic(): void {
     const occupied = this.buildings.occupied();
     const trips = this.tripGeneration.generate(

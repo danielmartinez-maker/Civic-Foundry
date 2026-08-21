@@ -1,5 +1,6 @@
 import { clamp01 } from '../core/types.ts';
 import type { EdgeTrafficMetric, TripOutcome } from './TrafficSystem.ts';
+import { TRAFFIC_BALANCE } from '../../data/traffic.ts';
 
 export type TrafficAnalyticsSnapshot = Readonly<{
   activeVehicleCount: number;
@@ -58,11 +59,13 @@ export class TrafficAnalytics {
     if (relevant.length === 0) return 1;
     const totalWeight = relevant.reduce((sum, outcome) => sum + outcome.travelerWeight, 0);
     if (totalWeight <= 0) return 1;
-    const score = relevant.reduce((sum, outcome) => {
-      if (!outcome.success) return sum;
-      const travelQuality = outcome.actualTravelTicks <= 0 ? 1 : clamp01(outcome.freeFlowTicks / outcome.actualTravelTicks);
-      return sum + travelQuality * outcome.travelerWeight;
-    }, 0);
-    return clamp01(score / totalWeight);
+    const successful = relevant.filter((outcome) => outcome.success);
+    const successWeight = successful.reduce((sum, outcome) => sum + outcome.travelerWeight, 0);
+    if (successWeight <= 0) return 0;
+    const averageTravelTicks = successful.reduce((sum, outcome) => sum + outcome.actualTravelTicks * outcome.travelerWeight, 0) / successWeight;
+    const maxAcceptableTicks = purpose === 'commute' ? TRAFFIC_BALANCE.maxAcceptableCommuteTicks : TRAFFIC_BALANCE.maxAcceptableShoppingTicks;
+    const routeSuccessRatio = clamp01(successWeight / totalWeight);
+    const travelQuality = clamp01(1 - averageTravelTicks / maxAcceptableTicks);
+    return clamp01(routeSuccessRatio * travelQuality);
   }
 }

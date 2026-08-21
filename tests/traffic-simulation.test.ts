@@ -104,6 +104,20 @@ test('traffic analytics turn delays and failures into lower purpose accessibilit
   assert.ok(failing.delayedTripShare > healthy.delayedTripShare);
 });
 
+test('accessibility penalizes objectively longer successful trips even without relative congestion', () => {
+  const analytics = new TrafficAnalytics();
+  const slow = analytics.evaluate([], [
+    { tripId: 'c-slow', purpose: 'commute', travelerWeight: 10, success: true, freeFlowTicks: 140, actualTravelTicks: 140 },
+    { tripId: 's-slow', purpose: 'shopping', travelerWeight: 5, success: true, freeFlowTicks: 110, actualTravelTicks: 110 },
+  ], 0);
+  const fast = analytics.evaluate([], [
+    { tripId: 'c-fast', purpose: 'commute', travelerWeight: 10, success: true, freeFlowTicks: 60, actualTravelTicks: 60 },
+    { tripId: 's-fast', purpose: 'shopping', travelerWeight: 5, success: true, freeFlowTicks: 45, actualTravelTicks: 45 },
+  ], 0);
+  assert.ok(fast.jobAccessibility > slow.jobAccessibility);
+  assert.ok(fast.commercialAccessibility > slow.commercialAccessibility);
+});
+
 test('traffic accessibility causally changes demand through the existing demand system', () => {
   const demand = new DemandSystem();
   const base = {

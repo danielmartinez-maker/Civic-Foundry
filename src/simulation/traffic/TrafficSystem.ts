@@ -58,6 +58,7 @@ export type TripOutcome = Readonly<{
   actualTravelTicks: number;
 }>;
 
+
 export type TrafficStateSnapshot = Readonly<{
   vehicles: readonly TrafficVehicle[];
   outcomes: readonly TripOutcome[];
@@ -183,6 +184,7 @@ export class TrafficSystem {
   getEdgeTravelTime(edge: TransportationEdge): number {
     return this.edgeMetrics.find((metric) => metric.edgeId === edge.id)?.travelTimeTicks ?? edge.freeFlowTicks;
   }
+
 
   snapshotState(): TrafficStateSnapshot {
     return {

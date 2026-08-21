@@ -23,6 +23,7 @@ function makeGraph(): { graph: TransportationGraph; roads: RoadSystem; treasury:
   const terrain = flatTerrain();
   const treasury = new TreasurySystem(100_000);
   const roads = new RoadSystem(terrain);
+  // Two routes from (2,5) to (6,5): direct local corridor and a collector detour.
   roads.placePath([
     { x: 2, y: 5 }, { x: 3, y: 5 }, { x: 4, y: 5 }, { x: 5, y: 5 }, { x: 6, y: 5 },
   ], 'local', treasury);

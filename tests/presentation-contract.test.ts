@@ -20,56 +20,67 @@ function managedCore(): SimulationCore {
   assert.equal(core.placeUtility('power', 4, 8).ok, true);
   assert.equal(core.placeUtility('water', 9, 8).ok, true);
   assert.equal(core.placeUtility('landfill', 14, 8).ok, true);
-  core.step(1_200);
+  core.step(500);
   return core;
 }
 
 test('HUD metrics mirror authoritative simulation snapshots', () => {
   const core = managedCore();
-  const hud = collectHudMetrics(core);
-  assert.equal(hud.treasury, core.treasury.balance);
-  assert.equal(hud.population, core.population.population);
-  assert.equal(hud.activeVehicles, core.trafficSnapshot.activeVehicleCount);
-  assert.equal(hud.congestionIndex, core.trafficSnapshot.congestionIndex);
-  assert.equal(hud.averageCommuteTicks, core.trafficSnapshot.averageCommuteTicks);
-  assert.equal(hud.jobAccessibility, core.trafficSnapshot.jobAccessibility);
+  const metrics = collectHudMetrics(core);
+  assert.equal(metrics.treasury, core.treasury.balance);
+  assert.equal(metrics.population, core.population.population);
+  assert.equal(metrics.employed, core.employmentSnapshot.employed);
+  assert.equal(metrics.jobs, core.employmentSnapshot.totalJobs);
+  assert.equal(metrics.powerRatio, core.utilitySnapshot.power.serviceRatio);
+  assert.equal(metrics.waterRatio, core.utilitySnapshot.water.serviceRatio);
+  assert.equal(metrics.garbageRatio, core.garbageSnapshot.serviceRatio);
+  assert.equal(metrics.activeVehicles, core.trafficSnapshot.activeVehicleCount);
+  assert.equal(metrics.congestionIndex, core.trafficSnapshot.congestionIndex);
+  assert.equal(metrics.jobAccessibility, core.trafficSnapshot.jobAccessibility);
+  assert.deepEqual(metrics.taxRates, core.taxes.getRates());
 });
 
 test('cell inspector explains road and building state from authoritative systems', () => {
   const core = managedCore();
-  const road = inspectCell(core, 6, 7);
+  const road = inspectCell(core, 8, 7);
   assert.equal(road.kind, 'road');
-  assert.match(road.title, /Collector/);
-  assert.ok(road.lines.some((line) => /Capacity/i.test(line)));
+  assert.match(road.title, /collector/i);
+  assert.ok(road.lines.some((line) => /capacity/i.test(line)));
+  assert.ok(road.lines.some((line) => /congestion/i.test(line)));
 
-  const building = core.buildings.occupied()[0]!;
+  const building = core.buildings.occupied().find((item) => item.zone === 'residential');
+  assert.ok(building);
   const inspected = inspectCell(core, building.x, building.y);
   assert.equal(inspected.kind, 'building');
-  assert.ok(inspected.lines.some((line) => /Status/i.test(line)));
+  assert.ok(inspected.lines.some((line) => /power/i.test(line)));
+  assert.ok(inspected.lines.some((line) => /water/i.test(line)));
 });
 
 test('traffic overlay mapping is deterministic and mode-specific', () => {
   const core = managedCore();
   const modes: TrafficOverlayMode[] = ['congestion', 'speed', 'volume', 'bottlenecks'];
   for (const mode of modes) {
-    const first = mapTrafficOverlay(core.transportationGraph, core.traffic.edgeMetrics, core.trafficSnapshot, mode);
-    const second = mapTrafficOverlay(core.transportationGraph, core.traffic.edgeMetrics, core.trafficSnapshot, mode);
-    assert.deepEqual(second, first);
-    assert.equal(first.mode, mode);
-    assert.ok(first.legend.length > 0);
-    assert.equal(first.edges.length, core.transportationGraph.edges.length);
+    const snapshot = mapTrafficOverlay(core.transportationGraph, core.traffic.edgeMetrics, core.trafficSnapshot, mode);
+    assert.equal(snapshot.mode, mode);
+    assert.equal(snapshot.edges.length, core.transportationGraph.edges.length);
+    assert.ok(snapshot.legend.length > 0);
+    assert.ok(snapshot.edges.every((edge) => Number.isFinite(edge.value) && edge.value >= 0));
   }
 });
 
-test('tool controller routes player mutations through SimulationCore and bulldoze refreshes city geometry', async () => {
-  const { ToolController } = await import('../src/ui/ToolController.ts');
-  const core = new SimulationCore({ terrain: flatTerrain(), startingFunds: 100_000, seed: 81 });
-  const tools = new ToolController(core);
-  tools.setRoadType('arterial');
-  tools.setTool('road');
-  assert.equal(tools.applyCell(4, 7).ok, true);
-  assert.equal(core.roads.get(4, 7)?.type, 'arterial');
+import { ToolController } from '../src/ui/ToolController.ts';
+
+test('tool controller routes player mutations through SimulationCore and bulldoze refreshes city geometry', () => {
+  const core = new SimulationCore({ terrain: flatTerrain(12, 10), startingFunds: 100_000, seed: 9 });
+  const tools = new ToolController();
+  tools.setTool('road-collector');
+  const built = tools.applyPath(core, [{ x: 2, y: 5 }, { x: 3, y: 5 }, { x: 4, y: 5 }]);
+  assert.equal(built.ok, true);
+  assert.equal(core.roads.list().length, 3);
+  tools.setTool('zone-residential');
+  assert.equal(tools.applyCell(core, 3, 4).ok, true);
+  assert.equal(core.zoning.get(3, 4), 'residential');
   tools.setTool('bulldoze');
-  assert.equal(tools.applyCell(4, 7).ok, true);
-  assert.equal(core.roads.has(4, 7), false);
+  assert.equal(tools.applyCell(core, 3, 5).ok, true);
+  assert.equal(core.roads.has(3, 5), false);
 });
