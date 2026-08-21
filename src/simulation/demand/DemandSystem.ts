@@ -13,6 +13,7 @@ export type DemandInputs = Readonly<{
   taxRates: TaxRates;
   trafficJobAccessibility: number;
   trafficCommercialAccessibility: number;
+  personAccessibility?: number;
   serviceQuality?: number;
   commercialServiceQuality?: number;
 }>;
@@ -35,9 +36,10 @@ export class DemandSystem {
     const residentialServiceModifier = clamp((serviceQuality - 0.70) * 0.50, -0.25, 0.15);
     const commercialServiceModifier = clamp((commercialServiceQuality - 0.70) * 0.35, -0.20, 0.10);
     const industrialStarter = input.totalJobs < Math.max(6, input.population * 0.35) ? 0.8 : -0.1;
+    const personAccessibility = clamp(input.personAccessibility ?? input.trafficJobAccessibility, 0, 1);
 
-    const residential = 0.3 * housingPressure + 0.25 * employmentQuality + 0.2 * service + 0.15 * taxSignal(input.taxRates.residential) + 0.1 * (input.trafficJobAccessibility * 2 - 1) + residentialServiceModifier;
-    const commercial = 0.35 * commercialSupply + 0.2 * service + 0.15 * taxSignal(input.taxRates.commercial) + 0.15 * employmentQuality + 0.15 * (input.trafficCommercialAccessibility * 2 - 1) + commercialServiceModifier;
+    const residential = 0.3 * housingPressure + 0.25 * employmentQuality + 0.2 * service + 0.15 * taxSignal(input.taxRates.residential) + 0.1 * (personAccessibility * 2 - 1) + residentialServiceModifier;
+    const commercial = 0.35 * commercialSupply + 0.2 * service + 0.15 * taxSignal(input.taxRates.commercial) + 0.15 * employmentQuality + 0.15 * ((input.personAccessibility ?? input.trafficCommercialAccessibility) * 2 - 1) + commercialServiceModifier;
     const industrial = 0.35 * industrialStarter + 0.2 * service + 0.15 * taxSignal(input.taxRates.industrial) + 0.15 * jobAvailability + 0.15 * employmentQuality;
 
     return {
