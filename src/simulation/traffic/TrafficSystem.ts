@@ -58,6 +58,15 @@ export type TripOutcome = Readonly<{
   actualTravelTicks: number;
 }>;
 
+export type TrafficStateSnapshot = Readonly<{
+  vehicles: readonly TrafficVehicle[];
+  outcomes: readonly TripOutcome[];
+  nextVehicleId: number;
+  completedTrips: number;
+  failedTrips: number;
+  congestionEpoch: number;
+}>;
+
 export class TrafficSystem {
   private readonly vehicles = new Map<string, MutableTrafficVehicle>();
   private readonly outcomes: TripOutcome[] = [];
@@ -173,6 +182,50 @@ export class TrafficSystem {
 
   getEdgeTravelTime(edge: TransportationEdge): number {
     return this.edgeMetrics.find((metric) => metric.edgeId === edge.id)?.travelTimeTicks ?? edge.freeFlowTicks;
+  }
+
+  snapshotState(): TrafficStateSnapshot {
+    return {
+      vehicles: this.activeVehicles,
+      outcomes: this.recentOutcomes,
+      nextVehicleId: this.nextVehicleId,
+      completedTrips: this.completedTrips,
+      failedTrips: this.failedTrips,
+      congestionEpoch: this.congestionEpoch,
+    };
+  }
+
+  restoreState(state: TrafficStateSnapshot): void {
+    this.vehicles.clear();
+    for (const vehicle of state.vehicles) {
+      const restored: MutableTrafficVehicle = {
+        id: vehicle.id,
+        tripId: vehicle.tripId,
+        purpose: vehicle.purpose,
+        travelerWeight: vehicle.travelerWeight,
+        originBuildingId: vehicle.originBuildingId,
+        destinationBuildingId: vehicle.destinationBuildingId,
+        edgeIds: [...vehicle.edgeIds],
+        currentEdgeIndex: vehicle.currentEdgeIndex,
+        edgeProgressTicks: vehicle.edgeProgressTicks,
+        departureTick: vehicle.departureTick,
+        accumulatedDelayTicks: vehicle.accumulatedDelayTicks,
+        freeFlowTicks: vehicle.freeFlowTicks,
+        status: vehicle.status,
+      };
+      if (vehicle.queuedNodeId !== undefined) restored.queuedNodeId = vehicle.queuedNodeId;
+      this.vehicles.set(restored.id, restored);
+    }
+    this.outcomes.length = 0;
+    this.outcomes.push(...state.outcomes.map((outcome) => ({ ...outcome })));
+    this.nextVehicleId = Math.max(1, Math.floor(state.nextVehicleId));
+    this.completedTrips = Math.max(0, Math.floor(state.completedTrips));
+    this.failedTrips = Math.max(0, Math.floor(state.failedTrips));
+    this.congestionEpoch = Math.max(0, Math.floor(state.congestionEpoch));
+  }
+
+  refreshMetrics(graph: TransportationGraph): void {
+    this.edgeMetrics = this.calculateEdgeMetrics(graph);
   }
 
   private calculateEdgeMetrics(graph: TransportationGraph): EdgeTrafficMetric[] {

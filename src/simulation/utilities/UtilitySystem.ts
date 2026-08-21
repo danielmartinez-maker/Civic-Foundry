@@ -88,6 +88,16 @@ export class UtilitySystem {
     return this.facilities.reduce((sum, facility) => sum + UTILITY_DEFINITIONS[facility.type].operatingCost, 0);
   }
 
+  getNextId(): number {
+    return this.nextId;
+  }
+
+  restore(facilities: readonly UtilityFacility[], nextId: number): void {
+    this.facilities.length = 0;
+    this.facilities.push(...facilities.map((facility) => ({ ...facility })));
+    this.nextId = Math.max(1, Math.floor(nextId));
+  }
+
   evaluate(buildings: readonly Building[]): UtilitySnapshot {
     const components = buildRoadComponentIndex(this.roads);
     const componentPower = new Map<number, number>();
