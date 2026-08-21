@@ -28,11 +28,12 @@ export class MultimodalRoutingGraph {
   revision = 0;
   sourceRoadRevision = -1;
   sourceTransitRevision = -1;
+  sourceCostEpoch = -1;
   private readonly outgoing = new Map<string, MultimodalEdge[]>();
   private readonly nodeSet = new Set<string>();
 
-  rebuild(roadGraph: TransportationGraph, transit: TransitNetworkSystem, lineTravelTimeProvider: LineTravelTimeProvider): boolean {
-    if (roadGraph.revision === this.sourceRoadRevision && transit.revision === this.sourceTransitRevision) return false;
+  rebuild(roadGraph: TransportationGraph, transit: TransitNetworkSystem, lineTravelTimeProvider: LineTravelTimeProvider, costEpoch = 0): boolean {
+    if (roadGraph.revision === this.sourceRoadRevision && transit.revision === this.sourceTransitRevision && costEpoch === this.sourceCostEpoch) return false;
     const nodes = new Set<string>();
     const edges: MultimodalEdge[] = [];
     for (const node of roadGraph.nodes) nodes.add(node.id);
@@ -66,6 +67,7 @@ export class MultimodalRoutingGraph {
     for (const list of this.outgoing.values()) list.sort((a, b) => a.id.localeCompare(b.id));
     this.sourceRoadRevision = roadGraph.revision;
     this.sourceTransitRevision = transit.revision;
+    this.sourceCostEpoch = costEpoch;
     this.revision++;
     return true;
   }
