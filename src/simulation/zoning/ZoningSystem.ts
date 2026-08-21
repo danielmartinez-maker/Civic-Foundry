@@ -36,4 +36,12 @@ export class ZoningSystem {
   list(): ZonedCell[] {
     return [...this.zones.values()].sort((a, b) => a.y - b.y || a.x - b.x);
   }
+
+  restore(cells: readonly ZonedCell[]): void {
+    this.zones.clear();
+    for (const cell of cells) {
+      if (!this.terrain.isBuildable(cell.x, cell.y) || this.roads.has(cell.x, cell.y)) throw new Error('invalid restored zoning cell');
+      this.zones.set(cellKey(cell.x, cell.y), { ...cell });
+    }
+  }
 }

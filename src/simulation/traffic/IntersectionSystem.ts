@@ -6,6 +6,8 @@ export type IntersectionQueueEntry = Readonly<{
   queuedTick: number;
 }>;
 
+export type IntersectionSnapshot = Readonly<Record<string, readonly Readonly<{ incomingEdgeId: string; entries: readonly IntersectionQueueEntry[] }>[]>>;
+
 type ApproachQueue = {
   incomingEdgeId: string;
   entries: IntersectionQueueEntry[];
@@ -72,7 +74,7 @@ export class IntersectionSystem {
     return total;
   }
 
-  snapshot(): Readonly<Record<string, readonly Readonly<{ incomingEdgeId: string; entries: readonly IntersectionQueueEntry[] }>[]>> {
+  snapshot(): IntersectionSnapshot {
     const result: Record<string, Readonly<{ incomingEdgeId: string; entries: readonly IntersectionQueueEntry[] }>[]> = {};
     for (const [nodeId, approaches] of [...this.queues.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
       result[nodeId] = approaches.map((approach) => ({
@@ -81,6 +83,17 @@ export class IntersectionSystem {
       }));
     }
     return result;
+  }
+
+  restore(snapshot: IntersectionSnapshot): void {
+    this.queues.clear();
+    for (const nodeId of Object.keys(snapshot).sort()) {
+      const approaches = snapshot[nodeId] ?? [];
+      this.queues.set(nodeId, approaches.map((approach) => ({
+        incomingEdgeId: approach.incomingEdgeId,
+        entries: approach.entries.map((entry) => ({ ...entry })),
+      })));
+    }
   }
 
   private hasVehicle(vehicleId: string): boolean {

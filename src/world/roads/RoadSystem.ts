@@ -56,4 +56,13 @@ export class RoadSystem {
   list(): RoadCell[] {
     return [...this.cells.values()].sort((a, b) => a.y - b.y || a.x - b.x);
   }
+
+  restore(cells: readonly RoadCell[], revision: number): void {
+    this.cells.clear();
+    for (const cell of cells) {
+      if (!this.terrain.isBuildable(cell.x, cell.y)) throw new Error('invalid restored road cell');
+      this.cells.set(cellKey(cell.x, cell.y), { ...cell });
+    }
+    this.revision = Math.max(0, Math.floor(revision));
+  }
 }
