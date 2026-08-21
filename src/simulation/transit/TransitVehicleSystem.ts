@@ -34,6 +34,8 @@ type MutableVehicle = {
   dedicatedRemainingTicks: number; delayTicks: number; inServiceTicks: number; runStartedTick: number; hasDepartedOrigin: boolean;
 };
 
+export type TransitVehicleStateSnapshot = Readonly<{ nextVehicleId: number; vehicles: readonly TransitVehicle[] }>;
+
 export type TransitVehicleEvent = Readonly<{
   type: 'boarded' | 'passenger_completed' | 'run_completed' | 'run_failed';
   vehicleId: string;
@@ -73,6 +75,25 @@ export class TransitVehicleSystem {
 
   getVehicle(id: string): TransitVehicle | undefined {
     const v = this.vehicles.get(id); return v ? this.copy(v) : undefined;
+  }
+
+  snapshotState(): TransitVehicleStateSnapshot {
+    return Object.freeze({ nextVehicleId: this.nextVehicleId, vehicles: Object.freeze(this.listVehicles()) });
+  }
+
+  restoreState(state: TransitVehicleStateSnapshot): void {
+    if (!Number.isInteger(state.nextVehicleId) || state.nextVehicleId < 1) throw new Error('invalid transit vehicle id state');
+    this.vehicles.clear();
+    for (const vehicle of state.vehicles) {
+      if (!Number.isFinite(vehicle.capacity) || vehicle.capacity <= 0 || !Number.isInteger(vehicle.stopIndex)) throw new Error('invalid transit vehicle state');
+      const restored: MutableVehicle = {
+        ...vehicle,
+        onboard: vehicle.onboard.map((cohort) => ({ ...cohort, transferLegs: cohort.transferLegs.map((leg) => ({ ...leg })) })),
+        roadEdgeIds: [...vehicle.roadEdgeIds],
+      };
+      this.vehicles.set(restored.id, restored);
+    }
+    this.nextVehicleId = state.nextVehicleId;
   }
 
   edgeLoads(): Record<string, number> {
