@@ -1,0 +1,51 @@
+import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
+import type { CellCoord, ZoneType } from '../simulation/core/types.ts';
+import type { RoadType } from '../data/roads.ts';
+import type { UtilityFacilityType } from '../data/utilities.ts';
+
+export type ToolId =
+  | 'inspect'
+  | 'road-local' | 'road-collector' | 'road-arterial'
+  | 'zone-residential' | 'zone-commercial' | 'zone-industrial'
+  | 'power' | 'water' | 'landfill'
+  | 'bulldoze';
+
+export type ToolApplyResult = Readonly<{ ok: boolean; reason?: string }>;
+
+const roadType = (tool: ToolId): RoadType | undefined => tool.startsWith('road-') ? tool.slice(5) as RoadType : undefined;
+const zoneType = (tool: ToolId): ZoneType | undefined => tool.startsWith('zone-') ? tool.slice(5) as ZoneType : undefined;
+const utilityType = (tool: ToolId): UtilityFacilityType | undefined => ['power', 'water', 'landfill'].includes(tool) ? tool as UtilityFacilityType : undefined;
+
+export class ToolController {
+  activeTool: ToolId = 'inspect';
+
+  setTool(tool: ToolId): void {
+    this.activeTool = tool;
+  }
+
+  applyPath(core: SimulationCore, cells: readonly CellCoord[]): ToolApplyResult {
+    const type = roadType(this.activeTool);
+    if (!type) return { ok: false, reason: 'active tool is not a road tool' };
+    const result = core.buildRoad(cells, type);
+    return result.ok ? { ok: true } : { ok: false, reason: result.reason ?? 'road placement failed' };
+  }
+
+  applyCell(core: SimulationCore, x: number, y: number): ToolApplyResult {
+    const zone = zoneType(this.activeTool);
+    if (zone) {
+      const result = core.paintZone([{ x, y }], zone);
+      return result.painted > 0 ? { ok: true } : { ok: false, reason: 'cell cannot be zoned' };
+    }
+    const utility = utilityType(this.activeTool);
+    if (utility) {
+      const result = core.placeUtility(utility, x, y);
+      return result.ok ? { ok: true } : { ok: false, reason: result.reason ?? 'facility placement failed' };
+    }
+    if (this.activeTool === 'bulldoze') {
+      const result = core.bulldozeAt(x, y);
+      return result.ok ? { ok: true } : { ok: false, reason: result.reason ?? 'bulldoze failed' };
+    }
+    if (this.activeTool === 'inspect') return { ok: true };
+    return { ok: false, reason: 'road tools require a path' };
+  }
+}
