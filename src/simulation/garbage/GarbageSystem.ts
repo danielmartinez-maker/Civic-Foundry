@@ -45,6 +45,14 @@ export class GarbageSystem {
     return { generated, processed, backlog, serviceRatio };
   }
 
+  snapshotDetailed(generated: number, processed: number, backlog: number): GarbageSnapshot {
+    const safeGenerated = Math.max(0, Number.isFinite(generated) ? generated : 0);
+    const safeProcessed = Math.max(0, Number.isFinite(processed) ? processed : 0);
+    const safeBacklog = Math.max(0, Number.isFinite(backlog) ? backlog : 0);
+    const serviceRatio = safeBacklog <= 0 ? 1 : Math.min(1, safeProcessed / Math.max(1, safeProcessed + safeBacklog));
+    return { generated: safeGenerated, processed: safeProcessed, backlog: safeBacklog, serviceRatio };
+  }
+
   getBacklog(buildingId: string): number {
     return this.backlogByBuilding.get(buildingId) ?? 0;
   }
