@@ -4,9 +4,9 @@ import type { PathfindingSystem, RouteResult } from '../traffic/PathfindingSyste
 import { MultimodalRoutingGraph } from '../transit/MultimodalRoutingGraph.ts';
 import { JourneyPlanner, type JourneyPlan } from '../transit/JourneyPlanner.ts';
 import type { TransitNetworkSystem } from '../transit/TransitNetworkSystem.ts';
-import { PassengerQueueSystem, type TransitPassengerCohort, type TransitTransferLeg } from '../transit/PassengerQueueSystem.ts';
-import { TransitVehicleSystem } from '../transit/TransitVehicleSystem.ts';
-import { TransitOperationsSystem } from '../transit/TransitOperationsSystem.ts';
+import { PassengerQueueSystem, type TransitPassengerCohort, type TransitTransferLeg, type PassengerQueueSnapshot } from '../transit/PassengerQueueSystem.ts';
+import { TransitVehicleSystem, type TransitVehicleStateSnapshot } from '../transit/TransitVehicleSystem.ts';
+import { TransitOperationsSystem, type TransitOperationsStateSnapshot } from '../transit/TransitOperationsSystem.ts';
 import { ModeChoiceSystem } from './ModeChoiceSystem.ts';
 
 export type MobilityPersonTrip = Readonly<{
@@ -45,7 +45,7 @@ export type MobilitySnapshot = Readonly<{
   transitFareRevenue: number;
 }>;
 
-type MobilityDecision = Readonly<{
+export type MobilityDecision = Readonly<{
   mode: 'car' | 'transit' | 'unmet';
   travelerWeight: number;
   purpose: MobilityPersonTrip['purpose'];
@@ -54,6 +54,15 @@ type MobilityDecision = Readonly<{
 }>;
 
 export type MobilityFiscalDelta = Readonly<{ operatingCost: number; fareRevenue: number }>;
+export type MobilitySchedulerStateSnapshot = Readonly<{
+  decisions: readonly MobilityDecision[];
+  crowdingPenaltyTicks: number;
+  fiscalOperatingCursor: number;
+  fiscalFareCursor: number;
+  passengers: PassengerQueueSnapshot;
+  vehicles: TransitVehicleStateSnapshot;
+  operations: TransitOperationsStateSnapshot;
+}>;
 
 const MAX_ACCEPTABLE: Readonly<Record<MobilityPersonTrip['purpose'], number>> = Object.freeze({ commute: 240, shopping: 180 });
 
@@ -151,6 +160,38 @@ export class MobilityScheduler {
     this.fiscalOperatingCursor = snapshot.transitOperatingCost;
     this.fiscalFareCursor = snapshot.transitFareRevenue;
     return Object.freeze({ operatingCost, fareRevenue });
+  }
+
+  snapshotState(): MobilitySchedulerStateSnapshot {
+    return Object.freeze({
+      decisions: Object.freeze(this.decisions.map((decision) => Object.freeze({ ...decision }))),
+      crowdingPenaltyTicks: this.crowdingPenaltyTicks,
+      fiscalOperatingCursor: this.fiscalOperatingCursor,
+      fiscalFareCursor: this.fiscalFareCursor,
+      passengers: this.passengers.snapshot(),
+      vehicles: this.vehicles.snapshotState(),
+      operations: this.operations.snapshotState(),
+    });
+  }
+
+  restoreState(state: MobilitySchedulerStateSnapshot): void {
+    if (!Number.isFinite(state.crowdingPenaltyTicks) || state.crowdingPenaltyTicks < 0
+      || !Number.isFinite(state.fiscalOperatingCursor) || state.fiscalOperatingCursor < 0
+      || !Number.isFinite(state.fiscalFareCursor) || state.fiscalFareCursor < 0) {
+      throw new Error('invalid mobility scheduler state');
+    }
+    this.decisions.length = 0;
+    this.decisions.push(...state.decisions.map((decision) => Object.freeze({ ...decision })));
+    this.crowdingPenaltyTicks = state.crowdingPenaltyTicks;
+    this.fiscalOperatingCursor = state.fiscalOperatingCursor;
+    this.fiscalFareCursor = state.fiscalFareCursor;
+    this.passengers.restore(state.passengers);
+    this.vehicles.restoreState(state.vehicles);
+    this.operations.restoreState(state.operations);
+    this.journeyPlanner.clearCache();
+    this.multimodalGraph.sourceRoadRevision = -1;
+    this.multimodalGraph.sourceTransitRevision = -1;
+    this.multimodalGraph.sourceCostEpoch = -1;
   }
 
   private routeTrip(trip: MobilityPersonTrip, context: MobilityTickContext): void {
