@@ -1,0 +1,157 @@
+import type { TerrainGrid } from '../../world/terrain/TerrainGrid.ts';
+import type { RoadSystem } from '../../world/roads/RoadSystem.ts';
+import type { TreasurySystem } from '../treasury/TreasurySystem.ts';
+import type { Building } from '../buildings/BuildingSystem.ts';
+import { BUILDING_DEFINITIONS } from '../../data/buildings.ts';
+import { UTILITY_DEFINITIONS, type UtilityFacilityType } from '../../data/utilities.ts';
+import { cellKey } from '../core/types.ts';
+
+export type UtilityFacility = Readonly<{ id: string; type: UtilityFacilityType; x: number; y: number }>;
+export type ResourceSnapshot = Readonly<{ production: number; demand: number; served: number; unserved: number; serviceRatio: number }>;
+export type UtilitySnapshot = Readonly<{
+  power: ResourceSnapshot;
+  water: ResourceSnapshot;
+  perBuilding: Readonly<Record<string, Readonly<{ power: number; water: number }>>>;
+}>;
+
+const CARDINAL = [[0,-1],[1,0],[0,1],[-1,0]] as const;
+
+export type RoadComponentIndex = Readonly<{
+  byRoadKey: Map<string, number>;
+  adjacentComponent(x: number, y: number): number | undefined;
+}>;
+
+export function buildRoadComponentIndex(roads: RoadSystem): RoadComponentIndex {
+  const roadList = roads.list();
+  const roadKeys = new Set(roadList.map((road) => cellKey(road.x, road.y)));
+  const byRoadKey = new Map<string, number>();
+  let nextComponent = 1;
+  for (const road of roadList) {
+    const startKey = cellKey(road.x, road.y);
+    if (byRoadKey.has(startKey)) continue;
+    const component = nextComponent++;
+    const queue: Array<[number, number]> = [[road.x, road.y]];
+    byRoadKey.set(startKey, component);
+    for (let i = 0; i < queue.length; i++) {
+      const current = queue[i];
+      if (!current) continue;
+      const [x, y] = current;
+      for (const [dx, dy] of CARDINAL) {
+        const key = cellKey(x + dx, y + dy);
+        if (roadKeys.has(key) && !byRoadKey.has(key)) {
+          byRoadKey.set(key, component);
+          queue.push([x + dx, y + dy]);
+        }
+      }
+    }
+  }
+  return {
+    byRoadKey,
+    adjacentComponent(x: number, y: number): number | undefined {
+      for (const [dx, dy] of CARDINAL) {
+        const component = byRoadKey.get(cellKey(x + dx, y + dy));
+        if (component !== undefined) return component;
+      }
+      return undefined;
+    },
+  };
+}
+
+export class UtilitySystem {
+  private readonly terrain: TerrainGrid;
+  private readonly roads: RoadSystem;
+  private readonly facilities: UtilityFacility[] = [];
+  private nextId = 1;
+
+  constructor(terrain: TerrainGrid, roads: RoadSystem) {
+    this.terrain = terrain;
+    this.roads = roads;
+  }
+
+  placeFacility(type: UtilityFacilityType, x: number, y: number, treasury: TreasurySystem): { ok: boolean; cost: number; reason?: string } {
+    const definition = UTILITY_DEFINITIONS[type];
+    if (!this.terrain.isBuildable(x, y)) return { ok: false, cost: definition.constructionCost, reason: 'unbuildable terrain' };
+    if (this.roads.has(x, y)) return { ok: false, cost: definition.constructionCost, reason: 'road occupies cell' };
+    if (this.facilities.some((facility) => facility.x === x && facility.y === y)) return { ok: false, cost: definition.constructionCost, reason: 'facility occupies cell' };
+    const components = buildRoadComponentIndex(this.roads);
+    if (components.adjacentComponent(x, y) === undefined) return { ok: false, cost: definition.constructionCost, reason: 'road access required' };
+    if (!treasury.tryDebit(definition.constructionCost, `Build ${type}`)) return { ok: false, cost: definition.constructionCost, reason: 'insufficient funds' };
+    this.facilities.push({ id: `utility:${this.nextId++}`, type, x, y });
+    return { ok: true, cost: definition.constructionCost };
+  }
+
+  listFacilities(): UtilityFacility[] {
+    return this.facilities.map((facility) => ({ ...facility }));
+  }
+
+  operatingCost(): number {
+    return this.facilities.reduce((sum, facility) => sum + UTILITY_DEFINITIONS[facility.type].operatingCost, 0);
+  }
+
+  evaluate(buildings: readonly Building[]): UtilitySnapshot {
+    const components = buildRoadComponentIndex(this.roads);
+    const componentPower = new Map<number, number>();
+    const componentWater = new Map<number, number>();
+    for (const facility of this.facilities) {
+      const component = components.adjacentComponent(facility.x, facility.y);
+      if (component === undefined) continue;
+      if (facility.type === 'power') componentPower.set(component, (componentPower.get(component) ?? 0) + UTILITY_DEFINITIONS.power.capacity);
+      if (facility.type === 'water') componentWater.set(component, (componentWater.get(component) ?? 0) + UTILITY_DEFINITIONS.water.capacity);
+    }
+
+    const demandByComponent = new Map<number, { power: number; water: number }>();
+    let totalPowerDemand = 0;
+    let totalWaterDemand = 0;
+    for (const building of buildings) {
+      if (building.status !== 'occupied') continue;
+      const definition = BUILDING_DEFINITIONS[building.zone];
+      totalPowerDemand += definition.powerDemand;
+      totalWaterDemand += definition.waterDemand;
+      const component = components.adjacentComponent(building.x, building.y);
+      if (component === undefined) continue;
+      const demand = demandByComponent.get(component) ?? { power: 0, water: 0 };
+      demand.power += definition.powerDemand;
+      demand.water += definition.waterDemand;
+      demandByComponent.set(component, demand);
+    }
+
+    const perBuilding: Record<string, { power: number; water: number }> = {};
+    let servedPower = 0;
+    let servedWater = 0;
+    for (const building of buildings) {
+      if (building.status !== 'occupied') continue;
+      const component = components.adjacentComponent(building.x, building.y);
+      if (component === undefined) {
+        perBuilding[building.id] = { power: 0, water: 0 };
+        continue;
+      }
+      const componentDemand = demandByComponent.get(component) ?? { power: 0, water: 0 };
+      const powerRatio = componentDemand.power === 0 ? 1 : Math.min(1, (componentPower.get(component) ?? 0) / componentDemand.power);
+      const waterRatio = componentDemand.water === 0 ? 1 : Math.min(1, (componentWater.get(component) ?? 0) / componentDemand.water);
+      perBuilding[building.id] = { power: powerRatio, water: waterRatio };
+      const definition = BUILDING_DEFINITIONS[building.zone];
+      servedPower += definition.powerDemand * powerRatio;
+      servedWater += definition.waterDemand * waterRatio;
+    }
+
+    const productionPower = [...componentPower.values()].reduce((a, b) => a + b, 0);
+    const productionWater = [...componentWater.values()].reduce((a, b) => a + b, 0);
+    return {
+      power: {
+        production: productionPower,
+        demand: totalPowerDemand,
+        served: servedPower,
+        unserved: Math.max(0, totalPowerDemand - servedPower),
+        serviceRatio: totalPowerDemand === 0 ? 1 : servedPower / totalPowerDemand,
+      },
+      water: {
+        production: productionWater,
+        demand: totalWaterDemand,
+        served: servedWater,
+        unserved: Math.max(0, totalWaterDemand - servedWater),
+        serviceRatio: totalWaterDemand === 0 ? 1 : servedWater / totalWaterDemand,
+      },
+      perBuilding,
+    };
+  }
+}
