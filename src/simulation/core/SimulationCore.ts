@@ -126,6 +126,22 @@ export class SimulationCore {
     return this.utilities.placeFacility(type, x, y, this.treasury);
   }
 
+  bulldozeAt(x: number, y: number): { ok: boolean; kind?: 'road' | 'building' | 'zone'; reason?: string } {
+    const road = this.roads.remove(x, y);
+    if (road) {
+      this.lots.rebuild(this.roads, this.zoning);
+      return { ok: true, kind: 'road' };
+    }
+    const building = this.buildings.removeAt(x, y);
+    if (building) return { ok: true, kind: 'building' };
+    if (this.zoning.get(x, y)) {
+      this.zoning.clear(x, y);
+      this.lots.rebuild(this.roads, this.zoning);
+      return { ok: true, kind: 'zone' };
+    }
+    return { ok: false, reason: 'nothing to bulldoze' };
+  }
+
   step(ticks = 1): void {
     if (!Number.isInteger(ticks) || ticks < 0) throw new Error('ticks must be a non-negative integer');
     for (let i = 0; i < ticks; i++) {
