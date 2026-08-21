@@ -17,6 +17,13 @@ import type { CellCoord, ZoneType } from './types.ts';
 import { clamp01 } from './types.ts';
 import type { RoadType } from '../../data/roads.ts';
 import type { UtilityFacilityType } from '../../data/utilities.ts';
+import { TransportationGraph } from '../traffic/TransportationGraph.ts';
+import { PathfindingSystem } from '../traffic/PathfindingSystem.ts';
+import { TripGenerationSystem, type TripRequest } from '../traffic/TripGenerationSystem.ts';
+import { IntersectionSystem } from '../traffic/IntersectionSystem.ts';
+import { TrafficSystem } from '../traffic/TrafficSystem.ts';
+import { TrafficAnalytics, type TrafficAnalyticsSnapshot } from '../traffic/TrafficAnalytics.ts';
+import type { Building } from '../buildings/BuildingSystem.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -43,6 +50,12 @@ export class SimulationCore {
   readonly utilities: UtilitySystem;
   readonly garbage: GarbageSystem;
   readonly economy: EconomySystem;
+  readonly transportationGraph: TransportationGraph;
+  readonly pathfinding: PathfindingSystem;
+  readonly tripGeneration: TripGenerationSystem;
+  readonly intersections: IntersectionSystem;
+  readonly traffic: TrafficSystem;
+  readonly trafficAnalytics: TrafficAnalytics;
 
   employmentSnapshot: EmploymentSnapshot;
   utilitySnapshot: UtilitySnapshot;
@@ -50,6 +63,7 @@ export class SimulationCore {
   demandSnapshot: DemandSnapshot;
   taxRevenue: TaxRevenue;
   economySnapshot: EconomySnapshot;
+  trafficSnapshot: TrafficAnalyticsSnapshot;
 
   constructor(options: SimulationCoreOptions = {}) {
     this.seed = options.seed ?? 1;
@@ -68,6 +82,12 @@ export class SimulationCore {
     this.utilities = new UtilitySystem(this.terrain, this.roads);
     this.garbage = new GarbageSystem();
     this.economy = new EconomySystem();
+    this.transportationGraph = new TransportationGraph();
+    this.pathfinding = new PathfindingSystem();
+    this.tripGeneration = new TripGenerationSystem(this.seed);
+    this.intersections = new IntersectionSystem();
+    this.traffic = new TrafficSystem();
+    this.trafficAnalytics = new TrafficAnalytics();
 
     this.employmentSnapshot = this.employment.evaluate(0, 0);
     this.utilitySnapshot = this.utilities.evaluate([]);
@@ -87,6 +107,7 @@ export class SimulationCore {
       trafficCommercialAccessibility: 1,
     });
     this.economySnapshot = { ...this.economy.lastSettlement, cashBalance: this.treasury.balance };
+    this.trafficSnapshot = this.trafficAnalytics.evaluate([], [], 0);
   }
 
   buildRoad(cells: readonly CellCoord[], type: RoadType): RoadPlacementResult {
@@ -109,6 +130,14 @@ export class SimulationCore {
     if (!Number.isInteger(ticks) || ticks < 0) throw new Error('ticks must be a non-negative integer');
     for (let i = 0; i < ticks; i++) {
       this.clock.step(1);
+      this.transportationGraph.rebuildIfNeeded(this.roads);
+      this.traffic.step(this.transportationGraph, this.intersections, this.clock.tick);
+      this.trafficSnapshot = this.trafficAnalytics.evaluate(
+        this.traffic.edgeMetrics,
+        this.traffic.recentOutcomes,
+        this.traffic.activeVehicles.length,
+      );
+
       this.buildings.tick(this.clock.tick);
 
       if (this.clock.tick % 10 === 0) {
@@ -118,7 +147,49 @@ export class SimulationCore {
       if (this.clock.tick % 50 === 0) {
         this.evaluateCoreCityLoop();
       }
+
+      if (this.clock.tick % 100 === 0) {
+        this.generateTraffic();
+      }
     }
+  }
+
+  private generateTraffic(): void {
+    const occupied = this.buildings.occupied();
+    const trips = this.tripGeneration.generate(
+      this.clock.tick,
+      occupied,
+      this.population.population,
+      this.employmentSnapshot.employed,
+    );
+    for (const trip of trips) this.routeTrip(trip);
+  }
+
+  private routeTrip(trip: TripRequest): void {
+    const origin = this.buildings.getById(trip.originBuildingId);
+    const destination = this.buildings.getById(trip.destinationBuildingId);
+    if (!origin || !destination) return;
+    const start = this.accessNodeForBuilding(origin);
+    const end = this.accessNodeForBuilding(destination);
+    if (!start || !end || start === end) return;
+    const route = this.pathfinding.findRoute(this.transportationGraph, start, end, {
+      edgeCost: (edge) => this.traffic.getEdgeTravelTime(edge),
+      costKey: `traffic:${this.traffic.congestionEpoch}`,
+    });
+    if (!route) return;
+    const freeFlowTicks = route.edgeIds.reduce((sum, edgeId) => sum + (this.transportationGraph.getEdge(edgeId)?.freeFlowTicks ?? 0), 0);
+    this.traffic.submitTrip(trip, route, this.clock.tick, freeFlowTicks);
+  }
+
+  private accessNodeForBuilding(building: Building): string | undefined {
+    const candidates = [
+      this.transportationGraph.findNodeAt(building.x, building.y - 1),
+      this.transportationGraph.findNodeAt(building.x + 1, building.y),
+      this.transportationGraph.findNodeAt(building.x, building.y + 1),
+      this.transportationGraph.findNodeAt(building.x - 1, building.y),
+    ].filter((node): node is NonNullable<typeof node> => node !== undefined);
+    candidates.sort((a, b) => a.id.localeCompare(b.id));
+    return candidates[0]?.id;
   }
 
   private evaluateCoreCityLoop(): void {
@@ -138,8 +209,8 @@ export class SimulationCore {
       waterRatio: this.utilitySnapshot.water.serviceRatio,
       garbageRatio: this.garbageSnapshot.serviceRatio,
       taxRates: this.taxes.getRates(),
-      trafficJobAccessibility: 1,
-      trafficCommercialAccessibility: 1,
+      trafficJobAccessibility: this.trafficSnapshot.jobAccessibility,
+      trafficCommercialAccessibility: this.trafficSnapshot.commercialAccessibility,
     });
 
     this.economySnapshot = this.economy.settle(this.treasury, this.taxRevenue, this.utilities.operatingCost());
