@@ -27,17 +27,19 @@ export class RoadSystem {
   placePath(coords: readonly CellCoord[], type: RoadType, treasury: TreasurySystem): RoadPlacementResult {
     if (coords.length === 0) return { ok: false, cost: 0, reason: 'empty path' };
     const seen = new Set<string>();
+    const newCoords: CellCoord[] = [];
     for (const coord of coords) {
       const key = cellKey(coord.x, coord.y);
       if (seen.has(key)) return { ok: false, cost: 0, reason: 'duplicate cell in path' };
       seen.add(key);
       if (!this.terrain.isBuildable(coord.x, coord.y)) return { ok: false, cost: 0, reason: 'unbuildable terrain' };
-      if (this.cells.has(key)) return { ok: false, cost: 0, reason: 'road already exists' };
+      if (!this.cells.has(key)) newCoords.push(coord);
     }
+    if (newCoords.length === 0) return { ok: false, cost: 0, reason: 'road already exists' };
     const definition = ROAD_DEFINITIONS[type];
-    const cost = definition.constructionCostPerCell * coords.length;
+    const cost = definition.constructionCostPerCell * newCoords.length;
     if (!treasury.tryDebit(cost, `Build ${type} road`)) return { ok: false, cost, reason: 'insufficient funds' };
-    for (const coord of coords) this.cells.set(cellKey(coord.x, coord.y), { x: coord.x, y: coord.y, type });
+    for (const coord of newCoords) this.cells.set(cellKey(coord.x, coord.y), { x: coord.x, y: coord.y, type });
     this.revision++;
     return { ok: true, cost };
   }
