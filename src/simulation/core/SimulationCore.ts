@@ -24,6 +24,8 @@ import { IntersectionSystem } from '../traffic/IntersectionSystem.ts';
 import { TrafficSystem } from '../traffic/TrafficSystem.ts';
 import { TrafficAnalytics, type TrafficAnalyticsSnapshot } from '../traffic/TrafficAnalytics.ts';
 import type { Building } from '../buildings/BuildingSystem.ts';
+import { ServiceFacilitySystem } from '../services/ServiceFacilitySystem.ts';
+import type { ServiceDepartment, ServiceFacilityType } from '../../data/services.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -56,6 +58,7 @@ export class SimulationCore {
   readonly intersections: IntersectionSystem;
   readonly traffic: TrafficSystem;
   readonly trafficAnalytics: TrafficAnalytics;
+  readonly services: ServiceFacilitySystem;
 
   employmentSnapshot: EmploymentSnapshot;
   utilitySnapshot: UtilitySnapshot;
@@ -88,6 +91,9 @@ export class SimulationCore {
     this.intersections = new IntersectionSystem();
     this.traffic = new TrafficSystem();
     this.trafficAnalytics = new TrafficAnalytics();
+    this.services = new ServiceFacilitySystem(this.terrain, this.roads, (x, y) =>
+      this.buildings.getAt(x, y) !== undefined || this.utilities.listFacilities().some((facility) => facility.x === x && facility.y === y),
+    );
 
     this.employmentSnapshot = this.employment.evaluate(0, 0);
     this.utilitySnapshot = this.utilities.evaluate([]);
@@ -124,6 +130,14 @@ export class SimulationCore {
 
   placeUtility(type: UtilityFacilityType, x: number, y: number): { ok: boolean; cost: number; reason?: string } {
     return this.utilities.placeFacility(type, x, y, this.treasury);
+  }
+
+  placeServiceFacility(type: ServiceFacilityType, x: number, y: number): { ok: boolean; cost: number; reason?: string } {
+    return this.services.placeFacility(type, x, y, this.treasury);
+  }
+
+  setServiceFunding(department: ServiceDepartment, percent: number): number {
+    return this.services.setFunding(department, percent);
   }
 
   bulldozeAt(x: number, y: number): { ok: boolean; kind?: 'road' | 'building' | 'zone'; reason?: string } {
