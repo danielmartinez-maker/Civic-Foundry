@@ -84,9 +84,12 @@ test('population is bounded by occupied residential capacity and can decline', (
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 
 test('SimulationCore integrates roads, zoning, lots, development, and population', () => {
-  const core = new SimulationCore({ terrain: flatTerrain(), startingFunds: 5000, seed: 9 });
+  const core = new SimulationCore({ terrain: flatTerrain(), startingFunds: 100_000, seed: 9 });
   assert.equal(core.buildRoad([{ x: 2, y: 4 }, { x: 3, y: 4 }, { x: 4, y: 4 }], 'local').ok, true);
   assert.equal(core.paintZone([{ x: 2, y: 3 }, { x: 3, y: 3 }], 'residential').painted, 2);
+  assert.equal(core.placeUtility('power', 2, 5).ok, true);
+  assert.equal(core.placeUtility('water', 3, 5).ok, true);
+  assert.equal(core.placeUtility('landfill', 4, 5).ok, true);
   core.step(120);
   assert.equal(core.lots.list().length, 2);
   assert.equal(core.buildings.occupied().length, 2);
