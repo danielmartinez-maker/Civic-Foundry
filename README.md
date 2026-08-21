@@ -1,35 +1,71 @@
 # Civic Foundry
 
-Civic Foundry is an original browser-based city-management and urban-development simulation built in deterministic vertical slices.
+Civic Foundry is an original browser-based city-management and urban-development simulator built as deterministic vertical slices.
 
-## Project status
+## Current playable milestone
 
-- Phase 1 — Playable Foundation: designed and implemented in the prior local workspace.
-- Phase 2 — Core City Loop: implemented and verified.
-- Phase 3 — Traffic: implemented and verified at the prior local checkpoint `f0bb3d6` with 115/115 tests passing before that execution workspace expired.
-- Phase 4 — Public Services: design approved; implementation is next.
+This branch is the **fresh Phase 1–3 reimplementation** created after the original temporary Phase 3 workspace expired. It is not a byte-for-byte recovery of the lost `f0bb3d6` checkpoint. The rebuilt implementation has been reverified from scratch and GitHub is now the canonical source of truth.
 
-## Canonical development model
+Implemented through Phase 3:
 
-GitHub is now the durable source of truth for Civic Foundry. New work should be committed here on phase/feature branches and integrated through reviewable checkpoints.
+- deterministic terrain and simulation clock
+- treasury and construction costs
+- local, collector, and arterial roads
+- R/C/I zoning, road-frontage lots, building construction, population
+- employment, R/C/I demand, taxes, power, water, garbage, recurring economy
+- transportation graph derived from roads
+- deterministic A* routing with revision-aware route cache
+- weighted commute and shopping trip cohorts
+- moving vehicles and deterministic intersection queues
+- congestion derived from actual weighted edge occupancy/capacity
+- traffic analytics, commute/accessibility metrics, and demand feedback
+- Canvas 2D rendering, build tools, HUD, inspector, traffic overlays
+- Save V3 with deterministic continuation and V2 migration
 
-The simulation architecture is renderer-independent and deterministic. Authoritative systems live in `SimulationCore` and focused domain modules; presentation consumes snapshots and submits typed commands. Important statistics must derive from real simulated state rather than fabricated UI values.
+## Toolchain
 
-## Immediate recovery note
+The project intentionally uses an offline-capable dependency-light stack:
 
-The prior execution runtime lost the mounted Phase 3 TypeScript/Git source tree after its verified checkpoint. The preserved design specifications are being restored here, but the actual Phase 3 source files still need to be recovered from any surviving ZIP, checkout, artifact, or repository copy before Phase 4 implementation can safely resume from the verified codebase.
+- TypeScript 5.x ES modules
+- Node 22 built-in test runner with TypeScript strip-types
+- browser-native Canvas 2D
+- global `tsc`
+- Python Playwright + system Chromium for browser smoke testing
 
-Do not recreate the missing source from memory and claim continuity with the verified Phase 3 checkpoint.
+No Vite/PixiJS/Vitest dependency is claimed in this rebuild.
 
-## Development roadmap
+## Commands
 
-1. Playable foundation
-2. Core city loop
-3. Traffic
-4. Public services
-5. Public transport
-6. Economic depth
-7. Urban depth
-8. Metropolitan infrastructure
-9. Environment and events
-10. Polish
+```bash
+npm test
+npm run typecheck
+npm run lint
+npm run build
+npm run test:smoke
+npm run dev
+```
+
+`npm run build` produces `dist/`. `npm run dev` serves the compiled build on port 5173 when local navigation is permitted.
+
+## Architecture rule
+
+`SimulationCore` and focused simulation modules own authoritative state. Rendering/UI only read snapshots and submit mutations through public APIs. Important metrics—employment, service ratios, demand, congestion, accessibility—derive from actual simulated state rather than fabricated display values.
+
+## Persistence
+
+Current save envelope: `saveVersion: 3`, game version `0.3.0-rebuild`. Transportation graphs, route caches, overlay buffers, and other rebuildable state are reconstructed after hydration.
+
+## Roadmap
+
+1. Phase 1 — Playable Foundation ✅
+2. Phase 2 — Core City Loop ✅
+3. Phase 3 — Traffic ✅ (fresh reimplementation)
+4. Phase 4 — Public Services — approved design, next
+5. Phase 5 — Public Transport
+6. Phase 6 — Economic Depth
+7. Phase 7 — Urban Depth
+8. Phase 8 — Metropolitan Infrastructure
+9. Phase 9 — Environment and Events
+10. Phase 10 — Polish
+
+See `docs/` and `docs/superpowers/` for architecture, balancing, testing, save-format, design, and implementation-plan details.
