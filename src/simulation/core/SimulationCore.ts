@@ -19,11 +19,10 @@ import type { RoadType } from '../../data/roads.ts';
 import type { UtilityFacilityType } from '../../data/utilities.ts';
 import { TransportationGraph } from '../traffic/TransportationGraph.ts';
 import { PathfindingSystem } from '../traffic/PathfindingSystem.ts';
-import { TripGenerationSystem, type TripRequest } from '../traffic/TripGenerationSystem.ts';
+import { TripGenerationSystem } from '../traffic/TripGenerationSystem.ts';
 import { IntersectionSystem } from '../traffic/IntersectionSystem.ts';
 import { TrafficSystem } from '../traffic/TrafficSystem.ts';
 import { TrafficAnalytics, type TrafficAnalyticsSnapshot } from '../traffic/TrafficAnalytics.ts';
-import type { Building } from '../buildings/BuildingSystem.ts';
 import { ServiceFacilitySystem } from '../services/ServiceFacilitySystem.ts';
 import { ServiceDemandSystem, type ServiceDemandSnapshot, type UnresolvedServiceInputs } from '../services/ServiceDemandSystem.ts';
 import { ServiceAccessibilitySystem } from '../services/ServiceAccessibilitySystem.ts';
@@ -34,6 +33,9 @@ import { WasteCollectionSystem } from '../services/WasteCollectionSystem.ts';
 import { EducationSystem, type EducationSnapshot } from '../services/EducationSystem.ts';
 import { NeighborhoodQualitySystem, type NeighborhoodQualitySnapshot, type BuildingServiceAccess } from '../services/NeighborhoodQualitySystem.ts';
 import type { ServiceDepartment, ServiceFacilityType } from '../../data/services.ts';
+import { TransitNetworkSystem } from '../transit/TransitNetworkSystem.ts';
+import { PersonTripSystem } from '../mobility/PersonTripSystem.ts';
+import { MobilityScheduler, type MobilitySnapshot } from '../mobility/MobilityScheduler.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -77,6 +79,9 @@ export class SimulationCore {
   readonly wasteCollection: WasteCollectionSystem;
   readonly education: EducationSystem;
   readonly neighborhoodQuality: NeighborhoodQualitySystem;
+  readonly transit: TransitNetworkSystem;
+  readonly personTrips: PersonTripSystem;
+  readonly mobility: MobilityScheduler;
 
   employmentSnapshot: EmploymentSnapshot;
   utilitySnapshot: UtilitySnapshot;
@@ -88,6 +93,7 @@ export class SimulationCore {
   serviceDemandSnapshot: ServiceDemandSnapshot;
   educationSnapshot: EducationSnapshot;
   neighborhoodSnapshot: NeighborhoodQualitySnapshot;
+  mobilitySnapshot: MobilitySnapshot;
   serviceAccessByBuilding: Readonly<Record<string, BuildingServiceAccess>> = Object.freeze({});
   lastServiceGeneratedWaste = 0;
 
@@ -125,6 +131,13 @@ export class SimulationCore {
     this.wasteCollection = new WasteCollectionSystem();
     this.education = new EducationSystem();
     this.neighborhoodQuality = new NeighborhoodQualitySystem();
+    this.transit = new TransitNetworkSystem(this.terrain, this.roads, (x, y) =>
+      this.buildings.getAt(x, y) !== undefined
+      || this.utilities.listFacilities().some((facility) => facility.x === x && facility.y === y)
+      || this.services.getAt(x, y) !== undefined,
+    );
+    this.personTrips = new PersonTripSystem(this.tripGeneration);
+    this.mobility = new MobilityScheduler();
 
     this.employmentSnapshot = this.employment.evaluate(0, 0);
     this.utilitySnapshot = this.utilities.evaluate([]);
@@ -133,16 +146,15 @@ export class SimulationCore {
     this.demandSnapshot = this.demand.evaluate({
       population: 0, housingCapacity: 0, workforce: 0, employed: 0, totalJobs: 0,
       powerRatio: 1, waterRatio: 1, garbageRatio: 1, taxRates: this.taxes.getRates(),
-      trafficJobAccessibility: 1, trafficCommercialAccessibility: 1, serviceQuality: 0.7, commercialServiceQuality: 0.7,
+      trafficJobAccessibility: 1, trafficCommercialAccessibility: 1, personAccessibility: 1,
+      serviceQuality: 0.7, commercialServiceQuality: 0.7,
     });
-    this.economySnapshot = {
-      ...this.economy.lastSettlement,
-      cashBalance: this.treasury.balance,
-    };
+    this.economySnapshot = { ...this.economy.lastSettlement, cashBalance: this.treasury.balance };
     this.trafficSnapshot = this.trafficAnalytics.evaluate([], [], 0);
     this.serviceDemandSnapshot = { eligibleStudents: 0, perBuilding: Object.freeze({}) };
     this.educationSnapshot = { eligibleStudents: 0, reachableStudents: 0, enrolledStudents: 0, effectiveSeats: 0, overcrowdedStudents: 0, averageSchoolAccessTicks: 0, educationServiceRatio: 1 };
     this.neighborhoodSnapshot = { perBuilding: Object.freeze({}), citywideServiceQuality: 1, commercialServiceQuality: 1 };
+    this.mobilitySnapshot = this.mobility.snapshot();
   }
 
   buildRoad(cells: readonly CellCoord[], type: RoadType): RoadPlacementResult {
@@ -204,7 +216,31 @@ export class SimulationCore {
       this.wasteCollection.applyJobs(this.serviceDispatch.listJobs(), this.services, this.clock.tick);
       this.incidents.advance(this.clock.tick, this.serviceDispatch.listJobs(), this.buildings.occupied(), this.serviceDispatch);
 
-      this.traffic.step(this.transportationGraph, this.intersections, this.clock.tick, this.serviceVehicles.edgeLoads());
+      this.mobilitySnapshot = this.mobility.tick({
+        tick: this.clock.tick,
+        roadGraph: this.transportationGraph,
+        transit: this.transit,
+        pathfinding: this.pathfinding,
+        roadTravelTime: (edge) => this.traffic.getEdgeTravelTime(edge),
+        costEpoch: this.traffic.congestionEpoch,
+        generateTrips: () => this.clock.tick % 100 === 0
+          ? this.personTrips.generate(this.clock.tick, this.buildings.occupied(), this.population.population, this.employmentSnapshot.employed, this.transportationGraph)
+          : [],
+        submitCarTrip: (trip, travelerWeight, route) => {
+          const freeFlowTicks = route.edgeIds.reduce((sum, edgeId) => sum + (this.transportationGraph.getEdge(edgeId)?.freeFlowTicks ?? 0), 0);
+          this.traffic.submitTrip({
+            id: trip.sourceTripId,
+            originBuildingId: trip.originBuildingId,
+            destinationBuildingId: trip.destinationBuildingId,
+            departureTick: trip.departureTick,
+            travelerWeight,
+            purpose: trip.purpose,
+          }, route, this.clock.tick, freeFlowTicks);
+        },
+      });
+
+      const edgeLoads = this.mergeEdgeLoads(this.serviceVehicles.edgeLoads(), this.mobility.vehicles.edgeLoads());
+      this.traffic.step(this.transportationGraph, this.intersections, this.clock.tick, edgeLoads);
       this.trafficSnapshot = this.trafficAnalytics.evaluate(this.traffic.edgeMetrics, this.traffic.recentOutcomes, this.traffic.activeVehicles.length);
       this.buildings.tick(this.clock.tick);
 
@@ -213,7 +249,6 @@ export class SimulationCore {
         this.buildings.evaluateDevelopment(this.clock.tick, this.lots.list(), this.demandSnapshot);
       }
       if (this.clock.tick % 50 === 0) this.evaluateCoreCityLoop();
-      if (this.clock.tick % 100 === 0) this.generateTraffic();
     }
   }
 
@@ -290,36 +325,6 @@ export class SimulationCore {
     }
   }
 
-  private generateTraffic(): void {
-    const occupied = this.buildings.occupied();
-    const trips = this.tripGeneration.generate(this.clock.tick, occupied, this.population.population, this.employmentSnapshot.employed);
-    for (const trip of trips) this.routeTrip(trip);
-  }
-
-  private routeTrip(trip: TripRequest): void {
-    const origin = this.buildings.getById(trip.originBuildingId);
-    const destination = this.buildings.getById(trip.destinationBuildingId);
-    if (!origin || !destination) return;
-    const start = this.accessNodeForBuilding(origin);
-    const end = this.accessNodeForBuilding(destination);
-    if (!start || !end || start === end) return;
-    const route = this.pathfinding.findRoute(this.transportationGraph, start, end, {
-      edgeCost: (edge) => this.traffic.getEdgeTravelTime(edge), costKey: `traffic:${this.traffic.congestionEpoch}`,
-    });
-    if (!route) return;
-    const freeFlowTicks = route.edgeIds.reduce((sum, edgeId) => sum + (this.transportationGraph.getEdge(edgeId)?.freeFlowTicks ?? 0), 0);
-    this.traffic.submitTrip(trip, route, this.clock.tick, freeFlowTicks);
-  }
-
-  private accessNodeForBuilding(building: Building): string | undefined {
-    const candidates = [
-      this.transportationGraph.findNodeAt(building.x, building.y - 1), this.transportationGraph.findNodeAt(building.x + 1, building.y),
-      this.transportationGraph.findNodeAt(building.x, building.y + 1), this.transportationGraph.findNodeAt(building.x - 1, building.y),
-    ].filter((node): node is NonNullable<typeof node> => node !== undefined);
-    candidates.sort((a, b) => a.id.localeCompare(b.id));
-    return candidates[0]?.id;
-  }
-
   private evaluateCoreCityLoop(): void {
     const occupied = this.buildings.occupied();
     this.utilitySnapshot = this.utilities.evaluate(occupied);
@@ -332,14 +337,31 @@ export class SimulationCore {
     const serviceQuality = hasServices ? this.neighborhoodSnapshot.citywideServiceQuality : 0.7;
     const commercialServiceQuality = hasServices ? this.neighborhoodSnapshot.commercialServiceQuality : 0.7;
     this.demandSnapshot = this.demand.evaluate({
-      population: this.population.population, housingCapacity: this.buildings.residentialCapacity(),
-      workforce: this.employmentSnapshot.workforce, employed: this.employmentSnapshot.employed, totalJobs: this.employmentSnapshot.totalJobs,
-      powerRatio: this.utilitySnapshot.power.serviceRatio, waterRatio: this.utilitySnapshot.water.serviceRatio, garbageRatio: this.garbageSnapshot.serviceRatio,
-      taxRates: this.taxes.getRates(), trafficJobAccessibility: this.trafficSnapshot.jobAccessibility,
-      trafficCommercialAccessibility: this.trafficSnapshot.commercialAccessibility, serviceQuality, commercialServiceQuality,
+      population: this.population.population,
+      housingCapacity: this.buildings.residentialCapacity(),
+      workforce: this.employmentSnapshot.workforce,
+      employed: this.employmentSnapshot.employed,
+      totalJobs: this.employmentSnapshot.totalJobs,
+      powerRatio: this.utilitySnapshot.power.serviceRatio,
+      waterRatio: this.utilitySnapshot.water.serviceRatio,
+      garbageRatio: this.garbageSnapshot.serviceRatio,
+      taxRates: this.taxes.getRates(),
+      trafficJobAccessibility: this.trafficSnapshot.jobAccessibility,
+      trafficCommercialAccessibility: this.trafficSnapshot.commercialAccessibility,
+      personAccessibility: this.mobilitySnapshot.personAccessibility,
+      serviceQuality,
+      commercialServiceQuality,
     });
 
-    this.economySnapshot = this.economy.settle(this.treasury, this.taxRevenue, this.utilities.operatingCost(), this.services.totalOperatingCost());
+    const transitFiscal = this.mobility.consumeFiscalDelta();
+    this.economySnapshot = this.economy.settle(
+      this.treasury,
+      this.taxRevenue,
+      this.utilities.operatingCost(),
+      this.services.totalOperatingCost(),
+      transitFiscal.operatingCost,
+      transitFiscal.fareRevenue,
+    );
     const paymentRatio = this.economySnapshot.facilityOperatingCost <= 0 ? 1 : this.economySnapshot.paidOperatingCost / this.economySnapshot.facilityOperatingCost;
     this.services.setFiscalPaymentRatio(paymentRatio);
     this.serviceVehicles.syncFleet(this.services);
@@ -351,5 +373,13 @@ export class SimulationCore {
     let attractiveness = clamp01(0.45 * essential + 0.18 * employmentQuality + 0.12 * fiscalQuality + 0.25 * serviceFactor);
     if (this.utilitySnapshot.power.serviceRatio < 0.5 || this.utilitySnapshot.water.serviceRatio < 0.5) attractiveness = Math.min(attractiveness, 0.2);
     this.population.update(this.buildings.residentialCapacity(), attractiveness);
+  }
+
+  private mergeEdgeLoads(...sources: Readonly<Record<string, number>>[]): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const source of sources) {
+      for (const [edgeId, load] of Object.entries(source)) result[edgeId] = (result[edgeId] ?? 0) + Math.max(0, load);
+    }
+    return result;
   }
 }
