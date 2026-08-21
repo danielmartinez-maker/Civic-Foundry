@@ -29,6 +29,16 @@ export type HudMetrics = Readonly<{
   waitingServiceJobs: number;
   serviceOperatingCost: number;
   serviceFiscalRatio: number;
+  carModeShare: number;
+  transitModeShare: number;
+  unmetTripShare: number;
+  personAccessibility: number;
+  transitRidership: number;
+  transitMeanWaitTicks: number;
+  transitReliability: number;
+  transitCrowding: number;
+  transitOperatingCost: number;
+  transitFareRevenue: number;
 }>;
 
 export function collectHudMetrics(core: SimulationCore): HudMetrics {
@@ -60,6 +70,16 @@ export function collectHudMetrics(core: SimulationCore): HudMetrics {
     waitingServiceJobs: core.serviceDispatch.listJobs().filter((job) => job.status === 'waiting').length,
     serviceOperatingCost: core.services.totalOperatingCost(),
     serviceFiscalRatio: core.services.getFiscalPaymentRatio(),
+    carModeShare: core.mobilitySnapshot.carModeShare,
+    transitModeShare: core.mobilitySnapshot.transitModeShare,
+    unmetTripShare: core.mobilitySnapshot.unmetShare,
+    personAccessibility: core.mobilitySnapshot.personAccessibility,
+    transitRidership: core.mobilitySnapshot.ridership,
+    transitMeanWaitTicks: core.mobilitySnapshot.meanWaitTicks,
+    transitReliability: core.mobilitySnapshot.reliability,
+    transitCrowding: core.mobilitySnapshot.crowding,
+    transitOperatingCost: core.mobilitySnapshot.transitOperatingCost,
+    transitFareRevenue: core.mobilitySnapshot.transitFareRevenue,
   };
 }
 
@@ -78,6 +98,8 @@ export class HudView {
       ['power', 'Power'], ['water', 'Water'], ['garbage', 'Waste'], ['net', 'Recurring'],
       ['vehicles', 'Vehicles'], ['congestion', 'Congestion'], ['access', 'Job access'], ['commute', 'Commute'],
       ['service', 'Services'], ['education', 'Education'], ['service-fleet', 'Service fleet'], ['service-jobs', 'Waiting calls'],
+      ['transit-share', 'Transit share'], ['person-access', 'Person access'], ['ridership', 'Ridership'], ['transit-wait', 'Transit wait'],
+      ['transit-reliability', 'Reliability'], ['transit-crowding', 'Crowding'],
     ].map(([id, label]) => `<div class="hud-stat"><span>${label}</span><strong data-hud="${id}">—</strong></div>`).join('');
     root.querySelectorAll<HTMLElement>('[data-hud]').forEach((element) => this.values.set(element.dataset.hud ?? '', element));
   }
@@ -100,6 +122,12 @@ export class HudView {
     this.set('education', percent(metrics.educationServiceRatio));
     this.set('service-fleet', String(metrics.activeServiceVehicles));
     this.set('service-jobs', String(metrics.waitingServiceJobs));
+    this.set('transit-share', `${percent(metrics.transitModeShare)} · car ${percent(metrics.carModeShare)}`);
+    this.set('person-access', percent(metrics.personAccessibility));
+    this.set('ridership', Math.round(metrics.transitRidership).toLocaleString());
+    this.set('transit-wait', metrics.transitMeanWaitTicks > 0 ? `${metrics.transitMeanWaitTicks.toFixed(1)} ticks` : '—');
+    this.set('transit-reliability', percent(metrics.transitReliability));
+    this.set('transit-crowding', percent(metrics.transitCrowding));
   }
 
   private set(id: string, value: string): void {

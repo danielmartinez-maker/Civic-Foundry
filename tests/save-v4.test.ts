@@ -35,7 +35,7 @@ function serviceCore(): SimulationCore {
 test('Save V4 round-trips authoritative public-service state and active service vehicles', () => {
   const core = serviceCore();
   const save = serializeCore(core);
-  assert.equal(save.saveVersion, 4);
+  assert.equal(save.saveVersion, 5);
   assert.ok(save.services.facilities.length >= 5);
   assert.ok(save.services.jobs.length > 0);
   assert.ok(save.services.vehicles.length > 0);

@@ -10,6 +10,7 @@ export type ToolId =
   | 'zone-residential' | 'zone-commercial' | 'zone-industrial'
   | 'power' | 'water' | 'landfill'
   | 'service-fire' | 'service-police' | 'service-clinic' | 'service-school' | 'service-landfill' | 'service-recycling'
+  | 'transit-stop' | 'transit-metro-station'
   | 'bulldoze';
 
 export type ToolApplyResult = Readonly<{ ok: boolean; reason?: string }>;
@@ -46,6 +47,11 @@ export class ToolController {
     if (service) {
       const result = core.placeServiceFacility(service, x, y);
       return result.ok ? { ok: true } : { ok: false, reason: result.reason ?? 'service facility placement failed' };
+    }
+    if (this.activeTool === 'transit-stop' || this.activeTool === 'transit-metro-station') {
+      const type = this.activeTool === 'transit-metro-station' ? 'metro_station' : 'surface_stop';
+      const result = core.transit.placeStop(type, x, y, core.treasury);
+      return result.ok ? { ok: true } : { ok: false, reason: result.reason ?? 'transit stop placement failed' };
     }
     const utility = utilityType(this.activeTool);
     if (utility) {

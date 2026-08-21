@@ -5,6 +5,8 @@ import { mapTrafficOverlay } from './TrafficOverlayLayer.ts';
 import { VehicleRenderer } from './VehicleRenderer.ts';
 import { mapServiceOverlay, type ServiceOverlayMode } from './ServiceOverlayLayer.ts';
 import { ServiceVehicleRenderer } from './ServiceVehicleRenderer.ts';
+import { mapTransitOverlay, type TransitOverlayMode } from './TransitOverlayLayer.ts';
+import { TransitVehicleRenderer } from './TransitVehicleRenderer.ts';
 
 export type CanvasPoint = Readonly<{ x: number; y: number }>;
 export type CellSelection = Readonly<{ x: number; y: number }> | null;
@@ -21,6 +23,7 @@ export class WorldRenderer {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly vehicles = new VehicleRenderer();
   private readonly serviceVehicles = new ServiceVehicleRenderer();
+  private readonly transitVehicles = new TransitVehicleRenderer();
   private panX = 36;
   private panY = 36;
   private zoom = 1;
@@ -80,7 +83,7 @@ export class WorldRenderer {
     return core.terrain.inBounds(world.x, world.y) ? world : null;
   }
 
-  draw(core: SimulationCore, overlayMode: TrafficOverlayMode, selected: CellSelection, previewPath: readonly { x: number; y: number }[] = [], serviceOverlayMode: ServiceOverlayMode = 'none'): void {
+  draw(core: SimulationCore, overlayMode: TrafficOverlayMode, selected: CellSelection, previewPath: readonly { x: number; y: number }[] = [], serviceOverlayMode: ServiceOverlayMode = 'none', transitOverlayMode: TransitOverlayMode = 'none'): void {
     this.resize();
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -170,11 +173,13 @@ export class WorldRenderer {
       ctx.fillText(SERVICE_LABELS[facility.type], p.x + this.cellSize / 2, p.y + this.cellSize / 2);
     }
 
+    this.drawTransitNetwork(core, transitOverlayMode);
     if (serviceOverlayMode !== 'none') this.drawServiceOverlay(core, serviceOverlayMode);
     if (overlayMode !== 'none') this.drawTrafficOverlay(core, overlayMode);
     this.vehicles.draw(ctx, core.transportationGraph, core.traffic, (x, y) => this.worldToCanvas(x, y, core), this.cellSize);
     const travelTicks = new Map(core.traffic.edgeMetrics.map((metric) => [metric.edgeId, metric.travelTimeTicks]));
     this.serviceVehicles.draw(ctx, core.transportationGraph, core.serviceVehicles, travelTicks, (x, y) => this.worldToCanvas(x, y, core), this.cellSize);
+    this.transitVehicles.draw(ctx, core.transit, core.transportationGraph, core.mobility.vehicles, travelTicks, (x, y) => this.worldToCanvas(x, y, core), this.cellSize);
 
     if (previewPath.length > 0) {
       ctx.save();
@@ -192,6 +197,99 @@ export class WorldRenderer {
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.strokeRect(p.x + 1, p.y + 1, this.cellSize - 2, this.cellSize - 2);
+    }
+  }
+
+  private drawTransitNetwork(core: SimulationCore, mode: TransitOverlayMode): void {
+    const snapshot = mapTransitOverlay(core, mode);
+    const ctx = this.ctx;
+    const routeMax = Math.max(1, ...snapshot.routes.map((route) => route.value));
+    const lineDash = (transitMode: string): number[] => transitMode === 'brt' ? [9, 4]
+      : transitMode === 'tram' ? [3, 4]
+      : transitMode === 'metro' ? [12, 4, 3, 4]
+      : [];
+    const modeStroke = (transitMode: string): string => transitMode === 'metro' ? '#bb8cff'
+      : transitMode === 'tram' ? '#ffb65f'
+      : transitMode === 'brt' ? '#59d8c4'
+      : '#68a8ff';
+
+    for (const route of snapshot.routes) {
+      const line = core.transit.getLine(route.lineId);
+      if (!line || line.stopIds.length < 2) continue;
+      const normalized = mode === 'ridership' ? Math.max(0.12, route.value / routeMax)
+        : mode === 'crowding' || mode === 'reliability' ? Math.max(0.12, route.value)
+        : 0.55;
+      ctx.save();
+      ctx.strokeStyle = modeStroke(route.mode);
+      ctx.globalAlpha = mode === 'none' ? 0.42 : 0.9;
+      ctx.lineWidth = Math.max(2, this.cellSize * (0.08 + normalized * 0.08));
+      ctx.setLineDash(lineDash(route.mode));
+      ctx.beginPath();
+      line.stopIds.forEach((stopId, index) => {
+        const stop = core.transit.getStop(stopId);
+        if (!stop) return;
+        const point = this.worldToCanvas(stop.x, stop.y, core);
+        const px = point.x + this.cellSize / 2;
+        const py = point.y + this.cellSize / 2;
+        if (index === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    for (const stopItem of snapshot.stops) {
+      const stop = core.transit.getStop(stopItem.stopId);
+      if (!stop) continue;
+      const point = this.worldToCanvas(stop.x, stop.y, core);
+      const radius = Math.max(3, this.cellSize * 0.16);
+      ctx.save();
+      if (mode === 'access') {
+        ctx.strokeStyle = 'rgba(220,239,248,.55)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.arc(point.x + this.cellSize / 2, point.y + this.cellSize / 2, this.cellSize * 0.48, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = stop.type === 'metro_station' ? '#c8a6ff' : '#dcebf2';
+      ctx.strokeStyle = '#12191d';
+      ctx.lineWidth = 1.5;
+      if (stop.type === 'metro_station') {
+        ctx.fillRect(point.x + this.cellSize / 2 - radius, point.y + this.cellSize / 2 - radius, radius * 2, radius * 2);
+        ctx.strokeRect(point.x + this.cellSize / 2 - radius, point.y + this.cellSize / 2 - radius, radius * 2, radius * 2);
+      } else {
+        ctx.beginPath();
+        ctx.arc(point.x + this.cellSize / 2, point.y + this.cellSize / 2, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      if (mode === 'wait' && this.cellSize >= 18) {
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = 'rgba(0,0,0,.75)';
+        ctx.lineWidth = 2;
+        ctx.font = `700 ${Math.max(8, this.cellSize * 0.28)}px system-ui`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.strokeText(stopItem.label, point.x + this.cellSize / 2, point.y - 2);
+        ctx.fillText(stopItem.label, point.x + this.cellSize / 2, point.y - 2);
+      }
+      ctx.restore();
+    }
+
+    if ((mode === 'mode-share' || mode === 'accessibility') && snapshot.globalValue !== undefined) {
+      const label = `${mode === 'mode-share' ? 'Transit share' : 'Person access'} ${Math.round(snapshot.globalValue * 100)}%`;
+      ctx.save();
+      ctx.font = '700 12px system-ui';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      const width = ctx.measureText(label).width + 16;
+      ctx.fillStyle = 'rgba(11,16,19,.86)';
+      ctx.fillRect(12, 12, width, 28);
+      ctx.strokeStyle = '#718893';
+      ctx.strokeRect(12, 12, width, 28);
+      ctx.fillStyle = '#eef5f7';
+      ctx.fillText(label, 20, 19);
+      ctx.restore();
     }
   }
 

@@ -37,3 +37,31 @@ The real Chromium smoke verifies service construction, active service vehicles, 
 ### Tooling
 
 TypeScript ES modules, Node built-in tests, global `tsc`, browser Canvas 2D, Python Playwright and system Chromium. No external npm runtime dependencies are required.
+
+## 2026-08-21 — Phase 5 Transit Revolution
+
+Implemented the approved first Metropolitan Era vertical slice:
+
+- bus, BRT, tram and metro topology with deterministic stops, lines, ordered routes, headways, fares and enablement
+- a derived multimodal graph and deterministic generalized-cost journey planner with revision-keyed caching
+- weighted person-trip cohorts and deterministic car/transit/unmet mode choice
+- FIFO passenger queues, transfers, partial boarding and capacity-constrained left-behind passengers
+- explicit transit vehicles with dispatch, dwell, capacity and line operations counters
+- road-sensitive buses/trams, reduced-congestion BRT and road-insulated metro timing
+- transit operating cost/fare revenue plus person accessibility integrated into the existing city loop
+- Phase V transit tools, line configuration, HUD metrics, inspection, route/metric overlays and transit vehicle rendering
+- Save V5 with authoritative transit/mobility continuation and legacy V4 migration
+
+### Bugs found by acceptance testing
+
+1. **Legacy save continuation drift:** Phase 5 mobility state affected future demand while the default serializer was still V4. The public save API now emits V5; explicit V4 serialization remains migration-only.
+2. **Capacity feedback gap:** fleet shortages correctly produced larger queues but did not change experienced wait or subsequent mode choice. Derived queue pressure now feeds both metrics deterministically from waiting weight and active capacity.
+3. **Browser smoke origin restriction:** this execution environment blocks navigable HTTP origins, so the smoke uses the same compiled ES modules through Playwright request routing and installs a minimal in-page Storage-compatible shim. It still exercises the real `GameApp` save/load path and verifies exact V5 restoration.
+
+### Acceptance evidence
+
+The deterministic corridor scenarios show frequent zero-fare BRT eliminating the tested weighted car demand and improving person accessibility, while deliberately poor transit retains car mode choice. Reducing active fleet capacity raises waiting weight and experienced wait and lowers transit attractiveness.
+
+The 10,000-request journey benchmark exceeds the 95% stable-topology cache target; the latest representative run recorded 9,998 cache hits (99.98%). A separate 5,000-tick active-transit diagnostic verifies finite vehicle, queue, accessibility and performance outputs.
+
+The Phase V Chromium smoke creates and edits a BRT line through the browser UI, dispatches vehicles, boards/completes weighted passengers, renders a numeric ridership overlay, changes headway/fare, saves V5, destructively removes transit/road topology, reloads and confirms exact serialized restoration.

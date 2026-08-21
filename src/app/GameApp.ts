@@ -4,18 +4,22 @@ import { hydrateCore, serializeCore } from '../save/save.ts';
 import { WorldRenderer, type CellSelection } from '../rendering/WorldRenderer.ts';
 import type { TrafficOverlayMode } from '../rendering/TrafficOverlayLayer.ts';
 import { mapServiceOverlay, type ServiceOverlayMode } from '../rendering/ServiceOverlayLayer.ts';
+import { mapTransitOverlay, type TransitOverlayMode } from '../rendering/TransitOverlayLayer.ts';
 import type { ServiceDepartment } from '../data/services.ts';
+import type { TransitMode } from '../data/transit.ts';
 import { collectHudMetrics, HudView } from '../ui/Hud.ts';
-import { inspectCell } from '../ui/Inspector.ts';
+import { inspectCell, inspectTransitLine, inspectTransitVehicle, type Inspection } from '../ui/Inspector.ts';
 import { ToolController, type ToolId } from '../ui/ToolController.ts';
+import { collectTransitPanelState, TransitPanelController } from '../ui/TransitPanel.ts';
 
-const STORAGE_KEY = 'civic-foundry-save-v4';
+const STORAGE_KEY = 'civic-foundry-save-v5';
 const TOOLS: readonly [ToolId, string, string][] = [
   ['inspect', 'Inspect', 'I'], ['road-local', 'Local', 'R'], ['road-collector', 'Collector', 'C'], ['road-arterial', 'Arterial', 'A'],
   ['zone-residential', 'Residential', '1'], ['zone-commercial', 'Commercial', '2'], ['zone-industrial', 'Industrial', '3'],
   ['power', 'Power', 'P'], ['water', 'Water', 'W'], ['landfill', 'Legacy landfill', 'G'],
   ['service-fire', 'Fire Station', '4'], ['service-police', 'Police Station', '5'], ['service-clinic', 'Clinic', '6'],
   ['service-school', 'Elementary School', '7'], ['service-landfill', 'Service Landfill', '8'], ['service-recycling', 'Recycling Center', '9'],
+  ['transit-stop', 'Transit Stop', 'T'], ['transit-metro-station', 'Metro Station', 'M'],
   ['bulldoze', 'Bulldoze', 'B'],
 ];
 
@@ -30,6 +34,7 @@ export class GameApp {
   private readonly root: HTMLElement;
   private overlayMode: TrafficOverlayMode = 'none';
   private serviceOverlayMode: ServiceOverlayMode = 'none';
+  private transitOverlayMode: TransitOverlayMode = 'none';
   private readonly activeAlertKeys = new Set<string>();
   private selected: CellSelection = null;
   private dragRoadStart: CellCoord | null = null;
@@ -38,6 +43,7 @@ export class GameApp {
   private lastFrame = performance.now();
   private tickAccumulator = 0;
   private fallbackSave: string | null = null;
+  private lastTransitStatusTick = -1;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -53,6 +59,7 @@ export class GameApp {
     this.bindControls();
     this.bindCanvas(canvas);
     this.selectTool('inspect');
+    this.renderTransitPanel();
     this.updateOverlayLegend();
     requestAnimationFrame((time) => this.frame(time));
   }
@@ -63,14 +70,30 @@ export class GameApp {
     const taxRows = (['residential', 'commercial', 'industrial'] as ZoneType[]).map((zone) => `<label class="tax-row"><span>${zone[0]!.toUpperCase()}</span><input data-tax="${zone}" type="number" min="0" max="25" step="0.5" value="10"><b>%</b></label>`).join('');
     const serviceBudgetRows = (['fire', 'police', 'healthcare', 'education', 'garbage'] as ServiceDepartment[]).map((department) => `<label class="tax-row"><span>${department[0]!.toUpperCase()}${department.slice(1, 4)}</span><input data-service-budget="${department}" data-testid="budget-${department}" type="number" min="50" max="150" step="5" value="100"><b>%</b></label>`).join('');
     return `<div class="game-shell">
-      <header class="topbar"><div><div class="eyebrow">PHASE IV · PUBLIC SERVICES</div><h1>CIVIC FOUNDRY</h1></div>
-        <div class="top-actions"><button data-action="save" data-testid="save">Save V4</button><button data-action="load" data-testid="load">Load</button></div></header>
+      <header class="topbar"><div><div class="eyebrow">PHASE V · TRANSIT REVOLUTION</div><h1>CIVIC FOUNDRY</h1></div>
+        <div class="top-actions"><button data-action="save" data-testid="save">Save V5</button><button data-action="load" data-testid="load">Load</button></div></header>
       <section id="hud" class="hud"></section>
       <main class="workspace">
         <aside class="toolbox"><h2>Build</h2>${toolButtons}
           <div class="panel-section"><h3>Speed</h3><div class="segmented">${speedButtons}</div></div>
           <div class="panel-section"><h3>Traffic</h3><select id="overlay" data-testid="traffic-overlay"><option value="none">Off</option><option value="congestion">Congestion</option><option value="speed">Speed</option><option value="volume">Volume</option><option value="bottlenecks">Bottlenecks</option></select></div>
-          <div class="panel-section"><h3>Services</h3><select id="service-overlay" data-testid="service-overlay"><option value="none">Off</option><option value="quality">Combined quality</option><option value="fire">Fire</option><option value="police">Police</option><option value="healthcare">Healthcare</option><option value="education">Education</option><option value="garbage">Garbage</option></select><p id="overlay-legend" class="legend"></p></div>
+          <div class="panel-section"><h3>Services</h3><select id="service-overlay" data-testid="service-overlay"><option value="none">Off</option><option value="quality">Combined quality</option><option value="fire">Fire</option><option value="police">Police</option><option value="healthcare">Healthcare</option><option value="education">Education</option><option value="garbage">Garbage</option></select></div>
+          <div class="panel-section"><h3>Transit overlay</h3><select id="transit-overlay" data-testid="transit-overlay"><option value="none">Off</option><option value="routes">Routes / modes</option><option value="access">Stop access</option><option value="ridership">Ridership</option><option value="crowding">Crowding</option><option value="wait">Average wait</option><option value="reliability">Reliability</option><option value="mode-share">Mode share</option><option value="accessibility">Person accessibility</option></select><p id="overlay-legend" class="legend"></p></div>
+          <div class="panel-section transit-panel" data-testid="transit-panel"><h3>Transit lines</h3>
+            <label class="field-row"><span>Mode</span><select data-transit-mode data-testid="transit-mode"><option value="bus">Bus</option><option value="brt">BRT</option><option value="tram">Tram</option><option value="metro">Metro</option></select></label>
+            <label class="field-row"><span>Name</span><input data-transit-name data-testid="transit-name" value="Crosstown"></label>
+            <button data-action="create-transit-line" data-testid="create-transit-line">Create line</button>
+            <label class="field-row"><span>Line</span><select data-transit-line data-testid="transit-line"></select></label>
+            <div class="route-editor"><label><span>From</span><select data-transit-origin data-testid="transit-origin"></select></label><label><span>To</span><select data-transit-destination data-testid="transit-destination"></select></label></div>
+            <button data-action="set-transit-route" data-testid="set-transit-route">Set initial route</button>
+            <label class="field-row"><span>Add stop</span><select data-transit-append-stop data-testid="transit-append-stop"></select></label><button data-action="append-transit-stop" data-testid="append-transit-stop">Append stop</button>
+            <label class="field-row"><span>Remove</span><select data-transit-remove-stop data-testid="transit-remove-stop"></select></label><button data-action="remove-transit-stop" data-testid="remove-transit-stop">Remove stop</button>
+            <div class="transit-config"><label><span>Headway</span><input data-transit-headway data-testid="transit-headway" type="number" min="20" max="600" step="5"></label><label><span>Fare</span><input data-transit-fare data-testid="transit-fare" type="number" min="0" max="20" step="0.25"></label><label><span>Fleet</span><input data-transit-fleet data-testid="transit-fleet" type="number" min="0" max="50" step="1"></label></div>
+            <label class="toggle-row"><input data-transit-enabled data-testid="transit-enabled" type="checkbox"><span>Line enabled</span></label>
+            <button data-action="apply-transit-config" data-testid="apply-transit-config">Apply service settings</button>
+            <div class="transit-inspect-actions"><button data-action="inspect-transit-line" data-testid="inspect-transit-line">Inspect line</button><select data-transit-vehicle data-testid="transit-vehicle"></select><button data-action="inspect-transit-vehicle" data-testid="inspect-transit-vehicle">Inspect vehicle</button></div>
+            <div class="transit-summary" data-transit-summary data-testid="transit-summary">No transit lines.</div>
+          </div>
           <div class="panel-section"><h3>Service budgets</h3>${serviceBudgetRows}</div>
           <div class="panel-section"><h3>Tax rates</h3>${taxRows}</div>
         </aside>
@@ -100,12 +123,17 @@ export class GameApp {
     }));
     this.required<HTMLSelectElement>('#overlay').addEventListener('change', (event) => {
       this.overlayMode = (event.currentTarget as HTMLSelectElement).value as TrafficOverlayMode;
-      if (this.overlayMode !== 'none') { this.serviceOverlayMode = 'none'; this.required<HTMLSelectElement>('#service-overlay').value = 'none'; }
+      if (this.overlayMode !== 'none') { this.serviceOverlayMode = 'none'; this.transitOverlayMode = 'none'; this.required<HTMLSelectElement>('#service-overlay').value = 'none'; this.required<HTMLSelectElement>('#transit-overlay').value = 'none'; }
       this.updateOverlayLegend();
     });
     this.required<HTMLSelectElement>('#service-overlay').addEventListener('change', (event) => {
       this.serviceOverlayMode = (event.currentTarget as HTMLSelectElement).value as ServiceOverlayMode;
-      if (this.serviceOverlayMode !== 'none') { this.overlayMode = 'none'; this.required<HTMLSelectElement>('#overlay').value = 'none'; }
+      if (this.serviceOverlayMode !== 'none') { this.overlayMode = 'none'; this.transitOverlayMode = 'none'; this.required<HTMLSelectElement>('#overlay').value = 'none'; this.required<HTMLSelectElement>('#transit-overlay').value = 'none'; }
+      this.updateOverlayLegend();
+    });
+    this.required<HTMLSelectElement>('#transit-overlay').addEventListener('change', (event) => {
+      this.transitOverlayMode = (event.currentTarget as HTMLSelectElement).value as TransitOverlayMode;
+      if (this.transitOverlayMode !== 'none') { this.overlayMode = 'none'; this.serviceOverlayMode = 'none'; this.required<HTMLSelectElement>('#overlay').value = 'none'; this.required<HTMLSelectElement>('#service-overlay').value = 'none'; }
       this.updateOverlayLegend();
     });
     this.root.querySelectorAll<HTMLInputElement>('[data-service-budget]').forEach((input) => input.addEventListener('change', () => {
@@ -114,8 +142,123 @@ export class GameApp {
       input.value = String(result);
       this.flash(`${department} funding set to ${result}%.`, 'ok');
     }));
+    this.bindTransitControls();
     window.addEventListener('keydown', (event) => this.keydown(event));
     this.updateSpeedButtons();
+  }
+
+  private bindTransitControls(): void {
+    this.root.querySelector('[data-action="create-transit-line"]')?.addEventListener('click', () => {
+      const mode = this.required<HTMLSelectElement>('[data-transit-mode]').value as TransitMode;
+      const name = this.required<HTMLInputElement>('[data-transit-name]').value;
+      const lineId = new TransitPanelController(this.core).createLine(mode, name);
+      this.renderTransitPanel(lineId);
+      this.flash(`Created ${mode} line.`, 'ok');
+    });
+    this.required<HTMLSelectElement>('[data-transit-line]').addEventListener('change', () => this.syncTransitLineInputs());
+    this.root.querySelector('[data-action="set-transit-route"]')?.addEventListener('click', () => {
+      const lineId = this.selectedTransitLineId();
+      const origin = this.required<HTMLSelectElement>('[data-transit-origin]').value;
+      const destination = this.required<HTMLSelectElement>('[data-transit-destination]').value;
+      if (!lineId || !origin || !destination || origin === destination) { this.flash('Choose a line and two different compatible stops.', 'error'); return; }
+      this.applyTransitCommand(new TransitPanelController(this.core).setLineStops(lineId, [origin, destination]), 'Route updated.');
+    });
+    this.root.querySelector('[data-action="append-transit-stop"]')?.addEventListener('click', () => {
+      const lineId = this.selectedTransitLineId();
+      const stopId = this.required<HTMLSelectElement>('[data-transit-append-stop]').value;
+      if (!lineId || !stopId) { this.flash('Choose a line and stop.', 'error'); return; }
+      this.applyTransitCommand(new TransitPanelController(this.core).appendStop(lineId, stopId), 'Stop appended.');
+    });
+    this.root.querySelector('[data-action="remove-transit-stop"]')?.addEventListener('click', () => {
+      const lineId = this.selectedTransitLineId();
+      const stopId = this.required<HTMLSelectElement>('[data-transit-remove-stop]').value;
+      if (!lineId || !stopId) { this.flash('Choose a line and route stop.', 'error'); return; }
+      this.applyTransitCommand(new TransitPanelController(this.core).removeStop(lineId, stopId), 'Stop removed.');
+    });
+    this.root.querySelector('[data-action="apply-transit-config"]')?.addEventListener('click', () => {
+      const lineId = this.selectedTransitLineId();
+      if (!lineId) { this.flash('Create or select a transit line first.', 'error'); return; }
+      const panel = new TransitPanelController(this.core);
+      const commands = [
+        panel.setHeadway(lineId, Number(this.required<HTMLInputElement>('[data-transit-headway]').value)),
+        panel.setFare(lineId, Number(this.required<HTMLInputElement>('[data-transit-fare]').value)),
+        panel.setFleetLimit(lineId, Number(this.required<HTMLInputElement>('[data-transit-fleet]').value)),
+        panel.setEnabled(lineId, this.required<HTMLInputElement>('[data-transit-enabled]').checked),
+      ];
+      const failed = commands.find((result) => !result.ok);
+      this.applyTransitCommand(failed ?? { ok: true }, 'Transit service settings applied.');
+    });
+    this.root.querySelector('[data-action="inspect-transit-line"]')?.addEventListener('click', () => {
+      const lineId = this.selectedTransitLineId();
+      if (lineId) this.renderInspection(inspectTransitLine(this.core, lineId));
+    });
+    this.root.querySelector('[data-action="inspect-transit-vehicle"]')?.addEventListener('click', () => {
+      const vehicleId = this.required<HTMLSelectElement>('[data-transit-vehicle]').value;
+      if (vehicleId) this.renderInspection(inspectTransitVehicle(this.core, vehicleId));
+    });
+  }
+
+  private applyTransitCommand(result: Readonly<{ ok: boolean; reason?: string }>, success: string): void {
+    this.flash(result.ok ? success : result.reason ?? 'Transit command failed.', result.ok ? 'ok' : 'error');
+    this.renderTransitPanel(this.selectedTransitLineId() ?? undefined);
+    this.updateOverlayLegend();
+  }
+
+  private selectedTransitLineId(): string | null {
+    const value = this.root.querySelector<HTMLSelectElement>('[data-transit-line]')?.value ?? '';
+    return value || null;
+  }
+
+  private renderTransitPanel(preferredLineId?: string): void {
+    const currentLineId = preferredLineId ?? this.selectedTransitLineId();
+    const lines = this.core.transit.listLines();
+    const stops = this.core.transit.listStops();
+    const lineSelect = this.required<HTMLSelectElement>('[data-transit-line]');
+    lineSelect.innerHTML = lines.length > 0 ? lines.map((line) => `<option value="${line.id}">${line.name} · ${line.mode}</option>`).join('') : '<option value="">No lines</option>';
+    if (currentLineId && lines.some((line) => line.id === currentLineId)) lineSelect.value = currentLineId;
+    const stopOptions = stops.length > 0 ? stops.map((stop) => `<option value="${stop.id}">${stop.id} · ${stop.type} (${stop.x},${stop.y})</option>`).join('') : '<option value="">No stops</option>';
+    for (const selector of ['[data-transit-origin]', '[data-transit-destination]', '[data-transit-append-stop]']) this.required<HTMLSelectElement>(selector).innerHTML = stopOptions;
+    if (stops.length > 1) this.required<HTMLSelectElement>('[data-transit-destination]').value = stops[1]!.id;
+    this.syncTransitLineInputs();
+  }
+
+  private syncTransitLineInputs(): void {
+    const lineId = this.selectedTransitLineId();
+    const line = lineId ? this.core.transit.getLine(lineId) : undefined;
+    const remove = this.required<HTMLSelectElement>('[data-transit-remove-stop]');
+    if (!line) {
+      this.required<HTMLInputElement>('[data-transit-headway]').value = '80';
+      this.required<HTMLInputElement>('[data-transit-fare]').value = '2';
+      this.required<HTMLInputElement>('[data-transit-fleet]').value = '2';
+      this.required<HTMLInputElement>('[data-transit-enabled]').checked = false;
+      remove.innerHTML = '<option value="">No route stops</option>';
+      this.renderTransitStatus();
+      return;
+    }
+    const operations = this.core.mobility.operations.snapshotLineWithVehicles(line.id, this.core.mobility.vehicles);
+    this.required<HTMLInputElement>('[data-transit-headway]').value = String(line.headwayTicks);
+    this.required<HTMLInputElement>('[data-transit-fare]').value = String(line.fare);
+    this.required<HTMLInputElement>('[data-transit-fleet]').value = String(operations.fleetLimit);
+    this.required<HTMLInputElement>('[data-transit-enabled]').checked = line.enabled;
+    remove.innerHTML = line.stopIds.length > 0 ? line.stopIds.map((stopId, index) => `<option value="${stopId}">${index + 1}. ${stopId}</option>`).join('') : '<option value="">No route stops</option>';
+    this.renderTransitStatus();
+  }
+
+  private renderTransitStatus(): void {
+    const state = collectTransitPanelState(this.core);
+    const lineId = this.selectedTransitLineId();
+    const line = state.lines.find((candidate) => candidate.id === lineId);
+    const summary = this.required<HTMLElement>('[data-transit-summary]');
+    summary.innerHTML = line ? `<strong>${line.name}</strong><span>${line.mode} · ${line.stopIds.length} stops · ${line.activeVehicles}/${line.fleetLimit} vehicles</span><span>Ridership ${line.ridership.toFixed(0)} · reliability ${Math.round(line.reliability * 100)}% · recovery ${Math.round(line.costRecovery * 100)}%</span><span>City transit share ${Math.round(state.modeShare * 100)}% · access ${Math.round(state.personAccessibility * 100)}% · wait ${state.meanWaitTicks.toFixed(1)} ticks</span>` : `No transit lines · ${state.stops.length} stops placed.`;
+    const vehicleSelect = this.required<HTMLSelectElement>('[data-transit-vehicle]');
+    const priorVehicle = vehicleSelect.value;
+    const vehicles = this.core.mobility.vehicles.listVehicles();
+    vehicleSelect.innerHTML = vehicles.length > 0 ? vehicles.map((vehicle) => `<option value="${vehicle.id}">${vehicle.id} · ${vehicle.mode}</option>`).join('') : '<option value="">No active vehicles</option>';
+    if (vehicles.some((vehicle) => vehicle.id === priorVehicle)) vehicleSelect.value = priorVehicle;
+  }
+
+  private renderInspection(inspection: Inspection): void {
+    this.inspector.innerHTML = `<h3>${inspection.title}</h3>${inspection.lines.map((line) => `<p>${line}</p>`).join('')}`;
   }
 
   private bindCanvas(canvas: HTMLCanvasElement): void {
@@ -177,13 +320,14 @@ export class GameApp {
     }
     const result = this.tools.applyCell(this.core, cell.x, cell.y);
     this.flash(result.ok ? `${this.tools.activeTool} applied.` : result.reason ?? 'Action failed.', result.ok ? 'ok' : 'error');
+    if (this.tools.activeTool === 'transit-stop' || this.tools.activeTool === 'transit-metro-station') this.renderTransitPanel();
     this.renderInspector();
   }
 
   private keydown(event: KeyboardEvent): void {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
     const key = event.key.toLowerCase();
-    const shortcut: Record<string, ToolId> = { i: 'inspect', r: 'road-local', c: 'road-collector', a: 'road-arterial', '1': 'zone-residential', '2': 'zone-commercial', '3': 'zone-industrial', '4': 'service-fire', '5': 'service-police', '6': 'service-clinic', '7': 'service-school', '8': 'service-landfill', '9': 'service-recycling', p: 'power', w: 'water', g: 'landfill', b: 'bulldoze' };
+    const shortcut: Record<string, ToolId> = { i: 'inspect', r: 'road-local', c: 'road-collector', a: 'road-arterial', '1': 'zone-residential', '2': 'zone-commercial', '3': 'zone-industrial', '4': 'service-fire', '5': 'service-police', '6': 'service-clinic', '7': 'service-school', '8': 'service-landfill', '9': 'service-recycling', p: 'power', w: 'water', g: 'landfill', t: 'transit-stop', m: 'transit-metro-station', b: 'bulldoze' };
     if (shortcut[key]) this.selectTool(shortcut[key]);
     if (key === 'q') this.renderer.rotate(-1);
     if (key === 'e') this.renderer.rotate(1);
@@ -216,7 +360,11 @@ export class GameApp {
       }
     }
     this.hud.update(collectHudMetrics(this.core));
-    this.renderer.draw(this.core, this.overlayMode, this.selected, this.previewPath, this.serviceOverlayMode);
+    this.renderer.draw(this.core, this.overlayMode, this.selected, this.previewPath, this.serviceOverlayMode, this.transitOverlayMode);
+    if (Math.floor(this.core.clock.tick / 10) !== this.lastTransitStatusTick) {
+      this.lastTransitStatusTick = Math.floor(this.core.clock.tick / 10);
+      this.renderTransitStatus();
+    }
     this.renderDebug();
     this.renderServiceAlerts();
     requestAnimationFrame((next) => this.frame(next));
@@ -227,8 +375,7 @@ export class GameApp {
       this.inspector.textContent = 'Select a cell.';
       return;
     }
-    const inspection = inspectCell(this.core, this.selected.x, this.selected.y);
-    this.inspector.innerHTML = `<h3>${inspection.title}</h3>${inspection.lines.map((line) => `<p>${line}</p>`).join('')}`;
+    this.renderInspection(inspectCell(this.core, this.selected.x, this.selected.y));
   }
 
   private renderDebug(): void {
@@ -246,7 +393,9 @@ export class GameApp {
       volume: 'Volume: weighted vehicles currently on each edge.',
       bottlenecks: 'Bottlenecks: highest congestion × traffic-volume edges.',
     };
-    this.overlayLegend.textContent = this.serviceOverlayMode !== 'none' ? mapServiceOverlay(this.core, this.serviceOverlayMode).legend : labels[this.overlayMode];
+    this.overlayLegend.textContent = this.transitOverlayMode !== 'none' ? mapTransitOverlay(this.core, this.transitOverlayMode).legend
+      : this.serviceOverlayMode !== 'none' ? mapServiceOverlay(this.core, this.serviceOverlayMode).legend
+      : labels[this.overlayMode];
   }
 
   private renderServiceAlerts(): void {
@@ -256,6 +405,8 @@ export class GameApp {
       ['school-overcrowding', this.core.educationSnapshot.overcrowdedStudents > 0, `${this.core.educationSnapshot.overcrowdedStudents} students lack effective school seats.`],
       ['service-quality', this.core.neighborhoodSnapshot.citywideServiceQuality < 0.55, `Service quality is ${Math.round(this.core.neighborhoodSnapshot.citywideServiceQuality * 100)}%; inspect the service overlay for the weakest department.`],
       ['waste-backlog', this.core.garbageSnapshot.backlog > 25, `Waste backlog is ${this.core.garbageSnapshot.backlog.toFixed(0)}; add collection/processing capacity or improve access.`],
+      ['transit-crowding', this.core.mobilitySnapshot.crowding > 0.9, `Transit crowding is ${Math.round(this.core.mobilitySnapshot.crowding * 100)}%; increase fleet or reduce headways.`],
+      ['transit-reliability', this.core.transit.listLines().length > 0 && this.core.mobilitySnapshot.reliability < 0.6, `Transit reliability is ${Math.round(this.core.mobilitySnapshot.reliability * 100)}%; inspect delayed lines and road congestion.`],
     ];
     for (const [key, active] of conditions) if (!active) this.activeAlertKeys.delete(key);
     const next = conditions.find(([key, active]) => active && !this.activeAlertKeys.has(key));
@@ -272,7 +423,7 @@ export class GameApp {
     const json = JSON.stringify(serializeCore(this.core));
     this.fallbackSave = json;
     try { localStorage.setItem(STORAGE_KEY, json); } catch { /* fallback retained */ }
-    this.flash(`Saved V4 at tick ${this.core.clock.tick}.`, 'ok');
+    this.flash(`Saved V5 at tick ${this.core.clock.tick}.`, 'ok');
   }
 
   private load(): void {
@@ -282,7 +433,8 @@ export class GameApp {
       if (!json) throw new Error('No save exists');
       this.core = hydrateCore(JSON.parse(json));
       this.syncInputsFromCore();
-      this.flash(`Loaded V4 at tick ${this.core.clock.tick}.`, 'ok');
+      this.renderTransitPanel();
+      this.flash(`Loaded V5 at tick ${this.core.clock.tick}.`, 'ok');
       this.renderInspector();
     } catch (error) {
       this.flash(error instanceof Error ? error.message : 'Load failed', 'error');
@@ -297,6 +449,7 @@ export class GameApp {
       input.value = String(this.core.services.getFunding(input.dataset.serviceBudget as ServiceDepartment));
     });
     this.updateSpeedButtons();
+    this.renderTransitPanel();
   }
 
   private flash(message: string, kind: 'ok' | 'error'): void {

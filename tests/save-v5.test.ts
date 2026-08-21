@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
-import { serializeCore } from '../src/save/save.ts';
+import { hydrateCore, serializeCore, serializeCoreV4 } from '../src/save/save.ts';
 import { hydrateCoreV5, serializeCoreV5 } from '../src/save/saveV5.ts';
 import type { TransitPassengerCohort } from '../src/simulation/transit/PassengerQueueSystem.ts';
 
@@ -34,12 +34,18 @@ function transitCore(): SimulationCore {
   return core;
 }
 
-test('Save V5 round-trips authoritative transit state exactly', () => {
+test('default save API is V5 and round-trips authoritative transit state exactly', () => {
   const core = transitCore();
-  const save = serializeCoreV5(core);
+  const save = serializeCore(core);
   assert.equal(save.saveVersion, 5);
-  const restored = hydrateCoreV5(save);
-  assert.deepEqual(serializeCoreV5(restored), save);
+  const defaultRestored = hydrateCore(save);
+  assert.deepEqual(serializeCore(defaultRestored), save);
+  const explicit = serializeCoreV5(core);
+  assert.deepEqual(explicit, save);
+  const saveV5 = explicit;
+  assert.equal(saveV5.saveVersion, 5);
+  const restored = hydrateCoreV5(saveV5);
+  assert.deepEqual(serializeCoreV5(restored), saveV5);
 });
 
 test('Save V5 active transit continuation is deterministic', () => {
@@ -62,7 +68,7 @@ test('Save V5 rejects corrupt transit references before returning a core', () =>
 test('V4 migrates honestly to empty V5 transit state', () => {
   const legacyCore = new SimulationCore({ terrain: flatTerrain(), seed: 99, startingFunds: 100_000 });
   legacyCore.buildRoad([{ x: 1, y: 3 }, { x: 2, y: 3 }, { x: 3, y: 3 }], 'local');
-  const v4 = serializeCore(legacyCore);
+  const v4 = serializeCoreV4(legacyCore);
   assert.equal(v4.saveVersion, 4);
   const migrated = hydrateCoreV5(v4);
   assert.deepEqual(migrated.transit.listStops(), []);

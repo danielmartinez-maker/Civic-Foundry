@@ -65,6 +65,7 @@ export type MobilitySchedulerStateSnapshot = Readonly<{
 }>;
 
 const MAX_ACCEPTABLE: Readonly<Record<MobilityPersonTrip['purpose'], number>> = Object.freeze({ commute: 240, shopping: 180 });
+const QUEUE_PRESSURE_TICKS_PER_VEHICLE_LOAD = 60;
 
 export class MobilityScheduler {
   readonly multimodalGraph = new MultimodalRoutingGraph();
@@ -118,7 +119,8 @@ export class MobilityScheduler {
     }, 0);
     const transitDecisions = this.decisions.filter((decision) => decision.mode === 'transit');
     const transitWeight = transitDecisions.reduce((sum, decision) => sum + decision.travelerWeight, 0);
-    const meanWaitTicks = transitWeight <= 0 ? 0 : transitDecisions.reduce((sum, decision) => sum + decision.expectedWaitTicks * decision.travelerWeight, 0) / transitWeight;
+    const scheduledWaitTicks = transitWeight <= 0 ? 0 : transitDecisions.reduce((sum, decision) => sum + decision.expectedWaitTicks * decision.travelerWeight, 0) / transitWeight;
+    const meanWaitTicks = scheduledWaitTicks + this.capacityPressureTicks();
 
     const lineIds = this.operations.listLineIds();
     let ridership = 0;
@@ -213,7 +215,7 @@ export class MobilityScheduler {
       fareWeightTicksPerCurrency: 4,
       costKey: `mobility-transit:${context.costEpoch ?? Math.floor(context.tick / 10)}`,
     });
-    const choice = this.modeChoice.choose(carPlan, transitPlan, { crowdingPenaltyTicks: this.crowdingPenaltyTicks });
+    const choice = this.modeChoice.choose(carPlan, transitPlan, { crowdingPenaltyTicks: this.crowdingPenaltyTicks + this.capacityPressureTicks() });
 
     if (choice.mode === 'car' && carRoute) {
       context.submitCarTrip(trip, trip.travelerWeight, carRoute);
@@ -321,6 +323,33 @@ export class MobilityScheduler {
       .map((node) => node.id)
       .sort();
     return candidates[0] ?? null;
+  }
+
+  private capacityPressureTicks(): number {
+    const waitingByLine = new Map<string, number>();
+    for (const queue of this.passengers.snapshot().queues) {
+      const waiting = queue.cohorts.reduce((sum, cohort) => sum + Math.max(0, cohort.travelerWeight), 0);
+      if (waiting > 0) waitingByLine.set(queue.lineId, (waitingByLine.get(queue.lineId) ?? 0) + waiting);
+    }
+    if (waitingByLine.size === 0) return 0;
+
+    const capacityByLine = new Map<string, number>();
+    for (const vehicle of this.vehicles.listVehicles()) {
+      if (vehicle.state === 'out_of_service') continue;
+      capacityByLine.set(vehicle.lineId, (capacityByLine.get(vehicle.lineId) ?? 0) + Math.max(0, vehicle.capacity));
+    }
+
+    let totalWaiting = 0;
+    let weightedPenalty = 0;
+    for (const [lineId, waiting] of [...waitingByLine.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+      const activeCapacity = capacityByLine.get(lineId) ?? 0;
+      const penalty = activeCapacity <= 0
+        ? 600
+        : Math.min(600, waiting / Math.max(1, activeCapacity) * QUEUE_PRESSURE_TICKS_PER_VEHICLE_LOAD);
+      totalWaiting += waiting;
+      weightedPenalty += penalty * waiting;
+    }
+    return totalWaiting <= 0 ? 0 : weightedPenalty / totalWaiting;
   }
 
   private record(decision: MobilityDecision): void {

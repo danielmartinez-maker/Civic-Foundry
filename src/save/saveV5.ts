@@ -1,4 +1,4 @@
-import { hydrateCore as hydrateLegacyCore, serializeCore as serializeLegacyCore, type SaveV4 } from './save.ts';
+import { hydrateCore as hydrateLegacyCore, serializeCore as serializeLegacyCore, type SaveV4 } from './saveLegacy.ts';
 import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import type { TransitNetworkSnapshot } from '../simulation/transit/TransitNetworkSystem.ts';
 import type { MobilitySchedulerStateSnapshot } from '../simulation/mobility/MobilityScheduler.ts';

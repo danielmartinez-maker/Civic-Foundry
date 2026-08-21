@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import type { RoadType } from '../src/data/roads.ts';
-import { serializeCore } from '../src/save/save.ts';
+import { serializeCoreV4 as serializeCore } from '../src/save/save.ts';
 
 function flatTerrain(width = 40, height = 24): TerrainGrid {
   const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({ elevation: 0.5, water: false, buildable: true, biome: 'grass' as const }));

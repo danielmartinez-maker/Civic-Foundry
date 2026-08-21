@@ -1,4 +1,4 @@
-# Testing — Phase 4
+# Testing — Phase 5
 
 ## Commands
 
@@ -17,32 +17,38 @@ npm run test:smoke
 - Phase 1 deterministic foundation and city construction
 - Phase 2 employment/tax/utilities/garbage/demand/economy
 - Phase 3 graph, A*, route cache, traffic, congestion, stale-edge safety and accessibility feedback
-- Phase 4 facility placement, budgets, fiscal effectiveness and fleet availability
-- service demand and transportation-graph accessibility
-- dispatch jobs, service vehicles, emergency queue priority and topology mutation
-- seeded fire/police/medical incidents and bounded fire spread
-- routed garbage pickup/cargo/processing plus education capacity/access
-- neighborhood quality, service-demand feedback and full `SimulationCore` scheduler
-- Save V4 exact round-trip, deterministic continuation, corruption rejection and V3 migration
-- service HUD/inspector/build tools/overlays/service-vehicle render positioning
-- Phase 4 headless causal comparison, deterministic hash, service-route cache and active-tick benchmark
-- Chromium smoke: real compiled Phase IV UI, service facilities/vehicles, service overlay, budget mutation, V4 save, destructive edit and exact load restoration
+- Phase 4 public facilities, dispatch, explicit service vehicles, incidents, waste, education and neighborhood quality
+- transit topology validation, deterministic IDs and restore round-trip
+- multimodal graph construction, transfers, generalized-cost routing and cache invalidation
+- weighted person trips and deterministic car/transit/unmet mode choice
+- FIFO passenger queues, partial boarding, transfer queues and capacity constraints
+- explicit transit vehicle dispatch/progression/dwell, road interaction, metro insulation and fleet shortages
+- integrated mobility scheduler effects on car traffic, person accessibility, demand and finance
+- Save V5 exact round-trip, active-transit deterministic continuation, corruption rejection and V4 migration
+- Phase V HUD, stop/line/vehicle inspection, commands, transit overlays and vehicle rendering
+- headless strong/poor/capacity transit scenarios plus route-cache and active-tick diagnostics
+- Chromium smoke through the compiled Phase V UI with destructive V5 save/load restoration
 
-## Phase 4 acceptance evidence
+## Phase 5 acceptance and performance
 
-The headless comparison holds buildings, facilities, funding and seed constant and changes only road class. In the latest verified run:
+Equivalent corridor scenarios hold road geometry, origin/destination and trip weights constant while varying transit quality and capacity.
 
-- local-road fire arrival: 94 ticks
-- arterial fire arrival: 46 ticks
-- local service quality: ~0.49
-- arterial service quality: ~0.71
-- local processed waste: 186
-- arterial processed waste: 354
-- local backlog: 446
-- arterial backlog: 284
+Current acceptance checks require:
 
-The repeated 5,000 service-access request benchmark records at least 4,999 cache hits (99.98%). Performance measurements are reported rather than enforced against an arbitrary machine-specific wall-clock limit.
+- frequent, low-fare BRT to reduce weighted car traffic and improve person accessibility versus the car-only corridor;
+- slow, high-fare transit to lose mode choice instead of receiving artificial preference;
+- a low fleet limit to create larger passenger queues, higher experienced wait, lower transit mode share and lower person accessibility than an otherwise-identical high-capacity service;
+- 10,000 stable mixed-mode journey plans to exceed a 95% cache-hit ratio;
+- 5,000 active-transit ticks to keep vehicle, queue, mode-choice, accessibility and performance diagnostics finite.
 
-## Browser sandbox strategy
+A representative run recorded 9,998 route-plan cache hits from 10,000 requests (99.98%). Wall-clock benchmark values are diagnostic only because they vary by hardware and runtime load.
 
-The smoke harness injects `<base href="http://civic.test/">` into the compiled document and routes `http://civic.test/**` to `dist/`. System Chromium executes the actual compiled ES modules; the harness does not replace simulation behavior.
+`tests/phase5-headless.test.ts` prints `PHASE5_COMPARISON`, `PHASE5_CAPACITY`, `PHASE5_JOURNEY_BENCHMARK` and `PHASE5_TICK_BENCHMARK` JSON records so balance/performance changes remain visible in CI output.
+
+## Chromium smoke
+
+`tests/smoke/phase5_smoke.py` executes the compiled `dist/` ES modules in system Chromium. It builds a road/service corridor, creates and configures a BRT line through Phase V controls, injects an authoritative weighted passenger cohort, verifies dispatch/boarding/ridership, checks the numeric ridership overlay, edits headway/fare, saves V5, removes a transit stop and road segment, reloads and compares current serialization exactly with the saved JSON.
+
+The execution sandbox used for automated verification blocks all navigable HTTP origins, including loopback. The harness therefore keeps the established `page.set_content` + routed-module strategy and installs a minimal Storage-compatible in-page shim before application startup. This substitutes only the unavailable browser storage surface; simulation, UI commands, save serialization and hydration are the actual compiled application code.
+
+The smoke writes a full-page screenshot to `/tmp/civic-foundry-phase5-smoke.png` and rejects browser page errors.

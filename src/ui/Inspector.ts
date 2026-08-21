@@ -4,12 +4,39 @@ import { BUILDING_DEFINITIONS } from '../data/buildings.ts';
 import { SERVICE_DEFINITIONS } from '../data/services.ts';
 
 export type Inspection = Readonly<{
-  kind: 'road' | 'building' | 'utility' | 'service' | 'terrain';
+  kind: 'road' | 'building' | 'utility' | 'service' | 'transit-stop' | 'transit-line' | 'transit-vehicle' | 'terrain';
   title: string;
   lines: readonly string[];
 }>;
 
 export function inspectCell(core: SimulationCore, x: number, y: number): Inspection {
+  const transitStop = core.transit.getStopAt(x, y);
+  if (transitStop) {
+    const servedLines = core.transit.listLines().filter((line) => line.stopIds.includes(transitStop.id));
+    const queues = core.mobility.passengers.snapshot().queues.filter((queue) => queue.stopId === transitStop.id);
+    const waiting = queues.reduce((sum, queue) => sum + queue.cohorts.reduce((inner, cohort) => inner + cohort.travelerWeight, 0), 0);
+    const waitNumerator = queues.reduce((sum, queue) => sum + queue.cohorts.reduce((inner, cohort) => inner + Math.max(0, core.clock.tick - cohort.enqueuedTick) * cohort.travelerWeight, 0), 0);
+    const transferWeight = queues.reduce((sum, queue) => sum + queue.cohorts.reduce((inner, cohort) => inner + (cohort.transferLegs.length > 0 ? cohort.travelerWeight : 0), 0), 0);
+    const nearbyVehicles = core.mobility.vehicles.listVehicles().filter((vehicle) => {
+      const line = core.transit.getLine(vehicle.lineId);
+      return line?.stopIds[vehicle.stopIndex] === transitStop.id;
+    });
+    const onboard = nearbyVehicles.reduce((sum, vehicle) => sum + vehicle.onboard.reduce((inner, cohort) => inner + cohort.travelerWeight, 0), 0);
+    const capacity = nearbyVehicles.reduce((sum, vehicle) => sum + vehicle.capacity, 0);
+    return {
+      kind: 'transit-stop',
+      title: transitStop.type === 'metro_station' ? 'Metro station' : 'Transit stop',
+      lines: [
+        `ID: ${transitStop.id}`,
+        `Lines: ${servedLines.length > 0 ? servedLines.map((line) => line.name).join(', ') : 'none'}`,
+        `Waiting passengers: ${waiting.toFixed(1)}`,
+        `Average wait: ${waiting > 0 ? (waitNumerator / waiting).toFixed(1) : '0.0'} ticks`,
+        `Waiting transfers: ${transferWeight.toFixed(1)}`,
+        `Vehicles at stop: ${nearbyVehicles.length}`,
+        `Current platform crowding: ${capacity > 0 ? Math.round(onboard / capacity * 100) : 0}%`,
+      ],
+    };
+  }
   const building = core.buildings.getAt(x, y);
   if (building) {
     const definition = BUILDING_DEFINITIONS[building.zone];
@@ -94,5 +121,58 @@ export function inspectCell(core: SimulationCore, x: number, y: number): Inspect
     kind: 'terrain',
     title: terrain.biome[0]!.toUpperCase() + terrain.biome.slice(1),
     lines: [`Elevation: ${terrain.elevation.toFixed(2)}`, `Buildable: ${terrain.buildable ? 'yes' : 'no'}`],
+  };
+}
+
+
+export function inspectTransitLine(core: SimulationCore, lineId: string): Inspection {
+  const line = core.transit.getLine(lineId);
+  if (!line) return { kind: 'transit-line', title: 'Unknown transit line', lines: [`ID: ${lineId}`] };
+  const operations = core.mobility.operations.snapshotLineWithVehicles(line.id, core.mobility.vehicles);
+  const stopNames = line.stopIds.map((stopId) => core.transit.getStop(stopId)?.id ?? stopId);
+  return {
+    kind: 'transit-line',
+    title: line.name,
+    lines: [
+      `ID: ${line.id}`,
+      `Mode: ${line.mode}`,
+      `Status: ${line.enabled ? 'enabled' : 'disabled'}`,
+      `Stops: ${stopNames.length} · ${stopNames.join(' → ') || 'none'}`,
+      `Headway: ${line.headwayTicks} ticks`,
+      `Fare: $${line.fare.toFixed(2)}`,
+      `Fleet: ${operations.activeVehicles} active / ${operations.fleetLimit} limit`,
+      `Ridership: ${operations.completedPassengerWeight.toFixed(1)}`,
+      `Boardings: ${operations.boardings.toFixed(1)}`,
+      `Reliability: ${Math.round(operations.reliability * 100)}%`,
+      `Delay: ${operations.delayTicks.toFixed(1)} ticks`,
+      `Operating cost: $${operations.operatingCost.toFixed(2)}`,
+      `Fare revenue: $${operations.fareRevenue.toFixed(2)}`,
+      `Cost recovery: ${Math.round(operations.costRecovery * 100)}%`,
+    ],
+  };
+}
+
+export function inspectTransitVehicle(core: SimulationCore, vehicleId: string): Inspection {
+  const vehicle = core.mobility.vehicles.getVehicle(vehicleId);
+  if (!vehicle) return { kind: 'transit-vehicle', title: 'Unknown transit vehicle', lines: [`ID: ${vehicleId}`] };
+  const line = core.transit.getLine(vehicle.lineId);
+  const onboard = vehicle.onboard.reduce((sum, cohort) => sum + cohort.travelerWeight, 0);
+  const nextIndex = vehicle.state === 'moving'
+    ? vehicle.stopIndex + (vehicle.directionKey === 'forward' ? 1 : -1)
+    : vehicle.stopIndex + (vehicle.directionKey === 'forward' ? 1 : -1);
+  const nextStopId = line?.stopIds[nextIndex] ?? line?.stopIds[vehicle.stopIndex];
+  const nextStop = nextStopId ? core.transit.getStop(nextStopId) : undefined;
+  return {
+    kind: 'transit-vehicle',
+    title: `${vehicle.mode.toUpperCase()} vehicle`,
+    lines: [
+      `ID: ${vehicle.id}`,
+      `Line: ${line?.name ?? vehicle.lineId}`,
+      `State: ${vehicle.state}`,
+      `Direction: ${vehicle.directionKey}`,
+      `Load: ${onboard.toFixed(1)} / ${vehicle.capacity}`,
+      `Delay: ${vehicle.delayTicks.toFixed(1)} ticks`,
+      `Next stop: ${nextStop?.id ?? 'terminus'}`,
+    ],
   };
 }

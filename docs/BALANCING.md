@@ -52,3 +52,24 @@ Weights: fire 22%, police 22%, healthcare 22%, education 20%, garbage 14%.
 Residential service modifier: `clamp(-0.25, 0.15, (quality - 0.70) * 0.50)`.
 
 Emergency vehicles receive 55% of congestion delay above free flow, not zero delay.
+
+## Transit — Phase 5
+
+| Mode | Default headway | Default fare | Vehicle capacity | Dwell | Surface running |
+|---|---:|---:|---:|---:|---|
+| Bus | 80 ticks | 2.00 | 60 | 6 ticks | yes |
+| BRT | 60 ticks | 2.50 | 110 | 8 ticks | yes, reduced congestion penalty |
+| Tram | 90 ticks | 2.50 | 140 | 10 ticks | yes |
+| Metro | 50 ticks | 3.00 | 600 | 12 ticks | no |
+
+Player-set headway is clamped to `20..600` ticks and fare to `0..20`.
+
+Mode choice compares deterministic generalized journey cost. Transit cost includes walking, expected wait (`headway / 2` at boarding), in-vehicle time, transfer penalties, fare impedance, and capacity pressure. Car cost uses current road travel time and retains the parking-impedance hook for later phases.
+
+Capacity pressure prevents undersupplied lines from remaining permanently attractive while queues grow:
+
+`linePressureTicks = min(600, waitingWeight / activeVehicleCapacity × 60)`
+
+The citywide pressure used for mode choice is the waiting-weighted mean across queued lines. One full active vehicle-load waiting therefore adds roughly 60 generalized-cost ticks; pressure is capped at 600 ticks per line. The displayed experienced wait is scheduled expected wait plus the same derived queue-pressure term.
+
+BRT surface travel absorbs 35% of congestion delay above free flow. Bus and tram absorb the full road delay. Metro segment travel is dedicated-guideway time and is insulated from road congestion.

@@ -85,3 +85,26 @@ Residential service-demand modifier:
 Commercial service modifier uses police safety and garbage cleanliness.
 
 Power/water remain instantaneous essential-utility migration gates. Routed garbage is intentionally not treated as an instantaneous utility hard-stop; its consequences flow through garbage service ratio, health demand, cleanliness, neighborhood quality and development attractiveness.
+
+## Phase 5 multimodal scheduling
+
+Phase 5 inserts person mobility and transit operations into the deterministic tick order without replacing the Phase 3 road graph:
+
+1. rebuild the road graph when road topology changes;
+2. synchronize and advance public-service vehicles;
+3. rebuild the derived multimodal graph when road/transit topology or the cost epoch changes;
+4. dispatch/advance transit vehicles, process alighting, boarding, dwell, and capacity-limited queues;
+5. generate weighted person trips on the existing 100-tick city cadence;
+6. plan car and transit alternatives and choose the lower deterministic generalized cost;
+7. submit car cohorts into road traffic or enqueue transit cohorts at their boarding stop;
+8. merge service and road-running transit edge loads into traffic congestion;
+9. update traffic and mobility analytics;
+10. feed person accessibility and transit fiscal deltas into the existing 50-tick city/economy loop.
+
+`MultimodalRoutingGraph` is derived state. It connects road nodes to adjacent transit stops with 8-tick walking connectors and adds deterministic boarding, ride, alighting, and transfer edges. `JourneyPlanner` caches by graph revision, cost key, mode, impedance settings, and endpoints; stable topology therefore reuses plans aggressively.
+
+### Capacity feedback
+
+Passenger queues are authoritative weighted cohorts. Vehicles board FIFO up to physical capacity and leave excess weight waiting. Before each new mode-choice decision, `MobilityScheduler` derives queue pressure from waiting weight relative to active capacity. That penalty enters transit generalized cost, so chronically undersupplied service becomes less attractive to later travelers instead of accumulating cost-free queues indefinitely.
+
+`meanWaitTicks` combines scheduled wait recorded on transit decisions with the current derived capacity-pressure term. `personAccessibility` remains bounded to `0..1` through the existing commute/shopping acceptable-cost thresholds and therefore feeds demand without creating a new unbounded growth channel.

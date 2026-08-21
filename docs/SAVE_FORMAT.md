@@ -1,60 +1,65 @@
-# Save Format — V4
+# Save Format — V5
 
 Current envelope:
 
-- `saveVersion: 4`
-- `gameVersion: "0.4.0-rebuild"`
+- `saveVersion: 5`
+- `gameVersion: "0.5.0-metropolitan"`
 
-## Persisted Phase 1–3 state
+## Persisted Phase 1–4 state
 
-V4 retains seed/RNG, clock, terrain, treasury, roads/revision, zoning, buildings, population, taxes, utilities, legacy garbage compatibility state, economy snapshots, trip-generation RNG, active traffic vehicles/outcomes/counters, congestion epoch and intersection queues.
+V5 retains the complete V4 city envelope: seed/RNG, clock, terrain, treasury, roads/revision, zoning, buildings, population, taxes, utilities, garbage/economy state, trip-generation RNG, active traffic vehicles/outcomes/counters, congestion epoch, intersection queues, service facilities/budgets/jobs/vehicles/incidents, detailed waste and cadence-critical service snapshots.
 
-## Persisted Phase 4 public-service state
+## Persisted Phase 5 transit state
 
-- service facilities, next facility ID
-- department funding and current fiscal-payment ratio
-- service jobs and next job ID
-- service vehicles including routes/progress/state
-- incidents, incident outcomes, incident RNG and next incident ID
-- detailed per-building waste
-- processing queue and processed total
-- garbage-truck cargo by job
-- building→active collection-job reservations
-- service-demand snapshot
-- education snapshot
-- neighborhood-quality snapshot
-- per-building service access snapshot used for cadence-exact continuation
-- last generated waste amount
+`transit.network` stores authoritative transit topology and configuration:
 
-The building→collection-job reservation map is authoritative: without it a loaded city could create duplicate collection jobs and diverge deterministically.
+- deterministic stop/station records and next stop ID
+- line records and next line ID
+- ordered stop sequences
+- mode, name, headway, fare and enabled state
+- transit topology revision
+
+`transit.mobility` stores authoritative continuation state:
+
+- recent mode-choice decisions needed by the mobility snapshot
+- configured crowding penalty and transit fiscal cursors
+- FIFO passenger queues, including partial cohorts and transfer legs
+- active transit vehicles, route/progress/dwell state, capacity and onboard cohorts
+- transit operations line state, fleet limits and accumulated dispatch/ridership/reliability/finance counters
 
 ## Rebuilt state
 
-Not persisted:
+V5 deliberately does not persist:
 
-- transportation graph
-- pathfinding route cache
-- edge traffic metrics
+- `TransportationGraph`
+- `MultimodalRoutingGraph`
+- pathfinding or journey-plan caches
+- edge traffic metrics that can be reconstructed
 - renderer/Canvas state
-- traffic/service overlays
-- road-component indexes
-- lots
+- traffic/service/transit overlay selection
+- render geometry
+- lots and other deterministic topology indexes
+- capacity-pressure analytics, which derive from saved queues and active vehicle capacity
 
 ## Hydration
 
-1. validate base envelope and supported version (V2/V3/V4)
-2. construct candidate core and restore Phase 1–3 owners
-3. rebuild lots and transportation graph
-4. restore/migrate public-service facilities and budgets
-5. validate all active commuter/service edge, node, job, building, facility and queue references
-6. restore service jobs, vehicles, incidents, outcomes, detailed waste/cargo/reservations and cached service state
-7. reconstruct derived traffic metrics and other rebuildable state
-8. return the coherent candidate
+1. identify V5 versus a supported legacy envelope;
+2. validate the V5 game version and transit envelope shape;
+3. hydrate the Phase 4 candidate core through the legacy owner restore path;
+4. restore transit topology;
+5. validate passenger, transfer, vehicle, line, stop and road-edge references against the restored topology;
+6. restore passenger queues, active vehicles and operations state;
+7. clear/rebuild derived multimodal and route caches;
+8. reconstruct traffic/mobility snapshots and return the coherent candidate.
 
-Corrupt service/traffic graph references throw before a live core is returned.
+Corrupt transit references throw before the hydrated core is returned.
 
-## V3 migration
+## V4 migration
 
-V3 saves preserve their city/traffic state and initialize public-service history honestly. Existing legacy utility landfills are deterministically converted into Phase 4 service landfills and removed from the legacy utility list. Department budgets start at 100%; no successful incident/job history is invented.
+V4→V5 preserves the Phase 4 city exactly and initializes honest empty transit topology/mobility state. It does not invent lines, passengers, vehicles, ridership or successful history.
 
-V2 continues through the existing V2→traffic migration before Phase 4 defaults are applied.
+The public `serializeCore` and `hydrateCore` API is V5. `serializeCoreV4`/legacy hydration remain explicit compatibility tools for migration tests and historical Phase 3/4 fixtures.
+
+## Earlier migration
+
+V3 migration preserves city/traffic state and initializes public-service history honestly. Legacy utility landfills are deterministically converted into Phase 4 service landfills. V2 continues through the existing traffic migration path before later-phase defaults are applied.
