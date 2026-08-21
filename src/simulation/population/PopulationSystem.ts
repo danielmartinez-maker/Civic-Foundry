@@ -21,4 +21,9 @@ export class PopulationSystem {
       this.population = Math.min(capacity, this.population + Math.max(1, Math.floor(2 * score)));
     }
   }
+
+  restore(population: number): void {
+    if (!Number.isFinite(population) || population < 0) throw new Error('invalid population restore');
+    this.population = Math.floor(population);
+  }
 }

@@ -31,4 +31,10 @@ export class TaxSystem {
     }
     return revenue;
   }
+
+  restoreRates(rates: TaxRates): void {
+    this.setRate('residential', rates.residential);
+    this.setRate('commercial', rates.commercial);
+    this.setRate('industrial', rates.industrial);
+  }
 }

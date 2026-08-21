@@ -29,4 +29,8 @@ export class EconomySystem {
     };
     return { ...this.lastSettlement };
   }
+
+  restore(snapshot: EconomySnapshot): void {
+    this.lastSettlement = { ...snapshot };
+  }
 }

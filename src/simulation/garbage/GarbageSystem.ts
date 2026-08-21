@@ -48,4 +48,16 @@ export class GarbageSystem {
   getBacklog(buildingId: string): number {
     return this.backlogByBuilding.get(buildingId) ?? 0;
   }
+
+  snapshotBacklog(): Array<readonly [string, number]> {
+    return [...this.backlogByBuilding.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([id, value]) => [id, value] as const);
+  }
+
+  restoreBacklog(entries: readonly (readonly [string, number])[]): void {
+    this.backlogByBuilding.clear();
+    for (const [id, value] of entries) {
+      if (!Number.isFinite(value) || value < 0) throw new Error('invalid garbage backlog');
+      this.backlogByBuilding.set(id, value);
+    }
+  }
 }

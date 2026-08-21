@@ -79,4 +79,9 @@ export class BuildingSystem {
   jobCapacity(): number {
     return this.occupied().reduce((sum, building) => sum + BUILDING_DEFINITIONS[building.zone].jobCapacity, 0);
   }
+
+  restore(buildings: readonly Building[]): void {
+    this.buildings.clear();
+    for (const building of buildings) this.buildings.set(building.lotId, { ...building });
+  }
 }
