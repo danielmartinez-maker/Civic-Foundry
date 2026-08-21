@@ -35,6 +35,14 @@ jobs:
           name: test-output
           path: test-output.txt
           if-no-files-found: error
+      - name: Upload workspace snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-snapshot
+          path: .
+          include-hidden-files: true
+          if-no-files-found: error
       - name: Typecheck
         run: npm run typecheck
       - name: Lint
