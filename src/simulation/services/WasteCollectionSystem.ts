@@ -25,6 +25,7 @@ export type WasteCollectionSnapshot = Readonly<{
   processingQueue: number;
   processedTotal: number;
   jobCargo: readonly (readonly [string, number])[];
+  jobAssignments: readonly (readonly [string, string])[];
 }>;
 
 export class WasteCollectionSystem {
@@ -135,10 +136,11 @@ export class WasteCollectionSystem {
       processingQueue: this.processingQueue,
       processedTotal: this.processedTotal,
       jobCargo: Object.freeze([...this.cargoByJob.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([id, value]) => [id, value] as const)),
+      jobAssignments: Object.freeze([...this.jobByBuilding.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([buildingId, jobId]) => [buildingId, jobId] as const)),
     });
   }
 
-  restore(states: readonly BuildingWasteState[], processingQueue: number, processedTotal: number, jobCargo: readonly (readonly [string, number])[]): void {
+  restore(states: readonly BuildingWasteState[], processingQueue: number, processedTotal: number, jobCargo: readonly (readonly [string, number])[], jobAssignments: readonly (readonly [string, string])[] = []): void {
     this.states.clear();
     for (const state of states) {
       if (!Number.isFinite(state.currentCollectibleWaste) || state.currentCollectibleWaste < 0) throw new Error('invalid building waste');
@@ -150,5 +152,6 @@ export class WasteCollectionSystem {
     this.cargoByJob.clear();
     for (const [id, value] of jobCargo) this.cargoByJob.set(id, value);
     this.jobByBuilding.clear();
+    for (const [buildingId, jobId] of jobAssignments) this.jobByBuilding.set(buildingId, jobId);
   }
 }

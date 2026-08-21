@@ -28,6 +28,7 @@ export class ServiceFacilitySystem {
   private readonly facilities: ServiceFacility[] = [];
   private readonly funding: DepartmentFunding = { fire: 100, police: 100, healthcare: 100, education: 100, garbage: 100 };
   private nextId = 1;
+  private fiscalPaymentRatio = 1;
 
   constructor(terrain: TerrainGrid, roads: RoadSystem, externallyOccupied: (x: number, y: number) => boolean = () => false) {
     this.terrain = terrain;
@@ -79,7 +80,8 @@ export class ServiceFacilitySystem {
 
   fundingEffectiveness(department: ServiceDepartment): number {
     const ratio = this.funding[department] / 100;
-    return Math.max(0.5, Math.min(1.25, 0.35 + 0.65 * ratio));
+    const funding = Math.max(0.5, Math.min(1.25, 0.35 + 0.65 * ratio));
+    return Math.max(0.35, funding * this.fiscalPaymentRatio);
   }
 
   effectiveStaffing(facilityId: string): number {
@@ -101,6 +103,16 @@ export class ServiceFacilitySystem {
     return Math.max(0, Math.min(definition.baseVehicleCount, Math.floor(definition.baseVehicleCount * this.fundingEffectiveness(facility.department) + 1e-9)));
   }
 
+
+  setFiscalPaymentRatio(ratio: number): number {
+    this.fiscalPaymentRatio = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 1));
+    return this.fiscalPaymentRatio;
+  }
+
+  getFiscalPaymentRatio(): number {
+    return this.fiscalPaymentRatio;
+  }
+
   operatingCostByDepartment(): DepartmentCosts {
     const costs: DepartmentCosts = { fire: 0, police: 0, healthcare: 0, education: 0, garbage: 0 };
     for (const facility of this.facilities) {
@@ -117,11 +129,12 @@ export class ServiceFacilitySystem {
     return this.nextId;
   }
 
-  restore(facilities: readonly ServiceFacility[], funding: Partial<DepartmentFunding>, nextId: number): void {
+  restore(facilities: readonly ServiceFacility[], funding: Partial<DepartmentFunding>, nextId: number, fiscalPaymentRatio = 1): void {
     this.facilities.length = 0;
     this.facilities.push(...facilities.map((facility) => ({ ...facility })));
     for (const department of DEPARTMENTS) this.setFunding(department, funding[department] ?? 100);
     this.nextId = Math.max(1, Math.floor(nextId));
+    this.setFiscalPaymentRatio(fiscalPaymentRatio);
   }
 
   private requireFacility(id: string): ServiceFacility {

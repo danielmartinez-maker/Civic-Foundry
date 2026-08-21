@@ -111,7 +111,7 @@ export class TrafficSystem {
     return id;
   }
 
-  step(graph: TransportationGraph, intersections: IntersectionSystem, tick: number): void {
+  step(graph: TransportationGraph, intersections: IntersectionSystem, tick: number, extraEdgeLoads: Readonly<Record<string, number>> = {}): void {
     this.invalidateMissingRoutes(graph, intersections, tick);
 
     for (const vehicle of this.vehicles.values()) {
@@ -131,7 +131,7 @@ export class TrafficSystem {
       }
     }
 
-    this.edgeMetrics = this.calculateEdgeMetrics(graph);
+    this.edgeMetrics = this.calculateEdgeMetrics(graph, extraEdgeLoads);
     if (tick % 10 === 0) this.congestionEpoch++;
     const metricByEdge = new Map(this.edgeMetrics.map((metric) => [metric.edgeId, metric]));
 
@@ -226,11 +226,11 @@ export class TrafficSystem {
     this.congestionEpoch = Math.max(0, Math.floor(state.congestionEpoch));
   }
 
-  refreshMetrics(graph: TransportationGraph): void {
-    this.edgeMetrics = this.calculateEdgeMetrics(graph);
+  refreshMetrics(graph: TransportationGraph, extraEdgeLoads: Readonly<Record<string, number>> = {}): void {
+    this.edgeMetrics = this.calculateEdgeMetrics(graph, extraEdgeLoads);
   }
 
-  private calculateEdgeMetrics(graph: TransportationGraph): EdgeTrafficMetric[] {
+  private calculateEdgeMetrics(graph: TransportationGraph, extraEdgeLoads: Readonly<Record<string, number>> = {}): EdgeTrafficMetric[] {
     const weightByEdge = new Map<string, number>();
     for (const vehicle of this.vehicles.values()) {
       const edgeId = vehicle.edgeIds[vehicle.currentEdgeIndex];
@@ -239,7 +239,7 @@ export class TrafficSystem {
     }
 
     return graph.edges.map((edge) => {
-      const weightedVehicles = weightByEdge.get(edge.id) ?? 0;
+      const weightedVehicles = (weightByEdge.get(edge.id) ?? 0) + Math.max(0, extraEdgeLoads[edge.id] ?? 0);
       const utilization = edge.capacityPerMinute <= 0 ? 0 : weightedVehicles / edge.capacityPerMinute;
       const delayMultiplier = 1 + 3 * Math.pow(Math.max(0, utilization), 4);
       const averageSpeedCellsPerSecond = edge.freeFlowSpeedCellsPerSecond / delayMultiplier;

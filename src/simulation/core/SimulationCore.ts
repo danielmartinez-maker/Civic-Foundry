@@ -25,6 +25,14 @@ import { TrafficSystem } from '../traffic/TrafficSystem.ts';
 import { TrafficAnalytics, type TrafficAnalyticsSnapshot } from '../traffic/TrafficAnalytics.ts';
 import type { Building } from '../buildings/BuildingSystem.ts';
 import { ServiceFacilitySystem } from '../services/ServiceFacilitySystem.ts';
+import { ServiceDemandSystem, type ServiceDemandSnapshot, type UnresolvedServiceInputs } from '../services/ServiceDemandSystem.ts';
+import { ServiceAccessibilitySystem } from '../services/ServiceAccessibilitySystem.ts';
+import { ServiceDispatchSystem } from '../services/ServiceDispatchSystem.ts';
+import { ServiceVehicleSystem } from '../services/ServiceVehicleSystem.ts';
+import { IncidentSystem } from '../services/IncidentSystem.ts';
+import { WasteCollectionSystem } from '../services/WasteCollectionSystem.ts';
+import { EducationSystem, type EducationSnapshot } from '../services/EducationSystem.ts';
+import { NeighborhoodQualitySystem, type NeighborhoodQualitySnapshot, type BuildingServiceAccess } from '../services/NeighborhoodQualitySystem.ts';
 import type { ServiceDepartment, ServiceFacilityType } from '../../data/services.ts';
 
 export type SimulationCoreOptions = Readonly<{
@@ -34,6 +42,8 @@ export type SimulationCoreOptions = Readonly<{
   startingFunds?: number;
   terrain?: TerrainGrid;
 }>;
+
+const DEPARTMENTS: readonly ServiceDepartment[] = ['fire', 'police', 'healthcare', 'education', 'garbage'];
 
 export class SimulationCore {
   readonly seed: number;
@@ -59,6 +69,14 @@ export class SimulationCore {
   readonly traffic: TrafficSystem;
   readonly trafficAnalytics: TrafficAnalytics;
   readonly services: ServiceFacilitySystem;
+  readonly serviceDemand: ServiceDemandSystem;
+  readonly serviceAccessibility: ServiceAccessibilitySystem;
+  readonly serviceDispatch: ServiceDispatchSystem;
+  readonly serviceVehicles: ServiceVehicleSystem;
+  readonly incidents: IncidentSystem;
+  readonly wasteCollection: WasteCollectionSystem;
+  readonly education: EducationSystem;
+  readonly neighborhoodQuality: NeighborhoodQualitySystem;
 
   employmentSnapshot: EmploymentSnapshot;
   utilitySnapshot: UtilitySnapshot;
@@ -67,6 +85,11 @@ export class SimulationCore {
   taxRevenue: TaxRevenue;
   economySnapshot: EconomySnapshot;
   trafficSnapshot: TrafficAnalyticsSnapshot;
+  serviceDemandSnapshot: ServiceDemandSnapshot;
+  educationSnapshot: EducationSnapshot;
+  neighborhoodSnapshot: NeighborhoodQualitySnapshot;
+  serviceAccessByBuilding: Readonly<Record<string, BuildingServiceAccess>> = Object.freeze({});
+  lastServiceGeneratedWaste = 0;
 
   constructor(options: SimulationCoreOptions = {}) {
     this.seed = options.seed ?? 1;
@@ -94,26 +117,32 @@ export class SimulationCore {
     this.services = new ServiceFacilitySystem(this.terrain, this.roads, (x, y) =>
       this.buildings.getAt(x, y) !== undefined || this.utilities.listFacilities().some((facility) => facility.x === x && facility.y === y),
     );
+    this.serviceDemand = new ServiceDemandSystem();
+    this.serviceAccessibility = new ServiceAccessibilitySystem();
+    this.serviceDispatch = new ServiceDispatchSystem();
+    this.serviceVehicles = new ServiceVehicleSystem();
+    this.incidents = new IncidentSystem(this.seed);
+    this.wasteCollection = new WasteCollectionSystem();
+    this.education = new EducationSystem();
+    this.neighborhoodQuality = new NeighborhoodQualitySystem();
 
     this.employmentSnapshot = this.employment.evaluate(0, 0);
     this.utilitySnapshot = this.utilities.evaluate([]);
     this.garbageSnapshot = { generated: 0, processed: 0, backlog: 0, serviceRatio: 1 };
     this.taxRevenue = this.taxes.calculateRevenue([]);
     this.demandSnapshot = this.demand.evaluate({
-      population: 0,
-      housingCapacity: 0,
-      workforce: 0,
-      employed: 0,
-      totalJobs: 0,
-      powerRatio: 1,
-      waterRatio: 1,
-      garbageRatio: 1,
-      taxRates: this.taxes.getRates(),
-      trafficJobAccessibility: 1,
-      trafficCommercialAccessibility: 1,
+      population: 0, housingCapacity: 0, workforce: 0, employed: 0, totalJobs: 0,
+      powerRatio: 1, waterRatio: 1, garbageRatio: 1, taxRates: this.taxes.getRates(),
+      trafficJobAccessibility: 1, trafficCommercialAccessibility: 1, serviceQuality: 0.7, commercialServiceQuality: 0.7,
     });
-    this.economySnapshot = { ...this.economy.lastSettlement, cashBalance: this.treasury.balance };
+    this.economySnapshot = {
+      ...this.economy.lastSettlement,
+      cashBalance: this.treasury.balance,
+    };
     this.trafficSnapshot = this.trafficAnalytics.evaluate([], [], 0);
+    this.serviceDemandSnapshot = { eligibleStudents: 0, perBuilding: Object.freeze({}) };
+    this.educationSnapshot = { eligibleStudents: 0, reachableStudents: 0, enrolledStudents: 0, effectiveSeats: 0, overcrowdedStudents: 0, averageSchoolAccessTicks: 0, educationServiceRatio: 1 };
+    this.neighborhoodSnapshot = { perBuilding: Object.freeze({}), citywideServiceQuality: 1, commercialServiceQuality: 1 };
   }
 
   buildRoad(cells: readonly CellCoord[], type: RoadType): RoadPlacementResult {
@@ -133,11 +162,15 @@ export class SimulationCore {
   }
 
   placeServiceFacility(type: ServiceFacilityType, x: number, y: number): { ok: boolean; cost: number; reason?: string } {
-    return this.services.placeFacility(type, x, y, this.treasury);
+    const result = this.services.placeFacility(type, x, y, this.treasury);
+    if (result.ok) this.serviceVehicles.syncFleet(this.services);
+    return result;
   }
 
   setServiceFunding(department: ServiceDepartment, percent: number): number {
-    return this.services.setFunding(department, percent);
+    const result = this.services.setFunding(department, percent);
+    this.serviceVehicles.syncFleet(this.services);
+    return result;
   }
 
   bulldozeAt(x: number, y: number): { ok: boolean; kind?: 'road' | 'building' | 'zone'; reason?: string } {
@@ -161,38 +194,105 @@ export class SimulationCore {
     for (let i = 0; i < ticks; i++) {
       this.clock.step(1);
       this.transportationGraph.rebuildIfNeeded(this.roads);
-      this.traffic.step(this.transportationGraph, this.intersections, this.clock.tick);
-      this.trafficSnapshot = this.trafficAnalytics.evaluate(
-        this.traffic.edgeMetrics,
-        this.traffic.recentOutcomes,
-        this.traffic.activeVehicles.length,
-      );
+      this.serviceVehicles.syncFleet(this.services);
 
+      const serviceEvents = this.serviceVehicles.step(
+        this.transportationGraph, this.intersections, this.pathfinding,
+        (edge) => this.traffic.getEdgeTravelTime(edge), this.clock.tick,
+      );
+      this.serviceDispatch.applyVehicleEvents(serviceEvents, this.clock.tick);
+      this.wasteCollection.applyJobs(this.serviceDispatch.listJobs(), this.services, this.clock.tick);
+      this.incidents.advance(this.clock.tick, this.serviceDispatch.listJobs(), this.buildings.occupied(), this.serviceDispatch);
+
+      this.traffic.step(this.transportationGraph, this.intersections, this.clock.tick, this.serviceVehicles.edgeLoads());
+      this.trafficSnapshot = this.trafficAnalytics.evaluate(this.traffic.edgeMetrics, this.traffic.recentOutcomes, this.traffic.activeVehicles.length);
       this.buildings.tick(this.clock.tick);
 
       if (this.clock.tick % 10 === 0) {
+        this.evaluateServiceLoop();
         this.buildings.evaluateDevelopment(this.clock.tick, this.lots.list(), this.demandSnapshot);
       }
-
-      if (this.clock.tick % 50 === 0) {
-        this.evaluateCoreCityLoop();
-      }
-
-      if (this.clock.tick % 100 === 0) {
-        this.generateTraffic();
-      }
+      if (this.clock.tick % 50 === 0) this.evaluateCoreCityLoop();
+      if (this.clock.tick % 100 === 0) this.generateTraffic();
     }
   }
 
+  private evaluateServiceLoop(): void {
+    const occupied = this.buildings.occupied();
+    this.utilitySnapshot = this.utilities.evaluate(occupied);
+    this.lastServiceGeneratedWaste = this.clock.tick % 50 === 0 ? this.wasteCollection.generate(occupied, this.clock.tick) : 0;
+    if (this.clock.tick % 50 !== 0) this.wasteCollection.syncBuildings(occupied, this.clock.tick);
+
+    const wasteByBuilding: Record<string, number> = {};
+    for (const building of occupied) wasteByBuilding[building.id] = this.wasteCollection.getBuildingWaste(building.id)?.currentCollectibleWaste ?? 0;
+    const unresolvedByBuilding: Record<string, UnresolvedServiceInputs> = {};
+    for (const incident of this.incidents.listIncidents().filter((item) => item.status === 'active')) {
+      const target = unresolvedByBuilding[incident.targetBuildingId] ?? {};
+      const key = incident.kind === 'medical' ? 'healthcare' : incident.kind;
+      unresolvedByBuilding[incident.targetBuildingId] = { ...target, [key]: (target[key] ?? 0) + incident.severity };
+    }
+
+    this.serviceDemandSnapshot = this.serviceDemand.evaluate(occupied, {
+      population: this.population.population,
+      workforce: this.employmentSnapshot.workforce,
+      unemployed: Math.max(0, this.employmentSnapshot.workforce - this.employmentSnapshot.employed),
+      utilityByBuilding: this.utilitySnapshot.perBuilding,
+      wasteByBuilding,
+      unresolvedByBuilding,
+      priorAccessByBuilding: this.serviceAccessByBuilding,
+    });
+
+    if (this.clock.tick % 100 === 0) this.incidents.generateFromDemand(this.clock.tick, occupied, this.serviceDemandSnapshot, this.serviceDispatch);
+    this.wasteCollection.createCollectionJobs(this.clock.tick, this.serviceDispatch);
+    this.serviceDispatch.assignWaiting(
+      occupied, this.services, this.serviceVehicles, this.transportationGraph, this.pathfinding,
+      (edge) => this.traffic.getEdgeTravelTime(edge), this.clock.tick,
+    );
+
+    const accessByBuilding: Record<string, BuildingServiceAccess> = {};
+    const utilizationByFacility: Record<string, number> = {};
+    for (const job of this.serviceDispatch.listJobs().filter((item) => !['completed', 'failed'].includes(item.status))) {
+      if (job.assignedFacilityId) utilizationByFacility[job.assignedFacilityId] = (utilizationByFacility[job.assignedFacilityId] ?? 0) + 1;
+    }
+    for (const building of occupied) {
+      const demand = this.serviceDemandSnapshot.perBuilding[building.id];
+      const access: Partial<Record<ServiceDepartment, number>> = {};
+      for (const department of DEPARTMENTS) {
+        const localDemand = department === 'education' ? (demand?.educationStudents ?? 0)
+          : department === 'garbage' ? Math.max(1, wasteByBuilding[building.id] ?? 0)
+          : (demand?.[department] ?? 0);
+        const result = this.serviceAccessibility.evaluateBuilding(
+          department, building, localDemand, this.services, this.transportationGraph, this.pathfinding,
+          (edge) => this.traffic.getEdgeTravelTime(edge),
+          { utilizationByFacility, costKey: `service:${department}:${this.traffic.congestionEpoch}` },
+        );
+        access[department] = result.serviceAccess;
+      }
+      accessByBuilding[building.id] = Object.freeze(access);
+    }
+    this.serviceAccessByBuilding = Object.freeze(accessByBuilding);
+    this.educationSnapshot = this.education.evaluate(
+      occupied, this.serviceDemandSnapshot.eligibleStudents, this.services, this.transportationGraph, this.pathfinding,
+      (edge) => this.traffic.getEdgeTravelTime(edge),
+    );
+    this.neighborhoodSnapshot = this.neighborhoodQuality.evaluate(occupied, {
+      accessByBuilding: this.serviceAccessByBuilding,
+      incidentOutcome: {
+        fire: this.incidents.recentOutcomeScore('fire'),
+        police: this.incidents.recentOutcomeScore('police'),
+        healthcare: this.incidents.recentOutcomeScore('medical'),
+      },
+      wasteByBuilding,
+    });
+
+    if (this.services.listFacilities().some((facility) => facility.department === 'garbage')) {
+      this.garbageSnapshot = this.garbage.snapshotDetailed(this.lastServiceGeneratedWaste, this.wasteCollection.processedTotal, this.wasteCollection.totalBacklog());
+    }
+  }
 
   private generateTraffic(): void {
     const occupied = this.buildings.occupied();
-    const trips = this.tripGeneration.generate(
-      this.clock.tick,
-      occupied,
-      this.population.population,
-      this.employmentSnapshot.employed,
-    );
+    const trips = this.tripGeneration.generate(this.clock.tick, occupied, this.population.population, this.employmentSnapshot.employed);
     for (const trip of trips) this.routeTrip(trip);
   }
 
@@ -204,8 +304,7 @@ export class SimulationCore {
     const end = this.accessNodeForBuilding(destination);
     if (!start || !end || start === end) return;
     const route = this.pathfinding.findRoute(this.transportationGraph, start, end, {
-      edgeCost: (edge) => this.traffic.getEdgeTravelTime(edge),
-      costKey: `traffic:${this.traffic.congestionEpoch}`,
+      edgeCost: (edge) => this.traffic.getEdgeTravelTime(edge), costKey: `traffic:${this.traffic.congestionEpoch}`,
     });
     if (!route) return;
     const freeFlowTicks = route.edgeIds.reduce((sum, edgeId) => sum + (this.transportationGraph.getEdge(edgeId)?.freeFlowTicks ?? 0), 0);
@@ -214,10 +313,8 @@ export class SimulationCore {
 
   private accessNodeForBuilding(building: Building): string | undefined {
     const candidates = [
-      this.transportationGraph.findNodeAt(building.x, building.y - 1),
-      this.transportationGraph.findNodeAt(building.x + 1, building.y),
-      this.transportationGraph.findNodeAt(building.x, building.y + 1),
-      this.transportationGraph.findNodeAt(building.x - 1, building.y),
+      this.transportationGraph.findNodeAt(building.x, building.y - 1), this.transportationGraph.findNodeAt(building.x + 1, building.y),
+      this.transportationGraph.findNodeAt(building.x, building.y + 1), this.transportationGraph.findNodeAt(building.x - 1, building.y),
     ].filter((node): node is NonNullable<typeof node> => node !== undefined);
     candidates.sort((a, b) => a.id.localeCompare(b.id));
     return candidates[0]?.id;
@@ -226,33 +323,33 @@ export class SimulationCore {
   private evaluateCoreCityLoop(): void {
     const occupied = this.buildings.occupied();
     this.utilitySnapshot = this.utilities.evaluate(occupied);
-    this.garbageSnapshot = this.garbage.evaluate(occupied, this.roads, this.utilities.listFacilities());
+    if (!this.services.listFacilities().some((facility) => facility.department === 'garbage')) {
+      this.garbageSnapshot = this.garbage.evaluate(occupied, this.roads, this.utilities.listFacilities());
+    }
     this.employmentSnapshot = this.employment.evaluate(this.population.population, this.buildings.jobCapacity());
     this.taxRevenue = this.taxes.calculateRevenue(occupied);
-
+    const hasServices = this.services.listFacilities().length > 0;
+    const serviceQuality = hasServices ? this.neighborhoodSnapshot.citywideServiceQuality : 0.7;
+    const commercialServiceQuality = hasServices ? this.neighborhoodSnapshot.commercialServiceQuality : 0.7;
     this.demandSnapshot = this.demand.evaluate({
-      population: this.population.population,
-      housingCapacity: this.buildings.residentialCapacity(),
-      workforce: this.employmentSnapshot.workforce,
-      employed: this.employmentSnapshot.employed,
-      totalJobs: this.employmentSnapshot.totalJobs,
-      powerRatio: this.utilitySnapshot.power.serviceRatio,
-      waterRatio: this.utilitySnapshot.water.serviceRatio,
-      garbageRatio: this.garbageSnapshot.serviceRatio,
-      taxRates: this.taxes.getRates(),
-      trafficJobAccessibility: this.trafficSnapshot.jobAccessibility,
-      trafficCommercialAccessibility: this.trafficSnapshot.commercialAccessibility,
+      population: this.population.population, housingCapacity: this.buildings.residentialCapacity(),
+      workforce: this.employmentSnapshot.workforce, employed: this.employmentSnapshot.employed, totalJobs: this.employmentSnapshot.totalJobs,
+      powerRatio: this.utilitySnapshot.power.serviceRatio, waterRatio: this.utilitySnapshot.water.serviceRatio, garbageRatio: this.garbageSnapshot.serviceRatio,
+      taxRates: this.taxes.getRates(), trafficJobAccessibility: this.trafficSnapshot.jobAccessibility,
+      trafficCommercialAccessibility: this.trafficSnapshot.commercialAccessibility, serviceQuality, commercialServiceQuality,
     });
 
-    this.economySnapshot = this.economy.settle(this.treasury, this.taxRevenue, this.utilities.operatingCost());
+    this.economySnapshot = this.economy.settle(this.treasury, this.taxRevenue, this.utilities.operatingCost(), this.services.totalOperatingCost());
+    const paymentRatio = this.economySnapshot.facilityOperatingCost <= 0 ? 1 : this.economySnapshot.paidOperatingCost / this.economySnapshot.facilityOperatingCost;
+    this.services.setFiscalPaymentRatio(paymentRatio);
+    this.serviceVehicles.syncFleet(this.services);
 
-    const essential = Math.min(this.utilitySnapshot.power.serviceRatio, this.utilitySnapshot.water.serviceRatio, this.garbageSnapshot.serviceRatio);
+    const essential = Math.min(this.utilitySnapshot.power.serviceRatio, this.utilitySnapshot.water.serviceRatio);
     const employmentQuality = this.employmentSnapshot.workforce === 0 ? 1 : this.employmentSnapshot.employed / Math.max(1, this.employmentSnapshot.workforce);
-    const fiscalQuality = this.economySnapshot.unpaidOperatingCost > 0 ? 0 : 1;
-    let attractiveness = clamp01(0.6 * essential + 0.2 * employmentQuality + 0.2 * fiscalQuality);
-    if (this.utilitySnapshot.power.serviceRatio < 0.5 || this.utilitySnapshot.water.serviceRatio < 0.5 || this.garbageSnapshot.serviceRatio < 0.5) {
-      attractiveness = Math.min(attractiveness, 0.2);
-    }
+    const fiscalQuality = this.economySnapshot.unpaidOperatingCost > 0 ? paymentRatio : 1;
+    const serviceFactor = hasServices ? this.neighborhoodSnapshot.citywideServiceQuality : 0.7;
+    let attractiveness = clamp01(0.45 * essential + 0.18 * employmentQuality + 0.12 * fiscalQuality + 0.25 * serviceFactor);
+    if (this.utilitySnapshot.power.serviceRatio < 0.5 || this.utilitySnapshot.water.serviceRatio < 0.5) attractiveness = Math.min(attractiveness, 0.2);
     this.population.update(this.buildings.residentialCapacity(), attractiveness);
   }
 }

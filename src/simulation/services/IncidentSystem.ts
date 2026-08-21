@@ -32,7 +32,7 @@ type MutableIncident = {
   spreadTriggered: boolean;
 };
 
-type IncidentOutcome = { kind: IncidentKind; success: boolean; responseTicks: number };
+export type IncidentOutcome = Readonly<{ kind: IncidentKind; success: boolean; responseTicks: number }>;
 const CARDINAL = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
 const JOB_BY_KIND: Readonly<Record<IncidentKind, ServiceJobType>> = Object.freeze({ fire: 'fire_response', police: 'police_response', medical: 'medical_response' });
 

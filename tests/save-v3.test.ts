@@ -27,7 +27,7 @@ test('Save V3 round-trips authoritative city and active traffic state', () => {
   const core = managedCore();
   assert.ok(core.traffic.activeVehicles.length > 0);
   const save = serializeCore(core);
-  assert.equal(save.saveVersion, 3);
+  assert.equal(save.saveVersion, 4);
   const hydrated = hydrateCore(JSON.parse(JSON.stringify(save)));
   assert.deepEqual(serializeCore(hydrated), save);
 });

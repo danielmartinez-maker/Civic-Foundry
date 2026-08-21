@@ -92,6 +92,16 @@ export class ServiceVehicleSystem {
     return vehicle ? this.copy(vehicle) : undefined;
   }
 
+  restore(vehicles: readonly ServiceVehicle[]): void {
+    this.vehicles.clear();
+    for (const vehicle of vehicles) {
+      const restored: MutableVehicle = {
+        ...vehicle, edgeIds: [...vehicle.edgeIds], returnEdgeIds: [...vehicle.returnEdgeIds],
+      };
+      this.vehicles.set(restored.id, restored);
+    }
+  }
+
   availableVehicleIds(facilityId: string): string[] {
     return [...this.vehicles.values()]
       .filter((vehicle) => vehicle.facilityId === facilityId && vehicle.state === 'idle' && vehicle.currentJobId === null)
@@ -99,7 +109,14 @@ export class ServiceVehicleSystem {
       .sort();
   }
 
-  dispatchVehicle(vehicleId: string, jobId: string, outbound: RouteResult, returnRoute: RouteResult, homeNodeId: string, destinationNodeId: string): boolean {
+  dispatchVehicle(
+    vehicleId: string,
+    jobId: string,
+    outbound: RouteResult,
+    returnRoute: RouteResult,
+    homeNodeId: string,
+    destinationNodeId: string,
+  ): boolean {
     const vehicle = this.vehicles.get(vehicleId);
     if (!vehicle || vehicle.state !== 'idle' || vehicle.currentJobId !== null || outbound.edgeIds.length === 0) return false;
     vehicle.currentJobId = jobId;
@@ -118,8 +135,15 @@ export class ServiceVehicleSystem {
     return true;
   }
 
-  step(graph: TransportationGraph, intersections: IntersectionSystem, pathfinding: PathfindingSystem, edgeCost: (edge: TransportationEdge) => number, tick: number): ServiceVehicleEvent[] {
+  step(
+    graph: TransportationGraph,
+    intersections: IntersectionSystem,
+    pathfinding: PathfindingSystem,
+    edgeCost: (edge: TransportationEdge) => number,
+    _tick: number,
+  ): ServiceVehicleEvent[] {
     const events: ServiceVehicleEvent[] = [];
+
     for (const vehicle of this.vehicles.values()) {
       if (vehicle.queuedNodeId) vehicle.accumulatedDelayTicks++;
       if ((vehicle.state === 'outbound' || vehicle.state === 'returning') && !this.ensureValidRoute(vehicle, graph, pathfinding, edgeCost)) {
@@ -128,6 +152,7 @@ export class ServiceVehicleSystem {
         this.resetIdle(vehicle);
       }
     }
+
     for (const nodeId of Object.keys(intersections.snapshot()).sort()) {
       for (const vehicleId of intersections.stepNode(graph, nodeId)) {
         const vehicle = this.vehicles.get(vehicleId);
@@ -138,6 +163,7 @@ export class ServiceVehicleSystem {
         delete vehicle.queuedNodeId;
       }
     }
+
     for (const vehicle of [...this.vehicles.values()].sort((a, b) => a.id.localeCompare(b.id))) {
       if (vehicle.state === 'servicing') {
         vehicle.serviceRemainingTicks--;
@@ -155,7 +181,10 @@ export class ServiceVehicleSystem {
       if (vehicle.queuedNodeId) continue;
       const route = vehicle.state === 'outbound' ? vehicle.edgeIds : vehicle.returnEdgeIds;
       const edgeId = route[vehicle.currentEdgeIndex];
-      if (!edgeId) { this.finishLeg(vehicle, events); continue; }
+      if (!edgeId) {
+        this.finishLeg(vehicle, events);
+        continue;
+      }
       const edge = graph.getEdge(edgeId);
       if (!edge) continue;
       const travelTicks = this.edgeTravelTicks(vehicle, edge, edgeCost);
@@ -164,7 +193,10 @@ export class ServiceVehicleSystem {
       if (vehicle.edgeProgressTicks + 1e-9 < travelTicks) continue;
       vehicle.currentNodeId = edge.to;
       const isLast = vehicle.currentEdgeIndex >= route.length - 1;
-      if (isLast) { this.finishLeg(vehicle, events); continue; }
+      if (isLast) {
+        this.finishLeg(vehicle, events);
+        continue;
+      }
       const isIntersection = graph.outgoingEdges(edge.to).length > 2;
       if (isIntersection) {
         vehicle.queuedNodeId = edge.to;
@@ -172,7 +204,7 @@ export class ServiceVehicleSystem {
         intersections.enqueue(edge.to, edge.id, {
           vehicleId: vehicle.id,
           travelerWeight: vehicle.vehicleType === 'garbage_truck' ? 2 : 1,
-          queuedTick: tick,
+          queuedTick: _tick,
           priority: isEmergency(vehicle.vehicleType) ? 'emergency' : 'normal',
         });
       } else {
@@ -201,9 +233,13 @@ export class ServiceVehicleSystem {
     const start = vehicle.currentNodeId;
     const end = vehicle.state === 'outbound' ? vehicle.destinationNodeId : vehicle.homeNodeId;
     if (!start || !end || !graph.getNode(start) || !graph.getNode(end)) return false;
-    const reroute = pathfinding.findRoute(graph, start, end, { edgeCost: (edge) => this.edgeTravelTicks(vehicle, edge, edgeCost), costKey: `service-reroute:${vehicle.vehicleType}` });
+    const reroute = pathfinding.findRoute(graph, start, end, {
+      edgeCost: (edge) => this.edgeTravelTicks(vehicle, edge, edgeCost),
+      costKey: `service-reroute:${vehicle.vehicleType}`,
+    });
     if (!reroute || reroute.edgeIds.length === 0) return false;
-    if (vehicle.state === 'outbound') vehicle.edgeIds = [...reroute.edgeIds]; else vehicle.returnEdgeIds = [...reroute.edgeIds];
+    if (vehicle.state === 'outbound') vehicle.edgeIds = [...reroute.edgeIds];
+    else vehicle.returnEdgeIds = [...reroute.edgeIds];
     vehicle.currentEdgeIndex = 0;
     vehicle.edgeProgressTicks = 0;
     delete vehicle.queuedNodeId;

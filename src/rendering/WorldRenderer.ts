@@ -3,6 +3,8 @@ import { ROAD_DEFINITIONS } from '../data/roads.ts';
 import type { TrafficOverlayMode } from './TrafficOverlayLayer.ts';
 import { mapTrafficOverlay } from './TrafficOverlayLayer.ts';
 import { VehicleRenderer } from './VehicleRenderer.ts';
+import { mapServiceOverlay, type ServiceOverlayMode } from './ServiceOverlayLayer.ts';
+import { ServiceVehicleRenderer } from './ServiceVehicleRenderer.ts';
 
 export type CanvasPoint = Readonly<{ x: number; y: number }>;
 export type CellSelection = Readonly<{ x: number; y: number }> | null;
@@ -12,11 +14,13 @@ const ZONE_COLORS = { residential: '#63b36d', commercial: '#5f91d8', industrial:
 const ROAD_COLORS = { local: '#4b5157', collector: '#383f45', arterial: '#252b30' } as const;
 const BUILDING_COLORS = { residential: '#d8e6d0', commercial: '#d4e3f6', industrial: '#ead9b8' } as const;
 const FACILITY_LABELS = { power: '⚡', water: '●', landfill: '♻' } as const;
+const SERVICE_LABELS = { fire_station: 'F', police_station: 'P', clinic: '+', elementary_school: 'S', landfill: 'W', recycling_center: 'R' } as const;
 
 export class WorldRenderer {
   readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly vehicles = new VehicleRenderer();
+  private readonly serviceVehicles = new ServiceVehicleRenderer();
   private panX = 36;
   private panY = 36;
   private zoom = 1;
@@ -76,7 +80,7 @@ export class WorldRenderer {
     return core.terrain.inBounds(world.x, world.y) ? world : null;
   }
 
-  draw(core: SimulationCore, overlayMode: TrafficOverlayMode, selected: CellSelection, previewPath: readonly { x: number; y: number }[] = []): void {
+  draw(core: SimulationCore, overlayMode: TrafficOverlayMode, selected: CellSelection, previewPath: readonly { x: number; y: number }[] = [], serviceOverlayMode: ServiceOverlayMode = 'none'): void {
     this.resize();
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -148,8 +152,29 @@ export class WorldRenderer {
       ctx.fillText(FACILITY_LABELS[facility.type], p.x + this.cellSize / 2, p.y + this.cellSize / 2);
     }
 
+    for (const facility of core.services.listFacilities()) {
+      const p = this.worldToCanvas(facility.x, facility.y, core);
+      ctx.fillStyle = facility.department === 'fire' ? '#783b36'
+        : facility.department === 'police' ? '#334b70'
+        : facility.department === 'healthcare' ? '#42675d'
+        : facility.department === 'education' ? '#725f34'
+        : '#4f6544';
+      ctx.fillRect(p.x + 2, p.y + 2, this.cellSize - 4, this.cellSize - 4);
+      ctx.strokeStyle = '#e5ecef';
+      ctx.lineWidth = Math.max(1, this.cellSize * 0.05);
+      ctx.strokeRect(p.x + 2, p.y + 2, this.cellSize - 4, this.cellSize - 4);
+      ctx.fillStyle = '#f4f7f8';
+      ctx.font = `700 ${Math.max(9, this.cellSize * 0.43)}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(SERVICE_LABELS[facility.type], p.x + this.cellSize / 2, p.y + this.cellSize / 2);
+    }
+
+    if (serviceOverlayMode !== 'none') this.drawServiceOverlay(core, serviceOverlayMode);
     if (overlayMode !== 'none') this.drawTrafficOverlay(core, overlayMode);
     this.vehicles.draw(ctx, core.transportationGraph, core.traffic, (x, y) => this.worldToCanvas(x, y, core), this.cellSize);
+    const travelTicks = new Map(core.traffic.edgeMetrics.map((metric) => [metric.edgeId, metric.travelTimeTicks]));
+    this.serviceVehicles.draw(ctx, core.transportationGraph, core.serviceVehicles, travelTicks, (x, y) => this.worldToCanvas(x, y, core), this.cellSize);
 
     if (previewPath.length > 0) {
       ctx.save();
@@ -167,6 +192,29 @@ export class WorldRenderer {
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.strokeRect(p.x + 1, p.y + 1, this.cellSize - 2, this.cellSize - 2);
+    }
+  }
+
+  private drawServiceOverlay(core: SimulationCore, mode: Exclude<ServiceOverlayMode, 'none'>): void {
+    const snapshot = mapServiceOverlay(core, mode);
+    for (const item of snapshot.cells) {
+      const p = this.worldToCanvas(item.x, item.y, core);
+      const normalizedProblem = 1 - item.value;
+      const hue = Math.round(120 - 120 * normalizedProblem);
+      this.ctx.save();
+      this.ctx.fillStyle = `hsla(${hue}, 82%, 52%, .42)`;
+      this.ctx.fillRect(p.x + 1, p.y + 1, this.cellSize - 2, this.cellSize - 2);
+      if (this.cellSize >= 20) {
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.strokeStyle = 'rgba(0,0,0,.65)';
+        this.ctx.lineWidth = 2.5;
+        this.ctx.font = `700 ${Math.max(8, this.cellSize * 0.30)}px system-ui`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.strokeText(item.label, p.x + this.cellSize / 2, p.y + this.cellSize / 2);
+        this.ctx.fillText(item.label, p.x + this.cellSize / 2, p.y + this.cellSize / 2);
+      }
+      this.ctx.restore();
     }
   }
 

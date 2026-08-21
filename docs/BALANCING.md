@@ -1,44 +1,54 @@
-# Balancing — Phase 3 Rebuild
+# Balancing — Phase 4
 
 ## Roads
 
-| Class | Cost/cell | Speed (cells/s) | Weighted capacity/min | Intersection service | Render width |
-|---|---:|---:|---:|---:|---:|
-| Local | 40 | 1.5 | 60 | 6 | 0.50 |
-| Collector | 65 | 2.5 | 120 | 10 | 0.68 |
-| Arterial | 100 | 4.0 | 240 | 16 | 0.86 |
+| Class | Cost/cell | Speed (cells/s) | Weighted capacity/min | Intersection service |
+|---|---:|---:|---:|---:|
+| Local | 40 | 1.5 | 60 | 6 |
+| Collector | 65 | 2.5 | 120 | 10 |
+| Arterial | 100 | 4.0 | 240 | 16 |
 
-## Buildings
+## Public-service facilities
 
-| Zone | Construction ticks | Residents | Jobs | Power | Water | Garbage | Tax base |
+| Facility | Construction | Operating | Base capacity | Vehicles |
+|---|---:|---:|---:|---:|
+| Fire Station | 20,000 | 300 | 2 incidents | 2 fire engines |
+| Police Station | 18,000 | 260 | 3 jobs | 2 patrol cars |
+| Clinic | 22,000 | 320 | 20 treatment | 1 ambulance |
+| Elementary School | 16,000 | 240 | 120 students | — |
+| Landfill | 10,000 | 140 | 90 processing | 2 garbage trucks |
+| Recycling Center | 14,000 | 190 | 70 × 1.15 efficiency | 2 garbage trucks |
+
+Department funding range: `50%..150%`, default 100%.
+
+`fundingEffectiveness = clamp(0.5, 1.25, 0.35 + 0.65 * fundingRatio) × fiscalPaymentRatio`
+
+A minimum operational floor of 0.35 is retained for partially unpaid departments; fleet activation still uses integer effective vehicle slots.
+
+## Buildings and waste
+
+Building balance remains:
+
+| Zone | Construction ticks | Residents | Jobs | Power | Water | Waste rate | Tax base |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Residential | 50 | 10 | 0 | 6 | 5 | 2 | 120 |
 | Commercial | 65 | 0 | 8 | 12 | 7 | 4 | 220 |
 | Industrial | 80 | 0 | 14 | 22 | 12 | 8 | 320 |
 
-## Utilities
+The waste rate is applied every **50 ticks**, preserving the inherited Phase 2 balance cadence while Phase 4 handles physical truck movement at higher frequency. Pickup threshold: 6. Garbage truck capacity: 20.
 
-| Facility | Construction | Operating | Capacity |
-|---|---:|---:|---:|
-| Power | 18,000 | 260 | 180 |
-| Water | 12,000 | 170 | 150 |
-| Landfill | 10,000 | 140 | 90 |
+## Education
 
-Default starting funds in `SimulationCore`: 125,000. Browser scenario starts at 250,000.
+School-age share: `0.18` of current population.
 
-Tax rates default to 10% and clamp to 0–25%.
+`educationQuality = coverage × networkAccessibility × fundingEffectiveness`
 
-## Traffic
+Disconnected school seats contribute zero coverage.
 
-Traffic acceptable-time constants:
+## Neighborhood quality
 
-- commute: 240 ticks
-- shopping: 180 ticks
+Weights: fire 22%, police 22%, healthcare 22%, education 20%, garbage 14%.
 
-Congestion delay multiplier:
+Residential service modifier: `clamp(-0.25, 0.15, (quality - 0.70) * 0.50)`.
 
-`1 + 3 * utilization^4`
-
-Trip generation cadence: 100 ticks. Commute cohort weight is based on employed workers divided across occupied homes. Shopping pool is 25% of population divided across occupied homes.
-
-Rolling analytics window: 128 outcomes.
+Emergency vehicles receive 55% of congestion delay above free flow, not zero delay.

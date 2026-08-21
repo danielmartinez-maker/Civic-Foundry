@@ -2,43 +2,38 @@
 
 ## 2026-08-21 — Phase 1–3 fresh reimplementation
 
-### Why this rebuild exists
+The earlier temporary execution workspace reached a verified Phase 3 checkpoint (`f0bb3d6`) but expired before source upload. Current Phase 1–3 code is therefore a fresh implementation from preserved specifications, not recovered historical source.
 
-The earlier temporary ChatGPT execution workspace reached a verified Phase 3 checkpoint named `f0bb3d6`, but that mounted Git/source tree expired before the project was moved to GitHub. Only design documents/screenshots survived.
+The rebuild introduced the durability rule that `danielmartinez-maker/Civic-Foundry` is the canonical source of truth. The audited Phase 3 rebuild checkpoint is `5c351d3ae57d6505aa8a439c8c3a7a5ceeeb5516`.
 
-The current `rebuild-phase3` work is therefore a **fresh reimplementation from preserved requirements**, not recovered historical source. This provenance distinction is intentional and permanent.
+## 2026-08-21 — Phase 4 Public Services
 
-### Durability rule introduced
+Implemented the approved public-services vertical slice:
 
-`danielmartinez-maker/Civic-Foundry` is the canonical source of truth. Stable implementation milestones are published to GitHub before proceeding. No future phase may rely on a temporary worktree as the only copy of source/test/config/documentation files.
+- fire stations, police stations, clinics, elementary schools, landfills and recycling centers
+- 50–150% department budgets with staffing/capacity/fleet and fiscal-payment effects
+- road-network service accessibility instead of circular coverage
+- explicit dispatch jobs and physical fire engines, patrol cars, ambulances and garbage trucks
+- emergency intersection priority and congestion-sensitive response
+- seeded fire/police/medical incidents, fire intensity/damage and cardinal spread
+- detailed building waste, routed pickup/cargo/processing and compatibility garbage snapshot
+- reachable school seats, overcrowding and education service quality
+- weighted per-building neighborhood service quality feeding R/C demand and migration
+- V4 persistence/migration with deterministic active-service continuation
+- Phase IV HUD, service inspection, build tools, budgets, overlays, vehicles and alerts
 
-### Rebuilt milestones
+### Bugs found by acceptance testing
 
-- deterministic simulation foundation
-- roads, zoning, lots, buildings, bounded population
-- employment, R/C/I demand, taxes, road-connected power/water, garbage, recurring economy
-- local/collector/arterial road hierarchy and transportation graph
-- deterministic A*, route cache, weighted commute/shopping trips, intersection queues
-- active traffic vehicles, congestion, rolling accessibility analytics, demand feedback, stale-edge cleanup
-- Save V3 with deterministic continuation and V2 migration
-- Canvas 2D browser presentation, HUD, inspector, build tools, traffic overlays
-- headless causal comparison and browser smoke acceptance
+1. **Routed garbage migration deadlock:** the old Phase 2 instantaneous garbage hard-stop prevented initial residents before the first truck could finish a route. Fixed by retaining power/water as instantaneous essential gates while routing garbage consequences through service quality, demand, health and cleanliness.
+2. **Waste cadence inflation:** the inherited per-building waste rate was accidentally applied every 10 service ticks instead of the original 50-tick economy cadence, generating 5× intended waste. Locked to the inherited 50-tick balance with a regression test.
+3. **V4 deterministic continuation:** detailed waste initially omitted the building→active collection-job reservation map, allowing duplicate jobs after load. That reservation state is now persisted and validated.
 
 ### Acceptance evidence
 
-A deterministic comparison of otherwise-equivalent cities produced:
+An otherwise-equivalent local-vs-arterial service scenario produced 94 vs 46 tick fire arrival, ~0.49 vs ~0.71 service quality, 186 vs 354 processed waste, and 446 vs 284 garbage backlog. Residential and commercial demand were both stronger in the arterial city.
 
-- local roads: average commute about 148.22 ticks, average job accessibility about 0.389
-- arterial roads: average commute about 64.09 ticks, average job accessibility about 0.734
+The real Chromium smoke verifies service construction, active service vehicles, numeric service overlay, department-budget changes, Save V4, destructive road/funding edits and exact restoration.
 
-The local-road city also measured materially higher sampled congestion and lower residential demand.
+### Tooling
 
-A 10,000-query repeated-route benchmark produced 9,999 route-cache hits (99.99% hit ratio) in the latest local run. A 5,000-tick active-city measurement is recorded by the headless test output rather than enforced as an arbitrary threshold.
-
-### Offline tooling
-
-The rebuild uses TypeScript, browser Canvas 2D, Node built-in tests, global `tsc`, and Python Playwright/system Chromium. It does not claim Vite/PixiJS/Vitest runtime dependencies.
-
-### Next target
-
-Phase 4 — Public Services, using the approved `docs/superpowers/specs/2026-08-21-city-simulator-phase-4-design.md` after the completed Phase 3 rebuild is fully mirrored and audited on GitHub.
+TypeScript ES modules, Node built-in tests, global `tsc`, browser Canvas 2D, Python Playwright and system Chromium. No external npm runtime dependencies are required.

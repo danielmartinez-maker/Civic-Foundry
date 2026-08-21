@@ -23,6 +23,12 @@ export type HudMetrics = Readonly<{
   delayedTripShare: number;
   jobAccessibility: number;
   commercialAccessibility: number;
+  serviceQuality: number;
+  educationServiceRatio: number;
+  activeServiceVehicles: number;
+  waitingServiceJobs: number;
+  serviceOperatingCost: number;
+  serviceFiscalRatio: number;
 }>;
 
 export function collectHudMetrics(core: SimulationCore): HudMetrics {
@@ -48,6 +54,12 @@ export function collectHudMetrics(core: SimulationCore): HudMetrics {
     delayedTripShare: core.trafficSnapshot.delayedTripShare,
     jobAccessibility: core.trafficSnapshot.jobAccessibility,
     commercialAccessibility: core.trafficSnapshot.commercialAccessibility,
+    serviceQuality: core.neighborhoodSnapshot.citywideServiceQuality,
+    educationServiceRatio: core.educationSnapshot.educationServiceRatio,
+    activeServiceVehicles: core.serviceVehicles.listVehicles().filter((vehicle) => vehicle.state !== 'unavailable').length,
+    waitingServiceJobs: core.serviceDispatch.listJobs().filter((job) => job.status === 'waiting').length,
+    serviceOperatingCost: core.services.totalOperatingCost(),
+    serviceFiscalRatio: core.services.getFiscalPaymentRatio(),
   };
 }
 
@@ -65,6 +77,7 @@ export class HudView {
       ['treasury', 'Treasury'], ['population', 'Population'], ['demand', 'R / C / I'], ['jobs', 'Jobs'],
       ['power', 'Power'], ['water', 'Water'], ['garbage', 'Waste'], ['net', 'Recurring'],
       ['vehicles', 'Vehicles'], ['congestion', 'Congestion'], ['access', 'Job access'], ['commute', 'Commute'],
+      ['service', 'Services'], ['education', 'Education'], ['service-fleet', 'Service fleet'], ['service-jobs', 'Waiting calls'],
     ].map(([id, label]) => `<div class="hud-stat"><span>${label}</span><strong data-hud="${id}">—</strong></div>`).join('');
     root.querySelectorAll<HTMLElement>('[data-hud]').forEach((element) => this.values.set(element.dataset.hud ?? '', element));
   }
@@ -83,6 +96,10 @@ export class HudView {
     this.set('congestion', percent(metrics.congestionIndex));
     this.set('access', percent(metrics.jobAccessibility));
     this.set('commute', metrics.averageCommuteTicks > 0 ? `${metrics.averageCommuteTicks.toFixed(1)} ticks` : '—');
+    this.set('service', percent(metrics.serviceQuality));
+    this.set('education', percent(metrics.educationServiceRatio));
+    this.set('service-fleet', String(metrics.activeServiceVehicles));
+    this.set('service-jobs', String(metrics.waitingServiceJobs));
   }
 
   private set(id: string, value: string): void {

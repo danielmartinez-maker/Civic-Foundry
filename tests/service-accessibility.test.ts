@@ -77,6 +77,7 @@ test('network accessibility ignores a closer disconnected facility and selects a
 
 test('service candidate selection uses travel time before straight-line distance', () => {
   const { treasury, roads, services, graph, pathfinding, accessibility } = accessibilityFixture();
+  // target frontage at (2,7); nearer station on slow local branch, farther station along arterial branch.
   roads.placePath([{ x: 2, y: 7 }, { x: 3, y: 7 }, { x: 4, y: 7 }, { x: 5, y: 7 }, { x: 6, y: 7 }], 'local', treasury);
   roads.placePath([{ x: 2, y: 7 }, { x: 2, y: 8 }, { x: 3, y: 8 }, { x: 4, y: 8 }, { x: 5, y: 8 }, { x: 6, y: 8 }, { x: 7, y: 8 }], 'arterial', treasury);
   graph.rebuildIfNeeded(roads);

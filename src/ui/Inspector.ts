@@ -1,9 +1,10 @@
 import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import { ROAD_DEFINITIONS } from '../data/roads.ts';
 import { BUILDING_DEFINITIONS } from '../data/buildings.ts';
+import { SERVICE_DEFINITIONS } from '../data/services.ts';
 
 export type Inspection = Readonly<{
-  kind: 'road' | 'building' | 'utility' | 'terrain';
+  kind: 'road' | 'building' | 'utility' | 'service' | 'terrain';
   title: string;
   lines: readonly string[];
 }>;
@@ -23,6 +24,35 @@ export function inspectCell(core: SimulationCore, x: number, y: number): Inspect
         `Power service: ${Math.round(service.power * 100)}%`,
         `Water service: ${Math.round(service.water * 100)}%`,
         `Garbage backlog: ${core.garbage.getBacklog(building.id).toFixed(1)}`,
+        `Service quality: ${Math.round((core.neighborhoodSnapshot.perBuilding[building.id]?.combinedServiceQuality ?? 0) * 100)}%`,
+        `Primary service issue: ${core.neighborhoodSnapshot.perBuilding[building.id]?.primaryIssue ?? 'none'}`,
+        `Fire access: ${Math.round((core.serviceAccessByBuilding[building.id]?.fire ?? 0) * 100)}%`,
+        `Police access: ${Math.round((core.serviceAccessByBuilding[building.id]?.police ?? 0) * 100)}%`,
+        `Healthcare access: ${Math.round((core.serviceAccessByBuilding[building.id]?.healthcare ?? 0) * 100)}%`,
+        `Education access: ${Math.round((core.serviceAccessByBuilding[building.id]?.education ?? 0) * 100)}%`,
+        `Garbage access: ${Math.round((core.serviceAccessByBuilding[building.id]?.garbage ?? 0) * 100)}%`,
+        `Collectible waste: ${(core.wasteCollection.getBuildingWaste(building.id)?.currentCollectibleWaste ?? 0).toFixed(1)}`,
+      ],
+    };
+  }
+
+  const serviceFacility = core.services.getAt(x, y);
+  if (serviceFacility) {
+    const definition = SERVICE_DEFINITIONS[serviceFacility.type];
+    const openJobs = core.serviceDispatch.listJobs().filter((job) => job.assignedFacilityId === serviceFacility.id && !['completed', 'failed'].includes(job.status)).length;
+    return {
+      kind: 'service',
+      title: definition.label,
+      lines: [
+        `ID: ${serviceFacility.id}`,
+        `Department: ${serviceFacility.department}`,
+        `Funding: ${core.services.getFunding(serviceFacility.department)}%`,
+        `Fiscal payment: ${Math.round(core.services.getFiscalPaymentRatio() * 100)}%`,
+        `Effective staffing: ${core.services.effectiveStaffing(serviceFacility.id).toFixed(1)}`,
+        `Effective capacity: ${core.services.effectiveCapacity(serviceFacility.id).toFixed(1)}`,
+        `Active vehicles: ${core.services.activeVehicleCount(serviceFacility.id)}`,
+        `Open jobs: ${openJobs}`,
+        `Operating cost: $${Math.round(definition.monthlyOperatingCost * core.services.getFunding(serviceFacility.department) / 100).toLocaleString()}`,
       ],
     };
   }

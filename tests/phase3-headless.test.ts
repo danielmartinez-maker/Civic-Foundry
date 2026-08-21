@@ -122,6 +122,6 @@ test('5,000 active simulation ticks remain finite and report traffic timing', ()
   assert.ok(Number.isFinite(core.trafficSnapshot.congestionIndex));
   assert.ok(Number.isFinite(core.treasury.balance));
   assert.ok(core.treasury.balance >= 0);
-  assert.equal(save.saveVersion, 3);
+  assert.equal(save.saveVersion, 4);
   console.log('PHASE3_TICK_BENCHMARK', JSON.stringify({ elapsedMs: Number(elapsedMs.toFixed(2)), msPer1000Ticks: Number((elapsedMs / 5).toFixed(2)), activeVehicles: core.traffic.activeVehicles.length }));
 });

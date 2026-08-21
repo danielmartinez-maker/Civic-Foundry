@@ -25,7 +25,10 @@ export type ServiceJob = {
 
 type MutableJob = ServiceJob;
 const CARDINAL = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
-const DEPARTMENT_BY_JOB: Readonly<Record<ServiceJobType, ServiceDepartment>> = Object.freeze({ fire_response: 'fire', police_response: 'police', medical_response: 'healthcare', garbage_collection: 'garbage' });
+
+const DEPARTMENT_BY_JOB: Readonly<Record<ServiceJobType, ServiceDepartment>> = Object.freeze({
+  fire_response: 'fire', police_response: 'police', medical_response: 'healthcare', garbage_collection: 'garbage',
+});
 
 export class ServiceDispatchSystem {
   private readonly jobs = new Map<string, MutableJob>();
@@ -33,14 +36,39 @@ export class ServiceDispatchSystem {
 
   createJob(type: ServiceJobType, targetBuildingId: string, tick: number, severity: number): string {
     const id = `service-job:${this.nextJobId++}`;
-    this.jobs.set(id, { id, type, department: DEPARTMENT_BY_JOB[type], targetBuildingId, createdTick: tick, severity: Math.max(0, Math.min(1, Number.isFinite(severity) ? severity : 0)), status: 'waiting', accumulatedDelayTicks: 0 });
+    this.jobs.set(id, {
+      id, type, department: DEPARTMENT_BY_JOB[type], targetBuildingId, createdTick: tick,
+      severity: Math.max(0, Math.min(1, Number.isFinite(severity) ? severity : 0)), status: 'waiting', accumulatedDelayTicks: 0,
+    });
     return id;
   }
 
-  getJob(id: string): ServiceJob | undefined { const job = this.jobs.get(id); return job ? { ...job } : undefined; }
-  listJobs(): ServiceJob[] { return [...this.jobs.values()].map((job) => ({ ...job })).sort((a, b) => a.id.localeCompare(b.id)); }
+  getJob(id: string): ServiceJob | undefined {
+    const job = this.jobs.get(id);
+    return job ? { ...job } : undefined;
+  }
 
-  assignWaiting(buildings: readonly Building[], facilities: ServiceFacilitySystem, vehicles: ServiceVehicleSystem, graph: TransportationGraph, pathfinding: PathfindingSystem, edgeCost: (edge: TransportationEdge) => number, tick: number): void {
+  listJobs(): ServiceJob[] {
+    return [...this.jobs.values()].map((job) => ({ ...job })).sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  getNextJobId(): number { return this.nextJobId; }
+
+  restore(jobs: readonly ServiceJob[], nextJobId: number): void {
+    this.jobs.clear();
+    for (const job of jobs) this.jobs.set(job.id, { ...job });
+    this.nextJobId = Math.max(1, Math.floor(nextJobId));
+  }
+
+  assignWaiting(
+    buildings: readonly Building[],
+    facilities: ServiceFacilitySystem,
+    vehicles: ServiceVehicleSystem,
+    graph: TransportationGraph,
+    pathfinding: PathfindingSystem,
+    edgeCost: (edge: TransportationEdge) => number,
+    tick: number,
+  ): void {
     const byBuilding = new Map(buildings.map((building) => [building.id, building]));
     for (const job of [...this.jobs.values()].filter((candidate) => candidate.status === 'waiting').sort((a, b) => a.id.localeCompare(b.id))) {
       const target = byBuilding.get(job.targetBuildingId);
@@ -69,7 +97,12 @@ export class ServiceDispatchSystem {
       job.assignedVehicleId = best.vehicleId;
       job.responseStartTick = tick;
       if (vehicles.dispatchVehicle(best.vehicleId, job.id, best.outbound, best.back, best.homeNode, targetNode)) job.status = 'responding';
-      else { job.status = 'waiting'; delete job.assignedFacilityId; delete job.assignedVehicleId; delete job.responseStartTick; }
+      else {
+        job.status = 'waiting';
+        delete job.assignedFacilityId;
+        delete job.assignedVehicleId;
+        delete job.responseStartTick;
+      }
     }
   }
 
@@ -78,10 +111,21 @@ export class ServiceDispatchSystem {
       const job = this.jobs.get(event.jobId);
       if (!job) continue;
       job.accumulatedDelayTicks = Math.max(job.accumulatedDelayTicks, tick - job.createdTick);
-      if (event.type === 'arrived') { job.status = 'servicing'; job.arrivalTick = tick; }
-      else if (event.type === 'returning') job.status = 'returning';
-      else if (event.type === 'completed') { job.status = 'completed'; job.completionTick = tick; }
-      else if (event.type === 'failed') { job.status = 'waiting'; delete job.assignedFacilityId; delete job.assignedVehicleId; delete job.responseStartTick; delete job.arrivalTick; }
+      if (event.type === 'arrived') {
+        job.status = 'servicing';
+        job.arrivalTick = tick;
+      } else if (event.type === 'returning') {
+        job.status = 'returning';
+      } else if (event.type === 'completed') {
+        job.status = 'completed';
+        job.completionTick = tick;
+      } else if (event.type === 'failed') {
+        job.status = 'waiting';
+        delete job.assignedFacilityId;
+        delete job.assignedVehicleId;
+        delete job.responseStartTick;
+        delete job.arrivalTick;
+      }
     }
   }
 
@@ -92,6 +136,8 @@ export class ServiceDispatchSystem {
   }
 
   private accessNode(graph: TransportationGraph, x: number, y: number): string | undefined {
-    return CARDINAL.map(([dx, dy]) => graph.findNodeAt(x + dx, y + dy)).filter((node): node is NonNullable<typeof node> => node !== undefined).sort((a, b) => a.id.localeCompare(b.id))[0]?.id;
+    return CARDINAL.map(([dx, dy]) => graph.findNodeAt(x + dx, y + dy))
+      .filter((node): node is NonNullable<typeof node> => node !== undefined)
+      .sort((a, b) => a.id.localeCompare(b.id))[0]?.id;
   }
 }

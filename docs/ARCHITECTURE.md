@@ -1,46 +1,45 @@
-# Civic Foundry Architecture — Phase 3 Rebuild
+# Civic Foundry Architecture — Phase 4
 
 ## Boundary
 
-The authoritative simulation is independent from DOM and Canvas rendering. `SimulationCore` composes domain systems and owns deterministic update order. Presentation code consumes public snapshots and public mutation APIs.
+The authoritative simulation is independent from DOM and Canvas rendering. `SimulationCore` composes focused state owners and controls deterministic update order. Presentation code consumes public snapshots and public mutation APIs only.
 
-## Authoritative systems
+## Authoritative city systems
 
-- `TerrainGrid` — deterministic buildability/elevation/water cells.
-- `TreasurySystem` — nonnegative balance and immutable transaction history.
-- `RoadSystem` — grid road state and road revision.
-- `ZoningSystem` — R/C/I zoning cells.
-- `LotSystem` — rebuildable road-frontage lots.
-- `BuildingSystem` — construction/occupied lifecycle and real capacities.
-- `PopulationSystem` — aggregate bounded population.
-- `EmploymentSystem` — workforce/jobs/employment/unemployment.
-- `TaxSystem` — bounded R/C/I tax rates and occupied-building revenue.
-- `UtilitySystem` — road-component-limited power/water capacity and facilities.
-- `GarbageSystem` — per-building backlog plus connected landfill processing.
-- `EconomySystem` — recurring tax revenue and operating obligations.
-- `TransportationGraph` — rebuildable directed graph derived from road cells.
-- `PathfindingSystem` — deterministic A* and revision/cost-key route cache.
-- `TripGenerationSystem` — deterministic weighted commute/shopping trip cohorts.
-- `IntersectionSystem` — deterministic per-approach queues.
-- `TrafficSystem` — active vehicles, edge flow, congestion, completion/failure history.
-- `TrafficAnalytics` — commute, speed, congestion, delay, accessibility, bottlenecks.
+- `TerrainGrid`, `TreasurySystem`, `RoadSystem`, `ZoningSystem`, `LotSystem`, `BuildingSystem`, `PopulationSystem`
+- `EmploymentSystem`, `TaxSystem`, `DemandSystem`, `UtilitySystem`, `GarbageSystem`, `EconomySystem`
+- `TransportationGraph`, `PathfindingSystem`, `TripGenerationSystem`, `IntersectionSystem`, `TrafficSystem`, `TrafficAnalytics`
+
+## Phase 4 public-service systems
+
+- `ServiceFacilitySystem` owns facilities, department funding, fiscal effectiveness, staffing/capacity and fleet availability.
+- `ServiceDemandSystem` derives fire, police, healthcare, education and waste demand from authoritative city conditions.
+- `ServiceAccessibilitySystem` measures reachability/capacity over the transportation graph; no circular-radius coverage is authoritative.
+- `ServiceDispatchSystem` owns waiting/assigned/responding/servicing/returning/completed jobs and deterministic facility/vehicle assignment.
+- `ServiceVehicleSystem` owns explicit fire engines, patrol cars, ambulances and garbage trucks using real graph routes and intersection queues.
+- `IncidentSystem` owns seeded fire/police/medical incidents, fire intensity/damage/spread and response outcomes.
+- `WasteCollectionSystem` owns per-building waste, collection reservations, truck cargo, processing queues and processed totals.
+- `EducationSystem` derives eligible students, reachable/effective seats, overcrowding and network-based school access.
+- `NeighborhoodQualitySystem` combines measured fire/police/healthcare/education/garbage outcomes into per-building and citywide service quality.
 
 ## Data flow
 
 Player command → validate → mutate authoritative owner → revision/cache invalidation → fixed-step simulation → immutable/query snapshot → UI/rendering.
 
-Road topology is authoritative world state. `TransportationGraph.rebuildIfNeeded()` reads road revision and rebuilds only after topology changes. Pathfinding caches are keyed by graph revision and a generalized-cost key. Traffic metrics are derived from active weighted vehicles on actual graph edges.
+Road topology remains the shared physical dependency. Both commuter and service routing use `TransportationGraph`/`PathfindingSystem`; congestion derives from commuter plus service-vehicle edge loads. Emergency vehicles receive deterministic intersection priority and reduced congestion delay, not traffic immunity.
 
 ## Presentation
 
-`GameApp` owns browser orchestration only. `WorldRenderer`, `VehicleRenderer`, and `TrafficOverlayLayer` read simulation state. `ToolController` routes player actions through public `SimulationCore` APIs. `HudView` and `Inspector` derive their content from authoritative snapshots.
+`GameApp` owns browser orchestration only. `WorldRenderer`, `VehicleRenderer`, `ServiceVehicleRenderer`, `TrafficOverlayLayer` and `ServiceOverlayLayer` read simulation state. `ToolController` routes player mutations through `SimulationCore`. `HudView` and `Inspector` expose authoritative metrics, budgets and service causes.
 
 The application exposes `window.__civicApp` as a development/smoke-test handle; gameplay does not depend on it.
 
 ## Persistence ownership
 
-Save V3 serializes authoritative owner state through public snapshot/restore APIs. It does not persist the transportation graph, route cache, rendered buffers, or traffic analytics caches. Hydration constructs a candidate core, restores owners, rebuilds graph state, validates traffic references, then returns the coherent candidate.
+Save V4 serializes authoritative owner state through snapshot/restore APIs. It persists active public-service jobs/vehicles/incidents/waste reservations because those are required for exact continuation. It does not persist transportation graphs, pathfinding caches, service-accessibility maps, rendered buffers or overlays.
 
-## Reimplementation provenance
+Hydration restores owners into a candidate core, rebuilds the road graph, validates traffic/service references against that graph, reconstructs derived metrics, and only then returns the candidate.
 
-The original temporary Phase 3 checkout expired before it was uploaded. This branch is a fresh implementation from the preserved specifications. It must not be represented as source-continuous with historical commit `f0bb3d6`.
+## Provenance
+
+The historical temporary Phase 3 checkout expired before upload. Current Phase 1–3 code is a fresh implementation from preserved specifications; Phase 4 extends that reverified codebase. GitHub is the durable canonical source.

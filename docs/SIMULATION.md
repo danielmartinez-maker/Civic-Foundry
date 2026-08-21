@@ -1,63 +1,87 @@
-# Simulation — Phase 3 Rebuild
+# Simulation — Phase 4
 
-## Clock and cadence
+## Deterministic cadence
 
-The core advances in deterministic logical ticks. Browser speed modes are paused, 1×, 2×, and 4×.
-
-Per tick:
+Each logical tick:
 
 1. advance clock
-2. rebuild transportation graph if road revision changed
-3. invalidate traffic routes that reference removed edges
-4. service intersection queues
-5. advance active vehicles
-6. derive edge traffic metrics and traffic analytics
-7. advance building construction
+2. rebuild transportation graph when road revision changes
+3. synchronize service fleets with funding/fiscal availability
+4. reroute or fail service vehicles whose topology became invalid
+5. service emergency/normal intersection queues
+6. advance service vehicles and apply arrivals/returns/completions
+7. update routed garbage pickup/unloading and incident response state
+8. advance commuter traffic including service-vehicle edge load
+9. recompute traffic analytics
+10. advance building construction
 
-Every 10 ticks: evaluate new building development.
+Every 10 ticks:
 
-Every 50 ticks: evaluate utilities, garbage, employment, taxes, R/C/I demand, recurring economy, and population migration.
+- synchronize detailed building waste state
+- on the inherited 50-tick waste cadence, generate new building waste
+- derive public-service demand/risk
+- create eligible incidents and garbage jobs
+- assign waiting jobs by graph travel cost/capacity
+- recompute service accessibility
+- recompute education and neighborhood service quality
+- evaluate building development
 
-Every 100 ticks: derive weighted commute/shopping trip requests from occupied buildings/population/employment, route them, and submit active traffic vehicles.
+Every 50 ticks:
 
-## Roads and traffic
+- evaluate power/water, employment, taxes, R/C/I demand, public-service operating obligations and migration
+- update department fiscal-payment effectiveness
 
-Road classes are `local`, `collector`, and `arterial`. Each definition owns cost, free-flow speed, capacity, intersection service rate, and render width.
+Every 100 ticks:
 
-The transportation graph contains one node per road cell and cardinal directed edges between adjacent road cells. Edge free-flow travel time derives from road speed. A* routing minimizes supplied generalized edge cost with deterministic tie breaking.
+- derive weighted commute/shopping requests and route them
+- incident generation may materialize deterministic risk exposure through the incident RNG stream
 
-Traffic is mesoscopic: one active vehicle may represent a weighted cohort. Edge utilization is:
+## Traffic and emergency response
 
-`utilization = weightedVehicles / capacityPerMinute`
+Road classes are `local`, `collector`, and `arterial`. Traffic congestion is derived from weighted occupancy/capacity. Service vehicles add real edge load.
 
-Delay multiplier:
+Emergency vehicles (`fire_engine`, `patrol_car`, `ambulance`) use the same network as commuters. Their congestion penalty is reduced to 55% of the delay above free flow and intersection queues prioritize emergency entries deterministically. Congestion therefore still increases response time.
 
-`delayMultiplier = 1 + 3 * max(0, utilization)^4`
+Garbage trucks use normal priority and contribute weight 2 to active edge load.
 
-Then:
+## Public-service accessibility
 
-`actualSpeed = freeFlowSpeed / delayMultiplier`
+For each occupied building and department, accessibility selects the lowest deterministic route-cost eligible facility. Disconnected facilities provide zero coverage.
 
-`travelTimeTicks = freeFlowTicks * delayMultiplier`
+`serviceAccess = normalizedTravelAccessibility × availableCapacityFactor`
 
-`congestion = clamp01(1 - actualSpeed/freeFlowSpeed)`
+Useful travel-time bounds:
 
-Vehicles reaching graph nodes with more than two outgoing edges enter deterministic intersection queues. Road demolition invalidates any moving or queued vehicle whose remaining route references a removed edge; queue state is cleaned in the same update.
+- fire: 180 ticks
+- police: 220
+- healthcare: 240
+- education: 300
+- garbage: 300
 
-## Traffic analytics
+Funding and unpaid obligations reduce effective staffing/capacity and can deactivate fleet slots.
 
-The rolling recent-outcome window is capped at 128 trip outcomes. Lifetime completed/failed counters remain separate diagnostics.
+## Incidents
 
-Accessibility uses successful weighted trips and actual travel time. Commute and shopping use different maximum acceptable travel-time constants. Failures reduce the route-success component instead of disappearing from analytics.
+Fire/police/medical incidents materialize from real demand exposure using a dedicated seeded RNG. Fire grows before response, accumulates damage, can spread only to cardinal adjacent occupied buildings after the intensity threshold, and is suppressed while responders service the incident.
 
-Traffic accessibility feeds R/C/I demand through bounded modifiers; it does not directly demolish buildings or alter treasury.
+Outcomes retain response time and success; recent outcome scores feed neighborhood service quality.
 
-## Phase 2 city loop
+## Garbage and education
 
-Employment workforce ratio is 50% of population. Employment is capped by occupied commercial/industrial job capacity.
+Detailed waste is stored per occupied building. The inherited building waste rate is generated every 50 ticks; collection jobs are created once pickup thresholds are crossed. Trucks physically travel, collect cargo, return and unload into finite landfill/recycling processing capacity.
 
-Power and water are distributed only inside road-connected components. Surplus in one disconnected component cannot serve another component.
+Education uses aggregate school-age share `0.18`, effective reachable seats, network travel time and education funding. Disconnected seats do not count.
 
-Garbage generation derives from occupied building definitions. Connected landfill capacity processes backlog; disconnected or insufficient processing accumulates backlog.
+## Neighborhood quality and growth
 
-Population growth is bounded by occupied residential capacity and current attractiveness. Essential utility failures cap attractiveness and can stall/decline growth.
+Per-building service quality combines:
+
+`0.22 fire + 0.22 police + 0.22 healthcare + 0.20 education + 0.14 garbage`
+
+Residential service-demand modifier:
+
+`clamp(-0.25, 0.15, (quality - 0.70) * 0.50)`
+
+Commercial service modifier uses police safety and garbage cleanliness.
+
+Power/water remain instantaneous essential-utility migration gates. Routed garbage is intentionally not treated as an instantaneous utility hard-stop; its consequences flow through garbage service ratio, health demand, cleanliness, neighborhood quality and development attractiveness.

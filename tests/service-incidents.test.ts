@@ -4,7 +4,7 @@ import { IncidentSystem } from '../src/simulation/services/IncidentSystem.ts';
 import { ServiceDispatchSystem, type ServiceJob } from '../src/simulation/services/ServiceDispatchSystem.ts';
 import { ServiceVehicleSystem } from '../src/simulation/services/ServiceVehicleSystem.ts';
 import { ServiceFacilitySystem } from '../src/simulation/services/ServiceFacilitySystem.ts';
-import { type ServiceDemandSnapshot } from '../src/simulation/services/ServiceDemandSystem.ts';
+import { ServiceDemandSystem, type ServiceDemandSnapshot } from '../src/simulation/services/ServiceDemandSystem.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 import { TreasurySystem } from '../src/simulation/treasury/TreasurySystem.ts';
 import { RoadSystem } from '../src/world/roads/RoadSystem.ts';
