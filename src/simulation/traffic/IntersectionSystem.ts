@@ -4,6 +4,7 @@ export type IntersectionQueueEntry = Readonly<{
   vehicleId: string;
   travelerWeight: number;
   queuedTick: number;
+  priority?: 'normal' | 'emergency';
 }>;
 
 export type IntersectionSnapshot = Readonly<Record<string, readonly Readonly<{ incomingEdgeId: string; entries: readonly IntersectionQueueEntry[] }>[]>>;
@@ -27,8 +28,8 @@ export class IntersectionSystem {
       this.queues.set(nodeId, approaches);
     }
     if (this.hasVehicle(entry.vehicleId)) return;
-    approach.entries.push({ ...entry });
-    approach.entries.sort((a, b) => a.queuedTick - b.queuedTick || a.vehicleId.localeCompare(b.vehicleId));
+    approach.entries.push({ ...entry, priority: entry.priority ?? 'normal' });
+    approach.entries.sort((a, b) => (a.priority === 'emergency' ? 0 : 1) - (b.priority === 'emergency' ? 0 : 1) || a.queuedTick - b.queuedTick || a.vehicleId.localeCompare(b.vehicleId));
   }
 
   stepNode(graph: TransportationGraph, nodeId: string): string[] {
@@ -40,7 +41,7 @@ export class IntersectionSystem {
 
     const candidates = approaches
       .flatMap((approach) => approach.entries.map((entry) => ({ approach, entry })))
-      .sort((a, b) => a.entry.queuedTick - b.entry.queuedTick || a.entry.vehicleId.localeCompare(b.entry.vehicleId));
+      .sort((a, b) => (a.entry.priority === 'emergency' ? 0 : 1) - (b.entry.priority === 'emergency' ? 0 : 1) || a.entry.queuedTick - b.entry.queuedTick || a.entry.vehicleId.localeCompare(b.entry.vehicleId));
 
     let remaining = capacity;
     const released: string[] = [];
