@@ -1,38 +1,50 @@
-name: Phase 6 Tasks 8-9 Checkpoint
+name: Phase 6 Final Publish
 
 on:
-  push:
-    branches: [phase6-execution]
+  pull_request:
+    branches: [metropolitan-era]
 
 permissions:
   contents: write
 
 jobs:
   publish:
+    if: github.head_ref == 'phase6-execution'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: phase6-execution
           fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Reconstruct verified Tasks 8-9
+      - name: Install pinned TypeScript compiler
+        run: npm install --global typescript@5.8.3
+      - name: Reconstruct final verified Phase 6 tree
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d .phase6.tasks8-9.patch.b64 | gzip -dc > /tmp/tasks8-9.patch
-          echo "f84cc47cc94c2dbc2a3dcdc276ed58aef233fcaeff2110db893718696343d1bc  /tmp/tasks8-9.patch" | sha256sum -c -
-          git apply --index /tmp/tasks8-9.patch
+          base64 -d .phase6.tasks8-9.patch.b64 | gzip -dc > /tmp/phase6-final.patch
+          echo "b02fad562ac12fa91afe293f5fae4e20792b920cd3aeaea2a22a3a59f7c0a3c4  /tmp/phase6-final.patch" | sha256sum -c -
+          git apply --index /tmp/phase6-final.patch
           git rm .phase6.tasks8-9.patch.b64 .github/workflows/phase6-tasks8-9-checkpoint.yml
-      - name: Focused verification
+      - name: Full verification
+        shell: bash
         run: |
-          node --experimental-strip-types --test tests/economy-presentation.test.ts tests/presentation-contract.test.ts tests/service-presentation.test.ts tests/transit-presentation.test.ts tests/phase6-headless.test.ts tests/save-v6.test.ts tests/save-v5.test.ts tests/economy-freight-vehicles.test.ts tests/economy-integration.test.ts tests/economy-lifecycle.test.ts tests/phase5-headless.test.ts
+          set -euo pipefail
+          npm test
           npm run typecheck
+          npm run lint
+          npm run build
           git diff --cached --check
-      - name: Commit and push checkpoint
+          if grep -RInE 'TODO|TBD|FIXME|PLACEHOLDER|coming soon' src tests README.md package.json; then
+            echo 'unfinished Phase 6 marker found'
+            exit 1
+          fi
+      - name: Commit and push final checkpoint
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "feat: checkpoint Phase 6 presentation and acceptance"
+          git commit -m "feat: complete verified Phase 6 economy"
           git push origin HEAD:phase6-execution
