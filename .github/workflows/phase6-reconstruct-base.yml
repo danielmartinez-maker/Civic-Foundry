@@ -27,10 +27,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d .phase6.tasks8-9.patch.b64 | gzip -dc > /tmp/phase6-final.patch
+          cat .phase6.final.patch.chunk* > /tmp/phase6-final.patch.b64
+          echo "948c7426f410d72353084d05309005773c2da7309fa7049bf3d24569baeaedc5  /tmp/phase6-final.patch.b64" | sha256sum -c -
+          base64 -d /tmp/phase6-final.patch.b64 | gzip -dc > /tmp/phase6-final.patch
           echo "b02fad562ac12fa91afe293f5fae4e20792b920cd3aeaea2a22a3a59f7c0a3c4  /tmp/phase6-final.patch" | sha256sum -c -
           git apply --index /tmp/phase6-final.patch
-          git rm .phase6.tasks8-9.patch.b64 .github/workflows/phase6-tasks8-9-checkpoint.yml
+          git rm .phase6.final.patch.chunk* .phase6.tasks8-9.patch.b64 .github/workflows/phase6-tasks8-9-checkpoint.yml
       - name: Full verification
         shell: bash
         run: |
