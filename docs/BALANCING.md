@@ -1,4 +1,4 @@
-# Balancing — Phase 4
+# Balancing — Phase 6
 
 ## Roads
 
@@ -73,3 +73,21 @@ Capacity pressure prevents undersupplied lines from remaining permanently attrac
 The citywide pressure used for mode choice is the waiting-weighted mean across queued lines. One full active vehicle-load waiting therefore adds roughly 60 generalized-cost ticks; pressure is capped at 600 ticks per line. The displayed experienced wait is scheduled expected wait plus the same derived queue-pressure term.
 
 BRT surface travel absorbs 35% of congestion delay above free flow. Bus and tram absorb the full road delay. Metro segment travel is dedicated-guideway time and is insulated from road congestion.
+
+
+## Firms, production and freight — Phase 6
+
+Phase 6 keeps the old physical commercial/industrial building capacities (8/14 jobs) as archetype-scale anchors, but jobs become active only after establishment formation.
+
+| Archetype | Zone | Jobs | Storage | Input → output | Freight intensity |
+|---|---|---:|---:|---|---:|
+| Retail local | Commercial | 8 | 40 | consumer goods → retail sales | 1.0 |
+| Wholesale logistics | Commercial | 8 | 80 | 2 manufactured → 2 consumer | 1.5 |
+| Light manufacturing | Industrial | 14 | 90 | 2 industrial inputs → 2 manufactured | 1.5 |
+| Assembly manufacturing | Industrial | 14 | 120 | 3 industrial inputs → 3 manufactured | 2.0 |
+
+Economic cadences: production 50 ticks, replenishment 100, lifecycle 250. Default freight dispatch capacity is 100 active weighted truck cohorts and is authoritative/persisted.
+
+Normalized prices/cost proxies: industrial inputs 8, manufactured goods 16, consumer goods 24, wage 0.35 per filled job/cycle, utility 0.08 per filled job/cycle, gateway handling 0.4/unit, route-time logistics coefficient 0.002.
+
+Firm cash health starts at 0.60. Distress threshold: 0.28; closure threshold: 0.08 plus four sustained loss evaluations; recovery threshold: 0.45 plus two sustained recovery evaluations. Formation threshold is 0.35 and requires a reachable freight gateway. These values are gameplay-normalized operating-health constants, not accounting statements.

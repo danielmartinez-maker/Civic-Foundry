@@ -7,6 +7,8 @@ import { mapServiceOverlay, type ServiceOverlayMode } from './ServiceOverlayLaye
 import { ServiceVehicleRenderer } from './ServiceVehicleRenderer.ts';
 import { mapTransitOverlay, type TransitOverlayMode } from './TransitOverlayLayer.ts';
 import { TransitVehicleRenderer } from './TransitVehicleRenderer.ts';
+import { mapEconomyOverlay, type EconomyOverlayMode } from './EconomyOverlayLayer.ts';
+import { FreightVehicleRenderer } from './FreightVehicleRenderer.ts';
 
 export type CanvasPoint = Readonly<{ x: number; y: number }>;
 export type CellSelection = Readonly<{ x: number; y: number }> | null;
@@ -24,6 +26,7 @@ export class WorldRenderer {
   private readonly vehicles = new VehicleRenderer();
   private readonly serviceVehicles = new ServiceVehicleRenderer();
   private readonly transitVehicles = new TransitVehicleRenderer();
+  private readonly freightVehicles = new FreightVehicleRenderer();
   private panX = 36;
   private panY = 36;
   private zoom = 1;
@@ -83,7 +86,7 @@ export class WorldRenderer {
     return core.terrain.inBounds(world.x, world.y) ? world : null;
   }
 
-  draw(core: SimulationCore, overlayMode: TrafficOverlayMode, selected: CellSelection, previewPath: readonly { x: number; y: number }[] = [], serviceOverlayMode: ServiceOverlayMode = 'none', transitOverlayMode: TransitOverlayMode = 'none'): void {
+  draw(core: SimulationCore, overlayMode: TrafficOverlayMode, selected: CellSelection, previewPath: readonly { x: number; y: number }[] = [], serviceOverlayMode: ServiceOverlayMode = 'none', transitOverlayMode: TransitOverlayMode = 'none', economyOverlayMode: EconomyOverlayMode = 'none'): void {
     this.resize();
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -176,10 +179,12 @@ export class WorldRenderer {
     this.drawTransitNetwork(core, transitOverlayMode);
     if (serviceOverlayMode !== 'none') this.drawServiceOverlay(core, serviceOverlayMode);
     if (overlayMode !== 'none') this.drawTrafficOverlay(core, overlayMode);
+    if (economyOverlayMode !== 'none') this.drawEconomyOverlay(core, economyOverlayMode);
     this.vehicles.draw(ctx, core.transportationGraph, core.traffic, (x, y) => this.worldToCanvas(x, y, core), this.cellSize);
     const travelTicks = new Map(core.traffic.edgeMetrics.map((metric) => [metric.edgeId, metric.travelTimeTicks]));
     this.serviceVehicles.draw(ctx, core.transportationGraph, core.serviceVehicles, travelTicks, (x, y) => this.worldToCanvas(x, y, core), this.cellSize);
     this.transitVehicles.draw(ctx, core.transit, core.transportationGraph, core.mobility.vehicles, travelTicks, (x, y) => this.worldToCanvas(x, y, core), this.cellSize);
+    this.freightVehicles.draw(ctx, core.transportationGraph, core.economyDomain.freightVehicles, travelTicks, (x, y) => this.worldToCanvas(x, y, core), this.cellSize);
 
     if (previewPath.length > 0) {
       ctx.save();
@@ -291,6 +296,25 @@ export class WorldRenderer {
       ctx.fillText(label, 20, 19);
       ctx.restore();
     }
+  }
+
+  private drawEconomyOverlay(core: SimulationCore, mode: Exclude<EconomyOverlayMode, 'none'>): void {
+    const snapshot = mapEconomyOverlay(core, mode);
+    const routeMax = Math.max(1, ...snapshot.routes.map((route) => route.value));
+    for (const item of snapshot.cells) {
+      const p = this.worldToCanvas(item.x, item.y, core);
+      this.ctx.save();
+      this.ctx.fillStyle = `rgba(238, 177, 73, ${0.18 + Math.max(0, Math.min(1, item.value)) * 0.5})`;
+      this.ctx.fillRect(p.x + 2, p.y + 2, this.cellSize - 4, this.cellSize - 4);
+      if (this.cellSize >= 20) { this.ctx.fillStyle = '#fff'; this.ctx.strokeStyle = 'rgba(0,0,0,.7)'; this.ctx.lineWidth = 2; this.ctx.font = `700 ${Math.max(8, this.cellSize * .27)}px system-ui`; this.ctx.textAlign='center'; this.ctx.textBaseline='middle'; this.ctx.strokeText(item.label, p.x + this.cellSize/2, p.y + this.cellSize/2); this.ctx.fillText(item.label, p.x + this.cellSize/2, p.y + this.cellSize/2); }
+      this.ctx.restore();
+    }
+    for (const route of snapshot.routes) {
+      this.ctx.save(); this.ctx.strokeStyle = '#d9a64a'; this.ctx.globalAlpha = .82; this.ctx.lineWidth = Math.max(2, this.cellSize * (.06 + .08 * Math.min(1, route.value / routeMax))); this.ctx.setLineDash(mode === 'freight-routes' ? [7,4] : []);
+      for (const edgeId of route.edgeIds) { const edge=core.transportationGraph.getEdge(edgeId); if(!edge) continue; const from=core.transportationGraph.getNode(edge.from),to=core.transportationGraph.getNode(edge.to); if(!from||!to) continue; const a=this.worldToCanvas(from.x,from.y,core), b=this.worldToCanvas(to.x,to.y,core); this.ctx.beginPath();this.ctx.moveTo(a.x+this.cellSize/2,a.y+this.cellSize/2);this.ctx.lineTo(b.x+this.cellSize/2,b.y+this.cellSize/2);this.ctx.stroke(); }
+      this.ctx.restore();
+    }
+    for (const gateway of snapshot.gateways) { const p=this.worldToCanvas(gateway.x,gateway.y,core); this.ctx.save(); this.ctx.fillStyle='#f1c36e'; this.ctx.strokeStyle='#151b1f'; this.ctx.lineWidth=2; const r=Math.max(4,this.cellSize*.22); this.ctx.beginPath();this.ctx.moveTo(p.x+this.cellSize/2,p.y+this.cellSize/2-r);this.ctx.lineTo(p.x+this.cellSize/2+r,p.y+this.cellSize/2);this.ctx.lineTo(p.x+this.cellSize/2,p.y+this.cellSize/2+r);this.ctx.lineTo(p.x+this.cellSize/2-r,p.y+this.cellSize/2);this.ctx.closePath();this.ctx.fill();this.ctx.stroke();this.ctx.restore(); }
   }
 
   private drawServiceOverlay(core: SimulationCore, mode: Exclude<ServiceOverlayMode, 'none'>): void {

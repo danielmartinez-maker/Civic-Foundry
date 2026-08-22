@@ -3,6 +3,29 @@ import { ROAD_DEFINITIONS } from '../data/roads.ts';
 import { BUILDING_DEFINITIONS } from '../data/buildings.ts';
 import { SERVICE_DEFINITIONS } from '../data/services.ts';
 
+
+export type FirmInspectionDto = Readonly<{
+  id: string; archetype: string; status: string; filledJobs: number; jobCapacity: number; vacancies: number; throughput?: number;
+  inputShortage: number; logisticsCost: number; operatingMargin: number; cashHealth: number; distressReason?: string;
+  inventories: Readonly<{ industrial_inputs: number; manufactured_goods: number; consumer_goods: number }>;
+  inboundShipments: number; outboundShipments: number;
+}>;
+
+export function renderFirmInspection(firm: FirmInspectionDto): string {
+  const pct = (value: number): string => `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+  return [
+    `<h3>${firm.id} · ${firm.archetype}</h3>`,
+    `<p>Status: ${firm.status}${firm.distressReason ? ` · ${firm.distressReason}` : ''}</p>`,
+    `<p>Jobs: ${firm.filledJobs}/${firm.jobCapacity} · ${firm.vacancies} vacancies</p>`,
+    `<p>Input shortage: ${pct(firm.inputShortage)}</p>`,
+    `<p>Logistics cost: ${firm.logisticsCost.toFixed(2)}</p>`,
+    `<p>Operating margin: ${firm.operatingMargin.toFixed(2)}</p>`,
+    `<p>Cash health: ${pct(firm.cashHealth)}</p>`,
+    `<p>Inventory: inputs ${firm.inventories.industrial_inputs.toFixed(1)} · manufactured ${firm.inventories.manufactured_goods.toFixed(1)} · consumer ${firm.inventories.consumer_goods.toFixed(1)}</p>`,
+    `<p>Shipments: ${firm.inboundShipments} inbound · ${firm.outboundShipments} outbound</p>`,
+  ].join('');
+}
+
 export type Inspection = Readonly<{
   kind: 'road' | 'building' | 'utility' | 'service' | 'transit-stop' | 'transit-line' | 'transit-vehicle' | 'terrain';
   title: string;
@@ -41,11 +64,29 @@ export function inspectCell(core: SimulationCore, x: number, y: number): Inspect
   if (building) {
     const definition = BUILDING_DEFINITIONS[building.zone];
     const service = core.utilitySnapshot.perBuilding[building.id] ?? { power: 0, water: 0 };
+    const firm = core.economyDomain.getFirmAtBuilding(building.id);
+    const firmLines: string[] = [];
+    if (firm) {
+      const inventories = core.economyDomain.getFirmInventories(firm.id);
+      const financials = core.economyDomain.getFirmFinancials(firm.id);
+      const vehicles = core.economyDomain.freightVehicles.listVehicles();
+      firmLines.push(
+        `Firm: ${firm.id} · ${firm.archetype} · ${firm.status}`,
+        `Firm jobs: ${firm.filledJobs}/${firm.jobCapacity} · ${firm.vacancies} vacancies`,
+        `Input shortage: ${Math.round(core.economyDomain.inventories.shortageRatio(firm.id) * 100)}%`,
+        `Logistics cost: ${financials.logisticsCost.toFixed(2)}`,
+        `Operating margin: ${firm.lastOperatingMargin.toFixed(2)}`,
+        `Cash health: ${Math.round(firm.cashHealth * 100)}%`,
+        `Inventory inputs / manufactured / consumer: ${inventories.industrial_inputs.onHand.toFixed(1)} / ${inventories.manufactured_goods.onHand.toFixed(1)} / ${inventories.consumer_goods.onHand.toFixed(1)}`,
+        `Active shipments in / out: ${vehicles.filter((v) => v.shipment.destinationId === firm.id).length} / ${vehicles.filter((v) => v.shipment.originId === firm.id).length}`,
+      );
+    }
     return {
       kind: 'building',
       title: `${building.zone[0]?.toUpperCase() ?? ''}${building.zone.slice(1)} building`,
       lines: [
         `Status: ${building.status}`,
+        ...firmLines,
         `Residents capacity: ${definition.residentCapacity}`,
         `Jobs capacity: ${definition.jobCapacity}`,
         `Power service: ${Math.round(service.power * 100)}%`,
@@ -122,6 +163,31 @@ export function inspectCell(core: SimulationCore, x: number, y: number): Inspect
     title: terrain.biome[0]!.toUpperCase() + terrain.biome.slice(1),
     lines: [`Elevation: ${terrain.elevation.toFixed(2)}`, `Buildable: ${terrain.buildable ? 'yes' : 'no'}`],
   };
+}
+
+
+export function inspectFreightVehicle(core: SimulationCore, vehicleId: string): Inspection {
+  const vehicle = core.economyDomain.freightVehicles.getVehicle(vehicleId);
+  if (!vehicle) return { kind: 'road', title: 'Unknown freight vehicle', lines: [`ID: ${vehicleId}`] };
+  return { kind: 'road', title: 'Freight shipment', lines: [
+    `Vehicle: ${vehicle.id}`, `Commodity: ${vehicle.shipment.commodity}`, `Quantity: ${vehicle.shipment.quantity.toFixed(1)}`,
+    `Origin: ${vehicle.shipment.originId}`, `Destination: ${vehicle.shipment.destinationId}`,
+    `Route progress: ${vehicle.currentEdgeIndex + 1}/${vehicle.routeEdgeIds.length}`, `Delay: ${vehicle.delayTicks.toFixed(1)} ticks`,
+    `Logistics cost: ${vehicle.shipment.generalizedCost.toFixed(2)}`,
+  ] };
+}
+
+export function inspectFreightGateway(core: SimulationCore, gatewayId: string): Inspection {
+  const gateway = core.economyDomain.trade.getGateway(gatewayId);
+  if (!gateway) return { kind: 'road', title: 'Unknown freight gateway', lines: [`ID: ${gatewayId}`] };
+  const vehicles = core.economyDomain.freightVehicles.listVehicles();
+  const inbound = vehicles.filter((v) => v.shipment.originKind === 'gateway' && v.shipment.originId === gatewayId).reduce((s, v) => s + v.shipment.quantity, 0);
+  const outbound = vehicles.filter((v) => v.shipment.destinationKind === 'gateway' && v.shipment.destinationId === gatewayId).reduce((s, v) => s + v.shipment.quantity, 0);
+  return { kind: 'road', title: 'Freight gateway', lines: [
+    `ID: ${gateway.id}`, `Import / export capacity: ${gateway.importCapacity} / ${gateway.exportCapacity}`,
+    `Current inbound / outbound cargo: ${inbound.toFixed(1)} / ${outbound.toFixed(1)}`,
+    `External demand index: ${gateway.externalDemandIndex.toFixed(2)}`,
+  ] };
 }
 
 

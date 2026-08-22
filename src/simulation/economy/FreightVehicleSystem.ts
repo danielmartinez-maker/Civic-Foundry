@@ -7,11 +7,15 @@ export type FreightVehicleStatus='moving'|'failed';
 export type FreightVehicle=Readonly<{id:string;shipment:FreightShipment;routeEdgeIds:readonly string[];currentEdgeIndex:number;edgeProgressTicks:number;departureTick:number;expectedArrivalTick:number;delayTicks:number;status:FreightVehicleStatus}>;
 type MutableFreightVehicle={id:string;shipment:FreightShipment;routeEdgeIds:string[];currentEdgeIndex:number;edgeProgressTicks:number;departureTick:number;expectedArrivalTick:number;delayTicks:number;status:FreightVehicleStatus};
 export type FreightVehicleEvent=Readonly<{type:'delivered'|'failed'|'needs-replan';vehicleId:string;shipment:FreightShipment;delayTicks:number;currentNodeId?:string}>;
-export type FreightVehicleStateSnapshot=Readonly<{nextVehicleId:number;vehicles:readonly FreightVehicle[]}>;
+export type FreightVehicleStateSnapshot=Readonly<{nextVehicleId:number;dispatchCapacity:number;vehicles:readonly FreightVehicle[]}>;
 
 export class FreightVehicleSystem{
-  private vehicles=new Map<string,MutableFreightVehicle>(); private nextVehicleId=1;
+  private vehicles=new Map<string,MutableFreightVehicle>(); private nextVehicleId=1; private dispatchCapacity=100;
+  setDispatchCapacity(count:number):void{this.dispatchCapacity=Math.max(0,Math.floor(Number.isFinite(count)?count:0));}
+  getDispatchCapacity():number{return this.dispatchCapacity;}
+  hasDispatchCapacity():boolean{return this.activeCount()<this.dispatchCapacity;}
   dispatch(shipment:FreightShipment,route:RouteResult,tick:number):FreightVehicle{
+    if(!this.hasDispatchCapacity())throw new Error('freight dispatch capacity exhausted');
     if(route.edgeIds.length===0)throw new Error('freight route must contain at least one edge');
     const id=`freight-vehicle:${this.nextVehicleId++}`; const v:MutableFreightVehicle={id,shipment:{...shipment},routeEdgeIds:[...route.edgeIds],currentEdgeIndex:0,edgeProgressTicks:0,departureTick:tick,expectedArrivalTick:tick+route.totalCost,delayTicks:0,status:'moving'};this.vehicles.set(id,v);return this.copy(v);
   }
@@ -30,8 +34,8 @@ export class FreightVehicleSystem{
     }
     return events;
   }
-  snapshotState():FreightVehicleStateSnapshot{return{nextVehicleId:this.nextVehicleId,vehicles:this.listVehicles()};}
-  restoreState(state:FreightVehicleStateSnapshot):void{if(!Number.isInteger(state.nextVehicleId)||state.nextVehicleId<1)throw new Error('invalid freight vehicle id state');this.vehicles.clear();for(const v of state.vehicles)this.vehicles.set(v.id,{...v,shipment:{...v.shipment},routeEdgeIds:[...v.routeEdgeIds]});this.nextVehicleId=state.nextVehicleId;}
+  snapshotState():FreightVehicleStateSnapshot{return{nextVehicleId:this.nextVehicleId,dispatchCapacity:this.dispatchCapacity,vehicles:this.listVehicles()};}
+  restoreState(state:FreightVehicleStateSnapshot):void{if(!Number.isInteger(state.nextVehicleId)||state.nextVehicleId<1)throw new Error('invalid freight vehicle id state');if(!Number.isInteger(state.dispatchCapacity)||state.dispatchCapacity<0)throw new Error('invalid freight dispatch capacity');this.vehicles.clear();for(const v of state.vehicles)this.vehicles.set(v.id,{...v,shipment:{...v.shipment},routeEdgeIds:[...v.routeEdgeIds]});this.nextVehicleId=state.nextVehicleId;this.dispatchCapacity=state.dispatchCapacity;}
   removeForShipment(shipmentId:string):void{for(const [id,v] of this.vehicles)if(v.shipment.id===shipmentId)this.vehicles.delete(id);}
   private copy(v:MutableFreightVehicle):FreightVehicle{return{...v,shipment:{...v.shipment},routeEdgeIds:[...v.routeEdgeIds]};}
 }

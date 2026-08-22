@@ -1,4 +1,4 @@
-# Simulation — Phase 4
+# Simulation — Phase 6
 
 ## Deterministic cadence
 
@@ -108,3 +108,30 @@ Phase 5 inserts person mobility and transit operations into the deterministic ti
 Passenger queues are authoritative weighted cohorts. Vehicles board FIFO up to physical capacity and leave excess weight waiting. Before each new mode-choice decision, `MobilityScheduler` derives queue pressure from waiting weight relative to active capacity. That penalty enters transit generalized cost, so chronically undersupplied service becomes less attractive to later travelers instead of accumulating cost-free queues indefinitely.
 
 `meanWaitTicks` combines scheduled wait recorded on transit decisions with the current derived capacity-pressure term. `personAccessibility` remains bounded to `0..1` through the existing commute/shopping acceptable-cost thresholds and therefore feeds demand without creating a new unbounded growth channel.
+
+
+## Phase 6 establishment economy
+
+`EconomyScheduler` is ticked from `SimulationCore` and owns the economic update order. Road topology revision changes first rebuild derived boundary gateways. Active freight vehicles then advance every tick using current road travel times and contribute weighted edge load to the shared traffic calculation.
+
+Economic work is cadence-gated:
+
+- every **50 ticks**: allocate labor, run manufacturing/wholesale/retail production, accrue wages, utility burden and shortage penalties;
+- every **100 ticks**: create replenishment/export orders, match suppliers/gateways by generalized freight cost and dispatch trucks up to the authoritative freight dispatch capacity;
+- every **250 ticks**: synchronize eligible buildings, score formation, settle accrued firm operating margin, and evaluate sustained distress/recovery/closure.
+
+Commercial/industrial buildings are physical shells only. In V6 an occupied shell creates no authoritative jobs until a viable establishment forms. Employment snapshots are then derived from active firm job capacities and filled jobs.
+
+### Goods and freight
+
+The detailed local chain is:
+
+`gateway industrial_inputs → industrial manufactured_goods → wholesale consumer_goods → retail household-equivalent consumption`
+
+`industrial_inputs` have no local producer in Phase 6. Local suppliers can beat imports for locally producible goods only when their generalized logistics cost is lower. Dispatch-limited orders remain waiting; their age contributes `queueDelay`, while delayed replenishment creates real inventory shortages and downstream output/sales pressure.
+
+Cargo is conserved through shipment ownership. Dispatch removes local source stock or creates an external-import cargo token. Exactly one terminal path receives, exports or cancels that cargo. Closing/bulldozing a firm cancels affected orders and in-flight vehicles/cargo before its inventory records are removed, preventing late deliveries from recreating closed-firm stock.
+
+### Firm finance and lifecycle
+
+Each production/lifecycle window accrues sales/export revenue, input purchases, wage proxy, utility burden, tax burden, logistics cost and shortage penalties. `cashHealth` is bounded and separate from municipal treasury cash. Distress and closure require sustained bad cycles; recovery likewise requires sustained improvement. No arbitrary random bankruptcy is used.

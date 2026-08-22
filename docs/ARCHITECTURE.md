@@ -1,8 +1,8 @@
-# Civic Foundry Architecture — Phase 5
+# Civic Foundry Architecture — Phase 6
 
 ## Boundary
 
-The authoritative simulation is independent from DOM and Canvas rendering. `SimulationCore` composes focused state owners and controls the fixed-step city loop. `MobilityScheduler` owns the Phase 5 multimodal sub-schedule. Presentation code consumes public snapshots and public mutation APIs only.
+The authoritative simulation is independent from DOM and Canvas rendering. `SimulationCore` composes focused state owners and controls the fixed-step city loop. `MobilityScheduler` owns the multimodal sub-schedule and `EconomyScheduler` owns the Phase 6 establishment/freight sub-schedule. Presentation code consumes public snapshots and public mutation APIs only.
 
 ## Authoritative city systems
 
@@ -10,6 +10,21 @@ The authoritative simulation is independent from DOM and Canvas rendering. `Simu
 - `EmploymentSystem`, `TaxSystem`, `DemandSystem`, `UtilitySystem`, `GarbageSystem`, `EconomySystem`
 - `TransportationGraph`, `PathfindingSystem`, `TripGenerationSystem`, `IntersectionSystem`, `TrafficSystem`, `TrafficAnalytics`
 - Phase 4 service owners: `ServiceFacilitySystem`, `ServiceDemandSystem`, `ServiceDispatchSystem`, `ServiceVehicleSystem`, `IncidentSystem`, `WasteCollectionSystem`, `EducationSystem`, `NeighborhoodQualitySystem`
+
+
+## Phase 6 economy systems
+
+- `FirmSystem` owns establishment identity, building tenancy, archetype, job capacity and lifecycle status.
+- `LaborMarketSystem` allocates homogeneous aggregate workforce to operating/distressed firms; raw building job capacity is no longer authoritative employment.
+- `InventorySystem` owns three storable commodities and shipment-owned cargo tokens with exactly-once terminal delivery/cancel semantics.
+- `ProductionSystem` runs the compact chain: imported `industrial_inputs` → industrial `manufactured_goods` → wholesale `consumer_goods` → retail consumption.
+- `TradeSystem` derives stable `gateway:x:y` access from drivable boundary nodes and owns aggregate import/export counters.
+- `FreightDemandSystem` owns replenishment/export orders and deterministic generalized-cost supplier matching.
+- `FreightVehicleSystem` owns explicit weighted trucks, route progress, dispatch capacity and road edge load.
+- `BusinessLifecycleSystem` turns accrued revenue/cost/shortage/logistics evidence into sustained formation, distress, recovery and closure decisions.
+- `EconomyScheduler` coordinates these owners on production (50), replenishment (100) and lifecycle (250) tick cadences and exposes one immutable domain snapshot.
+
+Freight free-flow OD routes reuse the existing revision-keyed path cache. Current congestion affects generalized logistics cost by summing current edge travel times over the cached route; congestion epochs do not invalidate the underlying OD path. This avoids repeated A* work while preserving causal road-delay costs.
 
 ## Phase 5 mobility systems
 
@@ -35,7 +50,7 @@ Capacity feedback is derived from authoritative waiting weight and active vehicl
 
 ## Presentation
 
-`GameApp` owns browser orchestration only. `WorldRenderer` composes road/building/service rendering with `TransitOverlayLayer` and `TransitVehicleRenderer`. `TransitPanelController` translates player line/headway/fare/fleet edits into authoritative system calls. `HudView` and transit inspectors expose simulation-derived mobility metrics.
+`GameApp` owns browser orchestration only. `WorldRenderer` composes road/building/service rendering with transit and economy overlays plus transit/freight vehicle renderers. `TransitPanelController` translates player line/headway/fare/fleet edits into authoritative system calls. `HudView`, transit inspectors, `EconomyPanel`, firm/freight/gateway inspectors and `EconomyOverlayLayer` expose simulation-derived mobility/economic metrics.
 
 Transit overlays include route/mode, access, ridership, crowding, wait, reliability, mode share and person accessibility. Numeric legends accompany encoded line/stop styling; color is not the only route-mode cue.
 
@@ -43,11 +58,11 @@ The application exposes `window.__civicApp` as a development/smoke-test handle; 
 
 ## Persistence ownership
 
-Save V5 persists the authoritative Phase 1–4 envelope plus transit topology and `MobilityScheduler` state: passenger queues, active transit vehicles, operations counters, decisions/crowding configuration and fiscal cursors required for exact continuation. The derived multimodal graph and journey cache are rebuilt after hydration.
+Save V6 retains the complete V5 city/transit envelope and adds `EconomySchedulerStateSnapshot`: firms/lifecycle counters, inventory records and shipment cargo, freight orders, active truck routes/progress, trade gateways/counters, financial accruals, dispatch capacity, scheduler counters and stable IDs required for deterministic continuation.
 
-V4 migration constructs an honest empty transit state while preserving the Phase 4 city. Current public `serializeCore`/`hydrateCore` use V5; explicit legacy V4 functions remain available only for migration tests and historical fixtures.
+V5→V6 migration restores the Phase 5 city exactly with empty Phase 6 economic history. Firms are not backdated; occupied commercial/industrial buildings become normal future formation candidates. The public `serializeCore`/`hydrateCore` API is V6 while explicit V3/V4/V5 serializers remain migration/compatibility tools.
 
-Hydration restores a candidate core, rebuilds the road graph, validates transit/vehicle/passenger references, restores authoritative mobility owners, reconstructs derived traffic metrics and only then returns the candidate.
+Derived state is rebuilt rather than persisted: road/multimodal graphs, route caches, building-to-road freight access, analytics, overlays and render geometry. Hydration validates firm/order/cargo/gateway/road references, restores authoritative owners, rebuilds the firm-access context and traffic loads, and only then returns the coherent candidate.
 
 ## Provenance
 

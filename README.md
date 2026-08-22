@@ -4,9 +4,9 @@ Civic Foundry is an original browser-based city-management and urban-development
 
 ## Current playable milestone
 
-This branch implements the reverified rebuild through **Phase 5 — Transit Revolution**, the first Metropolitan Era slice. GitHub is the canonical source of truth for current code, tests, configuration, and documentation.
+This branch implements the reverified rebuild through **Phase 6 — Firms, Production & Freight**, the second Metropolitan Era slice. GitHub is the canonical source of truth for current code, tests, configuration, and documentation.
 
-Implemented through Phase 5:
+Implemented through Phase 6:
 
 - deterministic terrain, simulation clock, treasury, construction costs and save/load
 - local, collector and arterial roads with intersections and graph revisions
@@ -23,7 +23,12 @@ Implemented through Phase 5:
 - explicit transit vehicles, scheduled dispatch, dwell, road-sensitive surface service and insulated metro timing
 - transit operating cost, fare revenue, reliability, crowding, mode share and person accessibility feeding city outcomes
 - Phase V transit build/configuration tools, HUD metrics, inspectors, vehicles and numeric overlays
-- Save V5 with exact active-transit continuation and V2/V3/V4 migration
+- establishment-based commercial/industrial firms with deterministic formation, labor allocation, operating health, distress and closure
+- conservation-safe inventories and the explicit `industrial_inputs → manufactured_goods → consumer_goods` production chain
+- boundary-derived freight gateways, imports/exports, generalized-cost supplier matching, queued freight orders and explicit weighted trucks
+- freight congestion/logistics feedback into shortages, output, firm economics, employment and city demand
+- Phase VI economy/freight HUD metrics, firm inspection, nine diagnostic overlays and authoritative freight-agent rendering
+- Save V6 with exact active-freight/economy continuation and honest V5 migration
 
 ## Toolchain
 
@@ -52,13 +57,13 @@ npm run dev
 
 ## Architecture rule
 
-`SimulationCore` composes focused authoritative systems. `MobilityScheduler` owns multimodal update order, while transit topology, passenger queues, vehicles and operations retain their own state boundaries. Rendering/UI reads snapshots and submits typed mutations through public APIs; it does not manufacture simulation outcomes.
+`SimulationCore` composes focused authoritative systems. `MobilityScheduler` owns multimodal update order and `EconomyScheduler` owns Phase 6 firms, inventories, production, freight, trade and business lifecycle state. Rendering/UI reads snapshots and submits typed mutations through public APIs; it does not manufacture simulation outcomes.
 
 Road traffic, transit attractiveness, service access, demand and finance are coupled through measured travel/capacity/accessibility results. A transit line only helps when its geometry, frequency, capacity, fare and destination access make it competitive.
 
 ## Persistence
 
-Current save envelope: `saveVersion: 5`, game version `0.5.0-metropolitan`. V5 persists authoritative transit topology, passenger queues, active transit vehicles and operations state needed for deterministic continuation. Derived transportation/multimodal graphs, route caches, accessibility maps, overlays and render state are rebuilt after hydration.
+Current save envelope: `saveVersion: 6`, game version `0.6.0-metropolitan`. V6 retains the full V5 transit city and adds firms, inventories/cargo, freight orders, active truck progress, trade gateways/counters, lifecycle/finance accruals, dispatch capacity and stable IDs needed for exact continuation. Derived transportation/multimodal graphs, freight access, route caches, accessibility maps, overlays and render state are rebuilt after hydration.
 
 ## Roadmap
 
@@ -67,10 +72,16 @@ Current save envelope: `saveVersion: 5`, game version `0.5.0-metropolitan`. V5 p
 3. Phase 3 — Traffic ✅
 4. Phase 4 — Public Services ✅
 5. Phase 5 — Transit Revolution ✅
-6. Phase 6 — Economic Depth
-7. Phase 7 — Urban Depth
+6. Phase 6 — Firms, Production & Freight ✅
+7. Phase 7 — Land, Housing & Development
 8. Phase 8 — Metropolitan Infrastructure
-9. Phase 9 — Environment and Events
-10. Phase 10 — Polish
+9. Phase 9 — Demographic City
+10. Phase 10 — Environment & Resilience
+11. Phase 11 — Municipal Government & Finance
+12. Phase 12 — Politics & Public Opinion
+13. Phase 13 — Construction & Megaprojects
+14. Phase 14 — Regional Simulation
+15. Phase 15 — Specialized Economies & City Identity
+16. Phase 16 — Endgame, Scenarios & Modding
 
 See `docs/` and `docs/superpowers/` for architecture, balancing, testing, save-format, design and implementation-plan details.

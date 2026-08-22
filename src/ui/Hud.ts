@@ -39,6 +39,12 @@ export type HudMetrics = Readonly<{
   transitCrowding: number;
   transitOperatingCost: number;
   transitFareRevenue: number;
+  activeFirms: number;
+  distressedFirms: number;
+  inputShortageRate: number;
+  freightVolumeInTransit: number;
+  importVolume: number;
+  exportVolume: number;
 }>;
 
 export function collectHudMetrics(core: SimulationCore): HudMetrics {
@@ -80,6 +86,12 @@ export function collectHudMetrics(core: SimulationCore): HudMetrics {
     transitCrowding: core.mobilitySnapshot.crowding,
     transitOperatingCost: core.mobilitySnapshot.transitOperatingCost,
     transitFareRevenue: core.mobilitySnapshot.transitFareRevenue,
+    activeFirms: core.economyDomain.snapshot(core.clock.tick).activeFirms,
+    distressedFirms: core.economyDomain.snapshot(core.clock.tick).distressedFirms,
+    inputShortageRate: core.economyDomain.snapshot(core.clock.tick).shortageRate,
+    freightVolumeInTransit: core.economyDomain.snapshot(core.clock.tick).freightVolumeInTransit,
+    importVolume: core.economyDomain.snapshot(core.clock.tick).cumulativeImports,
+    exportVolume: core.economyDomain.snapshot(core.clock.tick).cumulativeExports,
   };
 }
 
@@ -100,6 +112,7 @@ export class HudView {
       ['service', 'Services'], ['education', 'Education'], ['service-fleet', 'Service fleet'], ['service-jobs', 'Waiting calls'],
       ['transit-share', 'Transit share'], ['person-access', 'Person access'], ['ridership', 'Ridership'], ['transit-wait', 'Transit wait'],
       ['transit-reliability', 'Reliability'], ['transit-crowding', 'Crowding'],
+      ['firms', 'Firms'], ['shortage', 'Input shortage'], ['freight', 'Freight'], ['trade', 'Imports / exports'],
     ].map(([id, label]) => `<div class="hud-stat"><span>${label}</span><strong data-hud="${id}">—</strong></div>`).join('');
     root.querySelectorAll<HTMLElement>('[data-hud]').forEach((element) => this.values.set(element.dataset.hud ?? '', element));
   }
@@ -128,6 +141,10 @@ export class HudView {
     this.set('transit-wait', metrics.transitMeanWaitTicks > 0 ? `${metrics.transitMeanWaitTicks.toFixed(1)} ticks` : '—');
     this.set('transit-reliability', percent(metrics.transitReliability));
     this.set('transit-crowding', percent(metrics.transitCrowding));
+    this.set('firms', `${metrics.activeFirms} · ${metrics.distressedFirms} distressed`);
+    this.set('shortage', percent(metrics.inputShortageRate));
+    this.set('freight', metrics.freightVolumeInTransit.toFixed(1));
+    this.set('trade', `${metrics.importVolume.toFixed(0)} / ${metrics.exportVolume.toFixed(0)}`);
   }
 
   private set(id: string, value: string): void {

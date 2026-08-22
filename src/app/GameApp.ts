@@ -11,8 +11,10 @@ import { collectHudMetrics, HudView } from '../ui/Hud.ts';
 import { inspectCell, inspectTransitLine, inspectTransitVehicle, type Inspection } from '../ui/Inspector.ts';
 import { ToolController, type ToolId } from '../ui/ToolController.ts';
 import { collectTransitPanelState, TransitPanelController } from '../ui/TransitPanel.ts';
+import { EconomyPanel } from '../ui/EconomyPanel.ts';
+import { mapEconomyOverlay, type EconomyOverlayMode } from '../rendering/EconomyOverlayLayer.ts';
 
-const STORAGE_KEY = 'civic-foundry-save-v5';
+const STORAGE_KEY = 'civic-foundry-save-v6';
 const TOOLS: readonly [ToolId, string, string][] = [
   ['inspect', 'Inspect', 'I'], ['road-local', 'Local', 'R'], ['road-collector', 'Collector', 'C'], ['road-arterial', 'Arterial', 'A'],
   ['zone-residential', 'Residential', '1'], ['zone-commercial', 'Commercial', '2'], ['zone-industrial', 'Industrial', '3'],
@@ -35,6 +37,7 @@ export class GameApp {
   private overlayMode: TrafficOverlayMode = 'none';
   private serviceOverlayMode: ServiceOverlayMode = 'none';
   private transitOverlayMode: TransitOverlayMode = 'none';
+  private economyOverlayMode: EconomyOverlayMode = 'none';
   private readonly activeAlertKeys = new Set<string>();
   private selected: CellSelection = null;
   private dragRoadStart: CellCoord | null = null;
@@ -60,6 +63,7 @@ export class GameApp {
     this.bindCanvas(canvas);
     this.selectTool('inspect');
     this.renderTransitPanel();
+    this.renderEconomyPanel();
     this.updateOverlayLegend();
     requestAnimationFrame((time) => this.frame(time));
   }
@@ -70,15 +74,16 @@ export class GameApp {
     const taxRows = (['residential', 'commercial', 'industrial'] as ZoneType[]).map((zone) => `<label class="tax-row"><span>${zone[0]!.toUpperCase()}</span><input data-tax="${zone}" type="number" min="0" max="25" step="0.5" value="10"><b>%</b></label>`).join('');
     const serviceBudgetRows = (['fire', 'police', 'healthcare', 'education', 'garbage'] as ServiceDepartment[]).map((department) => `<label class="tax-row"><span>${department[0]!.toUpperCase()}${department.slice(1, 4)}</span><input data-service-budget="${department}" data-testid="budget-${department}" type="number" min="50" max="150" step="5" value="100"><b>%</b></label>`).join('');
     return `<div class="game-shell">
-      <header class="topbar"><div><div class="eyebrow">PHASE V · TRANSIT REVOLUTION</div><h1>CIVIC FOUNDRY</h1></div>
-        <div class="top-actions"><button data-action="save" data-testid="save">Save V5</button><button data-action="load" data-testid="load">Load</button></div></header>
+      <header class="topbar"><div><div class="eyebrow">PHASE VI · FIRMS, PRODUCTION & FREIGHT</div><h1>CIVIC FOUNDRY</h1></div>
+        <div class="top-actions"><button data-action="save" data-testid="save">Save V6</button><button data-action="load" data-testid="load">Load</button></div></header>
       <section id="hud" class="hud"></section>
       <main class="workspace">
         <aside class="toolbox"><h2>Build</h2>${toolButtons}
           <div class="panel-section"><h3>Speed</h3><div class="segmented">${speedButtons}</div></div>
           <div class="panel-section"><h3>Traffic</h3><select id="overlay" data-testid="traffic-overlay"><option value="none">Off</option><option value="congestion">Congestion</option><option value="speed">Speed</option><option value="volume">Volume</option><option value="bottlenecks">Bottlenecks</option></select></div>
           <div class="panel-section"><h3>Services</h3><select id="service-overlay" data-testid="service-overlay"><option value="none">Off</option><option value="quality">Combined quality</option><option value="fire">Fire</option><option value="police">Police</option><option value="healthcare">Healthcare</option><option value="education">Education</option><option value="garbage">Garbage</option></select></div>
-          <div class="panel-section"><h3>Transit overlay</h3><select id="transit-overlay" data-testid="transit-overlay"><option value="none">Off</option><option value="routes">Routes / modes</option><option value="access">Stop access</option><option value="ridership">Ridership</option><option value="crowding">Crowding</option><option value="wait">Average wait</option><option value="reliability">Reliability</option><option value="mode-share">Mode share</option><option value="accessibility">Person accessibility</option></select><p id="overlay-legend" class="legend"></p></div>
+          <div class="panel-section"><h3>Transit overlay</h3><select id="transit-overlay" data-testid="transit-overlay"><option value="none">Off</option><option value="routes">Routes / modes</option><option value="access">Stop access</option><option value="ridership">Ridership</option><option value="crowding">Crowding</option><option value="wait">Average wait</option><option value="reliability">Reliability</option><option value="mode-share">Mode share</option><option value="accessibility">Person accessibility</option></select></div>
+          <div class="panel-section"><h3>Economy / freight</h3><select id="economy-overlay" data-testid="economy-overlay"><option value="none">Off</option><option value="firm-health">Firm health</option><option value="jobs">Jobs</option><option value="production">Production stock</option><option value="shortages">Shortages</option><option value="freight-volume">Freight volume</option><option value="freight-routes">Freight routes</option><option value="logistics-delay">Logistics delay</option><option value="gateways">Gateways</option><option value="trade-flow">Trade flow</option></select><p id="overlay-legend" class="legend"></p><div data-economy-summary data-testid="economy-panel" class="economy-summary"></div></div>
           <div class="panel-section transit-panel" data-testid="transit-panel"><h3>Transit lines</h3>
             <label class="field-row"><span>Mode</span><select data-transit-mode data-testid="transit-mode"><option value="bus">Bus</option><option value="brt">BRT</option><option value="tram">Tram</option><option value="metro">Metro</option></select></label>
             <label class="field-row"><span>Name</span><input data-transit-name data-testid="transit-name" value="Crosstown"></label>
@@ -123,17 +128,22 @@ export class GameApp {
     }));
     this.required<HTMLSelectElement>('#overlay').addEventListener('change', (event) => {
       this.overlayMode = (event.currentTarget as HTMLSelectElement).value as TrafficOverlayMode;
-      if (this.overlayMode !== 'none') { this.serviceOverlayMode = 'none'; this.transitOverlayMode = 'none'; this.required<HTMLSelectElement>('#service-overlay').value = 'none'; this.required<HTMLSelectElement>('#transit-overlay').value = 'none'; }
+      if (this.overlayMode !== 'none') { this.serviceOverlayMode = 'none'; this.transitOverlayMode = 'none'; this.economyOverlayMode = 'none'; this.required<HTMLSelectElement>('#service-overlay').value = 'none'; this.required<HTMLSelectElement>('#transit-overlay').value = 'none'; this.required<HTMLSelectElement>('#economy-overlay').value = 'none'; }
       this.updateOverlayLegend();
     });
     this.required<HTMLSelectElement>('#service-overlay').addEventListener('change', (event) => {
       this.serviceOverlayMode = (event.currentTarget as HTMLSelectElement).value as ServiceOverlayMode;
-      if (this.serviceOverlayMode !== 'none') { this.overlayMode = 'none'; this.transitOverlayMode = 'none'; this.required<HTMLSelectElement>('#overlay').value = 'none'; this.required<HTMLSelectElement>('#transit-overlay').value = 'none'; }
+      if (this.serviceOverlayMode !== 'none') { this.overlayMode = 'none'; this.transitOverlayMode = 'none'; this.economyOverlayMode = 'none'; this.required<HTMLSelectElement>('#overlay').value = 'none'; this.required<HTMLSelectElement>('#transit-overlay').value = 'none'; this.required<HTMLSelectElement>('#economy-overlay').value = 'none'; }
       this.updateOverlayLegend();
     });
     this.required<HTMLSelectElement>('#transit-overlay').addEventListener('change', (event) => {
       this.transitOverlayMode = (event.currentTarget as HTMLSelectElement).value as TransitOverlayMode;
-      if (this.transitOverlayMode !== 'none') { this.overlayMode = 'none'; this.serviceOverlayMode = 'none'; this.required<HTMLSelectElement>('#overlay').value = 'none'; this.required<HTMLSelectElement>('#service-overlay').value = 'none'; }
+      if (this.transitOverlayMode !== 'none') { this.overlayMode = 'none'; this.serviceOverlayMode = 'none'; this.economyOverlayMode = 'none'; this.required<HTMLSelectElement>('#overlay').value = 'none'; this.required<HTMLSelectElement>('#service-overlay').value = 'none'; this.required<HTMLSelectElement>('#economy-overlay').value = 'none'; }
+      this.updateOverlayLegend();
+    });
+    this.required<HTMLSelectElement>('#economy-overlay').addEventListener('change', (event) => {
+      this.economyOverlayMode = (event.currentTarget as HTMLSelectElement).value as EconomyOverlayMode;
+      if (this.economyOverlayMode !== 'none') { this.overlayMode = 'none'; this.serviceOverlayMode = 'none'; this.transitOverlayMode = 'none'; this.required<HTMLSelectElement>('#overlay').value = 'none'; this.required<HTMLSelectElement>('#service-overlay').value = 'none'; this.required<HTMLSelectElement>('#transit-overlay').value = 'none'; }
       this.updateOverlayLegend();
     });
     this.root.querySelectorAll<HTMLInputElement>('[data-service-budget]').forEach((input) => input.addEventListener('change', () => {
@@ -257,6 +267,11 @@ export class GameApp {
     if (vehicles.some((vehicle) => vehicle.id === priorVehicle)) vehicleSelect.value = priorVehicle;
   }
 
+  private renderEconomyPanel(): void {
+    const panel = this.root.querySelector<HTMLElement>('[data-economy-summary]');
+    if (panel) panel.innerHTML = new EconomyPanel().render(this.core.economyDomain.snapshot(this.core.clock.tick));
+  }
+
   private renderInspection(inspection: Inspection): void {
     this.inspector.innerHTML = `<h3>${inspection.title}</h3>${inspection.lines.map((line) => `<p>${line}</p>`).join('')}`;
   }
@@ -360,10 +375,11 @@ export class GameApp {
       }
     }
     this.hud.update(collectHudMetrics(this.core));
-    this.renderer.draw(this.core, this.overlayMode, this.selected, this.previewPath, this.serviceOverlayMode, this.transitOverlayMode);
+    this.renderer.draw(this.core, this.overlayMode, this.selected, this.previewPath, this.serviceOverlayMode, this.transitOverlayMode, this.economyOverlayMode);
     if (Math.floor(this.core.clock.tick / 10) !== this.lastTransitStatusTick) {
       this.lastTransitStatusTick = Math.floor(this.core.clock.tick / 10);
       this.renderTransitStatus();
+      this.renderEconomyPanel();
     }
     this.renderDebug();
     this.renderServiceAlerts();
@@ -393,7 +409,8 @@ export class GameApp {
       volume: 'Volume: weighted vehicles currently on each edge.',
       bottlenecks: 'Bottlenecks: highest congestion × traffic-volume edges.',
     };
-    this.overlayLegend.textContent = this.transitOverlayMode !== 'none' ? mapTransitOverlay(this.core, this.transitOverlayMode).legend
+    this.overlayLegend.textContent = this.economyOverlayMode !== 'none' ? mapEconomyOverlay(this.core, this.economyOverlayMode).legend
+      : this.transitOverlayMode !== 'none' ? mapTransitOverlay(this.core, this.transitOverlayMode).legend
       : this.serviceOverlayMode !== 'none' ? mapServiceOverlay(this.core, this.serviceOverlayMode).legend
       : labels[this.overlayMode];
   }
@@ -423,7 +440,7 @@ export class GameApp {
     const json = JSON.stringify(serializeCore(this.core));
     this.fallbackSave = json;
     try { localStorage.setItem(STORAGE_KEY, json); } catch { /* fallback retained */ }
-    this.flash(`Saved V5 at tick ${this.core.clock.tick}.`, 'ok');
+    this.flash(`Saved V6 at tick ${this.core.clock.tick}.`, 'ok');
   }
 
   private load(): void {
@@ -434,7 +451,8 @@ export class GameApp {
       this.core = hydrateCore(JSON.parse(json));
       this.syncInputsFromCore();
       this.renderTransitPanel();
-      this.flash(`Loaded V5 at tick ${this.core.clock.tick}.`, 'ok');
+      this.renderEconomyPanel();
+      this.flash(`Loaded V6 at tick ${this.core.clock.tick}.`, 'ok');
       this.renderInspector();
     } catch (error) {
       this.flash(error instanceof Error ? error.message : 'Load failed', 'error');

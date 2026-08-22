@@ -65,3 +65,31 @@ The deterministic corridor scenarios show frequent zero-fare BRT eliminating the
 The 10,000-request journey benchmark exceeds the 95% stable-topology cache target; the latest representative run recorded 9,998 cache hits (99.98%). A separate 5,000-tick active-transit diagnostic verifies finite vehicle, queue, accessibility and performance outputs.
 
 The Phase V Chromium smoke creates and edits a BRT line through the browser UI, dispatches vehicles, boards/completes weighted passengers, renders a numeric ridership overlay, changes headway/fare, saves V5, destructively removes transit/road topology, reloads and confirms exact serialized restoration.
+
+
+## 2026-08-22 — Phase 6 Firms, Production & Freight
+
+Implemented the second Metropolitan Era slice:
+
+- deterministic commercial/industrial establishments, homogeneous labor allocation and firm-derived employment;
+- compact conservation-safe production chain and inventory/cargo ownership;
+- stable boundary freight gateways, local/import supplier matching, imports/exports and explicit weighted trucks;
+- freight congestion and accessibility feeding logistics cost, shortages, production, firm health and employment;
+- sustained formation/distress/recovery/closure using accrued operating evidence rather than random bankruptcy;
+- authoritative freight dispatch capacity with waiting-order age and shortage consequences;
+- Economy/Freight panel, firm diagnostics, nine overlays and explicit freight vehicle rendering;
+- Save V6 with active-freight deterministic continuation and honest V5 migration.
+
+### Bugs found by acceptance testing
+
+1. **Historical Phase 3 gateway fixture:** the old local-vs-arterial benchmark road stopped short of the map boundary. Under Phase 6 that correctly created no external trade gateway, so all firms remained forming and commute averages collapsed to zero. The historical fixture now reaches the boundary; production code was not weakened. The benchmark again measures a large local-road versus arterial commute gap.
+2. **Freight dispatch capacity gap:** the first economic implementation could dispatch every waiting order, so fleet capacity could not create queue delay or shortages. `FreightVehicleSystem` now owns persisted dispatch capacity; waiting orders age when capacity is exhausted and stockouts emerge causally.
+3. **Bulldozed-firm late delivery:** building removal closed the firm and deleted inventory records but initially left already-dispatched inbound trucks alive. A late arrival could recreate inventory for the closed firm. Building removal now uses the same order/cargo/vehicle cleanup path as lifecycle closure.
+4. **V6 continuation derived context:** authoritative economy state restored correctly, but future freight matching diverged until the derived building-to-road firm access cache was rebuilt after hydration. V6 now reconstructs that cache instead of persisting it.
+5. **Full-suite runtime risk:** freight supplier routing initially risked repeated pathfinding on congestion changes. Stable OD routes now reuse the free-flow route cache while current edge travel times are summed over that cached path for generalized logistics cost. The Phase 3 long-horizon file returns to a few seconds locally rather than minutes.
+
+### Acceptance evidence
+
+All 12 Phase 6 causal acceptance chains pass. Representative diagnostics recorded roughly 0.7–0.8 seconds for 5,000 active-economy ticks, ~6 ms for 10,000 small indexed supplier matches, and 99/100 cache hits for repeated stable freight OD planning. Timings remain diagnostic-only.
+
+The Phase VI Chromium smoke formed 17 establishments with 17 active freight agents in the test city, verified the economy panel/firm inspector/freight overlay, saved V6, destructively removed a firm and boundary road, then restored the serialized authoritative state exactly.
