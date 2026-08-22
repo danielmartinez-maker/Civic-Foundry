@@ -1,0 +1,38 @@
+name: Phase 6 Tasks 8-9 Checkpoint
+
+on:
+  push:
+    branches: [phase6-execution]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reconstruct verified Tasks 8-9
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .phase6.tasks8-9.patch.b64 | gzip -dc > /tmp/tasks8-9.patch
+          echo "f84cc47cc94c2dbc2a3dcdc276ed58aef233fcaeff2110db893718696343d1bc  /tmp/tasks8-9.patch" | sha256sum -c -
+          git apply --index /tmp/tasks8-9.patch
+          git rm .phase6.tasks8-9.patch.b64 .github/workflows/phase6-tasks8-9-checkpoint.yml
+      - name: Focused verification
+        run: |
+          node --experimental-strip-types --test tests/economy-presentation.test.ts tests/presentation-contract.test.ts tests/service-presentation.test.ts tests/transit-presentation.test.ts tests/phase6-headless.test.ts tests/save-v6.test.ts tests/save-v5.test.ts tests/economy-freight-vehicles.test.ts tests/economy-integration.test.ts tests/economy-lifecycle.test.ts tests/phase5-headless.test.ts
+          npm run typecheck
+          git diff --cached --check
+      - name: Commit and push checkpoint
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: checkpoint Phase 6 presentation and acceptance"
+          git push origin HEAD:phase6-execution
