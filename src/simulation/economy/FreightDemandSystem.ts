@@ -3,12 +3,12 @@ import type { Firm } from './FirmSystem.ts';
 import type { InventorySystem } from './InventorySystem.ts';
 
 export type FreightOrderStatus='waiting'|'dispatched'|'delivered'|'cancelled';
-export type FreightOrder=Readonly<{id:string;commodity:Commodity;quantity:number;destinationKind:'firm'|'gateway';destinationId:string;createdTick:number;priority:number;status:FreightOrderStatus;assignedShipmentId?:string}>;
+export type FreightOrder=Readonly<{id:string;commodity:Commodity;quantity:number;destinationKind:'firm'|'gateway';destinationId:string;createdTick:number;priority:number;status:FreightOrderStatus;assignedShipmentId?:string;originFirmId?:string}>;
 export type FreightCandidate=Readonly<{kind:'firm'|'gateway';id:string;available:number}>;
 export type FreightMatch=Readonly<{orderId:string;commodity:Commodity;quantity:number;originKind:'firm'|'gateway';originId:string;destinationKind:'firm'|'gateway';destinationId:string;generalizedCost:number}>;
 export type FreightDemandStateSnapshot=Readonly<{orders:readonly FreightOrder[];nextOrderId:number}>;
 
-type MutableOrder={id:string;commodity:Commodity;quantity:number;destinationKind:'firm'|'gateway';destinationId:string;createdTick:number;priority:number;status:FreightOrderStatus;assignedShipmentId?:string};
+type MutableOrder={id:string;commodity:Commodity;quantity:number;destinationKind:'firm'|'gateway';destinationId:string;createdTick:number;priority:number;status:FreightOrderStatus;assignedShipmentId?:string;originFirmId?:string};
 
 export class FreightDemandSystem{
   private orders=new Map<string,MutableOrder>(); private nextOrderId=1;
@@ -26,7 +26,7 @@ export class FreightDemandSystem{
     }
     return created;
   }
-  createExportOrder(originFirmId:string,commodity:Commodity,quantity:number,gatewayId:string,tick:number):FreightOrder{const order:MutableOrder={id:`order:${this.nextOrderId++}`,commodity,quantity:Math.max(0,quantity),destinationKind:'gateway',destinationId:gatewayId,createdTick:tick,priority:0.5,status:'waiting'};this.orders.set(order.id,order);return{...order};}
+  createExportOrder(originFirmId:string,commodity:Commodity,quantity:number,gatewayId:string,tick:number):FreightOrder{const order:MutableOrder={id:`order:${this.nextOrderId++}`,commodity,quantity:Math.max(0,quantity),destinationKind:'gateway',destinationId:gatewayId,createdTick:tick,priority:0.5,status:'waiting',originFirmId};this.orders.set(order.id,order);return{...order};}
   listOrders():FreightOrder[]{return[...this.orders.values()].map(o=>({...o})).sort((a,b)=>a.id.localeCompare(b.id));}
   getOrder(id:string):FreightOrder|undefined{const o=this.orders.get(id);return o?{...o}:undefined;}
   matchOrder(order:FreightOrder,candidates:readonly FreightCandidate[],costFn:(candidate:FreightCandidate)=>number):FreightMatch|undefined{
@@ -36,7 +36,8 @@ export class FreightDemandSystem{
   markDispatched(orderId:string,shipmentId:string):void{const o=this.orders.get(orderId);if(o){o.status='dispatched';o.assignedShipmentId=shipmentId;}}
   markDelivered(orderId:string):void{const o=this.orders.get(orderId);if(o)o.status='delivered';}
   cancel(orderId:string):void{const o=this.orders.get(orderId);if(o)o.status='cancelled';}
-  cancelForFirm(firmId:string):void{for(const o of this.orders.values())if(o.destinationId===firmId&&(o.status==='waiting'||o.status==='dispatched'))o.status='cancelled';}
+  retry(orderId:string):void{const o=this.orders.get(orderId);if(o){o.status='waiting';delete o.assignedShipmentId;}}
+  cancelForFirm(firmId:string):void{for(const o of this.orders.values())if((o.destinationId===firmId||o.originFirmId===firmId)&&(o.status==='waiting'||o.status==='dispatched'))o.status='cancelled';}
   waitingAge(tick:number):number{const waiting=this.listOrders().filter(o=>o.status==='waiting');return waiting.length===0?0:waiting.reduce((s,o)=>s+Math.max(0,tick-o.createdTick),0)/waiting.length;}
   snapshotState():FreightDemandStateSnapshot{return{orders:this.listOrders(),nextOrderId:this.nextOrderId};}
   restoreState(state:FreightDemandStateSnapshot):void{this.orders.clear();for(const o of state.orders)this.orders.set(o.id,{...o});this.nextOrderId=state.nextOrderId;}

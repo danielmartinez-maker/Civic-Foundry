@@ -13,7 +13,7 @@ function flatTerrain(width = 40, height = 24): TerrainGrid {
 
 function buildComparisonCity(roadType: RoadType, seed = 123): SimulationCore {
   const core = new SimulationCore({ terrain: flatTerrain(), startingFunds: 1_000_000, seed });
-  assert.equal(core.buildRoad(Array.from({ length: 34 }, (_, i) => ({ x: i + 2, y: 12 })), roadType).ok, true);
+  assert.equal(core.buildRoad(Array.from({ length: 40 }, (_, x) => ({ x, y: 12 })), roadType).ok, true);
   for (let x = 3; x <= 12; x++) core.paintZone([{ x, y: 11 }], 'residential');
   for (let x = 24; x <= 28; x++) core.paintZone([{ x, y: 11 }], 'commercial');
   for (let x = 29; x <= 33; x++) core.paintZone([{ x, y: 11 }], 'industrial');

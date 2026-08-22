@@ -34,15 +34,13 @@ function transitCore(): SimulationCore {
   return core;
 }
 
-test('default save API is V5 and round-trips authoritative transit state exactly', () => {
+test('default save API is V6 while explicit V5 round-trips authoritative transit state exactly', () => {
   const core = transitCore();
   const save = serializeCore(core);
-  assert.equal(save.saveVersion, 5);
+  assert.equal(save.saveVersion, 6);
   const defaultRestored = hydrateCore(save);
   assert.deepEqual(serializeCore(defaultRestored), save);
-  const explicit = serializeCoreV5(core);
-  assert.deepEqual(explicit, save);
-  const saveV5 = explicit;
+  const saveV5 = serializeCoreV5(core);
   assert.equal(saveV5.saveVersion, 5);
   const restored = hydrateCoreV5(saveV5);
   assert.deepEqual(serializeCoreV5(restored), saveV5);

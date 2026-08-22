@@ -36,6 +36,7 @@ import type { ServiceDepartment, ServiceFacilityType } from '../../data/services
 import { TransitNetworkSystem } from '../transit/TransitNetworkSystem.ts';
 import { PersonTripSystem } from '../mobility/PersonTripSystem.ts';
 import { MobilityScheduler, type MobilitySnapshot } from '../mobility/MobilityScheduler.ts';
+import { EconomyScheduler } from '../economy/EconomyScheduler.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -82,6 +83,7 @@ export class SimulationCore {
   readonly transit: TransitNetworkSystem;
   readonly personTrips: PersonTripSystem;
   readonly mobility: MobilityScheduler;
+  readonly economyDomain: EconomyScheduler;
 
   employmentSnapshot: EmploymentSnapshot;
   utilitySnapshot: UtilitySnapshot;
@@ -138,6 +140,7 @@ export class SimulationCore {
     );
     this.personTrips = new PersonTripSystem(this.tripGeneration);
     this.mobility = new MobilityScheduler();
+    this.economyDomain = new EconomyScheduler(this.seed);
 
     this.employmentSnapshot = this.employment.evaluate(0, 0);
     this.utilitySnapshot = this.utilities.evaluate([]);
@@ -192,7 +195,7 @@ export class SimulationCore {
       return { ok: true, kind: 'road' };
     }
     const building = this.buildings.removeAt(x, y);
-    if (building) return { ok: true, kind: 'building' };
+    if (building) { this.economyDomain.removeBuilding(building.id, this.clock.tick); return { ok: true, kind: 'building' }; }
     if (this.zoning.get(x, y)) {
       this.zoning.clear(x, y);
       this.lots.rebuild(this.roads, this.zoning);
@@ -215,6 +218,22 @@ export class SimulationCore {
       this.serviceDispatch.applyVehicleEvents(serviceEvents, this.clock.tick);
       this.wasteCollection.applyJobs(this.serviceDispatch.listJobs(), this.services, this.clock.tick);
       this.incidents.advance(this.clock.tick, this.serviceDispatch.listJobs(), this.buildings.occupied(), this.serviceDispatch);
+
+      const economyDomainSnapshot = this.economyDomain.tick({
+        tick: this.clock.tick,
+        ...(this.clock.tick % 250 === 0 ? { buildings: this.buildings.occupied() } : {}),
+        population: this.population.population,
+        graph: this.transportationGraph,
+        pathfinding: this.pathfinding,
+        roadTravelTime: (edge) => this.traffic.getEdgeTravelTime(edge),
+        utilityRatio: Math.min(this.utilitySnapshot.power.serviceRatio, this.utilitySnapshot.water.serviceRatio),
+        serviceRatio: this.services.listFacilities().length > 0 ? this.neighborhoodSnapshot.citywideServiceQuality : 0.7,
+        personAccessibility: this.mobilitySnapshot.personAccessibility,
+        localDemand: Math.max(0.25, Math.min(2, this.population.population / 100)),
+        width: this.terrain.width, height: this.terrain.height,
+        taxRate: (this.taxes.getRate('commercial') + this.taxes.getRate('industrial')) / 2,
+      });
+      this.employmentSnapshot = economyDomainSnapshot.employment;
 
       this.mobilitySnapshot = this.mobility.tick({
         tick: this.clock.tick,
@@ -239,7 +258,7 @@ export class SimulationCore {
         },
       });
 
-      const edgeLoads = this.mergeEdgeLoads(this.serviceVehicles.edgeLoads(), this.mobility.vehicles.edgeLoads());
+      const edgeLoads = this.mergeEdgeLoads(this.serviceVehicles.edgeLoads(), this.mobility.vehicles.edgeLoads(), this.economyDomain.freightVehicles.edgeLoads());
       this.traffic.step(this.transportationGraph, this.intersections, this.clock.tick, edgeLoads);
       this.trafficSnapshot = this.trafficAnalytics.evaluate(this.traffic.edgeMetrics, this.traffic.recentOutcomes, this.traffic.activeVehicles.length);
       this.buildings.tick(this.clock.tick);
@@ -331,7 +350,7 @@ export class SimulationCore {
     if (!this.services.listFacilities().some((facility) => facility.department === 'garbage')) {
       this.garbageSnapshot = this.garbage.evaluate(occupied, this.roads, this.utilities.listFacilities());
     }
-    this.employmentSnapshot = this.employment.evaluate(this.population.population, this.buildings.jobCapacity());
+    this.employmentSnapshot = this.economyDomain.snapshot(this.clock.tick).employment;
     this.taxRevenue = this.taxes.calculateRevenue(occupied);
     const hasServices = this.services.listFacilities().length > 0;
     const serviceQuality = hasServices ? this.neighborhoodSnapshot.citywideServiceQuality : 0.7;

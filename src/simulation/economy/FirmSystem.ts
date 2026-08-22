@@ -21,7 +21,7 @@ export type Firm = Readonly<{
   distressReason?: string;
 }>;
 
-type MutableFirm = Omit<Firm, 'status'> & { status: FirmStatus };
+type MutableFirm = { -readonly [K in keyof Firm]: Firm[K] };
 
 function stableNumber(text: string, seed: number): number {
   let h = (2166136261 ^ seed) >>> 0;
@@ -59,7 +59,7 @@ export class FirmSystem {
   list(): Firm[] { return [...this.firms.values()].map((f) => ({ ...f })).sort((a, b) => a.id.localeCompare(b.id)); }
   get(id: string): Firm | undefined { const f = this.firms.get(id); return f ? { ...f } : undefined; }
   getByBuildingId(buildingId: string): Firm | undefined { const f = [...this.firms.values()].find((x) => x.buildingId === buildingId && x.status !== 'closed'); return f ? { ...f } : undefined; }
-  update(id: string, patch: Partial<Omit<Firm, 'id' | 'buildingId' | 'zone' | 'archetype'>>): void { const f = this.firms.get(id); if (f) Object.assign(f, patch); }
+  update(id: string, patch: Partial<Omit<Firm, 'id' | 'buildingId' | 'zone' | 'archetype'>>): void { const f = this.firms.get(id); if (f) { Object.assign(f, patch); if (patch.status === 'operating') delete f.distressReason; } }
   snapshotState(): { firms: Firm[]; nextId: number; seed: number } { return { firms: this.list(), nextId: this.nextId, seed: this.seed }; }
   restoreState(state: { firms: readonly Firm[]; nextId: number }): void { this.firms.clear(); for (const f of state.firms) this.firms.set(f.id, { ...f }); this.nextId = state.nextId; }
 }
