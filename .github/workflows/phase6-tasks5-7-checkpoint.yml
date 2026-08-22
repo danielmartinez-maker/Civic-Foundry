@@ -1,0 +1,38 @@
+name: Phase 6 Tasks 5-7 Checkpoint
+
+on:
+  push:
+    branches: [phase6-execution]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reconstruct verified Tasks 5-7
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .phase6.tasks5-7.patch.b64 | gzip -dc > /tmp/tasks5-7.patch
+          echo "00a9d64cdaf5c09007ce294357c8ba6edbb5f839a907732f085441664c0298a2  /tmp/tasks5-7.patch" | sha256sum -c -
+          git apply --index /tmp/tasks5-7.patch
+          git rm .phase6.tasks5-7.patch.b64 .github/workflows/phase6-tasks5-7-checkpoint.yml
+      - name: Focused verification
+        run: |
+          node --experimental-strip-types --test tests/economy-firms.test.ts tests/economy-production.test.ts tests/economy-freight-demand.test.ts tests/economy-freight-vehicles.test.ts tests/economy-integration.test.ts tests/economy-lifecycle.test.ts tests/phase3-headless.test.ts tests/phase4-headless.test.ts tests/phase5-headless.test.ts tests/save-v3.test.ts tests/save-v4.test.ts tests/save-v5.test.ts tests/save-v6.test.ts
+          npm run typecheck
+          git diff --cached --check
+      - name: Commit and push checkpoint
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: checkpoint Phase 6 economy core and Save V6"
+          git push origin HEAD:phase6-execution
