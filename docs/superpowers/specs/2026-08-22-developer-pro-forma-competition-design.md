@@ -7,19 +7,19 @@ Status: Approved design, pending implementation plan
 
 ## 1. Objective
 
-Replace automatic demand-triggered construction with a deterministic development feasibility pipeline. Every vacant or eligible parcel must be evaluated as an investment opportunity before construction begins.
+Replace automatic demand-triggered construction with a deterministic development feasibility pipeline. Every vacant or otherwise eligible parcel must be evaluated as an investment opportunity before construction begins.
 
-The system must combine parcel economics with a deliberately limited competitive developer layer. This provides differentiated capital allocation, risk tolerance, and project selection without adding full corporate finance, land auctions, debt markets, or bankruptcy systems.
+The system combines parcel economics with a deliberately limited competitive developer layer. It adds differentiated capital allocation, risk tolerance, financing terms, and project selection while deferring full corporate finance, land auctions, debt markets, insolvency, and speculative land ownership.
 
-The intended simulation behavior is:
+Required behavior:
 
 1. Enumerate legally feasible projects for each eligible parcel.
 2. Estimate parcel and project economics from current city conditions.
-3. Reject projects that fail zoning, utility, access, financing, or return constraints.
-4. Let a small set of deterministic developer archetypes evaluate surviving projects using differentiated hurdle rates and capital constraints.
-5. Select at most one winning project per parcel and deduct committed developer capital.
-6. Hand the winning project to `BuildingSystem`, which owns construction and occupancy lifecycle only.
-7. Preserve deterministic replay for identical seed and world state.
+3. Reject candidates that fail zoning, utility, access, service, or basic market constraints.
+4. Let a small deterministic set of developer archetypes underwrite surviving candidates using different hurdles, financing terms, risk tolerances, preferences, and available capital.
+5. Select at most one winning project per parcel and update developer capital commitments sequentially.
+6. Hand the awarded project to `BuildingSystem`, which owns construction and occupancy lifecycle only.
+7. Preserve deterministic replay for identical seed and saved state.
 
 ## 2. Current-State Problem
 
@@ -39,7 +39,7 @@ The intended simulation behavior is:
 - capital scarcity,
 - or competition among project sponsors.
 
-`BUILDING_DEFINITIONS` currently contains one low-detail building definition per zone, which means the simulation cannot choose between competing intensity or quality variants.
+`BUILDING_DEFINITIONS` currently contains one building definition per broad zone. The simulation therefore cannot choose between multiple legal intensities or project types on the same zone.
 
 ## 3. Architectural Boundaries
 
@@ -47,64 +47,90 @@ The intended simulation behavior is:
 
 Location: `src/simulation/development/DevelopmentFeasibilitySystem.ts`
 
-Responsibility: pure, deterministic project underwriting.
+Responsibility: pure, deterministic parcel/project economics.
 
-Inputs:
+The system exposes two conceptually separate operations:
+
+1. `evaluateMarketCandidate(...)` — evaluates legal/physical/market feasibility independent of any specific developer.
+2. `underwriteForDeveloper(...)` — applies a developer's financing terms, hurdle rate, leverage, and risk tolerance to a market candidate.
+
+This separation prevents developer-specific hurdle rates from leaking into the parcel's base market evaluation.
+
+Inputs to market evaluation:
 
 - lot geometry and zone,
-- available building/project definitions,
+- candidate project definition,
 - zone demand,
 - tax rates,
 - utility service ratio,
 - neighborhood/service quality,
-- road/traffic accessibility,
+- road/freight accessibility,
 - person accessibility,
 - local economy/demand indicators,
-- financing assumptions,
 - citywide construction-cost index,
-- current occupancy/vacancy estimates,
-- optional redevelopment context in later phases.
+- current market occupancy/vacancy estimate.
 
-Outputs a `DevelopmentFeasibilityResult` for each candidate project containing at minimum:
+A `DevelopmentMarketCandidate` contains at minimum:
 
 - `lotId`,
 - `definitionId`,
+- `zone`,
 - `legal`,
-- `feasible`,
-- `landValue`,
+- `marketFeasible`,
+- `estimatedLandValue`,
+- `achievableRent`,
 - `grossPotentialRent`,
 - `vacancyRate`,
 - `effectiveGrossIncome`,
 - `operatingExpenses`,
 - `propertyTaxes`,
 - `netOperatingIncome`,
-- `constructionCost`,
+- `hardConstructionCost`,
 - `softCosts`,
-- `financingCost`,
-- `totalDevelopmentCost`,
+- `sitePreparationCost`,
+- `preFinanceNonLandCost`,
+- `baseCapRate`,
 - `stabilizedValue`,
-- `yieldOnCost`,
-- `returnOnCost`,
-- `residualLandValue`,
 - `riskScore`,
 - `rejectionReasons`.
 
-The system must not mutate city state.
+A developer-specific underwriting result contains at minimum:
+
+- `developerId`,
+- `lotId`,
+- `definitionId`,
+- `eligible`,
+- `leverage`,
+- `effectiveInterestRate`,
+- `financingCost`,
+- `landAcquisitionCost`,
+- `nonLandDevelopmentCost`,
+- `totalDevelopmentCost`,
+- `requiredEquity`,
+- `yieldOnCost`,
+- `returnOnCost`,
+- `expectedReturn`,
+- `requiredDeveloperProfit`,
+- `residualLandValue`,
+- `returnMargin`,
+- `rejectionReasons`.
+
+Neither operation mutates city or developer state.
 
 ### 3.2 New `DeveloperMarketSystem`
 
 Location: `src/simulation/development/DeveloperMarketSystem.ts`
 
-Responsibility: deterministic developer competition and capital allocation.
+Responsibility: deterministic developer competition, project ranking, and capital allocation.
 
-The system owns a small fixed roster of developer archetypes, for example:
+Initial fixed developer archetypes:
 
 - `local_builder`: lower capital, modest leverage, lower complexity tolerance, residential preference;
-- `urban_developer`: medium capital, medium hurdle, commercial/residential flexibility;
-- `industrial_specialist`: industrial preference, lower industrial risk premium;
-- `institutional_developer`: high capital, lower financing spread, higher absolute project-size threshold.
+- `urban_developer`: medium capital, medium hurdle, residential/commercial flexibility;
+- `industrial_specialist`: industrial preference and lower industrial risk penalty;
+- `institutional_developer`: higher capital, lower financing spread, higher minimum project scale.
 
-Each developer has state:
+Each developer state contains:
 
 - `id`,
 - `availableCapital`,
@@ -117,50 +143,61 @@ Each developer has state:
 - maximum concurrent projects,
 - optional minimum project size.
 
-The market system evaluates feasible projects against each developer's underwriting policy and returns bids. A bid contains:
+The market system receives market candidates, calls developer-specific underwriting, filters ineligible bids, ranks bids, awards projects sequentially, and mutates developer capital only when an award is committed.
+
+A bid contains:
 
 - developer id,
-- project/definition id,
-- parcel id,
+- lot id,
+- definition id,
 - expected return,
+- return margin,
 - required equity,
+- residual land value,
 - risk-adjusted score,
-- residual land value / bid capacity,
-- rank score.
-
-The winner is selected deterministically.
+- final rank score.
 
 ### 3.3 `BuildingSystem`
 
-`BuildingSystem` must stop deciding whether projects are financially viable.
+`BuildingSystem` stops deciding whether projects are financially viable.
 
 Its responsibilities become:
 
-- accept an approved development project,
+- accept an approved development award,
 - create construction state,
 - track construction start/completion,
 - transition completed projects to occupied state,
-- expose owner/developer metadata,
-- notify/release developer commitments when appropriate.
+- retain developer/project economics metadata needed for save/load and capital recycling,
+- expose ownership metadata to diagnostics and future UI.
 
-`evaluateDevelopment()` should either be removed or reduced to an adapter that delegates to the new development subsystem. The preferred implementation is to move decision logic out of `BuildingSystem` entirely and call the development system from `SimulationCore`.
+`evaluateDevelopment()` should be removed. `SimulationCore` will own the orchestration call into the development subsystem.
 
 ### 3.4 `SimulationCore`
 
-`SimulationCore.step()` will invoke the development market at the existing development cadence (currently every 10 ticks) unless testing shows that a slower cadence is necessary for stability.
+`SimulationCore.step()` invokes the development market at the current development cadence of every 10 ticks unless profiling or regression tests justify a slower cadence.
 
-The integration flow is:
+Integration flow:
 
-1. Refresh service/accessibility/economic snapshots.
+1. Refresh existing service/accessibility/economic snapshots.
 2. Build a `DevelopmentMarketContext` from current city state.
-3. Ask `DevelopmentFeasibilitySystem` to enumerate parcel/project opportunities.
-4. Ask `DeveloperMarketSystem` to rank and allocate feasible opportunities.
-5. Start awarded projects through `BuildingSystem`.
-6. Persist project ownership and developer commitments.
+3. Enumerate unoccupied eligible lots in stable order.
+4. Generate all legal candidate project definitions for each lot.
+5. Evaluate market candidates with `DevelopmentFeasibilitySystem`.
+6. Pass surviving candidates to `DeveloperMarketSystem`.
+7. Process awards in deterministic global order while updating developer capital and project slots after each award.
+8. Start awarded projects through `BuildingSystem`.
+9. Persist project ownership, commitments, and stabilization timers.
 
-## 4. Project Definitions and Zoning Envelope
+## 4. Building Definition Migration and Zoning Envelope
 
-`src/data/buildings.ts` will be expanded from one definition per zone to multiple project variants. Definitions should remain data-driven.
+`src/data/buildings.ts` must migrate from one `Record<ZoneType, BuildingDefinition>` to structures that support multiple definitions per zone without forcing consumers to guess which definition represents a zone.
+
+Preferred data shape:
+
+- `BUILDING_DEFINITIONS_BY_ID: Readonly<Record<string, BuildingDefinition>>`
+- `BUILDING_VARIANTS_BY_ZONE: Readonly<Record<ZoneType, readonly BuildingDefinition[]>>`
+
+All existing consumers that currently do `BUILDING_DEFINITIONS[building.zone]` must instead resolve by `building.definitionId` when they need the actual built form. Capacity, utility, garbage, tax, rendering, and save/restore behavior must therefore remain definition-specific.
 
 Each project definition must include:
 
@@ -173,24 +210,26 @@ Each project definition must include:
 - tax base,
 - base hard construction cost,
 - soft-cost ratio,
-- base achievable rent or revenue proxy,
+- site-preparation baseline,
+- base achievable rent/revenue proxy,
 - operating-expense ratio,
 - base vacancy,
+- base cap rate,
 - minimum access requirement,
 - minimum utility requirement,
 - minimum service-quality requirement,
-- maximum or required zoning envelope fields.
+- deterministic zoning/intensity constraints.
 
-Initial variants should be limited enough to keep tuning tractable. Recommended first set:
+Initial variants:
 
 ### Residential
-- cottage / low-density,
-- rowhouse / medium-density,
-- apartment / higher-density.
+- cottage / low density,
+- rowhouse / medium density,
+- apartment / higher density.
 
 ### Commercial
 - neighborhood shop,
-- mixed retail block / mid-intensity commercial,
+- mid-intensity retail/commercial block,
 - office/retail building.
 
 ### Industrial
@@ -198,19 +237,17 @@ Initial variants should be limited enough to keep tuning tractable. Recommended 
 - warehouse/light industrial,
 - larger industrial plant.
 
-The zoning model may continue using the existing broad zone categories. Intensity legality can initially come from deterministic parcel/context constraints rather than introducing a separate player-facing zoning-density UI in this phase.
+Broad zoning categories remain unchanged in this phase. Intensity legality is derived from deterministic project/parcel constraints, avoiding a new player-facing density-zoning UI.
 
 ## 5. Economic Model
 
-The model must be simple enough to reason about and tune, but complete enough that city conditions visibly influence development.
+The formulas must remain explicit, bounded, deterministic, and tuneable.
 
 ### 5.1 Achievable Rent / Revenue
 
-For each project:
+For each candidate:
 
 `achievableRent = baseRent * demandFactor * accessFactor * serviceFactor * utilityFactor * neighborhoodFactor`
-
-Factors must be bounded to prevent runaway values.
 
 Recommended first-pass bounds:
 
@@ -220,7 +257,7 @@ Recommended first-pass bounds:
 - utility factor: `0.50 .. 1.00`,
 - neighborhood factor: `0.75 .. 1.25`.
 
-Industrial projects should weight freight/road access more heavily than person accessibility. Residential and commercial projects should weight person accessibility and neighborhood quality more heavily.
+Industrial projects weight freight/road access more heavily than person accessibility. Residential and commercial projects weight person accessibility and neighborhood quality more heavily.
 
 ### 5.2 Vacancy
 
@@ -236,257 +273,293 @@ Recommended clamp: `0.03 .. 0.35`.
 
 `operatingExpenses = effectiveGrossIncome * operatingExpenseRatio`
 
-`propertyTaxes = taxBase * applicableTaxRate` or a calibrated value-based equivalent, provided the formula remains deterministic and uses the existing tax system's current rates.
+`propertyTaxes = calibratedTaxBase * applicableTaxRate`
+
+The tax formula must use the existing tax system's current zone rate and be calibrated so existing tax-rate gameplay remains meaningful.
 
 `NOI = effectiveGrossIncome - operatingExpenses - propertyTaxes`
 
-### 5.4 Construction and Soft Costs
+### 5.4 Land Value
+
+Parcel land value is endogenous:
+
+`estimatedLandValue = zoneBaseLandValue * demandFactor * accessFactor * serviceFactor * neighborhoodFactor`
+
+The result is clamped to a calibrated range.
+
+Industrial land weights freight accessibility more heavily. Residential/commercial land weights person accessibility and neighborhood quality more heavily.
+
+This creates a useful feedback loop: infrastructure and services can raise rents and feasibility while simultaneously raising land prices enough to suppress marginal projects.
+
+### 5.5 Construction and Site Costs
 
 `hardCost = baseConstructionCost * constructionCostIndex * complexityFactor`
 
 `softCosts = hardCost * softCostRatio`
 
-Infrastructure/service deficiencies may add deterministic site-preparation premiums rather than generating random overruns.
+`sitePreparationCost = baseSitePreparationCost * deficiencyFactor`
 
-### 5.5 Financing
+Service or utility deficiencies may increase deterministic site-preparation cost, but no random cost overruns are introduced.
 
-Each developer supplies financing assumptions.
+`preFinanceNonLandCost = hardCost + softCosts + sitePreparationCost`
 
-`debt = totalPreFinanceCost * leverage`
+### 5.6 Financing and Total Development Cost
 
-`equity = totalPreFinanceCost - debt`
+Developer-specific financing uses:
+
+`landAcquisitionCost = estimatedLandValue`
+
+`preFinanceTotalCost = landAcquisitionCost + preFinanceNonLandCost`
+
+`debt = preFinanceTotalCost * leverage`
+
+`baseEquity = preFinanceTotalCost - debt`
+
+`effectiveInterestRate = baseMarketRate + developerFinancingSpread + riskPremium`
 
 `financingCost = debt * effectiveInterestRate * constructionDurationYears`
 
-The first implementation may use a normalized tick-to-year conversion constant rather than a full loan amortization model.
+`nonLandDevelopmentCost = preFinanceNonLandCost + financingCost`
 
-### 5.6 Stabilized Value and Return Metrics
+`totalDevelopmentCost = landAcquisitionCost + nonLandDevelopmentCost`
 
-Use a deterministic capitalization proxy:
+`requiredEquity = baseEquity + financingCost`
+
+This phase uses a normalized tick-to-year conversion constant and no amortization schedule.
+
+### 5.7 Stabilized Value and Return Metrics
 
 `stabilizedValue = NOI / capRate`
 
-Cap rate should reflect project class, market risk, and optionally developer risk premium, but must remain bounded.
-
-Primary feasibility metrics:
+Cap rate is bounded and derived from project class plus market risk. Developer financing terms affect cost and return, not the base market NOI.
 
 `yieldOnCost = NOI / totalDevelopmentCost`
 
 `returnOnCost = (stabilizedValue - totalDevelopmentCost) / totalDevelopmentCost`
 
+`requiredDeveloperProfit = totalDevelopmentCost * developer.hurdleRate`
+
 `residualLandValue = stabilizedValue - nonLandDevelopmentCost - requiredDeveloperProfit`
 
-Land value is estimated from current market/context conditions and cannot exceed residual land value for a project to remain feasible.
+`expectedReturn = returnOnCost`
 
-A project is economically feasible only if:
+`returnMargin = expectedReturn - developer.hurdleRate`
 
-- it is legal,
+A developer-specific underwriting is eligible only if:
+
+- the market candidate is legal and market-feasible,
 - minimum access/service/utility requirements are satisfied,
-- residual land value >= estimated land value,
-- expected return clears the evaluating developer's hurdle,
-- required equity fits available developer capital,
-- project count does not exceed the developer's concurrent-project constraint.
+- `residualLandValue >= estimatedLandValue`,
+- `expectedReturn >= hurdleRate`,
+- `requiredEquity <= availableCapital`,
+- developer risk tolerance is not exceeded,
+- concurrent-project capacity is available.
 
-## 6. Land Value
+This makes hurdle-rate feasibility explicitly developer-specific.
 
-Parcel land value should be endogenous to city conditions rather than a fixed price.
+## 6. Market Feasibility Before Developer Underwriting
 
-First-pass model:
+A market candidate is `marketFeasible` when:
 
-`landValue = zoneBaseLandValue * demandFactor * accessFactor * serviceFactor * neighborhoodFactor`
+- the candidate is legal for the parcel,
+- hard/soft/site costs are finite and positive,
+- access/service/utility thresholds are met,
+- NOI is positive,
+- stabilized value is positive,
+- all derived financial values are finite.
 
-Clamp the result to a calibrated range.
-
-For industrial land, freight accessibility carries more weight. For residential and commercial land, person accessibility and neighborhood quality carry more weight.
-
-This creates the intended feedback: improved roads/services can raise achievable rent and feasibility, while also raising land prices enough that some marginal projects cease to pencil.
+Market feasibility does not include developer capital, leverage, financing spread, hurdle rate, or project-slot limits.
 
 ## 7. Developer Competition
 
-The competitive layer should create meaningful differences without simulating full corporations.
-
 ### 7.1 Bid Eligibility
 
-For each feasible opportunity, each developer checks:
+For every market-feasible candidate, each developer checks:
 
 - zone/project preference,
+- minimum project size,
 - required equity,
 - available capital,
 - concurrent-project capacity,
 - risk score vs risk tolerance,
-- expected return vs developer hurdle.
+- expected return vs hurdle rate,
+- residual land value vs estimated land value.
 
 ### 7.2 Bid Ranking
 
-Recommended deterministic rank:
+Recommended normalized deterministic score:
 
-`rankScore = expectedReturnMargin + preferenceBonus + capitalEfficiencyBonus + residualValueBonus - riskPenalty`
+`rankScore = returnMargin + preferenceBonus + capitalEfficiencyBonus + residualValueBonus - riskPenalty`
 
 Where:
 
-`expectedReturnMargin = expectedReturn - hurdleRate`
+`returnMargin = expectedReturn - hurdleRate`
 
-All components must be normalized and bounded.
+All components are clamped to documented ranges in code so no single unbounded metric dominates.
 
-### 7.3 Winner Selection
+### 7.3 Winner Selection Per Parcel
 
-For each parcel:
+Eligible bids are sorted by:
 
-1. sort eligible bids by descending rank score;
-2. tie-break by higher residual land value;
-3. then lower required equity;
-4. then stable developer id;
-5. only if all deterministic values are exactly equal may seeded random tie-breaking be used.
+1. descending rank score,
+2. descending residual land value,
+3. ascending required equity,
+4. stable developer id.
 
-The recommended implementation avoids random tie-breaking entirely by using stable IDs as the final comparator.
+Stable IDs are the final tie-breaker. No random tie-breaking is needed.
 
-### 7.4 Capital Allocation Across Parcels
+### 7.4 Global Capital Allocation
 
-To prevent every feasible parcel building at once, opportunities are globally sorted before awards.
+A preliminary winning bid is determined for each parcel, then parcel awards are globally sorted by:
 
-Recommended ordering:
+1. descending winning bid score,
+2. descending return margin,
+3. descending residual land value,
+4. stable lot id.
 
-1. highest winning bid score,
-2. highest return margin,
-3. highest residual value,
-4. lot id.
+Awards are committed sequentially. After each award:
 
-Awards are processed in that order, with capital and project-slot constraints updated after every award. This means early awards can make later projects unavailable to the same developer.
+- developer available capital is reduced,
+- committed capital increases,
+- concurrent-project count increases,
+- later awards are revalidated against the developer's updated state.
+
+If a preliminary winner becomes invalid because of an earlier award, the parcel is offered to the next ranked still-eligible bidder before being left undeveloped.
+
+This revalidation rule prevents stale bids from oversubscribing developer capital.
 
 ## 8. Construction and Capital Commitments
 
 When a project starts:
 
-- developer equity is moved from `availableCapital` to `committedCapital`,
-- building stores `developerId`, `projectCost`, and `requiredEquity`,
-- project occupies the parcel immediately for conflict prevention,
+- developer equity moves from `availableCapital` to `committedCapital`,
+- the building stores `developerId`, `projectCost`, `requiredEquity`, and award metadata,
+- the lot is immediately reserved through the building/construction record,
 - construction completes on the existing tick lifecycle.
 
-At completion, committed capital should remain economically tied to the project until a simple capital-recycling rule releases it. To avoid introducing asset-sale markets in this phase, use a deterministic recycling schedule such as returning a configured fraction of project equity after stabilization/completion.
+At completion, capital remains committed through a fixed stabilization delay. After stabilization:
 
-Recommended first implementation:
+- 100% of committed equity is released,
+- a bounded realized-return proxy is added to developer available capital,
+- the commitment is removed,
+- no asset-sale counterparty is modeled.
 
-- release 100% of committed equity after a fixed stabilization delay following completion;
-- developer profit is represented through capital growth equal to a bounded realized return proxy;
-- no project sale counterparties are modeled.
-
-This provides capital scarcity during construction while avoiding indefinite capital lockup.
+The realized-return proxy is a simulation abstraction for capital recycling, not a modeled property transaction.
 
 ## 9. Determinism
 
-For identical:
-
-- simulation seed,
-- save state,
-- tick,
-- parcel ordering,
-- economic inputs,
-- developer state,
-
-the same projects and winners must be produced.
+For identical simulation seed, saved state, tick, parcel ordering, economic inputs, and developer state, the same candidates, bids, and awards must result.
 
 Requirements:
 
-- stable sorted iteration over lots, candidates, developers, and bids;
-- no use of `Math.random()`;
-- no time-dependent values;
-- seeded random only where explicitly allowed, though stable tie-breakers are preferred;
-- all mutable developer state serialized in saves.
+- stable sorted iteration over lots, definitions, developers, bids, and awards;
+- no `Math.random()`;
+- no wall-clock/time-dependent values;
+- stable string IDs as deterministic final tie-breakers;
+- all mutable developer state serialized.
 
 ## 10. Save / Restore
 
 Save state must include:
 
-- developer archetype/state,
+- developer state,
 - available capital,
 - committed capital,
 - active commitments,
-- project ownership/developer id on buildings,
-- any stabilization/recycling timer state required to reproduce future behavior.
+- concurrent-project counts or derivable commitment state,
+- building `developerId`, project cost, and required equity,
+- stabilization/recycling timers,
+- any market configuration values that are not immutable code constants.
 
-Loading a save must reproduce the same subsequent development awards as an uninterrupted run.
+Loading a save must reproduce the same subsequent development awards as uninterrupted execution.
+
+Backward compatibility with saves created before this feature must be explicitly handled. Missing developer state should initialize from deterministic default archetypes; existing buildings without developer metadata remain valid legacy buildings and must not create synthetic commitments.
 
 ## 11. Observability
 
-Expose enough diagnostics for testing and future UI without requiring a player-facing development panel in this phase.
-
-Recommended read-only APIs:
+Expose bounded read-only diagnostics suitable for tests and future UI:
 
 - `listDevelopers()`;
 - `getDeveloperState(id)`;
-- `lastEvaluations()` or a bounded recent-evaluation snapshot;
+- `lastMarketEvaluations()`;
+- `lastBids()`;
 - `lastAwards()`;
 - `getParcelFeasibility(lotId)` where practical.
 
-These diagnostics should make it possible to explain why a parcel did or did not develop.
+Diagnostics must include rejection reasons so a parcel can be explained as blocked by zoning, services, utilities, land price, return hurdle, risk, capital, or project slots.
 
 ## 12. Error Handling and Invariants
 
-The subsystem must reject invalid/non-finite financial inputs.
+Reject invalid or non-finite financial inputs.
 
 Invariants:
 
-- no negative construction cost;
+- no negative construction, land, site, financing, or total project cost;
 - vacancy within `[0, 1)`;
 - leverage within `[0, 1)`;
-- hurdle rates and cap rates positive;
-- no developer capital below zero after an award;
+- hurdle rates, cap rates, and interest rates positive;
+- no developer available or committed capital below zero;
 - no more than one active building/project per lot;
 - no illegal project can be awarded;
 - no project below a developer's hurdle can be awarded;
-- restoration cannot create duplicate commitments for the same project.
+- no award may exceed developer capital or project-slot limits;
+- save restoration cannot create duplicate commitments for the same project;
+- every occupied building resolves its definition by `definitionId`.
 
 ## 13. TDD Acceptance Tests
 
-Implementation must be test-driven.
+Implementation is test-driven. Required tests:
 
-Required tests:
-
-1. A parcel does not develop when every candidate is below the hurdle rate.
-2. Increasing achievable rent can make the same project feasible.
+1. A parcel does not develop when every developer underwriting is below hurdle.
+2. Increasing achievable rent can make the same project viable.
 3. Higher vacancy reduces return and can block development.
 4. Higher taxes reduce return and can block development.
 5. Higher financing cost reduces return and can block development.
 6. Higher construction cost reduces return and can block development.
-7. Better access improves relevant project feasibility.
-8. Utility/service failure can make a candidate ineligible.
+7. Better relevant access improves project feasibility.
+8. Utility/service failure can make a candidate market-infeasible.
 9. Zoning/intensity constraints eliminate illegal variants.
-10. Developers with different hurdle rates/preferences produce different bid rankings.
-11. A developer without sufficient available capital cannot win a project.
-12. Concurrent-project limits prevent unlimited awards.
-13. Two developers competing for the same parcel produce one deterministic winner.
-14. Global allocation prevents a single developer from exceeding capital after sequential awards.
-15. Same seed/state produces identical awards.
-16. Save/restore preserves developer capital, commitments, and future deterministic awards.
-17. Existing `BuildingSystem` construction/occupancy behavior remains correct.
-18. Existing city-loop, economy, mobility, traffic, services, and save tests remain green.
+10. Multiple building variants in one zone are enumerated and resolved by `definitionId`.
+11. Developers with different hurdle rates/preferences produce different bid rankings.
+12. A developer without sufficient available capital cannot win.
+13. Concurrent-project limits prevent unlimited awards.
+14. Two developers competing for the same parcel produce exactly one deterministic winner.
+15. Global sequential allocation cannot oversubscribe developer capital.
+16. If the preliminary winner becomes capital-constrained, the next eligible bidder can win.
+17. Same seed/state produces identical candidates, bids, and awards.
+18. Save/restore preserves developer capital, commitments, timers, and future deterministic awards.
+19. Legacy saves without developer metadata initialize safely and deterministically.
+20. Existing `BuildingSystem` construction/occupancy behavior remains correct.
+21. Existing capacity, utilities, tax, garbage, rendering, and other definition lookups still use the built `definitionId` correctly.
+22. Existing city-loop, Phase 6 economy, mobility, traffic, services, and save tests remain green.
 
 ## 14. Performance Constraints
 
-The city should not perform expensive full-market recomputation every tick.
+Do not recompute the full development market every tick.
 
-Initial cadence: reuse the current 10-tick development evaluation interval.
+Initial cadence: every 10 ticks, matching the existing development evaluation interval.
 
 Optimization rules:
 
-- skip occupied/under-construction lots;
+- skip occupied or under-construction lots;
 - skip zones with negligible demand;
-- precompute project definitions by zone;
-- avoid pathfinding per candidate if an existing accessibility snapshot can be reused;
+- pre-index project definitions by zone;
+- reuse existing accessibility snapshots rather than pathfinding per candidate;
 - cap diagnostic history;
-- keep formulas allocation-light.
+- keep formulas allocation-light;
+- use deterministic ordering once per evaluation cycle rather than repeated ad-hoc sorts where practical.
 
-If profiling shows the market loop is material, move evaluation to a slower cadence or evaluate a deterministic subset/queue of parcels per cycle without changing aggregate determinism.
+If profiling shows the market loop is material, move evaluation to a slower cadence or a deterministic parcel queue without changing outcomes for a given configured cadence.
 
 ## 15. Deferred Scope
 
-Explicitly excluded from this phase:
+Excluded from this phase:
 
 - land ownership entities,
 - negotiated land transactions,
 - developer-vs-developer land auctions,
 - banks and lender agents,
-- debt maturities/amortization schedules,
+- amortization and debt maturities,
 - bond issuance,
 - equity markets,
 - bankruptcy/insolvency,
@@ -496,18 +569,19 @@ Explicitly excluded from this phase:
 - macro credit cycles,
 - player-facing density rezoning UI.
 
-These can be layered later because the proposed interfaces preserve developer identity, project ownership, capital, and underwriting outputs.
+The interfaces intentionally preserve developer identity, ownership, capital, underwriting, and project metadata so those systems can be layered later.
 
 ## 16. Success Criteria
 
 The feature is complete when:
 
 - positive demand alone no longer guarantees construction;
-- parcels develop only when a legal project pencils economically;
-- city policy and infrastructure materially affect feasibility through taxes, access, services, utilities, and market demand;
-- multiple project intensities can compete on the same broad zone;
-- developer capital and hurdle differences influence which projects happen and when;
-- competition never produces more than one winner per parcel;
-- identical state produces identical outcomes;
-- save/load preserves future development behavior;
+- parcels develop only when a legal project pencils for at least one developer;
+- city taxes, access, services, utilities, market demand, vacancy, construction cost, land value, and financing materially affect feasibility;
+- multiple project intensities can compete within one broad zone;
+- developer capital, hurdle rates, financing terms, preferences, and risk tolerances influence what gets built and when;
+- competition produces at most one winner per parcel;
+- sequential allocation never oversubscribes developer capital;
+- identical saved state produces identical future awards;
+- legacy saves load safely;
 - all new tests and pre-existing regression tests pass.
