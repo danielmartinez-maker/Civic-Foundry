@@ -1,4 +1,5 @@
 import type { Building } from '../buildings/BuildingSystem.ts';
+import type { HouseholdTravelDemand } from '../housing/HousingTypes.ts';
 import type { TransportationGraph } from '../traffic/TransportationGraph.ts';
 import { TripGenerationSystem, type TripPurpose } from '../traffic/TripGenerationSystem.ts';
 
@@ -20,9 +21,19 @@ export class PersonTripSystem {
   private readonly generator: TripGenerationSystem;
   constructor(generator: TripGenerationSystem) { this.generator = generator; }
 
-  generate(tick: number, buildings: readonly Building[], population: number, employed: number, graph: TransportationGraph): PersonTripCohort[] {
+  generate(
+    tick: number,
+    buildings: readonly Building[],
+    population: number,
+    employed: number,
+    graph: TransportationGraph,
+    householdDemand?: readonly HouseholdTravelDemand[],
+  ): PersonTripCohort[] {
     const byId = new Map(buildings.map((building) => [building.id, building]));
-    return this.generator.generate(tick, buildings, population, employed).map((trip) => {
+    const requests = householdDemand === undefined
+      ? this.generator.generate(tick, buildings, population, employed)
+      : this.generator.generateHouseholdDemand(tick, buildings, householdDemand);
+    return requests.map((trip) => {
       const origin = byId.get(trip.originBuildingId); const destination = byId.get(trip.destinationBuildingId);
       return Object.freeze({
         id: `person-${trip.id}`, sourceTripId: trip.id, originBuildingId: trip.originBuildingId, destinationBuildingId: trip.destinationBuildingId,
