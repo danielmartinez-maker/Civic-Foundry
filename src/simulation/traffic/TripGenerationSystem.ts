@@ -1,4 +1,5 @@
 import type { Building } from '../buildings/BuildingSystem.ts';
+import type { HouseholdTravelDemand } from '../housing/HousingTypes.ts';
 import { SeededRandom } from '../core/SeededRandom.ts';
 
 export type TripPurpose = 'commute' | 'shopping';
@@ -57,27 +58,33 @@ export class TripGenerationSystem {
     return trips.sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  getRandomState(): number {
-    return this.random.getState();
+  generateHouseholdDemand(tick: number, buildings: readonly Building[], demand: readonly HouseholdTravelDemand[]): TripRequest[] {
+    const occupied = buildings.filter((building) => building.status === 'occupied').slice().sort((a, b) => a.id.localeCompare(b.id));
+    const validIds = new Set(occupied.map((building) => building.id));
+    const shops = occupied.filter((building) => building.zone === 'commercial');
+    const trips: TripRequest[] = [];
+    const ordered = demand.slice().sort((a, b) => a.originBuildingId.localeCompare(b.originBuildingId) || (a.destinationBuildingId ?? '').localeCompare(b.destinationBuildingId ?? ''));
+
+    for (let index = 0; index < ordered.length; index++) {
+      const item = ordered[index]!;
+      if (!validIds.has(item.originBuildingId)) continue;
+      if (item.commuterWeight > 0 && item.destinationBuildingId && validIds.has(item.destinationBuildingId)) {
+        trips.push(this.createTrip(tick, item.originBuildingId, item.destinationBuildingId, item.commuterWeight, 'commute'));
+      }
+      if (item.shoppingWeight > 0 && shops.length > 0) {
+        const offset = this.random.nextInt(shops.length);
+        const destination = shops[(index + offset) % shops.length]!;
+        trips.push(this.createTrip(tick, item.originBuildingId, destination.id, item.shoppingWeight, 'shopping'));
+      }
+    }
+    return trips.sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  restoreRandomState(state: number, nextTripId: number): void {
-    this.random.setState(state);
-    this.nextTripId = Math.max(1, Math.floor(nextTripId));
-  }
-
-  getNextTripId(): number {
-    return this.nextTripId;
-  }
+  getRandomState(): number { return this.random.getState(); }
+  restoreRandomState(state: number, nextTripId: number): void { this.random.setState(state); this.nextTripId = Math.max(1, Math.floor(nextTripId)); }
+  getNextTripId(): number { return this.nextTripId; }
 
   private createTrip(tick: number, originBuildingId: string, destinationBuildingId: string, travelerWeight: number, purpose: TripPurpose): TripRequest {
-    return {
-      id: `trip:${this.nextTripId++}`,
-      originBuildingId,
-      destinationBuildingId,
-      departureTick: tick,
-      travelerWeight,
-      purpose,
-    };
+    return { id: `trip:${this.nextTripId++}`, originBuildingId, destinationBuildingId, departureTick: tick, travelerWeight, purpose };
   }
 }
