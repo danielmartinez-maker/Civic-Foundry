@@ -6,7 +6,7 @@ Civic Foundry is an original browser-based city-management and urban-development
 
 **V7 (`0.7.0-metropolitan`) is the canonical development baseline on `main` moving forward.** Older V5/V6 serializers and hydrators remain supported for compatibility and migration testing, but new development should target the V7 simulation/save contract unless a later version explicitly supersedes it.
 
-The V7 baseline contains the reverified rebuild through **Phase 6 — Firms, Production & Freight** plus the deterministic Phase 7 developer pro-forma/competition, derived property-market, aggregate housing-affordability/choice and residential redevelopment-pressure slices.
+The V7 baseline contains the reverified rebuild through **Phase 6 — Firms, Production & Freight** plus the deterministic Phase 7 developer pro-forma/competition, derived property-market, aggregate housing-affordability/choice, redevelopment-pressure and safeguarded residential-redevelopment execution slices.
 
 Implemented in the V7 baseline:
 
@@ -36,12 +36,16 @@ Implemented in the V7 baseline:
 - deterministic aggregate lower/middle/upper income-band housing choice across occupied residential buildings
 - physical housing capacity separated from effective affordable capacity, with affordability, rent burden, cost-burdened residents and unplaced-resident diagnostics
 - effective affordable capacity feeding the existing residential-demand channel while affordability applies only a bounded migration-attractiveness modifier and raw physical capacity remains the population hard cap
-- occupied residential redevelopment-pressure diagnostics comparing current use value with feasible higher-intensity replacements, demolition cost and resident displacement burden without automatic demolition
+- occupied residential redevelopment-pressure diagnostics comparing current-use value with feasible higher-intensity replacements, demolition cost and resident displacement burden
+- safeguarded residential redevelopment execution when pressure clears 0.25, no residents are already unplaced, and post-demolition physical and effective-affordable capacity remain above relocation floors
+- cumulative relocation-slack reservation so several same-cycle redevelopment awards cannot collectively demolish more housing than the city can absorb
+- occupied-parcel demolition and displacement costs folded into developer underwriting before redevelopment competes with vacant-lot projects in the same deterministic capital market
+- in-place higher-intensity rebuilding that preserves deterministic building identity, enters normal construction state and retains authoritative developer capital commitments
 - parcel underwriting using market rent/vacancy/land value, taxes, service/utility/accessibility, construction cost, financing, stabilized value, return and residual land value
 - deterministic competing developers with distinct hurdle rates, leverage, capital, risk tolerances and zone preferences
 - explicit development awards, owner/finance metadata, capital commitments, cancellation recovery and post-stabilization capital recycling
-- infrastructure, market economics and developer-hurdle gating that prevents automatic uneconomic development
-- Save V7 with exact developer-capital/commitment continuation and Save V6 economy/freight continuation; property markets, housing choice and redevelopment pressure remain derived and require no save-schema expansion
+- infrastructure, market economics, relocation safeguards and developer-hurdle gating that prevents automatic uneconomic or housing-destructive development
+- Save V7 with exact developer-capital/commitment continuation and Save V6 economy/freight continuation; property markets, housing choice, redevelopment pressure and redevelopment-execution planning remain derived and require no save-schema expansion
 
 ## Toolchain
 
@@ -70,13 +74,13 @@ npm run dev
 
 ## Architecture rule
 
-`SimulationCore` composes focused authoritative systems. `MobilityScheduler` owns multimodal update order, `EconomyScheduler` owns Phase 6 firms/inventories/production/freight/trade/business lifecycle state, and the Phase 7 development/housing domain owns derived property-market signals, aggregate housing allocation, redevelopment diagnostics, parcel feasibility and deterministic developer allocation. Rendering/UI reads snapshots and submits typed mutations through public APIs; it does not manufacture simulation outcomes.
+`SimulationCore` composes focused authoritative systems. `MobilityScheduler` owns multimodal update order, `EconomyScheduler` owns Phase 6 firms/inventories/production/freight/trade/business lifecycle state, and the Phase 7 development/housing domain owns derived property-market signals, aggregate housing allocation, redevelopment diagnostics/planning, parcel feasibility and deterministic developer allocation. Rendering/UI reads snapshots and submits typed mutations through public APIs; it does not manufacture simulation outcomes.
 
-Road traffic, transit attractiveness, service access, demand, finance, property-market conditions, affordability and development economics are coupled through measured travel/capacity/accessibility results. A transit line only helps when its geometry, frequency, capacity, fare and destination access make it competitive; residential demand now distinguishes physical stock from economically usable stock; a parcel only develops when infrastructure, market conditions, project economics and a developer's capital/hurdle constraints permit it.
+Road traffic, transit attractiveness, service access, demand, finance, property-market conditions, affordability and development economics are coupled through measured travel/capacity/accessibility results. A transit line only helps when its geometry, frequency, capacity, fare and destination access make it competitive; residential demand distinguishes physical stock from economically usable stock; a parcel only develops when infrastructure, market conditions, project economics and a developer's capital/hurdle constraints permit it; an occupied residential parcel only redevelops when aggregate relocation capacity is also sufficient.
 
 ## Persistence
 
-Current default save envelope: `saveVersion: 7`, game version `0.7.0-metropolitan`. V7 retains the complete V6 authoritative economy/transit/city state and adds the developer market state required for exact continuation: developer capital, committed capital and active development commitments. Derived transportation/multimodal graphs, route caches, accessibility maps, property-market snapshots, aggregate housing allocations, redevelopment-pressure snapshots, overlays and render state are rebuilt from authoritative state rather than persisted.
+Current default save envelope: `saveVersion: 7`, game version `0.7.0-metropolitan`. V7 retains the complete V6 authoritative economy/transit/city state and adds the developer market state required for exact continuation: developer capital, committed capital and active development commitments. Derived transportation/multimodal graphs, route caches, accessibility maps, property-market snapshots, aggregate housing allocations, redevelopment-pressure/execution snapshots, overlays and render state are rebuilt from authoritative state rather than persisted. A redevelopment that actually executes is represented by the existing authoritative construction building plus developer commitment, so no new persistence envelope is required.
 
 Explicit V5 and V6 serializers/hydrators remain available for compatibility, migration tests and historical fixtures. Loading V6 into the V7 runtime starts the default developer roster with no fabricated historical commitments.
 
@@ -88,7 +92,7 @@ Explicit V5 and V6 serializers/hydrators remain available for compatibility, mig
 4. Phase 4 — Public Services ✅
 5. Phase 5 — Transit Revolution ✅
 6. Phase 6 — Firms, Production & Freight ✅
-7. Phase 7 — Land, Housing & Development — in progress; developer competition, property markets, aggregate affordability/housing choice and residential redevelopment pressure are implemented; destructive redevelopment, tenure and individual household dynamics remain future work
+7. Phase 7 — Land, Housing & Development — in progress; developer competition, property markets, aggregate affordability/housing choice, redevelopment pressure and safeguarded residential redevelopment execution are implemented; tenure, explicit household relocation/search, anti-displacement policy and player-facing housing/development tools remain future work
 8. Phase 8 — Metropolitan Infrastructure
 9. Phase 9 — Demographic City
 10. Phase 10 — Environment & Resilience

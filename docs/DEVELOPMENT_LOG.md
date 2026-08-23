@@ -142,6 +142,33 @@ Extended the property-market slice into affordability and occupied-residential r
 
 ### Causal boundaries
 
-Housing allocation is an aggregate market-clearing approximation rather than a hidden demographic simulation. Fixed income bands are game-economy cohorts, fractional weighted residents are allowed, and no resident object, lease, mortgage, move queue or eviction history is fabricated. Redevelopment pressure is diagnostic only: it cannot demolish a building, displace residents, alter zoning or create a developer award.
+Housing allocation is an aggregate market-clearing approximation rather than a hidden demographic simulation. Fixed income bands are game-economy cohorts, fractional weighted residents are allowed, and no resident object, lease, mortgage, move queue or eviction history is fabricated. Redevelopment pressure is a derived diagnostic: it cannot itself demolish a building, displace residents, alter zoning or create a developer award.
 
-The next Phase 7 work can build on these explicit signals with actual redevelopment/relocation rules, tenure and household dynamics, or player-facing housing/density tools; richer demographic state remains reserved for Phase 9.
+## 2026-08-22 — Phase 7 Safeguarded Residential Redevelopment Execution
+
+Converted redevelopment pressure into an actual residential development path without introducing individual household agents or a second capital market:
+
+- added `BuildingSystem.replaceDevelopment()` with strict occupied-residential, award-identity and higher-intensity validation;
+- preserves deterministic `building:<lotId>` identity while replacing the old occupied use with the awarded definition in normal construction state;
+- added `RedevelopmentExecutionSystem`, a pure deterministic planner between pressure diagnostics and developer allocation;
+- requires redevelopment pressure ≥ 0.25 and blocks all demolition while the current housing allocation already has unplaced residents;
+- requires post-demolition raw residential capacity to remain at least current population;
+- requires post-demolition effective affordable capacity to remain at least 85% of current population;
+- reserves both relocation constraints cumulatively in stable pressure order so several same-cycle candidates cannot collectively over-demolish the housing stock;
+- adds demolition and aggregate displacement friction to the developer-underwritten pre-finance cost and recomputes feasibility/return economics;
+- combines admitted occupied-parcel replacements with vacant-lot opportunities in one `DeveloperMarketSystem.allocate()` call, preserving the same developer capital, leverage, risk, hurdle and concurrent-project constraints;
+- on award, removes the old building from the economy-domain building lifecycle, starts higher-intensity construction in place and retains the normal developer capital commitment;
+- does not directly mutate population on demolition; the existing 50-tick population loop remains authoritative, with relocation safeguards ensuring enough occupied stock remains;
+- keeps Save V7 unchanged because the executed state is already represented by the existing construction-stage building and developer commitment while pressure/execution snapshots remain derived.
+
+### TDD and integration evidence
+
+1. **Building replacement RED:** 240 existing tests passed and the 3 new replacement tests failed only because `replaceDevelopment()` did not exist. After implementation, 243/243 tests plus typecheck, lint and build passed.
+2. **Execution planner RED:** all 243 existing/replacement tests passed and CI failed only because `RedevelopmentExecutionSystem.ts` was intentionally absent. The planner then passed its physical-capacity, unplaced-resident, cumulative-slack, friction-economics and mismatch/threshold tests.
+3. **Core execution RED:** before core wiring, 249/250 tests passed; the only failure was the eligible occupied parcel receiving no redevelopment award.
+4. **Integration observation fix:** after core wiring the redevelopment itself succeeded, but one assertion still inspected `DeveloperMarketSystem.lastAwards()` after a later 10-tick auction had intentionally overwritten that ephemeral diagnostic. The test was corrected to inspect the authoritative active developer commitment instead of weakening production behavior.
+5. **Final code gate:** the full 250-test suite, typecheck, lint and production build passed after the correction.
+
+### Causal boundaries
+
+This remains an aggregate relocation safeguard, not a household-moving simulation. No leases, tenure, mortgages, owner identities, household search duration, temporary housing, eviction or homelessness queues are fabricated. Commercial/industrial redevelopment and policy/UI controls remain deferred. The older conflicting Phase 7 household branch was not merged wholesale because it predates and overlaps the now-canonical property-market/developer architecture; its cohort/tenure concepts remain design input for later work rather than a regression source.
