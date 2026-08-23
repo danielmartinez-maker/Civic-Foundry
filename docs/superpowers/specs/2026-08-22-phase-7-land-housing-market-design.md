@@ -3,7 +3,7 @@
 Date: 2026-08-22
 Target branch: `phase7-land-housing-market`
 Baseline: V7 `0.7.0-metropolitan` on `main`
-Status: Continuation of the approved Metropolitan Era Phase 7 program
+Status: Implemented Phase 7 continuation slice
 
 ## Objective
 
@@ -26,9 +26,7 @@ This slice remains deliberately derived and save-neutral. It does not introduce 
 
 ### `LandHousingMarketSystem`
 
-Create `src/simulation/development/LandHousingMarketSystem.ts`.
-
-The system owns no long-lived authoritative economic history. It derives bounded market snapshots from current simulation snapshots and retains only the latest snapshot for diagnostics.
+`src/simulation/development/LandHousingMarketSystem.ts` derives bounded market snapshots from current simulation snapshots and retains only the latest snapshot for diagnostics. It owns no long-lived authoritative economic history.
 
 Public types:
 
@@ -76,7 +74,7 @@ export type ParcelMarketSignal = Readonly<{
 - utility ratio;
 - frontage access bonus.
 
-The formulas must be explicit, deterministic, finite and clamped. No random noise, historical smoothing, wall-clock values or hidden state.
+The formulas are explicit, deterministic, finite and clamped. There is no random noise, historical smoothing, wall-clock input or persisted hidden state.
 
 ### Zone market formulas
 
@@ -87,7 +85,7 @@ Residential utilization:
 ```text
 housingUtilization = clamp(population / residentialCapacity, 0, 1.25)
 residentialPressure = clamp(
-  0.55 * min(1, housingUtilization)
+  0.55 * housingUtilization
   + 0.30 * normalizedResidentialDemand
   + 0.10 * personAccessibility
   + 0.05 * serviceUtilityQuality,
@@ -106,7 +104,7 @@ vacancyRate = clamp(baseMarketVacancy + (0.70 - pressure) * 0.18, 0.03, 0.35)
 landValueIndex = clamp(0.65 + pressure * 0.70 + access/service adjustment, 0.55, 1.75)
 ```
 
-Exact weights are code constants and covered by monotonicity tests. The requirements are directional rather than calibration-specific: tighter housing must increase residential rent/land indexes and reduce vacancy; weak demand must do the reverse.
+Exact weights are code constants and covered by monotonicity tests. The requirements are directional rather than calibration-specific: tighter housing increases residential rent/land indexes and reduces vacancy; weak demand does the reverse.
 
 ### Parcel signal formulas
 
@@ -121,14 +119,14 @@ Parcel adjustments are bounded multipliers around the zone market:
 
 ### `DevelopmentFeasibilitySystem`
 
-Extend `DevelopmentParcelContext` with:
+`DevelopmentParcelContext` includes:
 
 - `marketPressure`;
 - `marketRentMultiplier`;
 - `marketVacancyRate`;
 - `landValueMultiplier`.
 
-Underwriting changes:
+Underwriting:
 
 ```text
 achievableRent = definition.baseRent * marketRentMultiplier
@@ -146,16 +144,11 @@ This removes duplicate market-price formation from the feasibility system while 
 
 ### `SimulationCore`
 
-Add:
+`SimulationCore` owns `readonly landHousingMarket: LandHousingMarketSystem` and exposes `landHousingMarketSnapshot` as a read-only getter over the latest derived snapshot.
 
-- `readonly landHousingMarket: LandHousingMarketSystem`;
-- `landHousingMarketSnapshot: LandHousingMarketSnapshot`.
-
-Refresh the market snapshot in the 50-tick core-city loop after `DemandSystem` evaluates current demand and before the next development-market evaluation uses the snapshot.
+The market is recomputed immediately before each 10-tick development-market evaluation and again after the 50-tick core-city loop. The additional refresh is constant-sized and inexpensive. More importantly, developer decisions never depend on an unpersisted 50-tick market cache after a mid-cycle save/load.
 
 `developmentContextForLot()` obtains a parcel signal and passes its four fields into `DevelopmentFeasibilitySystem`.
-
-The development cadence remains every 10 ticks. Between 50-tick market refreshes it intentionally uses the most recent stable market snapshot, avoiding full-market recomputation every development cycle.
 
 ## Diagnostics
 
@@ -169,7 +162,7 @@ No UI changes are required in this slice.
 
 No Save V7 schema change.
 
-The market snapshot is derived from already persisted state: population, buildings/capacity, demand inputs, mobility/traffic accessibility, service quality and utilities. After hydration it is deterministically rebuilt by normal simulation evaluation.
+The market snapshot is derived from already persisted/restored state: population, buildings/capacity, demand inputs, mobility/traffic accessibility, service quality and utilities. Because the market is refreshed immediately before development decisions, a loaded mid-cycle save does not need the previous derived snapshot persisted to produce the correct next underwriting decision.
 
 No market-history statistics are fabricated during migration.
 
@@ -182,7 +175,7 @@ No market-history statistics are fabricated during migration.
 - pressure remains in `[0, 1.25]`;
 - parcel multipliers remain bounded and positive;
 - no random or time-dependent behavior;
-- no persistence mutation in this slice.
+- no persistence schema mutation in this slice.
 
 ## TDD acceptance tests
 
@@ -194,7 +187,7 @@ No market-history statistics are fabricated during migration.
 6. Non-finite or negative count inputs are rejected.
 7. `DevelopmentFeasibilitySystem` uses explicit market signals: higher `marketRentMultiplier` increases NOI/return; higher `marketVacancyRate` suppresses return; higher `landValueMultiplier` increases land cost and can suppress return.
 8. `SimulationCore` refreshes the derived market and exposes residential metrics without changing Save V7.
-9. Existing development, city-loop, economy, mobility, services, save, typecheck and build regressions remain green.
+9. Existing development, city-loop, economy, mobility, services, save, typecheck, lint and build regressions remain green.
 
 ## Deferred from this slice
 
