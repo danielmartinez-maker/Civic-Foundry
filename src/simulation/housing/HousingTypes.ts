@@ -37,5 +37,22 @@ export type HousingBuildingLedger = Readonly<{
   quality: number; accessibility: number; habitability: number; rentChange: number; priceChange: number;
   existingUseValue: number; redevelopmentPressure: number; displacementRiskHouseholds: number; lastUpdatedTick: number;
 }>;
-
 export type HousingSupplyStateSnapshot = Readonly<{ ledgers: readonly HousingBuildingLedger[] }>;
+
+export type HousingCandidate = Readonly<{
+  buildingId: string; tenure: 'renter' | 'owner'; housingCost: number; askingPrice: number; availableUnits: number; residentsPerUnit: number;
+  accessibility: number; services: number; neighborhood: number; quality: number; density: number; overcrowdingRatio: number; displacementRisk: number;
+}>;
+export type HousingChoiceContext = Readonly<{ marketInterestRate: number; voluntaryMove: boolean; currentUtility?: number }>;
+export type MortgageQuote = Readonly<{
+  eligible: boolean; principal: number; scheduledPayment: number; requiredDownPayment: number; transactionReserve: number;
+  emergencyReserve: number; maximumAffordablePrice: number; rejectionReasons: readonly string[];
+}>;
+export type HousingUtilityComponents = Readonly<{
+  affordability: number; space: number; commute: number; services: number; neighborhood: number; tenure: number; vehicle: number;
+  density: number; stability: number; movingCost: number; overcrowdingPenalty: number; displacementRisk: number;
+}>;
+export type HousingChoiceResult = Readonly<{
+  buildingId: string; tenure: 'renter' | 'owner'; eligible: boolean; totalUtility: number; housingCost: number;
+  components: HousingUtilityComponents; rejectionReasons: readonly string[]; mortgage: MortgageQuote | null;
+}>;
