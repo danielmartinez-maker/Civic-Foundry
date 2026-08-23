@@ -68,7 +68,6 @@ export class HousingMarketSystem {
     if (!Number.isInteger(input.tick) || input.tick < 0) throw new Error('housing tick must be a non-negative integer');
     if (!Number.isFinite(input.marketInterestRate) || input.marketInterestRate < 0) throw new Error('housing market interest rate must be non-negative and finite');
     if (!Number.isFinite(input.employmentVacancies) || input.employmentVacancies < 0) throw new Error('employmentVacancies must be non-negative and finite');
-
     if (input.tick % HOUSING_CADENCE.conditions === 0) this.updateConditions(input);
     if (input.tick % HOUSING_CADENCE.economics === 0) this.updateHouseholdEconomics(input);
     if (input.tick % HOUSING_CADENCE.market === 0) this.clearMarket(input);
@@ -86,13 +85,11 @@ export class HousingMarketSystem {
           .map((firmId) => firmsById.get(firmId)?.buildingId)
           .filter((buildingId): buildingId is string => buildingId !== undefined)
           .sort();
-        const commuterWeight = household.employedWorkers * household.weight;
-        const shoppingWeight = Math.max(0, Math.round(household.householdSize * household.weight * 0.25));
         return Object.freeze({
           originBuildingId: household.buildingId!,
           ...(employerBuildings[0] ? { destinationBuildingId: employerBuildings[0] } : {}),
-          commuterWeight,
-          shoppingWeight,
+          commuterWeight: household.employedWorkers * household.weight,
+          shoppingWeight: Math.max(0, Math.round(household.householdSize * household.weight * 0.25)),
         });
       })
       .filter((item) => item.commuterWeight > 0 || item.shoppingWeight > 0)
@@ -120,50 +117,31 @@ export class HousingMarketSystem {
     }).reduce((sum, household) => sum + household.weight, 0);
     const medianSalePrice = weightedMedian(ledgers.filter((ledger) => ledger.forSaleProductUnits > 0).map((ledger) => ({ value: ledger.estimatedSalePrice, weight: ledger.forSaleProductUnits })));
     const ownershipQualifiedSearchers = households.filter((household) => household.searchState === 'searching').reduce((sum, household) => sum + (medianSalePrice > 0 && this.choice.quoteMortgage(household, 0.05, medianSalePrice).eligible ? household.weight : 0), 0);
-
     return Object.freeze({
-      population: this.population(),
-      representedHouseholds,
-      renterHouseholds,
-      ownerHouseholds,
-      searchingHouseholds,
-      displacedHouseholds,
-      unhousedHouseholds,
+      population: this.population(), representedHouseholds, renterHouseholds, ownerHouseholds, searchingHouseholds,
+      displacedHouseholds, unhousedHouseholds,
       rentalVacancyRate: rentalUnits === 0 ? 0 : vacantRental / rentalUnits,
       forSaleVacancyRate: saleUnits === 0 ? 0 : vacantSale / saleUnits,
       medianAskingRent: weightedMedian(ledgers.filter((ledger) => ledger.rentalProductUnits > 0).map((ledger) => ({ value: ledger.askingRent, weight: ledger.rentalProductUnits }))),
       medianEffectiveRent: weightedMedian(ledgers.filter((ledger) => ledger.rentalProductUnits > 0).map((ledger) => ({ value: ledger.effectiveRent, weight: ledger.rentalProductUnits }))),
       medianSalePrice,
-      comfortableHouseholds: burden('comfortable'),
-      manageableHouseholds: burden('manageable'),
-      stressedHouseholds: burden('stressed'),
-      severeBurdenHouseholds: burden('severe'),
-      overcrowdedHouseholds,
-      inMigrationHouseholds: this.cumulativeInMigration,
-      outMigrationHouseholds: this.cumulativeOutMigration,
-      turnover: ledgers.reduce((sum, ledger) => sum + ledger.turnover, 0),
-      ownershipQualifiedSearchers,
+      comfortableHouseholds: burden('comfortable'), manageableHouseholds: burden('manageable'), stressedHouseholds: burden('stressed'), severeBurdenHouseholds: burden('severe'),
+      overcrowdedHouseholds, inMigrationHouseholds: this.cumulativeInMigration, outMigrationHouseholds: this.cumulativeOutMigration,
+      turnover: ledgers.reduce((sum, ledger) => sum + ledger.turnover, 0), ownershipQualifiedSearchers,
       redevelopmentPressure: ledgers.length === 0 ? 0 : ledgers.reduce((sum, ledger) => sum + ledger.redevelopmentPressure, 0) / ledgers.length,
     });
   }
 
   snapshotState(): HousingMarketStateSnapshot {
     return Object.freeze({
-      households: this.households.snapshotState(),
-      supply: this.supply.snapshotState(),
-      nextMigrantArchetype: this.nextMigrantArchetype,
-      cumulativeInMigration: this.cumulativeInMigration,
-      cumulativeOutMigration: this.cumulativeOutMigration,
+      households: this.households.snapshotState(), supply: this.supply.snapshotState(), nextMigrantArchetype: this.nextMigrantArchetype,
+      cumulativeInMigration: this.cumulativeInMigration, cumulativeOutMigration: this.cumulativeOutMigration,
     });
   }
 
   restoreState(state: HousingMarketStateSnapshot): void {
     if (!state || typeof state !== 'object') throw new Error('housing market state must be an object');
-    for (const [name, value] of [
-      ['nextMigrantArchetype', state.nextMigrantArchetype],
-      ['cumulativeInMigration', state.cumulativeInMigration],
-      ['cumulativeOutMigration', state.cumulativeOutMigration],
-    ] as const) {
+    for (const [name, value] of [['nextMigrantArchetype', state.nextMigrantArchetype], ['cumulativeInMigration', state.cumulativeInMigration], ['cumulativeOutMigration', state.cumulativeOutMigration]] as const) {
       if (!Number.isInteger(value) || value < 0) throw new Error(`${name} must be a non-negative integer`);
     }
     const nextHouseholds = new HouseholdCohortSystem();
@@ -184,10 +162,7 @@ export class HousingMarketSystem {
       const condition = input.conditionsByBuilding[ledger.buildingId];
       if (!condition) continue;
       this.supply.updateMarketState(ledger.buildingId, {
-        quality: clamp01(condition.quality),
-        accessibility: clamp01(condition.accessibility),
-        habitability: clamp01(condition.habitability),
-        lastUpdatedTick: input.tick,
+        quality: clamp01(condition.quality), accessibility: clamp01(condition.accessibility), habitability: clamp01(condition.habitability), lastUpdatedTick: input.tick,
       });
     }
   }
@@ -243,29 +218,22 @@ export class HousingMarketSystem {
 
   private createInboundMigrants(input: HousingMarketTickInput): void {
     const vacantUnits = this.supply.list().reduce((sum, ledger) => sum + ledger.vacantRentableUnits + ledger.vacantForSaleUnits, 0);
-    const count = Math.min(HOUSING_CONFIG.maxInboundHouseholdsPerMarketCycle, Math.floor(input.employmentVacancies), vacantUnits);
+    const employmentPull = Math.floor(input.employmentVacancies);
+    const bootstrapPull = this.population() === 0 && vacantUnits > 0 ? 1 : 0;
+    const count = Math.min(HOUSING_CONFIG.maxInboundHouseholdsPerMarketCycle, Math.max(employmentPull, bootstrapPull), vacantUnits);
     if (count <= 0) return;
     const active = input.firms.filter((firm) => firm.status === 'operating' || firm.status === 'distressed');
-    const averageWage = active.length === 0
-      ? HOUSEHOLD_WAGE_BY_ARCHETYPE.retail_local
-      : active.reduce((sum, firm) => sum + HOUSEHOLD_WAGE_BY_ARCHETYPE[firm.archetype], 0) / active.length;
+    const averageWage = active.length === 0 ? HOUSEHOLD_WAGE_BY_ARCHETYPE.retail_local : active.reduce((sum, firm) => sum + HOUSEHOLD_WAGE_BY_ARCHETYPE[firm.archetype], 0) / active.length;
     for (let index = 0; index < count; index++) {
       const archetype = MIGRANT_ARCHETYPES[this.nextMigrantArchetype % MIGRANT_ARCHETYPES.length]!;
       this.nextMigrantArchetype += 1;
       const grossIncome = Math.max(HOUSING_CONFIG.unemployedWorkerFallbackIncome, averageWage) * archetype.workers;
       this.households.create({
-        weight: 1,
-        householdSize: archetype.householdSize,
-        workers: archetype.workers,
-        grossIncome,
+        weight: 1, householdSize: archetype.householdSize, workers: archetype.workers, grossIncome,
         disposableHousingIncome: grossIncome * HOUSING_CONFIG.disposableIncomeRatio,
         employmentStability: active.length === 0 ? 0.25 : active.reduce((sum, firm) => sum + firm.cashHealth, 0) / active.length,
-        tenure: 'seeking',
-        buildingId: null,
-        unitRequirement: 1,
-        vehicleAccess: archetype.vehicleAccess,
-        liquidSavings: grossIncome * archetype.savingsMonths,
-        housingCost: 0,
+        tenure: 'seeking', buildingId: null, unitRequirement: 1, vehicleAccess: archetype.vehicleAccess,
+        liquidSavings: grossIncome * archetype.savingsMonths, housingCost: 0,
       }, input.tick);
       this.cumulativeInMigration += 1;
     }
@@ -284,8 +252,7 @@ export class HousingMarketSystem {
       const occupancyPressure = clamp((occupancyRate - HOUSING_CONFIG.targetOccupancy) / 0.10, -1, 1);
       const applicantPressure = clamp(qualifiedRentalApplicants / Math.max(1, ledger.vacantRentableUnits) - 1, -1, 1);
       const incomeSupport = clamp(medianQualifiedIncome / Math.max(1, ledger.askingRent * 3) - 1, -0.5, 0.5);
-      const raw = 0.012 * occupancyPressure + 0.010 * applicantPressure + 0.004 * incomeSupport
-        + 0.003 * (ledger.quality - 0.70) + 0.003 * (ledger.accessibility - 0.70) - 0.020 * (1 - ledger.habitability);
+      const raw = 0.012 * occupancyPressure + 0.010 * applicantPressure + 0.004 * incomeSupport + 0.003 * (ledger.quality - 0.70) + 0.003 * (ledger.accessibility - 0.70) - 0.020 * (1 - ledger.habitability);
       let rentChange = ledger.rentalProductUnits === 0 ? 0 : clamp(raw, -HOUSING_CONFIG.maxNormalRentChange, HOUSING_CONFIG.maxNormalRentChange);
       if (ledger.rentalProductUnits > 0 && vacancyRate >= HOUSING_CONFIG.severeVacancyRate) rentChange = Math.min(rentChange, -HOUSING_CONFIG.maxSevereVacancyRentCut);
       const priorRent = ledger.askingRent;
@@ -293,39 +260,26 @@ export class HousingMarketSystem {
       const effectiveRent = askingRent * (1 - clamp((vacancyRate - 0.08) * 0.30, 0, 0.12));
       const buyerPressure = qualifiedBuyerCount / Math.max(1, ledger.vacantForSaleUnits);
       const anchor = effectiveRent * HOUSING_CONFIG.salePriceToEffectiveRent;
-      const targetSalePrice = anchor
-        * clamp(0.85 + ledger.quality * 0.30, 0.85, 1.15)
-        * clamp(0.90 + ledger.accessibility * 0.20, 0.90, 1.10)
-        * clamp(0.95 + buyerPressure * 0.05, 0.90, 1.10)
-        * clamp(1.10 - input.marketInterestRate * 4, 0.65, 1.10);
-      const priceChange = ledger.forSaleProductUnits === 0 || ledger.estimatedSalePrice <= 0
-        ? 0
-        : clamp(targetSalePrice / ledger.estimatedSalePrice - 1, -HOUSING_CONFIG.maxSalePriceChange, HOUSING_CONFIG.maxSalePriceChange);
+      const targetSalePrice = anchor * clamp(0.85 + ledger.quality * 0.30, 0.85, 1.15) * clamp(0.90 + ledger.accessibility * 0.20, 0.90, 1.10) * clamp(0.95 + buyerPressure * 0.05, 0.90, 1.10) * clamp(1.10 - input.marketInterestRate * 4, 0.65, 1.10);
+      const priceChange = ledger.forSaleProductUnits === 0 || ledger.estimatedSalePrice <= 0 ? 0 : clamp(targetSalePrice / ledger.estimatedSalePrice - 1, -HOUSING_CONFIG.maxSalePriceChange, HOUSING_CONFIG.maxSalePriceChange);
       const estimatedSalePrice = ledger.estimatedSalePrice * (1 + priceChange);
       const definition = getBuildingDefinition(ledger.definitionId);
       const annualNoi = effectiveRent * ledger.renterOccupiedUnits * 12 * (1 - definition.operatingExpenseRatio);
       const existingUseValue = annualNoi / Math.max(0.045, definition.baseCapRate);
       this.supply.updateMarketState(ledger.buildingId, {
-        priorRent, askingRent, effectiveRent, rentChange,
-        askingSalePrice: estimatedSalePrice, estimatedSalePrice, priceChange,
-        qualifiedRentalApplicants, qualifiedBuyerPressure: buyerPressure,
-        vacancyDuration: vacancyRate > 0 ? ledger.vacancyDuration + 1 : 0,
+        priorRent, askingRent, effectiveRent, rentChange, askingSalePrice: estimatedSalePrice, estimatedSalePrice, priceChange,
+        qualifiedRentalApplicants, qualifiedBuyerPressure: buyerPressure, vacancyDuration: vacancyRate > 0 ? ledger.vacancyDuration + 1 : 0,
         existingUseValue, lastUpdatedTick: input.tick,
       });
     }
   }
 
   private matchSearchers(input: HousingMarketTickInput): void {
-    const searchers = this.households.list()
-      .filter((household) => household.searchState === 'searching')
-      .sort((a, b) => this.searchPriority(a) - this.searchPriority(b) || a.id.localeCompare(b.id));
+    const searchers = this.households.list().filter((household) => household.searchState === 'searching').sort((a, b) => this.searchPriority(a) - this.searchPriority(b) || a.id.localeCompare(b.id));
     for (const snapshotHousehold of searchers) {
       const current = this.households.get(snapshotHousehold.id);
       if (!current || current.searchState !== 'searching') continue;
-      const ranked = this.choice.rankCandidates(current, this.candidatesFor(current), {
-        marketInterestRate: input.marketInterestRate,
-        voluntaryMove: current.buildingId !== null,
-      });
+      const ranked = this.choice.rankCandidates(current, this.candidatesFor(current), { marketInterestRate: input.marketInterestRate, voluntaryMove: current.buildingId !== null });
       const best = ranked.find((result) => result.eligible);
       if (!best) continue;
       if (current.buildingId) {
@@ -353,13 +307,7 @@ export class HousingMarketSystem {
     this.supply.occupy(result.buildingId, result.tenure, units, residents);
     let mortgage: MortgageProxy | null = null;
     if (result.tenure === 'owner' && result.mortgage) {
-      mortgage = {
-        originalPrincipal: result.mortgage.principal,
-        remainingPrincipal: result.mortgage.principal,
-        annualRate: marketInterestRate,
-        scheduledPayment: result.mortgage.scheduledPayment,
-        purchaseTick: tick,
-      };
+      mortgage = { originalPrincipal: result.mortgage.principal, remainingPrincipal: result.mortgage.principal, annualRate: marketInterestRate, scheduledPayment: result.mortgage.scheduledPayment, purchaseTick: tick };
     }
     this.households.assignResidence(household.id, result.buildingId, result.tenure, result.housingCost, mortgage, 'market-move');
     if (result.tenure === 'owner' && result.mortgage) {
@@ -372,9 +320,7 @@ export class HousingMarketSystem {
   }
 
   private processOutMigration(): void {
-    const candidates = this.households.list().filter((household) =>
-      (!household.buildingId && household.unhousedCycles >= HOUSING_CONFIG.outMigrationUnhousedCycles)
-      || (household.buildingId !== null && household.severeBurdenCycles >= HOUSING_CONFIG.outMigrationSevereBurdenCycles));
+    const candidates = this.households.list().filter((household) => (!household.buildingId && household.unhousedCycles >= HOUSING_CONFIG.outMigrationUnhousedCycles) || (household.buildingId !== null && household.severeBurdenCycles >= HOUSING_CONFIG.outMigrationSevereBurdenCycles));
     for (const household of candidates.sort((a, b) => a.id.localeCompare(b.id))) {
       if (household.buildingId && (household.tenure === 'renter' || household.tenure === 'owner')) {
         const ledger = this.supply.get(household.buildingId);
@@ -408,24 +354,18 @@ export class HousingMarketSystem {
     if (!household.buildingId || (household.tenure !== 'renter' && household.tenure !== 'owner')) return null;
     const ledger = this.supply.get(household.buildingId);
     if (!ledger) return null;
-    const candidate = this.toCandidate(ledger, household.tenure);
-    return { ...candidate, availableUnits: Math.max(household.unitRequirement, candidate.availableUnits) };
+    return { ...this.toCandidate(ledger, household.tenure), availableUnits: Math.max(household.unitRequirement, household.tenure === 'renter' ? ledger.vacantRentableUnits : ledger.vacantForSaleUnits) };
   }
 
   private toCandidate(ledger: ReturnType<HousingSupplySystem['list']>[number], tenure: 'renter' | 'owner'): HousingCandidate {
     const condition = this.conditionsByBuilding[ledger.buildingId];
     return {
-      buildingId: ledger.buildingId,
-      tenure,
-      housingCost: tenure === 'renter' ? ledger.effectiveRent : 0,
+      buildingId: ledger.buildingId, tenure, housingCost: tenure === 'renter' ? ledger.effectiveRent : 0,
       askingPrice: tenure === 'owner' ? ledger.estimatedSalePrice : 0,
       availableUnits: tenure === 'renter' ? ledger.vacantRentableUnits : ledger.vacantForSaleUnits,
       residentsPerUnit: ledger.housingUnits === 0 ? 0 : ledger.residentCapacity / ledger.housingUnits,
-      accessibility: ledger.accessibility,
-      services: clamp01(condition?.services ?? ledger.quality),
-      neighborhood: clamp01(condition?.neighborhood ?? ledger.quality),
-      quality: ledger.quality,
-      density: densityForDefinition(ledger.definitionId),
+      accessibility: ledger.accessibility, services: clamp01(condition?.services ?? ledger.quality), neighborhood: clamp01(condition?.neighborhood ?? ledger.quality),
+      quality: ledger.quality, density: densityForDefinition(ledger.definitionId),
       overcrowdingRatio: clamp01(Math.max(0, ledger.residentLoad / Math.max(1, ledger.residentCapacity) - 1)),
       displacementRisk: clamp01(ledger.displacementRiskHouseholds / Math.max(1, ledger.renterOccupiedUnits + ledger.ownerOccupiedUnits)),
     };
