@@ -1,5 +1,5 @@
 import type { ZoneType } from '../core/types.ts';
-import { BUILDING_DEFINITIONS, BUILDING_DEFINITION_BY_ID, type BuildingDefinition } from '../../data/buildings.ts';
+import { BUILDING_DEFINITIONS, BUILDING_DEFINITION_BY_ID, type BuildingDefinition, type BuildingIntensity } from '../../data/buildings.ts';
 import type { Lot } from '../../world/lots/LotSystem.ts';
 import type { DevelopmentAward } from '../development/DevelopmentTypes.ts';
 
@@ -20,6 +20,8 @@ export type Building = {
   awardScore?: number;
 };
 
+const INTENSITY_RANK: Readonly<Record<BuildingIntensity, number>> = Object.freeze({ low: 0, medium: 1, high: 2 });
+
 export function definitionForBuilding(building: Pick<Building, 'definitionId' | 'zone'>): BuildingDefinition {
   return BUILDING_DEFINITION_BY_ID[building.definitionId] ?? BUILDING_DEFINITIONS[building.zone];
 }
@@ -30,33 +32,36 @@ export class BuildingSystem {
   startDevelopment(tick: number, lot: Lot, award: DevelopmentAward): Building {
     if (!Number.isInteger(tick) || tick < 0) throw new Error('tick must be a non-negative integer');
     if (this.buildings.has(lot.id)) throw new Error(`lot already developed: ${lot.id}`);
-    if (award.lotId !== lot.id) throw new Error(`award lot does not match parcel: ${award.lotId}`);
-    if (award.zone !== lot.zone) throw new Error(`award zone does not match parcel zone: ${award.zone}`);
-    const definition = BUILDING_DEFINITION_BY_ID[award.definitionId];
-    if (!definition) throw new Error(`unknown awarded building definition: ${award.definitionId}`);
-    if (definition.zone !== lot.zone) throw new Error(`building definition zone does not match parcel zone: ${definition.zone}`);
-    const expectedBuildingId = `building:${lot.id}`;
-    if (award.buildingId !== expectedBuildingId) throw new Error(`award building id does not match lot: ${award.buildingId}`);
-    const expectedCompletionTick = tick + definition.constructionTicks;
-    if (award.completionTick !== expectedCompletionTick) throw new Error('award completion tick does not match building definition');
+    const definition = this.validateAwardForLot(tick, lot, award);
 
-    const building: Building = {
-      id: award.buildingId,
-      lotId: lot.id,
-      x: lot.x,
-      y: lot.y,
-      zone: lot.zone,
-      definitionId: award.definitionId,
-      status: 'construction',
-      constructionStartedTick: tick,
-      completionTick: award.completionTick,
-      developerId: award.developerId,
-      projectCost: award.totalDevelopmentCost,
-      requiredEquity: award.requiredEquity,
-      awardScore: award.rankScore,
-    };
+    const building = this.buildingFromAward(tick, lot, award, definition);
     this.buildings.set(lot.id, building);
     return { ...building };
+  }
+
+  replaceDevelopment(tick: number, lot: Lot, award: DevelopmentAward): { removed: Building; replacement: Building } {
+    if (!Number.isInteger(tick) || tick < 0) throw new Error('tick must be a non-negative integer');
+    const existing = this.buildings.get(lot.id);
+    if (!existing) throw new Error(`redevelopment requires an existing occupied building: ${lot.id}`);
+    if (existing.status !== 'occupied') throw new Error(`redevelopment requires an occupied building: ${lot.id}`);
+    if (lot.zone !== 'residential' || existing.zone !== 'residential') {
+      throw new Error('redevelopment execution is residential only');
+    }
+    if (existing.id !== `building:${lot.id}`) {
+      throw new Error(`existing building id does not match lot: ${existing.id}`);
+    }
+
+    const definition = this.validateAwardForLot(tick, lot, award);
+    if (definition.zone !== 'residential') throw new Error('redevelopment execution is residential only');
+    const existingDefinition = definitionForBuilding(existing);
+    if (INTENSITY_RANK[definition.intensity] <= INTENSITY_RANK[existingDefinition.intensity]) {
+      throw new Error('redevelopment replacement must have higher intensity than the existing building');
+    }
+
+    const replacement = this.buildingFromAward(tick, lot, award, definition);
+    const removed = { ...existing };
+    this.buildings.set(lot.id, replacement);
+    return { removed, replacement: { ...replacement } };
   }
 
   tick(tick: number): void {
@@ -104,5 +109,36 @@ export class BuildingSystem {
   restore(buildings: readonly Building[]): void {
     this.buildings.clear();
     for (const building of buildings) this.buildings.set(building.lotId, { ...building });
+  }
+
+  private validateAwardForLot(tick: number, lot: Lot, award: DevelopmentAward): BuildingDefinition {
+    if (award.lotId !== lot.id) throw new Error(`award lot does not match parcel: ${award.lotId}`);
+    if (award.zone !== lot.zone) throw new Error(`award zone does not match parcel zone: ${award.zone}`);
+    const definition = BUILDING_DEFINITION_BY_ID[award.definitionId];
+    if (!definition) throw new Error(`unknown awarded building definition: ${award.definitionId}`);
+    if (definition.zone !== lot.zone) throw new Error(`building definition zone does not match parcel zone: ${definition.zone}`);
+    const expectedBuildingId = `building:${lot.id}`;
+    if (award.buildingId !== expectedBuildingId) throw new Error(`award building id does not match lot: ${award.buildingId}`);
+    const expectedCompletionTick = tick + definition.constructionTicks;
+    if (award.completionTick !== expectedCompletionTick) throw new Error('award completion tick does not match building definition');
+    return definition;
+  }
+
+  private buildingFromAward(tick: number, lot: Lot, award: DevelopmentAward, definition: BuildingDefinition): Building {
+    return {
+      id: award.buildingId,
+      lotId: lot.id,
+      x: lot.x,
+      y: lot.y,
+      zone: lot.zone,
+      definitionId: definition.id,
+      status: 'construction',
+      constructionStartedTick: tick,
+      completionTick: award.completionTick,
+      developerId: award.developerId,
+      projectCost: award.totalDevelopmentCost,
+      requiredEquity: award.requiredEquity,
+      awardScore: award.rankScore,
+    };
   }
 }
