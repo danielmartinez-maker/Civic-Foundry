@@ -63,8 +63,8 @@ function buildDevelopmentCore(withUtilities = true): SimulationCore {
   return core;
 }
 
-function buildOccupiedResidentialCore(): SimulationCore {
-  const core = buildDevelopmentCore(true);
+function buildOccupiedResidentialCore(withUtilities = true): SimulationCore {
+  const core = buildDevelopmentCore(withUtilities);
   const residentialLot = core.lots.list().find((item) => item.zone === 'residential');
   assert.ok(residentialLot);
   core.buildings.restore([{
@@ -208,6 +208,35 @@ test('SimulationCore exposes deterministic aggregate housing allocation without 
   assert.ok(housing.housedResidents <= first.population.population);
   assert.ok(first.population.population <= first.buildings.residentialCapacity());
   assert.deepEqual(first.housingChoiceSnapshot, second.housingChoiceSnapshot);
+});
+
+test('SimulationCore exposes deterministic residential redevelopment pressure without mutating the occupied building', () => {
+  const first = buildOccupiedResidentialCore(true);
+  const second = buildOccupiedResidentialCore(true);
+  const targetId = first.buildings.occupied()[0]!.id;
+  const targetDefinition = first.buildings.occupied()[0]!.definitionId;
+
+  first.step(50);
+  second.step(50);
+
+  const snapshot = first.redevelopmentPressureSnapshot;
+  const target = snapshot.parcels.find((parcel) => parcel.buildingId === targetId);
+  assert.ok(target);
+  assert.ok(target.pressure >= 0 && target.pressure <= 1.25);
+  assert.ok(Number.isFinite(snapshot.averagePressure));
+  assert.deepEqual(first.redevelopmentPressureSnapshot, second.redevelopmentPressureSnapshot);
+  const stillOccupied = first.buildings.occupied().find((building) => building.id === targetId);
+  assert.ok(stillOccupied);
+  assert.equal(stillOccupied.definitionId, targetDefinition);
+});
+
+test('residential redevelopment pressure is zero when utilities make higher intensity replacement infeasible', () => {
+  const core = buildOccupiedResidentialCore(false);
+  const targetId = core.buildings.occupied()[0]!.id;
+  core.step(50);
+  const target = core.redevelopmentPressureSnapshot.parcels.find((parcel) => parcel.buildingId === targetId);
+  assert.ok(target);
+  assert.equal(target.pressure, 0);
 });
 
 test('SimulationCore routes feasible parcels through deterministic developer awards', () => {
