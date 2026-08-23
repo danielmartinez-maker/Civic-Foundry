@@ -23,29 +23,14 @@ function building(id: string, rentalUnits: number, forSaleUnits: number): Buildi
 
 function firm(id: string, filledJobs: number): Firm {
   return {
-    id,
-    buildingId: `job-building:${id}`,
-    zone: 'commercial',
-    archetype: 'retail_local',
-    status: 'operating',
-    jobCapacity: Math.max(20, filledJobs),
-    filledJobs,
-    vacancies: 0,
-    productivity: 1,
-    cashHealth: 0.8,
-    consecutiveLossCycles: 0,
-    consecutiveRecoveryCycles: 0,
-    formationTick: 0,
-    lastOperatingMargin: 0,
+    id, buildingId: `job-building:${id}`, zone: 'commercial', archetype: 'retail_local', status: 'operating',
+    jobCapacity: Math.max(20, filledJobs), filledJobs, vacancies: 0, productivity: 1, cashHealth: 0.8,
+    consecutiveLossCycles: 0, consecutiveRecoveryCycles: 0, formationTick: 0, lastOperatingMargin: 0,
   };
 }
 
 const conditions = (ids: readonly string[]) => Object.fromEntries(ids.map((id) => [id, {
-  quality: 0.75,
-  accessibility: 0.8,
-  services: 0.75,
-  neighborhood: 0.75,
-  habitability: 1,
+  quality: 0.75, accessibility: 0.8, services: 0.75, neighborhood: 0.75, habitability: 1,
 }]));
 
 test('persistent vacancy cuts rent while qualified excess demand raises it within normal upward inertia', () => {
@@ -76,7 +61,6 @@ test('market clears only available units and deterministically splits a larger c
     unitRequirement: 1, vehicleAccess: false, liquidSavings: 5_000,
   }, 0);
   market.tick({ tick: 100, buildings: [home], firms: [firm('firm:p', 10)], marketInterestRate: 0.05, employmentVacancies: 0, conditionsByBuilding: conditions([home.id]) });
-
   const housed = market.households.list().filter((h) => h.buildingId === home.id);
   const searching = market.households.list().filter((h) => h.searchState === 'searching');
   assert.equal(housed.reduce((sum, h) => sum + h.weight, 0), 3);
@@ -124,4 +108,19 @@ test('housing market state restores and continues deterministically', () => {
   a.tick(input(200));
   b.tick(input(200));
   assert.deepEqual(b.snapshotState(), a.snapshotState());
+});
+
+test('owner move persists purchase-rate mortgage and consumes transaction cash', () => {
+  const market = new HousingMarketSystem();
+  const home = building('building:o', 0, 12);
+  const buyer = market.households.create({
+    weight: 1, householdSize: 2, workers: 1, grossIncome: 8_000, disposableHousingIncome: 6_400,
+    tenure: 'seeking', buildingId: null, unitRequirement: 1, vehicleAccess: true, liquidSavings: 100_000,
+  }, 0);
+  market.tick({ tick: 100, buildings: [home], firms: [firm('firm:o', 1)], marketInterestRate: 0.07, employmentVacancies: 0, conditionsByBuilding: conditions([home.id]) });
+  const moved = market.households.get(buyer.id)!;
+  assert.equal(moved.tenure, 'owner');
+  assert.equal(moved.buildingId, home.id);
+  assert.equal(moved.mortgage?.annualRate, 0.07);
+  assert.ok(moved.liquidSavings < 100_000);
 });
