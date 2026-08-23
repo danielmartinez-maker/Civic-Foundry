@@ -2,7 +2,7 @@ name: Civic Foundry CI
 
 on:
   push:
-    branches: [metropolitan-era]
+    branches: [main]
   pull_request:
 
 permissions:
