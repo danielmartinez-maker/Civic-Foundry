@@ -127,6 +127,25 @@ test('global allocation rechecks developer capital after every award', async () 
   assert.equal(market.listDevelopers()[0]!.availableCapital, 20_000);
 });
 
+test('an active building commitment cannot be overwritten by a second award for the same lot', async () => {
+  const { DeveloperMarketSystem } = await marketModule();
+  const market = new DeveloperMarketSystem({ developers: [developer({ availableCapital: 150_000 })] });
+  const [firstAward] = market.allocate([
+    opportunity({ lotId: 'lot:locked', preFinanceDevelopmentCost: 40_000, stabilizedValue: 80_000 }),
+  ], { tick: 45, marketInterestRate: 0.04 });
+  assert.ok(firstAward);
+  const firstCommitment = market.listCommitments()[0]!;
+  const capitalAfterFirst = market.listDevelopers()[0]!;
+
+  const secondAwards = market.allocate([
+    opportunity({ lotId: 'lot:locked', definitionId: 'residential_rowhouse', preFinanceDevelopmentCost: 50_000, stabilizedValue: 100_000 }),
+  ], { tick: 55, marketInterestRate: 0.04 });
+
+  assert.equal(secondAwards.length, 0);
+  assert.deepEqual(market.listCommitments(), [firstCommitment]);
+  assert.deepEqual(market.listDevelopers()[0], capitalAfterFirst);
+});
+
 test('committed equity recycles after stabilization with bounded realized return', async () => {
   const { DeveloperMarketSystem } = await marketModule();
   const market = new DeveloperMarketSystem({ developers: [developer()] });
