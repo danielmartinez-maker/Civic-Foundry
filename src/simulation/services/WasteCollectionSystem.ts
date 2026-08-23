@@ -1,6 +1,5 @@
-import { BUILDING_DEFINITIONS } from '../../data/buildings.ts';
 import { SERVICE_DEFINITIONS } from '../../data/services.ts';
-import type { Building } from '../buildings/BuildingSystem.ts';
+import { definitionForBuilding, type Building } from '../buildings/BuildingSystem.ts';
 import type { ServiceDispatchSystem, ServiceJob } from './ServiceDispatchSystem.ts';
 import type { ServiceFacilitySystem } from './ServiceFacilitySystem.ts';
 
@@ -41,7 +40,7 @@ export class WasteCollectionSystem {
     const occupiedIds = new Set<string>();
     for (const building of buildings.filter((item) => item.status === 'occupied').sort((a, b) => a.id.localeCompare(b.id))) {
       occupiedIds.add(building.id);
-      const rate = BUILDING_DEFINITIONS[building.zone].garbageGeneration;
+      const rate = definitionForBuilding(building).garbageGeneration;
       const existing = this.states.get(building.id);
       if (existing) existing.wasteGenerationRate = rate;
       else this.states.set(building.id, { buildingId: building.id, currentCollectibleWaste: 0, wasteGenerationRate: rate, lastCollectionTick: tick, missedCollectionCount: 0 });
