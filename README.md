@@ -2,11 +2,13 @@
 
 Civic Foundry is an original browser-based city-management and urban-development simulator built as deterministic vertical slices.
 
-## Current playable milestone
+## Canonical baseline
 
-This branch implements the reverified rebuild through **Phase 6 — Firms, Production & Freight**, the second Metropolitan Era slice. GitHub is the canonical source of truth for current code, tests, configuration, and documentation.
+**V7 (`0.7.0-metropolitan`) is the canonical development baseline on `main` moving forward.** Older V5/V6 serializers and hydrators remain supported for compatibility and migration testing, but new development should target the V7 simulation/save contract unless a later version explicitly supersedes it.
 
-Implemented through Phase 6:
+The V7 baseline contains the reverified rebuild through **Phase 6 — Firms, Production & Freight** plus the deterministic developer pro-forma/competition slice that begins the land, housing and development work.
+
+Implemented in the V7 baseline:
 
 - deterministic terrain, simulation clock, treasury, construction costs and save/load
 - local, collector and arterial roads with intersections and graph revisions
@@ -28,7 +30,12 @@ Implemented through Phase 6:
 - boundary-derived freight gateways, imports/exports, generalized-cost supplier matching, queued freight orders and explicit weighted trucks
 - freight congestion/logistics feedback into shortages, output, firm economics, employment and city demand
 - Phase VI economy/freight HUD metrics, firm inspection, nine diagnostic overlays and authoritative freight-agent rendering
-- Save V6 with exact active-freight/economy continuation and honest V5 migration
+- multiple deterministic building variants by zone and intensity
+- parcel underwriting using rent, vacancy, taxes, service/utility/accessibility, construction cost, financing, stabilized value, return and residual land value
+- deterministic competing developers with distinct hurdle rates, leverage, capital, risk tolerances and zone preferences
+- explicit development awards, owner/finance metadata, capital commitments, cancellation recovery and post-stabilization capital recycling
+- infrastructure and developer-hurdle gating that prevents automatic uneconomic development
+- Save V7 with exact developer-capital/commitment continuation, Save V6 economy/freight continuation, and honest legacy migration
 
 ## Toolchain
 
@@ -57,13 +64,15 @@ npm run dev
 
 ## Architecture rule
 
-`SimulationCore` composes focused authoritative systems. `MobilityScheduler` owns multimodal update order and `EconomyScheduler` owns Phase 6 firms, inventories, production, freight, trade and business lifecycle state. Rendering/UI reads snapshots and submits typed mutations through public APIs; it does not manufacture simulation outcomes.
+`SimulationCore` composes focused authoritative systems. `MobilityScheduler` owns multimodal update order, `EconomyScheduler` owns Phase 6 firms/inventories/production/freight/trade/business lifecycle state, and the development systems own parcel feasibility plus deterministic developer allocation. Rendering/UI reads snapshots and submits typed mutations through public APIs; it does not manufacture simulation outcomes.
 
-Road traffic, transit attractiveness, service access, demand and finance are coupled through measured travel/capacity/accessibility results. A transit line only helps when its geometry, frequency, capacity, fare and destination access make it competitive.
+Road traffic, transit attractiveness, service access, demand, finance and development economics are coupled through measured travel/capacity/accessibility results. A transit line only helps when its geometry, frequency, capacity, fare and destination access make it competitive; a parcel only develops when infrastructure, project economics and a developer's capital/hurdle constraints permit it.
 
 ## Persistence
 
-Current save envelope: `saveVersion: 6`, game version `0.6.0-metropolitan`. V6 retains the full V5 transit city and adds firms, inventories/cargo, freight orders, active truck progress, trade gateways/counters, lifecycle/finance accruals, dispatch capacity and stable IDs needed for exact continuation. Derived transportation/multimodal graphs, freight access, route caches, accessibility maps, overlays and render state are rebuilt after hydration.
+Current default save envelope: `saveVersion: 7`, game version `0.7.0-metropolitan`. V7 retains the complete V6 authoritative economy/transit/city state and adds the developer market state required for exact continuation: developer capital, committed capital and active development commitments. Derived transportation/multimodal graphs, route caches, accessibility maps, overlays and render state are rebuilt after hydration.
+
+Explicit V5 and V6 serializers/hydrators remain available for compatibility, migration tests and historical fixtures. Loading V6 into the V7 runtime starts the default developer roster with no fabricated historical commitments.
 
 ## Roadmap
 
@@ -73,7 +82,7 @@ Current save envelope: `saveVersion: 6`, game version `0.6.0-metropolitan`. V6 r
 4. Phase 4 — Public Services ✅
 5. Phase 5 — Transit Revolution ✅
 6. Phase 6 — Firms, Production & Freight ✅
-7. Phase 7 — Land, Housing & Development
+7. Phase 7 — Land, Housing & Development — in progress; developer pro forma/competition slice landed in V7
 8. Phase 8 — Metropolitan Infrastructure
 9. Phase 9 — Demographic City
 10. Phase 10 — Environment & Resilience
