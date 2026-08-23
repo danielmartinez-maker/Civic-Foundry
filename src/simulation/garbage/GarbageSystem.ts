@@ -1,5 +1,5 @@
 import type { Building } from '../buildings/BuildingSystem.ts';
-import { BUILDING_DEFINITIONS } from '../../data/buildings.ts';
+import { definitionForBuilding } from '../buildings/BuildingSystem.ts';
 import type { RoadSystem } from '../../world/roads/RoadSystem.ts';
 import { buildRoadComponentIndex, type UtilityFacility } from '../utilities/UtilitySystem.ts';
 import { UTILITY_DEFINITIONS } from '../../data/utilities.ts';
@@ -13,7 +13,7 @@ export class GarbageSystem {
     const occupied = buildings.filter((building) => building.status === 'occupied').slice().sort((a, b) => a.id.localeCompare(b.id));
     let generated = 0;
     for (const building of occupied) {
-      const amount = BUILDING_DEFINITIONS[building.zone].garbageGeneration;
+      const amount = definitionForBuilding(building).garbageGeneration;
       generated += amount;
       this.backlogByBuilding.set(building.id, (this.backlogByBuilding.get(building.id) ?? 0) + amount);
     }

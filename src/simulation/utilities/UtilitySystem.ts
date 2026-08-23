@@ -2,7 +2,7 @@ import type { TerrainGrid } from '../../world/terrain/TerrainGrid.ts';
 import type { RoadSystem } from '../../world/roads/RoadSystem.ts';
 import type { TreasurySystem } from '../treasury/TreasurySystem.ts';
 import type { Building } from '../buildings/BuildingSystem.ts';
-import { BUILDING_DEFINITIONS } from '../../data/buildings.ts';
+import { definitionForBuilding } from '../buildings/BuildingSystem.ts';
 import { UTILITY_DEFINITIONS, type UtilityFacilityType } from '../../data/utilities.ts';
 import { cellKey } from '../core/types.ts';
 
@@ -114,7 +114,7 @@ export class UtilitySystem {
     let totalWaterDemand = 0;
     for (const building of buildings) {
       if (building.status !== 'occupied') continue;
-      const definition = BUILDING_DEFINITIONS[building.zone];
+      const definition = definitionForBuilding(building);
       totalPowerDemand += definition.powerDemand;
       totalWaterDemand += definition.waterDemand;
       const component = components.adjacentComponent(building.x, building.y);
@@ -139,7 +139,7 @@ export class UtilitySystem {
       const powerRatio = componentDemand.power === 0 ? 1 : Math.min(1, (componentPower.get(component) ?? 0) / componentDemand.power);
       const waterRatio = componentDemand.water === 0 ? 1 : Math.min(1, (componentWater.get(component) ?? 0) / componentDemand.water);
       perBuilding[building.id] = { power: powerRatio, water: waterRatio };
-      const definition = BUILDING_DEFINITIONS[building.zone];
+      const definition = definitionForBuilding(building);
       servedPower += definition.powerDemand * powerRatio;
       servedWater += definition.waterDemand * waterRatio;
     }
