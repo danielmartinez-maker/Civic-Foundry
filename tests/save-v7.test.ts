@@ -59,8 +59,10 @@ test('loading V6 starts with default developers and no fabricated commitments', 
 test('Save V7 rejects commitments referencing missing buildings', () => {
   const core = buildDevelopmentCity();
   advanceUntilCommitment(core);
-  const save = structuredClone(serializeCore(core));
-  assert.ok(save.developmentMarket.commitments.length > 0);
-  save.developmentMarket.commitments[0]!.buildingId = 'missing-building';
-  assert.throws(() => hydrateCore(save), /development.*building|building.*development/i);
+  const corrupt = structuredClone(serializeCore(core)) as unknown as {
+    developmentMarket: { commitments: Array<{ buildingId: string }> };
+  };
+  assert.ok(corrupt.developmentMarket.commitments.length > 0);
+  corrupt.developmentMarket.commitments[0]!.buildingId = 'missing-building';
+  assert.throws(() => hydrateCore(corrupt), /development.*building|building.*development/i);
 });
