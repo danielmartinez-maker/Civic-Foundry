@@ -27,12 +27,12 @@
 
 **Files:**
 - Modify: `src/simulation/buildings/BuildingSystem.ts`
-- Test: `tests/building-system.test.ts`
+- Test: `tests/redevelopment-execution.test.ts`
 
 **Interfaces:**
 - Produces: `BuildingSystem.replaceDevelopment(tick: number, lot: Lot, award: DevelopmentAward): { removed: Building; replacement: Building }`
 
-- [ ] **Step 1: Write failing tests** covering successful occupied-residential low->medium/high replacement and rejection of vacant lots, construction buildings, non-residential buildings, same/lower intensity, and mismatched award/building IDs.
+- [x] **Step 1: Write failing tests** covering successful occupied-residential low->medium/high replacement and rejection of vacant lots, construction buildings, non-residential buildings, same/lower intensity, and mismatched award/building IDs.
 - [ ] **Step 2: Run repository tests and verify RED** specifically because `replaceDevelopment` is absent.
 - [ ] **Step 3: Implement minimal replacement method** using `BUILDING_DEFINITION_BY_ID` plus an intensity rank (`low < medium < high`), preserving deterministic `building:<lotId>` identity and normal construction metadata.
 - [ ] **Step 4: Run tests and verify GREEN.**
@@ -41,7 +41,7 @@
 
 **Files:**
 - Modify: `src/simulation/core/SimulationCore.ts`
-- Test: `tests/development-integration.test.ts`
+- Test: `tests/redevelopment-execution.test.ts`
 
 **Interfaces:**
 - Add private `redevelopmentOpportunities(): DevelopmentFeasibilityResult[]`.
@@ -57,7 +57,7 @@
 
 **Files:**
 - Modify: `src/simulation/core/SimulationCore.ts`
-- Test: `tests/development-integration.test.ts`
+- Test: `tests/redevelopment-execution.test.ts`
 
 **Interfaces:**
 - `evaluateDevelopmentMarket()` combines vacant and redevelopment opportunities before one `DeveloperMarketSystem.allocate()` call.
@@ -83,7 +83,7 @@
 - [ ] **Step 4: Run `npm run lint`.** Expected: pass.
 - [ ] **Step 5: Run `npm run build`.** Expected: pass.
 - [ ] **Step 6: Review changed files for accidental Save V7/schema/UI/randomness changes.**
-- [ ] **Step 7: Open/refresh PR, verify GitHub Actions on the exact head, then merge to `main` under the user's existing consolidation instruction.
+- [ ] **Step 7: Open/refresh PR, verify GitHub Actions on the exact head, then merge to `main` under the user's existing consolidation instruction.**
 
 ## Self-review
 
