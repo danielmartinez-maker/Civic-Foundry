@@ -1,8 +1,8 @@
-# Civic Foundry Architecture — Phase 6
+# Civic Foundry Architecture — Phase 7
 
 ## Boundary
 
-The authoritative simulation is independent from DOM and Canvas rendering. `SimulationCore` composes focused state owners and controls the fixed-step city loop. `MobilityScheduler` owns the multimodal sub-schedule and `EconomyScheduler` owns the Phase 6 establishment/freight sub-schedule. Presentation code consumes public snapshots and public mutation APIs only.
+The authoritative simulation is independent from DOM and Canvas rendering. `SimulationCore` composes focused state owners and controls the fixed-step city loop. `MobilityScheduler` owns the multimodal sub-schedule, `EconomyScheduler` owns the Phase 6 establishment/freight sub-schedule, and the Phase 7 development domain owns derived property-market signals, parcel feasibility and deterministic developer allocation. Presentation code consumes public snapshots and public mutation APIs only.
 
 ## Authoritative city systems
 
@@ -11,6 +11,17 @@ The authoritative simulation is independent from DOM and Canvas rendering. `Simu
 - `TransportationGraph`, `PathfindingSystem`, `TripGenerationSystem`, `IntersectionSystem`, `TrafficSystem`, `TrafficAnalytics`
 - Phase 4 service owners: `ServiceFacilitySystem`, `ServiceDemandSystem`, `ServiceDispatchSystem`, `ServiceVehicleSystem`, `IncidentSystem`, `WasteCollectionSystem`, `EducationSystem`, `NeighborhoodQualitySystem`
 
+## Phase 7 land, housing and development systems
+
+- `LandHousingMarketSystem` derives bounded residential/commercial/industrial market pressure, rent, vacancy and land-value indexes from current demand, housing utilization, employment utilization, accessibility, services and utilities. It retains only the latest derived snapshot for diagnostics; it owns no authoritative market history.
+- `parcelSignal()` combines the relevant zone market with parcel-local person/freight access, service quality, neighborhood quality, utility availability and frontage quality. Industrial signals weight freight access more heavily; residential/commercial signals weight person access more heavily.
+- `DevelopmentFeasibilitySystem` owns legal/physical gates plus project underwriting. Achievable rent, vacancy and land cost now come from explicit market signals; construction cost, financing, NOI, stabilized value, yield/return and residual-land-value calculations remain project-specific.
+- `DeveloperMarketSystem` owns the deterministic roster of competing developers, hurdle rates, leverage, available/committed capital, risk tolerance, zone preferences, bids, awards and capital release.
+- `BuildingSystem.startDevelopment()` remains the authoritative construction entry point after a valid developer award.
+
+The market is refreshed immediately before each 10-tick development evaluation and again after the 50-tick core-city loop. This keeps underwriting synchronized with current derived conditions and prevents an unpersisted 50-tick market cache from causing save/load continuation drift. The calculation is constant-sized and deterministic, so the additional refresh does not create a meaningful performance burden.
+
+Household cohorts, income/tenure, housing search/moves, affordability by income band, land ownership and occupied-parcel redevelopment are deliberately deferred. They require new authoritative state rather than being fabricated from the derived market snapshot.
 
 ## Phase 6 economy systems
 
@@ -42,7 +53,7 @@ Freight free-flow OD routes reuse the existing revision-keyed path cache. Curren
 
 ## Scheduling and data flow
 
-Player command → authoritative transit/road mutation → topology/revision invalidation → fixed-step simulation → multimodal rebuild when required → transit operations → person-trip generation/mode choice → road/transit movement → accessibility/finance snapshots → UI/rendering.
+Player command → authoritative road/zoning/utility/service/transit mutation → topology/revision invalidation → fixed-step simulation → mobility/economy/service updates → current demand/access/service/utility snapshots → derived land/housing market → parcel underwriting → developer bids/awards → construction → city/economy feedback → UI/rendering.
 
 Surface transit participates in real road conditions: buses and street-running trams submit road load; BRT uses a reduced-congestion abstraction; metro segment timing is insulated from road congestion. Service vehicles and car traffic continue using the Phase 3 road/intersection model.
 
@@ -52,18 +63,22 @@ Capacity feedback is derived from authoritative waiting weight and active vehicl
 
 `GameApp` owns browser orchestration only. `WorldRenderer` composes road/building/service rendering with transit and economy overlays plus transit/freight vehicle renderers. `TransitPanelController` translates player line/headway/fare/fleet edits into authoritative system calls. `HudView`, transit inspectors, `EconomyPanel`, firm/freight/gateway inspectors and `EconomyOverlayLayer` expose simulation-derived mobility/economic metrics.
 
+The Phase 7 land/housing market currently exposes simulation snapshots for diagnostics and downstream systems; this slice intentionally adds no fabricated UI-side pricing logic. Future market panels/overlays must read these derived simulation outputs.
+
 Transit overlays include route/mode, access, ridership, crowding, wait, reliability, mode share and person accessibility. Numeric legends accompany encoded line/stop styling; color is not the only route-mode cue.
 
 The application exposes `window.__civicApp` as a development/smoke-test handle; gameplay does not depend on it.
 
 ## Persistence ownership
 
-Save V6 retains the complete V5 city/transit envelope and adds `EconomySchedulerStateSnapshot`: firms/lifecycle counters, inventory records and shipment cargo, freight orders, active truck routes/progress, trade gateways/counters, financial accruals, dispatch capacity, scheduler counters and stable IDs required for deterministic continuation.
+Save V7 retains the complete V6 city/transit/economy envelope and adds `DeveloperMarketStateSnapshot`: developer financial/risk parameters, available and committed capital, and active development commitments required for exact continuation.
 
-V5→V6 migration restores the Phase 5 city exactly with empty Phase 6 economic history. Firms are not backdated; occupied commercial/industrial buildings become normal future formation candidates. The public `serializeCore`/`hydrateCore` API is V6 while explicit V3/V4/V5 serializers remain migration/compatibility tools.
+The Phase 7 `LandHousingMarketSystem` adds no save fields. Rent, vacancy, land-value and parcel market signals are derived from already persisted/restored city state and are recomputed before development decisions. This preserves the V7 schema while avoiding stale-cache continuation drift.
 
-Derived state is rebuilt rather than persisted: road/multimodal graphs, route caches, building-to-road freight access, analytics, overlays and render geometry. Hydration validates firm/order/cargo/gateway/road references, restores authoritative owners, rebuilds the firm-access context and traffic loads, and only then returns the coherent candidate.
+V5→V6 migration restores the Phase 5 city exactly with empty Phase 6 economic history. V6→V7 migration restores the economy/freight city exactly and starts the default developer roster with no fabricated historical commitments. Older serializers/hydrators remain available for compatibility and migration fixtures.
+
+Derived state is rebuilt rather than persisted: road/multimodal graphs, route caches, building-to-road freight access, traffic analytics, land/housing market snapshots, overlays and render geometry. Hydration validates authoritative references, restores state owners and rebuilds derived context before future decisions consume it.
 
 ## Provenance
 
-The historical temporary Phase 3 checkout expired before upload. Current Phase 1–3 code is a fresh implementation from preserved specifications; Phases 4 and 5 extend that reverified codebase. GitHub is the durable canonical source.
+The historical temporary Phase 3 checkout expired before upload. Current Phase 1–3 code is a fresh implementation from preserved specifications; Phases 4–7 extend that reverified codebase. GitHub is the durable canonical source.
