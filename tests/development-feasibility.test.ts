@@ -1,22 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as buildingCatalog from '../src/data/buildings.ts';
+import type { Lot } from '../src/world/lots/LotSystem.ts';
+
+const catalog = buildingCatalog as unknown as {
+  BUILDING_DEFINITIONS: Record<string, { id: string; zone: string }>;
+  BUILDING_VARIANTS?: Record<string, readonly Array<{
+    id: string;
+    zone: string;
+    baseConstructionCost: number;
+    baseRent: number;
+    softCostRatio: number;
+    operatingExpenseRatio: number;
+    baseVacancy: number;
+  }>>;
+  getBuildingDefinition?: (id: string) => unknown;
+};
 
 test('building catalog exposes multiple deterministic development variants per zone', () => {
-  const catalog = buildingCatalog as unknown as {
-    BUILDING_DEFINITIONS: Record<string, { id: string; zone: string }>;
-    BUILDING_VARIANTS?: Record<string, readonly Array<{
-      id: string;
-      zone: string;
-      baseConstructionCost: number;
-      baseRent: number;
-      softCostRatio: number;
-      operatingExpenseRatio: number;
-      baseVacancy: number;
-    }>>;
-    getBuildingDefinition?: (id: string) => unknown;
-  };
-
   assert.ok(catalog.BUILDING_VARIANTS, 'expected BUILDING_VARIANTS export');
   assert.equal(typeof catalog.getBuildingDefinition, 'function', 'expected getBuildingDefinition export');
   assert.deepEqual(Object.keys(catalog.BUILDING_VARIANTS!), ['residential', 'commercial', 'industrial']);
@@ -34,4 +35,105 @@ test('building catalog exposes multiple deterministic development variants per z
       assert.ok(definition.baseVacancy >= 0 && definition.baseVacancy < 1);
     }
   }
+});
+
+const lot: Lot = { id: 'lot:4,4', x: 4, y: 4, zone: 'residential', frontageRoadKey: '4,5' };
+const baseContext = {
+  demand: 0.8,
+  taxRate: 0.10,
+  personAccessibility: 0.9,
+  freightAccessibility: 0.7,
+  serviceQuality: 0.9,
+  neighborhoodQuality: 0.9,
+  utilityRatio: 1,
+  constructionCostIndex: 1,
+  marketInterestRate: 0.05,
+  zoningMaxIntensity: 'high' as const,
+};
+
+async function feasibilitySystem() {
+  const module = await import('../src/simulation/development/DevelopmentFeasibilitySystem.ts');
+  return new module.DevelopmentFeasibilitySystem();
+}
+
+function definition(id: string) {
+  assert.equal(typeof catalog.getBuildingDefinition, 'function');
+  return catalog.getBuildingDefinition!(id) as import('../src/data/buildings.ts').BuildingDefinition;
+}
+
+test('higher rent-side demand improves parcel underwriting', async () => {
+  const system = await feasibilitySystem();
+  const project = definition('residential_rowhouse');
+  const weak = system.evaluateLot(lot, [project], { ...baseContext, demand: 0.15 })[0]!;
+  const strong = system.evaluateLot(lot, [project], { ...baseContext, demand: 1.0 })[0]!;
+  assert.ok(strong.achievableRent > weak.achievableRent);
+  assert.ok(strong.netOperatingIncome > weak.netOperatingIncome);
+  assert.ok(strong.returnOnCost > weak.returnOnCost);
+});
+
+test('vacancy taxes financing and construction costs suppress project return', async () => {
+  const system = await feasibilitySystem();
+  const project = definition('commercial_block');
+  const commercialLot: Lot = { ...lot, zone: 'commercial' };
+  const healthy = system.evaluateLot(commercialLot, [project], { ...baseContext, demand: 0.9, taxRate: 0.08 })[0]!;
+  const stressed = system.evaluateLot(commercialLot, [project], {
+    ...baseContext,
+    demand: 0.1,
+    taxRate: 0.25,
+    constructionCostIndex: 1.6,
+    marketInterestRate: 0.12,
+  })[0]!;
+  assert.ok(stressed.vacancyRate > healthy.vacancyRate);
+  assert.ok(stressed.propertyTaxes > healthy.propertyTaxes);
+  assert.ok(stressed.preFinanceDevelopmentCost > healthy.preFinanceDevelopmentCost);
+  assert.ok(stressed.marketFinancingCost > healthy.marketFinancingCost);
+  assert.ok(stressed.returnOnCost < healthy.returnOnCost);
+});
+
+test('minimum services utilities access and zoning intensity reject candidates explicitly', async () => {
+  const system = await feasibilitySystem();
+  const apartment = definition('residential_apartment');
+  const result = system.evaluateLot(lot, [apartment], {
+    ...baseContext,
+    personAccessibility: 0.1,
+    utilityRatio: 0.2,
+    serviceQuality: 0.2,
+    zoningMaxIntensity: 'medium' as const,
+  })[0]!;
+  assert.equal(result.legal, false);
+  assert.equal(result.feasible, false);
+  assert.ok(result.rejectionReasons.includes('zoning-intensity'));
+  assert.ok(result.rejectionReasons.includes('access'));
+  assert.ok(result.rejectionReasons.includes('utilities'));
+  assert.ok(result.rejectionReasons.includes('services'));
+});
+
+test('industrial underwriting weights freight access more heavily than person access', async () => {
+  const system = await feasibilitySystem();
+  const project = definition('industrial_workshop');
+  const industrialLot: Lot = { ...lot, zone: 'industrial' };
+  const freightRich = system.evaluateLot(industrialLot, [project], {
+    ...baseContext,
+    personAccessibility: 0.3,
+    freightAccessibility: 1,
+  })[0]!;
+  const personRich = system.evaluateLot(industrialLot, [project], {
+    ...baseContext,
+    personAccessibility: 1,
+    freightAccessibility: 0.3,
+  })[0]!;
+  assert.ok(freightRich.achievableRent > personRich.achievableRent);
+});
+
+test('underwriting rejects invalid non-finite and negative financial inputs', async () => {
+  const system = await feasibilitySystem();
+  const project = definition('residential_cottage');
+  assert.throws(
+    () => system.evaluateLot(lot, [project], { ...baseContext, constructionCostIndex: Number.NaN }),
+    /constructionCostIndex/,
+  );
+  assert.throws(
+    () => system.evaluateLot(lot, [project], { ...baseContext, marketInterestRate: -0.01 }),
+    /marketInterestRate/,
+  );
 });
