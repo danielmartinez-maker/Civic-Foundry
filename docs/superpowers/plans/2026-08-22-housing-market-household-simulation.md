@@ -4,144 +4,104 @@
 
 **Goal:** Replace Civic Foundry's aggregate residential population loop with a deterministic adaptive-fidelity household and housing market that drives rents, ownership, migration, filtering, displacement, and residential development economics.
 
-**Architecture:** Add a housing domain scheduler composed of focused household, income, supply, and choice systems. Weighted cohorts carry explicit residential assignments and split only when outcomes diverge; persistent building ledgers carry tenure-specific inventory, rents, sale values, vacancy, and redevelopment pressure. `SimulationCore` coordinates the housing domain, then publishes real housing economics into the existing developer pro forma/competition system while preserving V7 compatibility and deterministic replay.
+**Architecture:** Add a housing-domain scheduler composed of focused cohort, income, supply, and choice systems. Weighted cohorts carry real residential assignments and split only when outcomes diverge; persistent building ledgers carry tenure-specific inventory, rents, sale values, vacancy, and redevelopment pressure. `SimulationCore` coordinates the domain and feeds real housing economics into the existing developer pro forma/competition system while preserving V7 and all Phase 5/6 systems.
 
-**Tech Stack:** TypeScript ES modules; Node 22+ built-in `node:test`; strict `tsc`; existing browser DOM UI; deterministic simulation with no `Math.random()`.
+**Tech Stack:** TypeScript ES modules; Node 22+ built-in `node:test`; strict `tsc`; existing DOM UI; deterministic simulation with no `Math.random()`.
 
 **Spec:** `docs/superpowers/specs/2026-08-22-housing-market-household-simulation-design.md`
 
 ## Global Constraints
 
-- Base branch is canonical V7 `main`; implementation branch is `feature/phase7-housing-market`.
-- Keep save version `7` and game/package version `0.7.0-metropolitan`; this is an extension of Phase 7, not V8.
-- Same seed + same commands + same save state must produce the same authoritative future state.
+- Base: canonical V7 `main`; implementation branch: `feature/phase7-housing-market`.
+- Keep save version `7` and game/package version `0.7.0-metropolitan`; do not create V8.
+- Same seed + commands + save state must produce the same authoritative future state.
 - No `Math.random()`, wall-clock time, unordered state-dependent iteration, or stochastic housing auctions.
-- Weighted household cohorts are the default; weight-1 explicit households appear only through deterministic cohort splitting.
-- A 250,000-resident-equivalent city must stabilize at a few thousand household entities, not one object per physical household.
-- Housing units are conserved exactly: `rentalProductUnits = renterOccupiedUnits + vacantRentableUnits`, `forSaleProductUnits = ownerOccupiedUnits + vacantForSaleUnits`, and `rentalProductUnits + forSaleProductUnits + unavailableUnits = housingUnits`.
-- Rental and for-sale supply are exclusive; a unit cannot exist in both markets simultaneously.
-- Legacy `PopulationSystem.population` remains readable by existing consumers but stops independently creating/removing residents after housing activation.
-- Full demographic lifecycle, detailed occupations/careers, banks, credit scores, foreclosure, housing-policy programs, and homelessness services remain out of scope.
-- Residential developer underwriting must use achievable housing-market economics; positive generic residential demand alone cannot guarantee construction.
-- Existing Phase 5 mobility, Phase 6 firms/freight, service systems, commercial/industrial development, and old V7 saves must remain functional.
-- All work follows red-green-refactor TDD with a focused test before each implementation change.
-- Final verification requires `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, and `npm run test:smoke`.
+- Weighted cohorts are default; weight-1 entities arise only from deterministic splitting.
+- 250,000 resident-equivalent scale must remain a few thousand household entities, not one entity per physical household.
+- Unit invariants are exact: `rentalProductUnits = renterOccupiedUnits + vacantRentableUnits`; `forSaleProductUnits = ownerOccupiedUnits + vacantForSaleUnits`; `rentalProductUnits + forSaleProductUnits + unavailableUnits = housingUnits`.
+- One unit cannot be simultaneously rental and for-sale inventory.
+- `PopulationSystem.population` remains a compatibility aggregate but does not independently grow/shrink population after housing activation.
+- Full demographics, careers/skills, banks, credit scores, foreclosure, detailed housing policy, and homelessness services remain deferred.
+- Positive generic residential demand alone cannot guarantee construction.
+- Existing mobility, firms/freight, services, commercial/industrial development, and old V7 saves remain functional.
+- TDD is mandatory: RED focused test -> minimal GREEN implementation -> refactor -> focused test/typecheck -> commit.
+- Final verification: `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, `npm run test:smoke`.
 
 ---
 
-## File Structure
+## File Map
 
 ### Create
-
-- `src/data/housing.ts` — centralized cadence, affordability, mortgage, pricing, migration, cohort, tenure-product, and wage-bridge configuration.
-- `src/simulation/housing/HousingTypes.ts` — immutable household, mortgage, building-ledger, market-input, diagnostics, development-signal, and save snapshot types.
-- `src/simulation/housing/HouseholdCohortSystem.ts` — authoritative cohort state, deterministic create/split/merge/assign/displace/remove logic.
-- `src/simulation/housing/HouseholdIncomeSystem.ts` — deterministic reconciliation of cohort workers against actual firm `filledJobs` and archetype wages.
-- `src/simulation/housing/HousingSupplySystem.ts` — per-building housing ledgers, unit conservation, occupancy, product inventory, rent/price state.
-- `src/simulation/housing/HousingChoiceSystem.ts` — rental affordability, mortgage qualification, household utility, rejection reasons, candidate ranking.
-- `src/simulation/housing/HousingMarketSystem.ts` — cadence owner for conditions, household economics, pricing, search/matching, migration, displacement, merge-back, diagnostics, and comparable-market signals.
-- `src/ui/HousingPanel.ts` — compact authoritative housing KPI presentation.
-- `tests/housing-data.test.ts`
-- `tests/household-cohorts.test.ts`
-- `tests/household-income.test.ts`
-- `tests/housing-supply.test.ts`
-- `tests/housing-choice.test.ts`
-- `tests/housing-market.test.ts`
-- `tests/housing-integration.test.ts`
-- `tests/housing-development.test.ts`
-- `tests/housing-redevelopment.test.ts`
-- `tests/housing-presentation.test.ts`
-- `tests/housing-scale.test.ts`
+- `src/data/housing.ts` — cadence, affordability, pricing, mortgage, migration, product, wage, and cohort constants.
+- `src/simulation/housing/HousingTypes.ts` — shared immutable housing/household interfaces.
+- `src/simulation/housing/HouseholdCohortSystem.ts` — create/split/merge/assignment/displacement/save state.
+- `src/simulation/housing/HouseholdIncomeSystem.ts` — firm-quota employment and household income.
+- `src/simulation/housing/HousingSupplySystem.ts` — building ledgers and unit conservation.
+- `src/simulation/housing/HousingChoiceSystem.ts` — affordability, mortgage qualification, utility, rejection reasons.
+- `src/simulation/housing/HousingMarketSystem.ts` — cadence, pricing, search/matching, migration, filtering signals, diagnostics.
+- `src/ui/HousingPanel.ts` — authoritative housing KPI renderer.
+- Tests: `housing-data`, `household-cohorts`, `household-income`, `housing-supply`, `housing-choice`, `housing-market`, `housing-integration`, `housing-development`, `housing-redevelopment`, `housing-presentation`, `housing-scale`.
 
 ### Modify
-
-- `src/data/buildings.ts` — add `housingUnits` and `overcrowdingMultiplier` to every building definition.
-- `src/data/economy.ts` — add housing wage values by firm archetype without changing Phase 6 production wage-cost semantics.
-- `src/simulation/buildings/BuildingSystem.ts` — persist optional residential tenure-product metadata and add deterministic `removeById()` for redevelopment.
-- `src/simulation/population/PopulationSystem.ts` — add authoritative `sync()` path and retain legacy `update()` only for compatibility tests/non-housing bootstrap.
-- `src/simulation/traffic/TripGenerationSystem.ts` — accept explicit home-origin weights as an alternative to evenly distributing aggregate population.
-- `src/simulation/mobility/PersonTripSystem.ts` — generate household-linked commuter demand when housing assignments/employer links exist.
-- `src/simulation/development/DevelopmentTypes.ts` — carry housing product, market revenue, and redevelopment economics through feasibility/bids/awards/commitments.
-- `src/simulation/development/DevelopmentFeasibilitySystem.ts` — evaluate tenure-specific residential products and occupied-parcel replacement costs while leaving non-residential formulas compatible.
-- `src/simulation/development/DeveloperMarketSystem.ts` — product-aware IDs/ranking/preferences/commitments and deterministic residential product competition.
-- `src/simulation/core/SimulationCore.ts` — instantiate housing domain, compose normalized housing conditions, synchronize population, route household travel, feed developer signals, and execute redevelopment.
-- `src/save/saveV7.ts` — persist/validate/restore `housingMarket`; transparently bootstrap prior V7 saves that lack it.
-- `src/ui/Inspector.ts` — expose per-building housing diagnostics for residential buildings.
-- `src/app/GameApp.ts` — mount/update `HousingPanel` through a small integration point; do not add housing rendering logic directly into the large app class.
-- `src/styles.css` — minimal panel/diagnostic styling consistent with existing UI.
-- `tests/save-v7.test.ts` — housing round-trip, old-V7 bootstrap, corruption validation, deterministic continuation.
-- `tests/development-feasibility.test.ts`, `tests/developer-market.test.ts`, `tests/development-integration.test.ts` — preserve non-residential behavior and add tenure-aware expectations.
-- `tests/core-city-loop.test.ts`, `tests/city-foundation.test.ts` — adapt aggregate population assertions to housing authority only where necessary.
-- `README.md`, `docs/SAVE_FORMAT.md` — document the deeper V7 housing baseline after implementation is green.
+- `src/data/buildings.ts`, `src/data/economy.ts`
+- `src/simulation/buildings/BuildingSystem.ts`
+- `src/simulation/population/PopulationSystem.ts`
+- `src/simulation/traffic/TripGenerationSystem.ts`
+- `src/simulation/mobility/PersonTripSystem.ts`
+- `src/simulation/development/DevelopmentTypes.ts`
+- `src/simulation/development/DevelopmentFeasibilitySystem.ts`
+- `src/simulation/development/DeveloperMarketSystem.ts`
+- `src/simulation/core/SimulationCore.ts`
+- `src/save/saveV7.ts`
+- `src/ui/Inspector.ts`, `src/app/GameApp.ts`, `src/styles.css`
+- `tests/save-v7.test.ts`, existing development/core regression tests
+- `README.md`, `docs/SAVE_FORMAT.md`
 
 ---
 
-### Task 1: Housing data contracts and physical residential capacity
+### Task 1: Housing data/config and physical residential capacity
 
-**Files:**
-- Create: `src/data/housing.ts`
-- Create: `src/simulation/housing/HousingTypes.ts`
-- Modify: `src/data/buildings.ts`
-- Modify: `src/data/economy.ts`
-- Test: `tests/housing-data.test.ts`
+**Files:** Create `src/data/housing.ts`, `src/simulation/housing/HousingTypes.ts`, `tests/housing-data.test.ts`; modify `src/data/buildings.ts`.
 
-**Interfaces:**
-- Produces: `HousingProduct`, `HousingProductAllocation`, `HOUSING_CADENCE`, `HOUSING_CONFIG`, `HOUSING_PRODUCT_OPTIONS`, `LEGACY_V7_PRODUCT_RULES`, `HOUSEHOLD_WAGE_BY_ARCHETYPE`.
-- Extends: `BuildingDefinition.housingUnits`, `BuildingDefinition.overcrowdingMultiplier`.
-- Consumes: existing `BuildingIntensity`, `FirmArchetype`, and residential definition IDs.
+**Interfaces produced:**
 
-- [ ] **Step 1: Write the failing catalog/config test**
+```ts
+export type HousingProduct = 'rental' | 'for_sale' | 'mixed';
+export type HousingProductAllocation = Readonly<{ product: HousingProduct; rentalUnits: number; forSaleUnits: number }>;
+export type MigrantArchetype = Readonly<{ householdSize: number; workers: number; vehicleAccess: boolean; tenurePreference: 'renter' | 'owner'; savingsMonths: number }>;
+```
+
+- [ ] **Step 1: Write RED tests for housing units/product rules**
 
 ```ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BUILDING_VARIANTS } from '../src/data/buildings.ts';
-import {
-  HOUSING_CADENCE,
-  HOUSING_CONFIG,
-  HOUSING_PRODUCT_OPTIONS,
-  defaultLegacyProductAllocation,
-} from '../src/data/housing.ts';
+import { HOUSING_CADENCE, HOUSING_PRODUCT_OPTIONS, defaultLegacyProductAllocation } from '../src/data/housing.ts';
 
-test('residential definitions expose physical household units and valid tenure products', () => {
+test('residential definitions expose valid physical housing inventory', () => {
   assert.deepEqual(HOUSING_CADENCE, { conditions: 10, economics: 50, market: 100, redevelopment: 250 });
-  for (const definition of BUILDING_VARIANTS.residential) {
-    assert.ok(definition.housingUnits > 0);
-    assert.ok(definition.residentCapacity >= definition.housingUnits);
-    assert.ok(definition.overcrowdingMultiplier >= 1 && definition.overcrowdingMultiplier <= 1.6);
-    assert.ok(HOUSING_PRODUCT_OPTIONS[definition.id]!.length >= 1);
-    const allocation = defaultLegacyProductAllocation(definition.id, definition.housingUnits);
-    assert.equal(allocation.rentalUnits + allocation.forSaleUnits, definition.housingUnits);
-  }
-});
-
-test('non-residential definitions cannot expose housing inventory', () => {
-  for (const zone of ['commercial', 'industrial'] as const) {
-    for (const definition of BUILDING_VARIANTS[zone]) assert.equal(definition.housingUnits, 0);
+  for (const d of BUILDING_VARIANTS.residential) {
+    assert.ok(d.housingUnits > 0);
+    assert.ok(d.residentCapacity >= d.housingUnits);
+    assert.ok(d.overcrowdingMultiplier >= 1 && d.overcrowdingMultiplier <= 1.6);
+    assert.ok(HOUSING_PRODUCT_OPTIONS[d.id]!.length > 0);
+    const a = defaultLegacyProductAllocation(d.id, d.housingUnits);
+    assert.equal(a.rentalUnits + a.forSaleUnits, d.housingUnits);
   }
 });
 ```
 
-- [ ] **Step 2: Run focused test and verify RED**
+- [ ] **Step 2: Run RED**
 
 ```bash
 node --experimental-strip-types --test tests/housing-data.test.ts
 ```
 
-Expected: FAIL because housing config and unit metadata do not exist.
-
-- [ ] **Step 3: Add centralized housing config and exact initial constants**
-
-Create `src/data/housing.ts` with these public contracts and first-pass calibration values:
+- [ ] **Step 3: Add centralized exact configuration**
 
 ```ts
-import type { FirmArchetype } from './economy.ts';
-
-export type HousingProduct = 'rental' | 'for_sale' | 'mixed';
-export type HousingProductAllocation = Readonly<{ product: HousingProduct; rentalUnits: number; forSaleUnits: number }>;
-
 export const HOUSING_CADENCE = Object.freeze({ conditions: 10, economics: 50, market: 100, redevelopment: 250 });
-
 export const HOUSING_CONFIG = Object.freeze({
   targetOccupancy: 0.94,
   maxNormalRentChange: 0.03,
@@ -164,13 +124,17 @@ export const HOUSING_CONFIG = Object.freeze({
   outMigrationUnhousedCycles: 3,
   outMigrationSevereBurdenCycles: 4,
   cohortTargetMaxWeight: 40,
-  salePriceToEffectiveRent: 180,
+  salePriceToEffectiveRent: 60,
   sellingCostRatio: 0.06,
   demolitionCostRatio: 0.08,
   displacementCostPerHousehold: 800,
+  unemployedWorkerFallbackIncome: 700,
+  disposableIncomeRatio: 0.80,
+  savingsRate: 0.05,
+  savingsCapMonths: 24,
 });
 
-export const HOUSEHOLD_WAGE_BY_ARCHETYPE: Readonly<Record<FirmArchetype, number>> = Object.freeze({
+export const HOUSEHOLD_WAGE_BY_ARCHETYPE = Object.freeze({
   retail_local: 2_800,
   wholesale_logistics: 3_600,
   light_manufacturing: 4_200,
@@ -182,238 +146,134 @@ export const HOUSING_PRODUCT_OPTIONS = Object.freeze({
   residential_rowhouse: ['rental', 'for_sale', 'mixed'] as const,
   residential_apartment: ['rental', 'mixed'] as const,
 });
+
+export const LEGACY_V7_PRODUCT_RULES = Object.freeze({
+  residential_cottage: 'for_sale',
+  residential_rowhouse: 'mixed',
+  residential_apartment: 'rental',
+} as const);
+
+export const MIGRANT_ARCHETYPES: readonly MigrantArchetype[] = Object.freeze([
+  Object.freeze({ householdSize: 1, workers: 1, vehicleAccess: false, tenurePreference: 'renter', savingsMonths: 1 }),
+  Object.freeze({ householdSize: 2, workers: 1, vehicleAccess: true, tenurePreference: 'renter', savingsMonths: 2 }),
+  Object.freeze({ householdSize: 3, workers: 2, vehicleAccess: true, tenurePreference: 'owner', savingsMonths: 3 }),
+  Object.freeze({ householdSize: 4, workers: 2, vehicleAccess: true, tenurePreference: 'owner', savingsMonths: 4 }),
+]);
 ```
 
-Implement `defaultLegacyProductAllocation(definitionId, housingUnits)` deterministically as rental for apartments, 50/50 mixed for rowhouses (odd remainder assigned to rental), and for-sale for cottages. No historical mortgage is fabricated; owner cohorts bootstrapped from old V7 use `mortgage: null`.
+`defaultLegacyProductAllocation()` uses `LEGACY_V7_PRODUCT_RULES`; mixed rowhouse units split 50/50 with odd remainder assigned to rental.
 
-- [ ] **Step 4: Extend `BuildingDefinition` and add exact physical unit counts**
+- [ ] **Step 4: Extend all building definitions**
 
-Add:
+Add `housingUnits` and `overcrowdingMultiplier` to `BuildingDefinition`. Use residential counts `4/12/32` and multipliers `1.40/1.35/1.30` for cottage/rowhouse/apartment. Commercial/industrial use `0` and `1`.
 
-```ts
-housingUnits: number;
-overcrowdingMultiplier: number;
-```
-
-Use:
-
-```ts
-residential_cottage: housingUnits = 4, overcrowdingMultiplier = 1.40
-residential_rowhouse: housingUnits = 12, overcrowdingMultiplier = 1.35
-residential_apartment: housingUnits = 32, overcrowdingMultiplier = 1.30
-```
-
-All commercial/industrial definitions use `housingUnits = 0` and `overcrowdingMultiplier = 1`.
-
-Do not change the existing Phase 6 `ECONOMY_PRICES.wagePerJob`; household wage values are a separate housing-facing scale.
-
-- [ ] **Step 5: Run focused tests and typecheck**
+- [ ] **Step 5: GREEN + typecheck + commit**
 
 ```bash
 node --experimental-strip-types --test tests/housing-data.test.ts
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/data/housing.ts src/simulation/housing/HousingTypes.ts src/data/buildings.ts src/data/economy.ts tests/housing-data.test.ts
-git commit -m "feat: define housing market data contracts"
+git add src/data/housing.ts src/simulation/housing/HousingTypes.ts src/data/buildings.ts tests/housing-data.test.ts
+git commit -m "feat: define housing market contracts"
 ```
 
 ---
 
-### Task 2: Deterministic adaptive household cohorts
+### Task 2: Adaptive household cohort state
 
-**Files:**
-- Create: `src/simulation/housing/HouseholdCohortSystem.ts`
-- Modify: `src/simulation/housing/HousingTypes.ts`
-- Test: `tests/household-cohorts.test.ts`
+**Files:** Create `src/simulation/housing/HouseholdCohortSystem.ts`, `tests/household-cohorts.test.ts`; extend `HousingTypes.ts`.
 
-**Interfaces:**
-- Produces: `HouseholdCohort`, `MortgageProxy`, `HouseholdPreferenceWeights`, `HouseholdStateSnapshot`.
-- Produces methods: `create()`, `list()`, `get()`, `split(id, weight, reason)`, `assignResidence()`, `markSearching()`, `markDisplaced()`, `remove()`, `mergeCompatible()`, `residentPopulation()`, `representedHouseholds()`, `snapshotState()`, `restoreState()`.
-- Later tasks depend on stable IDs and exact conservation guarantees from this task.
-
-- [ ] **Step 1: Write failing split/merge conservation tests**
+**Core types:**
 
 ```ts
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { HouseholdCohortSystem } from '../src/simulation/housing/HouseholdCohortSystem.ts';
+export type MortgageProxy = Readonly<{ originalPrincipal: number; remainingPrincipal: number; annualRate: number; scheduledPayment: number; purchaseTick: number }>;
+export type HouseholdPreferenceWeights = Readonly<{ affordability: number; commute: number; services: number; neighborhood: number; space: number; density: number; tenure: number; stability: number }>;
+export type HouseholdCohort = Readonly<{
+  id: string; weight: number; householdSize: number; workers: number; employedWorkers: number;
+  employerFirmIds: readonly string[]; grossIncome: number; disposableHousingIncome: number; employmentStability: number;
+  tenure: 'renter' | 'owner' | 'seeking'; buildingId: string | null; unitRequirement: number; vehicleAccess: boolean;
+  liquidSavings: number; mortgage: MortgageProxy | null; housingCost: number; housingCostBurden: number;
+  affordabilityState: 'comfortable' | 'manageable' | 'stressed' | 'severe'; preferences: HouseholdPreferenceWeights;
+  moveFriction: number; residenceCycles: number; displacementState: 'none' | 'displaced' | 'unhoused';
+  searchState: 'stable' | 'searching'; arrearsCycles: number; severeBurdenCycles: number; unhousedCycles: number;
+  lastMoveReason: string | null; createdTick: number;
+}>;
+```
 
-const seed = {
-  weight: 10,
-  householdSize: 3,
-  workers: 2,
-  employedWorkers: 1,
-  employerFirmIds: ['firm:1'],
-  grossIncome: 4_000,
-  disposableHousingIncome: 3_200,
-  tenure: 'renter' as const,
-  buildingId: 'building:lot:1',
-  unitRequirement: 1,
-  vehicleAccess: true,
-  liquidSavings: 8_000,
-  mortgage: null,
-};
+`create(input, tick)` accepts required physical/economic seed fields and fills deterministic defaults for preferences, counters, burden, move friction, and search state.
 
-test('cohort splitting preserves represented households population income and savings', () => {
-  const system = new HouseholdCohortSystem();
-  const original = system.create(seed, 0);
-  const split = system.split(original.id, 3, 'capacity');
+- [ ] **Step 1: RED conservation tests**
+
+```ts
+test('split preserves households population income and savings', () => {
+  const s = new HouseholdCohortSystem();
+  const h = s.create({ weight: 10, householdSize: 3, workers: 2, tenure: 'renter', buildingId: 'building:a', unitRequirement: 1, vehicleAccess: true, liquidSavings: 8_000 }, 0);
+  const split = s.split(h.id, 3, 'capacity');
   assert.equal(split.branch.weight, 3);
   assert.equal(split.remainder.weight, 7);
-  assert.equal(system.representedHouseholds(), 10);
-  assert.equal(system.residentPopulation(), 30);
-  assert.equal(system.list().reduce((s, h) => s + h.grossIncome * h.weight, 0), 40_000);
-  assert.equal(system.list().reduce((s, h) => s + h.liquidSavings * h.weight, 0), 80_000);
-});
-
-test('compatible stable cohorts merge deterministically into lexical survivor', () => {
-  const system = new HouseholdCohortSystem();
-  const a = system.create(seed, 0);
-  const b = system.create(seed, 0);
-  const merged = system.mergeCompatible();
-  assert.equal(merged, 1);
-  const [survivor] = system.list();
-  assert.equal(survivor!.id, [a.id, b.id].sort()[0]);
-  assert.equal(survivor!.weight, 20);
+  assert.equal(s.representedHouseholds(), 10);
+  assert.equal(s.residentPopulation(), 30);
 });
 ```
 
-- [ ] **Step 2: Run focused test and verify RED**
+Add a merge test proving lexical survivor ID and exact conserved weighted sums.
+
+- [ ] **Step 2: RED run**
 
 ```bash
 node --experimental-strip-types --test tests/household-cohorts.test.ts
 ```
 
-Expected: FAIL because `HouseholdCohortSystem` does not exist.
+- [ ] **Step 3: Implement deterministic IDs/split/merge**
 
-- [ ] **Step 3: Define household state explicitly**
+Use `household:${nextId++}`. Original ID remains with split remainder; new branch gets a new ID. Reject non-integer weights and any split `<=0` or `>= original.weight`.
 
-`HouseholdCohort` must include at least:
+Merge only stable cohorts matching household size, workers/employment, employer IDs, tenure, building, unit requirement, vehicle access, burden state, search/displacement state, mortgage signature, preference vector, gross income, housing cost, and savings-per-household; refuse merges above `cohortTargetMaxWeight`.
 
-```ts
-export type HouseholdCohort = Readonly<{
-  id: string;
-  weight: number;
-  householdSize: number;
-  workers: number;
-  employedWorkers: number;
-  employerFirmIds: readonly string[];
-  grossIncome: number;
-  disposableHousingIncome: number;
-  employmentStability: number;
-  tenure: 'renter' | 'owner' | 'seeking';
-  buildingId: string | null;
-  unitRequirement: number;
-  vehicleAccess: boolean;
-  liquidSavings: number;
-  mortgage: MortgageProxy | null;
-  housingCost: number;
-  housingCostBurden: number;
-  affordabilityState: 'comfortable' | 'manageable' | 'stressed' | 'severe';
-  preferences: HouseholdPreferenceWeights;
-  moveFriction: number;
-  residenceCycles: number;
-  displacementState: 'none' | 'displaced' | 'unhoused';
-  searchState: 'stable' | 'searching';
-  arrearsCycles: number;
-  severeBurdenCycles: number;
-  unhousedCycles: number;
-  lastMoveReason: string | null;
-  createdTick: number;
-}>;
-```
+- [ ] **Step 4: Add restore validation**
 
-Use `household:${nextId++}` IDs. `split()` keeps the original ID on the remainder and gives the branch a new ID. Reject non-integer/zero/oversized weights.
+Reject duplicate IDs, zero/negative weight, `employedWorkers > workers`, owner with no building, negative/non-finite economic values, or invalid mortgage fields before mutating current state.
 
-- [ ] **Step 4: Implement deterministic merge eligibility**
-
-Merge only when cohorts match on:
-
-```ts
-householdSize, workers, employedWorkers, employerFirmIds, tenure, buildingId,
-unitRequirement, vehicleAccess, affordabilityState, displacementState, searchState,
-mortgage signature, preferences, grossIncome, disposableHousingIncome, housingCost
-```
-
-Choose lexical ID survivor and sum weights. Do not merge if combined weight would exceed `HOUSING_CONFIG.cohortTargetMaxWeight`.
-
-- [ ] **Step 5: Add restore-validation tests and implementation**
-
-Test duplicate IDs, zero weights, invalid worker counts, owner with `tenure='owner'` plus `buildingId=null`, negative savings, invalid mortgage principal/rate/payment, and non-finite numeric state. `restoreState()` must reject all of them before mutating current state.
-
-- [ ] **Step 6: Run focused test and typecheck**
+- [ ] **Step 5: GREEN + commit**
 
 ```bash
 node --experimental-strip-types --test tests/household-cohorts.test.ts
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 7: Commit**
-
-```bash
 git add src/simulation/housing/HousingTypes.ts src/simulation/housing/HouseholdCohortSystem.ts tests/household-cohorts.test.ts
 git commit -m "feat: add adaptive household cohorts"
 ```
 
 ---
 
-### Task 3: Firm-linked household employment and income bridge
+### Task 3: Firm-linked employment and household income
 
-**Files:**
-- Create: `src/simulation/housing/HouseholdIncomeSystem.ts`
-- Modify: `src/simulation/housing/HouseholdCohortSystem.ts`
-- Test: `tests/household-income.test.ts`
+**Files:** Create `HouseholdIncomeSystem.ts`, `tests/household-income.test.ts`; modify `HouseholdCohortSystem.ts`.
 
-**Interfaces:**
-- Consumes: `FirmSystem.list()` records with actual `filledJobs`, archetype, `cashHealth`, and productivity.
-- Produces: `HouseholdIncomeSystem.reconcile(cohorts, firms)` and `HouseholdIncomeSnapshot`.
-- Must reconcile total cohort employed workers exactly to `min(totalHouseholdWorkers, sum(activeFirm.filledJobs))`.
+**Contract:** `reconcile(cohorts: HouseholdCohortSystem, firms: readonly Firm[]): HouseholdIncomeSnapshot` must make total employed cohort workers equal `min(total household workers, sum(activeFirm.filledJobs))`.
 
-- [ ] **Step 1: Write failing firm-quota and wage tests**
+- [ ] **Step 1: RED quota/wage tests**
 
 ```ts
-test('household employment reconciles exactly to actual filled firm jobs', () => {
-  const households = makeHouseholds([{ weight: 10, workers: 1 }, { weight: 10, workers: 1 }]);
-  const firms = [makeFirm('firm:a', 'retail_local', 7), makeFirm('firm:b', 'assembly_manufacturing', 5)];
-  const system = new HouseholdIncomeSystem();
-  system.reconcile(households, firms);
+test('employment matches actual filled firm job quotas exactly', () => {
+  const households = householdsWithTwentyWorkers();
+  const firms = [firm('firm:a', 'retail_local', 7), firm('firm:b', 'assembly_manufacturing', 5)];
+  new HouseholdIncomeSystem().reconcile(households, firms);
   assert.equal(households.list().reduce((s, h) => s + h.employedWorkers * h.weight, 0), 12);
-});
-
-test('higher-wage firm archetypes create higher household income under equal employment', () => {
-  const retail = incomeForSingleEmployedHousehold('retail_local');
-  const assembly = incomeForSingleEmployedHousehold('assembly_manufacturing');
-  assert.ok(assembly > retail);
 });
 ```
 
-- [ ] **Step 2: Run focused test and verify RED**
+Also assert equal employment at `assembly_manufacturing` produces higher income than `retail_local`.
+
+- [ ] **Step 2: RED run**
 
 ```bash
 node --experimental-strip-types --test tests/household-income.test.ts
 ```
 
-Expected: FAIL because household income reconciliation is absent.
+- [ ] **Step 3: Implement deterministic worker-slot allocation**
 
-- [ ] **Step 3: Implement deterministic job-slot allocation using actual firm quotas**
+Sort active firms by descending cash health then ID. Each firm's current `filledJobs` is a hard quota. Sort cohorts by ID and allocate worker positions in passes. When remaining quota covers only part of a cohort, split it exactly and continue with the accepted branch.
 
-Sort active firms by:
-
-```ts
-(b.cashHealth - a.cashHealth) || a.id.localeCompare(b.id)
-```
-
-Treat each firm's `filledJobs` as a hard quota. Sort households by `id`. Allocate worker positions in passes (`workerIndex = 0..workers-1`). If a firm has fewer remaining slots than a cohort's weight, call `HouseholdCohortSystem.split()` so exactly that subset receives the job. Store one firm ID per employed worker position in `employerFirmIds`.
-
-Wage per employed worker:
+Per-worker wage:
 
 ```ts
 const healthModifier = clamp(0.85 + firm.cashHealth * 0.30, 0.85, 1.15);
@@ -421,215 +281,131 @@ const productivityModifier = clamp(0.90 + (firm.productivity - 1) * 0.20, 0.85, 
 const wage = HOUSEHOLD_WAGE_BY_ARCHETYPE[firm.archetype] * healthModifier * productivityModifier;
 ```
 
-Unemployed worker fallback income is `700` per worker per household. This is an explicit transitional proxy, not a modeled welfare payment.
+Unemployed worker income uses `HOUSING_CONFIG.unemployedWorkerFallbackIncome`. Set disposable housing income to `grossIncome * disposableIncomeRatio`; employment stability is mean employer cash health, or `0.25` if fully unemployed.
 
-Set `disposableHousingIncome = grossIncome * 0.80` and `employmentStability` to the average active employer cash health, or `0.25` when fully unemployed.
-
-- [ ] **Step 4: Add deterministic repeatability test**
-
-Run the same starting household snapshot and firm list through two separate systems and assert `deepEqual(householdsA.snapshotState(), householdsB.snapshotState())`.
-
-- [ ] **Step 5: Run tests and commit**
+- [ ] **Step 4: Determinism test + GREEN + commit**
 
 ```bash
 node --experimental-strip-types --test tests/household-income.test.ts tests/household-cohorts.test.ts
 npm run typecheck
 git add src/simulation/housing/HouseholdIncomeSystem.ts src/simulation/housing/HouseholdCohortSystem.ts tests/household-income.test.ts
-git commit -m "feat: connect household income to firms"
+git commit -m "feat: connect households to firm employment"
 ```
 
 ---
 
-### Task 4: Persistent housing supply ledgers and tenure conservation
+### Task 4: Persistent housing supply ledgers
 
-**Files:**
-- Create: `src/simulation/housing/HousingSupplySystem.ts`
-- Modify: `src/simulation/housing/HousingTypes.ts`
-- Modify: `src/simulation/buildings/BuildingSystem.ts`
-- Test: `tests/housing-supply.test.ts`
+**Files:** Create `HousingSupplySystem.ts`, `tests/housing-supply.test.ts`; modify `HousingTypes.ts`, `BuildingSystem.ts`.
 
-**Interfaces:**
-- Produces: `HousingBuildingState`, `HousingSupplyStateSnapshot`.
-- Produces methods: `syncBuildings()`, `list()`, `get()`, `availableRentalUnits()`, `availableForSaleUnits()`, `occupy()`, `vacate()`, `markUnavailable()`, `updateMarketState()`, `removeBuilding()`, `snapshotState()`, `restoreState()`.
-- `Building` gains optional `housingProduct`, `rentalProductUnits`, `forSaleProductUnits` for new residential awards.
+**Ledger fields:** building ID/coordinates/definition, physical units, resident capacity, overcrowding ceiling, housing product, rental/for-sale product units, occupied/vacant counts by tenure, unavailable units, resident load, asking/effective/prior rent, asking/estimated sale price, vacancy duration, applicant/buyer pressure, turnover, resident-income/burden stats, quality/accessibility/habitability, rent/price change, redevelopment metrics.
 
-- [ ] **Step 1: Write failing unit-conservation tests**
+- [ ] **Step 1: RED unit-invariant tests**
 
 ```ts
-test('housing ledger conserves physical units across tenure and vacancy states', () => {
+test('every housing mutation preserves exclusive unit conservation', () => {
   const supply = new HousingSupplySystem();
-  supply.syncBuildings([occupiedResidential('residential_rowhouse')], 0);
-  const before = supply.list()[0]!;
-  supply.occupy(before.buildingId, 'renter', 3);
-  supply.occupy(before.buildingId, 'owner', 2);
-  const state = supply.get(before.buildingId)!;
-  assert.equal(state.rentalProductUnits, state.renterOccupiedUnits + state.vacantRentableUnits);
-  assert.equal(state.forSaleProductUnits, state.ownerOccupiedUnits + state.vacantForSaleUnits);
-  assert.equal(state.rentalProductUnits + state.forSaleProductUnits + state.unavailableUnits, state.housingUnits);
+  supply.syncBuildings([residentialRowhouse()], 0);
+  const id = supply.list()[0]!.buildingId;
+  supply.occupy(id, 'renter', 3);
+  supply.occupy(id, 'owner', 2);
+  const x = supply.get(id)!;
+  assert.equal(x.rentalProductUnits, x.renterOccupiedUnits + x.vacantRentableUnits);
+  assert.equal(x.forSaleProductUnits, x.ownerOccupiedUnits + x.vacantForSaleUnits);
+  assert.equal(x.rentalProductUnits + x.forSaleProductUnits + x.unavailableUnits, x.housingUnits);
 });
 ```
 
-Also test that attempting to occupy more units than the matching tenure inventory throws without partially mutating the ledger.
-
-- [ ] **Step 2: Run focused test and verify RED**
+- [ ] **Step 2: RED run**
 
 ```bash
 node --experimental-strip-types --test tests/housing-supply.test.ts
 ```
 
-Expected: FAIL because housing supply state does not exist.
+- [ ] **Step 3: Implement sync and market initialization**
 
-- [ ] **Step 3: Implement building synchronization and initial market state**
+Construction buildings expose no inventory. On first occupied sync use building award product metadata when present, else legacy allocation. Initialize `askingRent = effectiveRent = definition.baseRent`; `askingSalePrice = estimatedSalePrice = baseRent * salePriceToEffectiveRent`; quality/accessibility `0.70`; habitability `1`.
 
-For a new ledger:
-
-```ts
-askingRent = definition.baseRent;
-effectiveRent = definition.baseRent;
-askingSalePrice = definition.baseRent * HOUSING_CONFIG.salePriceToEffectiveRent;
-estimatedSalePrice = askingSalePrice;
-quality = 0.70;
-accessibility = 0.70;
-habitability = 1;
-```
-
-Use product metadata from `Building` when present; otherwise use `defaultLegacyProductAllocation()`.
-
-`syncBuildings()` must preserve existing market state and only add/remove ledgers as buildings become occupied or disappear. Construction buildings do not expose housing inventory.
-
-- [ ] **Step 4: Implement exact mutation guards and restore validation**
-
-Every `occupy`, `vacate`, `markUnavailable`, and restore path calls one invariant checker. Reject negative counts, non-integers, product totals above `housingUnits`, and non-finite/negative rents or prices.
-
-- [ ] **Step 5: Add `BuildingSystem.removeById()` and optional product metadata**
+- [ ] **Step 4: Add optional product metadata and `removeById()` to buildings**
 
 ```ts
-removeById(id: string): Building | undefined {
-  for (const [lotId, building] of this.buildings.entries()) {
-    if (building.id === id) {
-      this.buildings.delete(lotId);
-      return { ...building };
-    }
-  }
-  return undefined;
-}
+housingProduct?: HousingProduct;
+rentalProductUnits?: number;
+forSaleProductUnits?: number;
 ```
 
-Keep all new residential product fields optional so historical fixtures remain source-compatible.
+`removeById(id)` removes and returns one cloned building. Validate new residential project metadata sums to `definition.housingUnits`.
 
-- [ ] **Step 6: Run tests and commit**
+- [ ] **Step 5: Restore validation + GREEN + commit**
 
 ```bash
 node --experimental-strip-types --test tests/housing-supply.test.ts
 npm run typecheck
-git add src/simulation/housing/HousingTypes.ts src/simulation/housing/HousingSupplySystem.ts src/simulation/buildings/BuildingSystem.ts tests/housing-supply.test.ts
-git commit -m "feat: add persistent housing supply ledgers"
+git add src/simulation/housing/HousingSupplySystem.ts src/simulation/housing/HousingTypes.ts src/simulation/buildings/BuildingSystem.ts tests/housing-supply.test.ts
+git commit -m "feat: add housing supply ledgers"
 ```
 
 ---
 
-### Task 5: Housing choice, affordability, and mortgage qualification
+### Task 5: Affordability, utility, and ownership qualification
 
-**Files:**
-- Create: `src/simulation/housing/HousingChoiceSystem.ts`
-- Modify: `src/simulation/housing/HousingTypes.ts`
-- Test: `tests/housing-choice.test.ts`
+**Files:** Create `HousingChoiceSystem.ts`, `tests/housing-choice.test.ts`; modify `HousingTypes.ts`.
 
-**Interfaces:**
-- Produces: `HousingCandidate`, `HousingChoiceEvaluation`, `MortgageQuote`.
-- Produces methods: `quoteMortgage()`, `evaluateCandidate()`, `rankCandidates()`.
-- Consumes household preferences and normalized building quality/access/service conditions.
+**Interfaces:** `quoteMortgage()`, `evaluateCandidate()`, `rankCandidates()` returning explicit component scores and rejection reasons.
 
-- [ ] **Step 1: Write failing affordability and mortgage-rate tests**
+- [ ] **Step 1: RED affordability/rate/access tests**
 
 ```ts
-test('severely unaffordable rental is rejected despite superior neighborhood utility', () => {
-  const system = new HousingChoiceSystem();
-  const result = system.evaluateCandidate(lowIncomeHousehold(), expensiveExcellentRental(), choiceContext());
-  assert.equal(result.eligible, false);
-  assert.ok(result.rejectionReasons.includes('housing-burden'));
+test('severe rent burden is rejected even with superior location utility', () => {
+  const r = new HousingChoiceSystem().evaluateCandidate(lowIncomeHousehold(), expensiveExcellentRental(), choiceContext());
+  assert.equal(r.eligible, false);
+  assert.ok(r.rejectionReasons.includes('housing-burden'));
 });
 
 test('higher mortgage rates reduce maximum affordable purchase price', () => {
-  const system = new HousingChoiceSystem();
-  const household = qualifiedBuyer();
-  const low = system.quoteMortgage(household, 0.04, 250_000);
-  const high = system.quoteMortgage(household, 0.09, 250_000);
-  assert.ok(low.monthlyPayment < high.monthlyPayment);
-  assert.equal(low.paymentQualified, true);
-  assert.equal(high.maximumAffordablePrice < low.maximumAffordablePrice, true);
+  const s = new HousingChoiceSystem();
+  assert.ok(s.quoteMortgage(qualifiedBuyer(), 0.09, 100_000).maximumAffordablePrice < s.quoteMortgage(qualifiedBuyer(), 0.04, 100_000).maximumAffordablePrice);
 });
 ```
 
-- [ ] **Step 2: Run focused test and verify RED**
+Add a carless-household test choosing higher person accessibility when otherwise equal.
+
+- [ ] **Step 2: RED run**
 
 ```bash
 node --experimental-strip-types --test tests/housing-choice.test.ts
 ```
 
-- [ ] **Step 3: Implement the standard amortization equation**
+- [ ] **Step 3: Implement standard amortizing payment and three purchase constraints**
 
 ```ts
-function payment(principal: number, annualRate: number, years: number): number {
-  const n = years * 12;
-  if (annualRate === 0) return principal / n;
-  const r = annualRate / 12;
-  const factor = Math.pow(1 + r, n);
-  return principal * (r * factor) / (factor - 1);
-}
+const payment = annualRate === 0
+  ? principal / (years * 12)
+  : principal * ((annualRate / 12) * Math.pow(1 + annualRate / 12, years * 12)) / (Math.pow(1 + annualRate / 12, years * 12) - 1);
 ```
 
-Qualification must enforce all three constraints from the spec: down payment + transaction reserve, debt-service ratio, and emergency reserve.
+Require cash for down payment + transaction reserve, payment burden `<= maxDebtServiceRatio`, and remaining savings `>= emergencyReserveMonths * grossIncome`.
 
-- [ ] **Step 4: Implement componentized utility with diagnostics**
+- [ ] **Step 4: Implement inspectable utility**
 
-Calculate and return named components rather than one opaque score:
+Return named components: affordability, space fit, commute access, services, neighborhood, tenure fit, vehicle fit, density fit, stability, moving cost, overcrowding penalty, displacement risk. Apply household preference weights. Equal total utility breaks by building ID. Severe burden is a hard rejection for a new voluntary move.
 
-```ts
-{
-  affordability,
-  spaceFit,
-  commuteAccess,
-  services,
-  neighborhood,
-  tenureFit,
-  vehicleFit,
-  densityFit,
-  stability,
-  movingCost,
-  overcrowdingPenalty,
-  displacementRisk,
-}
-```
-
-Normalize positive components to `[-1, 1]`, apply household preference weights, and sort equal candidates by `buildingId`. A carless household gets a `vehicleFit` penalty below `0.55` person accessibility and a positive score above `0.75`.
-
-- [ ] **Step 5: Add carless-access and move-friction tests**
-
-Assert that a carless cohort chooses the more accessible otherwise-equal building, and that an owner with long residence tenure refuses a marginal utility improvement that a newly arrived renter accepts.
-
-- [ ] **Step 6: Run tests and commit**
+- [ ] **Step 5: GREEN + commit**
 
 ```bash
 node --experimental-strip-types --test tests/housing-choice.test.ts
 npm run typecheck
 git add src/simulation/housing/HousingChoiceSystem.ts src/simulation/housing/HousingTypes.ts tests/housing-choice.test.ts
-git commit -m "feat: add housing choice and mortgage qualification"
+git commit -m "feat: add household housing choice"
 ```
 
 ---
 
-### Task 6: Housing market cadence, pricing, search, matching, migration, and displacement
+### Task 6: Housing market scheduler, prices, matching, migration, displacement
 
-**Files:**
-- Create: `src/simulation/housing/HousingMarketSystem.ts`
-- Modify: `src/simulation/housing/HousingTypes.ts`
-- Test: `tests/housing-market.test.ts`
+**Files:** Create `HousingMarketSystem.ts`, `tests/housing-market.test.ts`; modify `HousingTypes.ts`.
 
-**Interfaces:**
-- Owns: `HouseholdCohortSystem`, `HouseholdIncomeSystem`, `HousingSupplySystem`, `HousingChoiceSystem`.
-- Produces: `HousingMarketSnapshot`, `HousingMarketStateSnapshot`, `HousingMarketSystem.tick(input)`, `bootstrapLegacyPopulation()`, `displaceBuilding()`, `population()`, `travelDemand()`, `marketSignalForParcel()`.
-- Input contract:
+**Input:**
 
 ```ts
 export type HousingMarketTickInput = Readonly<{
@@ -642,113 +418,70 @@ export type HousingMarketTickInput = Readonly<{
 }>;
 ```
 
-- [ ] **Step 1: Write failing rent-inertia tests**
+**Public outputs:** `snapshot()`, `snapshotState()`, `restoreState()`, `bootstrapLegacyPopulation()`, `population()`, `travelDemand()`, `displaceBuilding()`, `removeSupplyBuilding()`, `marketSignalForParcel()`, `redevelopmentSignal()`.
 
-```ts
-test('persistent high vacancy lowers rent while qualified excess demand raises it gradually', () => {
-  const vacant = marketFixture({ occupiedRentalUnits: 4, rentalUnits: 12, qualifiedApplicants: 0 });
-  const tight = marketFixture({ occupiedRentalUnits: 12, rentalUnits: 12, qualifiedApplicants: 24 });
-  vacant.stepMarketCycle();
-  tight.stepMarketCycle();
-  assert.ok(vacant.rentAfter < vacant.rentBefore);
-  assert.ok(tight.rentAfter > tight.rentBefore);
-  assert.ok(Math.abs(tight.rentAfter / tight.rentBefore - 1) <= HOUSING_CONFIG.maxNormalRentChange + 1e-9);
-});
-```
+- [ ] **Step 1: RED rent-inertia tests**
 
-- [ ] **Step 2: Implement exact pricing pressure**
+Assert persistent high vacancy lowers rent, qualified excess demand raises it, and normal upward movement never exceeds 3% per market cycle.
 
-For rental-capable buildings:
+- [ ] **Step 2: Implement exact rent pressure**
 
 ```ts
 const occupancyRate = rentalProductUnits === 0 ? 0 : renterOccupiedUnits / rentalProductUnits;
-const occupancyPressure = clamp((occupancyRate - HOUSING_CONFIG.targetOccupancy) / 0.10, -1, 1);
+const occupancyPressure = clamp((occupancyRate - 0.94) / 0.10, -1, 1);
 const applicantPressure = clamp(qualifiedRentalApplicants / Math.max(1, vacantRentableUnits) - 1, -1, 1);
 const incomeSupport = clamp(medianQualifiedIncome / Math.max(1, askingRent * 3) - 1, -0.5, 0.5);
-const qualityPremium = (quality - 0.70) * 0.20;
-const accessPremium = (accessibility - 0.70) * 0.20;
-const distressPenalty = (1 - habitability) * 0.50;
-const rawChange = 0.012 * occupancyPressure + 0.010 * applicantPressure + 0.004 * incomeSupport + 0.003 * qualityPremium + 0.003 * accessPremium - 0.020 * distressPenalty;
-let bounded = clamp(rawChange, -HOUSING_CONFIG.maxNormalRentChange, HOUSING_CONFIG.maxNormalRentChange);
-if (1 - occupancyRate >= HOUSING_CONFIG.severeVacancyRate) bounded = Math.min(bounded, -HOUSING_CONFIG.maxSevereVacancyRentCut);
+const raw = 0.012 * occupancyPressure + 0.010 * applicantPressure + 0.004 * incomeSupport
+  + 0.003 * (quality - 0.70) + 0.003 * (accessibility - 0.70) - 0.020 * (1 - habitability);
+let rentChange = clamp(raw, -0.03, 0.03);
+if (1 - occupancyRate >= 0.25) rentChange = Math.min(rentChange, -0.06);
 ```
 
-Set `effectiveRent = askingRent * (1 - concessionRate)`, where `concessionRate = clamp((vacancyRate - 0.08) * 0.30, 0, 0.12)`.
+`effectiveRent = askingRent * (1 - clamp((vacancyRate - 0.08) * 0.30, 0, 0.12))`.
 
-For sale inventory, anchor price to `effectiveRent * salePriceToEffectiveRent`, then apply bounded quality/access/buyer-pressure/rate modifiers and clamp per-cycle change to `maxSalePriceChange`.
+Sale price is anchored to `effectiveRent * salePriceToEffectiveRent`, modified by quality/accessibility/qualified buyer pressure and mortgage-rate purchasing power, then limited to ±4% per market cycle.
 
-- [ ] **Step 3: Write failing search/matching and partial-cohort tests**
+- [ ] **Step 3: RED partial-cohort matching test**
 
-Create a 10-household cohort and only 3 matching vacant units. Assert the cohort deterministically splits 3/7, the branch moves, unit conservation holds, and the remainder stays searching.
+Create a cohort weight 10 and only 3 eligible units. Assert deterministic split 3/7, accepted branch moves, remainder stays searching, and supply invariants hold.
 
-- [ ] **Step 4: Implement bounded deterministic candidate generation**
+- [ ] **Step 4: Implement bounded candidate search/matching**
 
-For each searcher, build a set in this order: tenure-compatible + affordable, space-compatible, same/nearby neighborhood by Manhattan distance, high-access alternatives, ownership candidates if qualified, then lexical citywide fallback. Sort/deduplicate by building ID and truncate to `HOUSING_CONFIG.maxCandidateBuildings`.
+Candidate set order: tenure-compatible available inventory -> affordable -> space-compatible -> nearby by Manhattan distance -> high-access -> ownership candidates if qualified -> lexical citywide fallback. Deduplicate and cap at 16 buildings. Searcher priority: displaced/unhoused -> severe burden -> other searchers -> household ID.
 
-Search order is:
+Voluntary move requires `newUtility - currentUtility > moveFriction`; involuntary displacement bypasses it.
 
-```ts
-displaced/unhoused first -> severe burden -> other searching -> household id
-```
+- [ ] **Step 5: RED migration persistence tests**
 
-Apply the Task 5 move threshold to voluntary movers; displacement bypasses it.
+Prove: no viable housing => no in-migration; viable housing + job vacancies => bounded in-migration; unhoused household leaves only after 3 full market cycles; severe-burden out-migration requires 4 consecutive cycles.
 
-- [ ] **Step 5: Write and implement migration persistence tests**
+- [ ] **Step 6: Implement deterministic migration archetype cycling**
 
-Test these exact behaviors:
-- no viable housing => zero in-migration even with job vacancies;
-- viable housing + job vacancies => bounded deterministic in-migration;
-- displaced household remains in city during the first `outMigrationUnhousedCycles - 1` market cycles;
-- at the threshold it leaves if still unhoused;
-- severe burden requires `outMigrationSevereBurdenCycles` consecutive cycles before exit.
+Use `MIGRANT_ARCHETYPES[nextMigrantArchetype % MIGRANT_ARCHETYPES.length]` and persist the sequence counter. No PRNG. Migration is additionally bounded by viable vacant units and `employmentVacancies`.
 
-External migrant archetypes are deterministic and cycle through a fixed config list; do not use PRNG.
+- [ ] **Step 7: Implement 50-tick household economics**
 
-- [ ] **Step 6: Implement displacement and mortgage/savings economics**
+Reconcile employment/income; amortize mortgage principal; recompute burden; add savings `max(0, disposableHousingIncome - housingCost) * savingsRate`, capped at `savingsCapMonths * grossIncome`; update severe-burden/unhoused counters.
 
-`displaceBuilding(buildingId, reason)` vacates all represented units, retains income/savings/preferences/mortgage state, clears `buildingId`, sets `displacementState='displaced'`, `searchState='searching'`, and `lastMoveReason=reason`.
-
-Every 50 ticks:
-- call income reconciliation;
-- amortize mortgages by one monthly-equivalent payment step;
-- update burden state;
-- add savings equal to `max(0, disposableHousingIncome - housingCost) * 0.05`, capped at 24 months of gross income;
-- increment arrears/severe-burden counters where applicable.
-
-- [ ] **Step 7: Add snapshot/restore determinism tests**
-
-Serialize `HousingMarketStateSnapshot`, restore into a fresh system, run 500 identical ticks, and assert deep equality of final snapshots.
-
-- [ ] **Step 8: Run tests and commit**
+- [ ] **Step 8: Snapshot/restore twin-run test + GREEN + commit**
 
 ```bash
 node --experimental-strip-types --test tests/housing-market.test.ts tests/housing-choice.test.ts tests/housing-supply.test.ts tests/household-income.test.ts
 npm run typecheck
 git add src/simulation/housing/HousingMarketSystem.ts src/simulation/housing/HousingTypes.ts tests/housing-market.test.ts
-git commit -m "feat: add deterministic housing market clearing"
+git commit -m "feat: add deterministic housing market"
 ```
 
 ---
 
-### Task 7: Make housing authoritative for population and household-origin travel
+### Task 7: Population authority and household-origin mobility
 
-**Files:**
-- Modify: `src/simulation/population/PopulationSystem.ts`
-- Modify: `src/simulation/traffic/TripGenerationSystem.ts`
-- Modify: `src/simulation/mobility/PersonTripSystem.ts`
-- Modify: `src/simulation/core/SimulationCore.ts`
-- Test: `tests/housing-integration.test.ts`
-- Modify/Test: `tests/core-city-loop.test.ts`, `tests/city-foundation.test.ts`
+**Files:** Modify `PopulationSystem.ts`, `TripGenerationSystem.ts`, `PersonTripSystem.ts`, `SimulationCore.ts`; create `tests/housing-integration.test.ts`; adapt `core-city-loop.test.ts` and `city-foundation.test.ts` only where behavior intentionally changes.
 
-**Interfaces:**
-- `PopulationSystem.sync(population: number): void` becomes the housing-authority bridge.
-- `HousingMarketSystem.travelDemand()` produces housed origin/employer-linked commute demand plus shopping-origin weights.
-- `PersonTripSystem.generate()` accepts optional explicit housing travel demand; old aggregate path remains fallback for historical unit tests.
-
-- [ ] **Step 1: Write failing population-authority integration test**
+- [ ] **Step 1: RED no-housing population test**
 
 ```ts
-test('positive residential demand does not create population without viable housing', () => {
+test('positive demand cannot create residents without viable housing', () => {
   const core = buildServicedJobsButNoHousingCity();
   core.step(500);
   assert.ok(core.demandSnapshot.residential > 0);
@@ -757,9 +490,7 @@ test('positive residential demand does not create population without viable hous
 });
 ```
 
-Also test that housing in-migration changes `core.population.population` exactly to `core.housing.population()`.
-
-- [ ] **Step 2: Add `PopulationSystem.sync()` and remove independent growth after housing activation**
+- [ ] **Step 2: Add compatibility sync API**
 
 ```ts
 sync(population: number): void {
@@ -768,30 +499,17 @@ sync(population: number): void {
 }
 ```
 
-Keep `update()` unchanged for direct legacy tests, but `SimulationCore` must no longer call it after `HousingMarketSystem` is installed.
+`SimulationCore` stops calling `population.update()` after housing activation.
 
-- [ ] **Step 3: Integrate housing cadence after fresh service conditions**
+- [ ] **Step 3: Integrate cadence after current service conditions**
 
-In `SimulationCore.step()` keep economy/mobility/traffic ordering, then at the 10-tick boundary use:
+At each 10-tick boundary: service loop -> housing tick -> population sync -> development market. The 50-tick core city loop runs afterward. `conditionsByBuilding` must use real power/water availability, service access, neighborhood quality, and mobility accessibility.
 
-```ts
-this.evaluateServiceLoop();
-this.evaluateHousingMarket();
-this.population.sync(this.housing.population());
-this.evaluateDevelopmentMarket();
-```
+- [ ] **Step 4: RED household-origin trip test**
 
-At 50 ticks, run `evaluateCoreCityLoop()` after housing synchronization. Do not call `population.update()` there.
-
-`evaluateHousingMarket()` builds `conditionsByBuilding` from actual per-building utility/service/neighborhood state and current mobility accessibility; no zero-demand utility ratio may stand in for missing physical power/water infrastructure.
-
-- [ ] **Step 4: Write household-origin travel tests**
-
-Create two residential buildings with 80/20 resident weights and assert generated shopping origin traveler weight follows approximately 80/20 rather than 50/50. Create a cohort linked to `firm:1` and assert its commute destination is the building containing `firm:1`.
+With two homes containing 80%/20% of housed residents, shopping origin weights must follow 80/20 rather than equal building shares. A cohort linked to a firm must commute to that firm's actual building.
 
 - [ ] **Step 5: Implement explicit travel demand path**
-
-Add housing travel input records:
 
 ```ts
 export type HouseholdTravelDemand = Readonly<{
@@ -802,20 +520,14 @@ export type HouseholdTravelDemand = Readonly<{
 }>;
 ```
 
-`PersonTripSystem` creates commute trips directly when destination is supplied. Shopping destinations still use deterministic commercial choice. Unhoused/out-migrated households do not produce normal residential-origin trips.
+`PersonTripSystem` uses explicit commute destinations when provided and deterministic commercial destination selection for shopping. Unhoused households emit no normal residential-origin trips. Keep the old aggregate generator as a fallback for direct legacy tests.
 
-- [ ] **Step 6: Run regression suite for core/mobility**
+- [ ] **Step 6: GREEN regression run + commit**
 
 ```bash
-node --experimental-strip-types --test tests/housing-integration.test.ts tests/core-city-loop.test.ts tests/city-foundation.test.ts tests/mobility-integration.test.ts tests/person-trip-system.test.ts
+node --experimental-strip-types --test tests/housing-integration.test.ts tests/core-city-loop.test.ts tests/city-foundation.test.ts
+npm test
 npm run typecheck
-```
-
-If test filenames differ, use the existing mobility/person-trip test filenames returned by `ls tests | grep -E 'mobility|person|trip'`; do not create duplicate coverage under a guessed filename.
-
-- [ ] **Step 7: Commit**
-
-```bash
 git add src/simulation/population/PopulationSystem.ts src/simulation/traffic/TripGenerationSystem.ts src/simulation/mobility/PersonTripSystem.ts src/simulation/core/SimulationCore.ts tests/housing-integration.test.ts tests/core-city-loop.test.ts tests/city-foundation.test.ts
 git commit -m "feat: make housing authoritative for population"
 ```
@@ -824,39 +536,9 @@ git commit -m "feat: make housing authoritative for population"
 
 ### Task 8: Tenure-aware residential developer underwriting
 
-**Files:**
-- Modify: `src/simulation/development/DevelopmentTypes.ts`
-- Modify: `src/simulation/development/DevelopmentFeasibilitySystem.ts`
-- Modify: `src/simulation/development/DeveloperMarketSystem.ts`
-- Modify: `src/simulation/buildings/BuildingSystem.ts`
-- Modify: `src/simulation/core/SimulationCore.ts`
-- Test: `tests/housing-development.test.ts`
-- Modify/Test: `tests/development-feasibility.test.ts`, `tests/developer-market.test.ts`, `tests/development-integration.test.ts`
+**Files:** Modify development types/feasibility/market, `BuildingSystem.ts`, `SimulationCore.ts`; create `tests/housing-development.test.ts`; extend existing development tests.
 
-**Interfaces:**
-- Add optional residential fields to feasibility/bid/award/commitment: `housingProduct`, `rentalProductUnits`, `forSaleProductUnits`.
-- Add `ResidentialDevelopmentMarketContext` with effective rent, sale price, rental vacancy, qualified rental pressure, qualified buyer pressure.
-- `HousingMarketSystem.marketSignalForParcel()` supplies deterministic nearest-comparable + citywide fallback signals.
-
-- [ ] **Step 1: Write failing tenure-product underwriting test**
-
-```ts
-test('residential underwriting chooses economically distinct rental and for-sale products', () => {
-  const results = evaluateResidentialLotWithHousingSignals({
-    effectiveRent: 650,
-    salePrice: 145_000,
-    rentalVacancyRate: 0.04,
-    qualifiedRentalPressure: 1.4,
-    qualifiedBuyerPressure: 0.4,
-  });
-  const rental = results.find(x => x.housingProduct === 'rental')!;
-  const sale = results.find(x => x.housingProduct === 'for_sale')!;
-  assert.notEqual(rental.stabilizedValue, sale.stabilizedValue);
-  assert.ok(rental.effectiveGrossIncome > 0);
-});
-```
-
-- [ ] **Step 2: Extend `DevelopmentParcelContext` without changing non-residential callers**
+**New context:**
 
 ```ts
 export type ResidentialDevelopmentMarketContext = Readonly<{
@@ -873,131 +555,95 @@ export type ResidentialDevelopmentMarketContext = Readonly<{
 }>;
 ```
 
-Add optional `residentialMarket?: ResidentialDevelopmentMarketContext` to `DevelopmentParcelContext`.
+`DevelopmentParcelContext` gains optional `residentialMarket`. Feasibility/bid/award/commitment gain optional `housingProduct`, `rentalProductUnits`, `forSaleProductUnits`, and replacement economics.
 
-- [ ] **Step 3: Implement product-specific residential value**
+- [ ] **Step 1: RED distinct rental/for-sale economics test**
 
-For rental projects:
+Create one residential lot with both product signals and assert rental and for-sale results have distinct stabilized values and IDs.
+
+- [ ] **Step 2: Implement residential product expansion**
+
+For each residential physical definition, evaluate every allowed product. Rental value:
 
 ```ts
 const grossPotentialRent = effectiveRentPerUnit * definition.housingUnits;
-const vacancyRate = clamp(residentialMarket.rentalVacancyRate, 0.02, 0.40);
+const vacancyRate = clamp(rentalVacancyRate, 0.02, 0.40);
 const effectiveGrossIncome = grossPotentialRent * (1 - vacancyRate);
 const netOperatingIncome = effectiveGrossIncome * (1 - definition.operatingExpenseRatio) - propertyTaxes;
 const stabilizedValue = netOperatingIncome / capRate;
 ```
 
-For for-sale projects:
+For-sale value:
 
 ```ts
 const grossSales = salePricePerUnit * definition.housingUnits;
-const absorptionDiscount = clamp(1 - 0.08 * Math.max(0, 1 - residentialMarket.qualifiedBuyerPressure), 0.85, 1);
+const absorptionDiscount = clamp(1 - 0.08 * Math.max(0, 1 - qualifiedBuyerPressure), 0.85, 1);
 const stabilizedValue = grossSales * absorptionDiscount * (1 - HOUSING_CONFIG.sellingCostRatio);
-const effectiveGrossIncome = stabilizedValue;
-const netOperatingIncome = 0;
 ```
 
-For mixed projects, use the persisted deterministic unit split and sum rental stabilized value plus net sale proceeds. Non-residential calculations keep their current formula.
+Mixed value is the exact persisted rental-unit stabilized value plus net sale proceeds for its deterministic unit split. Non-residential formulas remain unchanged.
 
-- [ ] **Step 4: Make developer bidding product-aware**
+- [ ] **Step 3: Make developer market product-aware**
 
-Include `housingProduct ?? 'na'` in bid/award IDs and tie-breakers. Add optional developer housing preference values with defaults:
+Include product in bid/award IDs and tie-breakers. Add optional developer housing preferences, defaulting to zero when absent from old saves:
 
 ```ts
-local_builder:          { rental: 0.00, for_sale: 0.035, mixed: 0.005 }
-urban_developer:        { rental: 0.020, for_sale: 0.010, mixed: 0.030 }
-institutional_developer:{ rental: 0.040, for_sale: 0.000, mixed: 0.020 }
-industrial_specialist:  { rental: -0.020, for_sale: -0.020, mixed: -0.020 }
+local_builder: { rental: 0.000, for_sale: 0.035, mixed: 0.005 }
+urban_developer: { rental: 0.020, for_sale: 0.010, mixed: 0.030 }
+institutional_developer: { rental: 0.040, for_sale: 0.000, mixed: 0.020 }
+industrial_specialist: { rental: -0.020, for_sale: -0.020, mixed: -0.020 }
 ```
 
-Old V7 developer snapshots lacking this field restore with zero housing preference; do not reject them.
+- [ ] **Step 4: Persist award product on construction building**
 
-- [ ] **Step 5: Persist product metadata into construction buildings**
+Validate rental + for-sale units equal physical housing units and copy product fields into `Building`.
 
-`BuildingSystem.startDevelopment()` copies `housingProduct`, `rentalProductUnits`, and `forSaleProductUnits` from residential awards and validates that the two unit counts sum to `definition.housingUnits`.
+- [ ] **Step 5: RED/ GREEN integration proving generic demand is insufficient**
 
-- [ ] **Step 6: Verify generic demand no longer guarantees residential construction**
+Positive residential demand with weak housing economics must produce no residential award; stronger effective rent/sale value must make at least one candidate feasible.
 
-Add an integration test with positive `demandSnapshot.residential` but unaffordable/weak market rents or prices and assert no residential award occurs. Then raise qualified market economics and assert an award becomes possible.
-
-- [ ] **Step 7: Run development regressions and commit**
+- [ ] **Step 6: Development regression + commit**
 
 ```bash
 node --experimental-strip-types --test tests/housing-development.test.ts tests/development-feasibility.test.ts tests/developer-market.test.ts tests/development-integration.test.ts
 npm run typecheck
 git add src/simulation/development src/simulation/buildings/BuildingSystem.ts src/simulation/core/SimulationCore.ts tests/housing-development.test.ts tests/development-feasibility.test.ts tests/developer-market.test.ts tests/development-integration.test.ts
-git commit -m "feat: connect housing economics to development"
+git commit -m "feat: connect housing economics to developers"
 ```
 
 ---
 
-### Task 9: Occupied-parcel redevelopment, displacement cost, and filtering
+### Task 9: Occupied-parcel redevelopment and filtering
 
-**Files:**
-- Modify: `src/simulation/housing/HousingMarketSystem.ts`
-- Modify: `src/simulation/housing/HousingTypes.ts`
-- Modify: `src/simulation/development/DevelopmentFeasibilitySystem.ts`
-- Modify: `src/simulation/core/SimulationCore.ts`
-- Test: `tests/housing-redevelopment.test.ts`
+**Files:** Modify `HousingMarketSystem.ts`, `HousingTypes.ts`, `DevelopmentFeasibilitySystem.ts`, `SimulationCore.ts`; create `tests/housing-redevelopment.test.ts`.
 
-**Interfaces:**
-- Produces: `HousingMarketSystem.redevelopmentSignal(buildingId)`.
-- Feasibility result adds `existingUseValue`, `demolitionCost`, `displacementCost`, `redevelopmentGain`, `replacementBuildingId` where applicable.
+- [ ] **Step 1: RED redevelopment hurdle tests**
 
-- [ ] **Step 1: Write failing redevelopment hurdle test**
+Low replacement value must fail after existing-use + demolition + displacement costs; strong replacement value must clear.
+
+- [ ] **Step 2: Implement exact replacement economics**
 
 ```ts
-test('high-intensity zoning alone does not redevelop a viable occupied low-intensity building', () => {
-  const result = redevelopmentResult({ replacementValue: 180_000, existingUseValue: 150_000, demolitionCost: 20_000, displacementCost: 20_000 });
-  assert.equal(result.feasible, false);
-  assert.ok(result.rejectionReasons.includes('redevelopment-gain'));
-});
-
-test('strong replacement economics can clear existing use demolition and displacement costs', () => {
-  const result = redevelopmentResult({ replacementValue: 420_000, existingUseValue: 120_000, demolitionCost: 20_000, displacementCost: 16_000 });
-  assert.ok(result.redevelopmentGain > 0);
-});
+const demolitionCost = currentDefinition.baseConstructionCost * HOUSING_CONFIG.demolitionCostRatio;
+const displacementCost = representedHouseholdsInBuilding * HOUSING_CONFIG.displacementCostPerHousehold;
+const redevelopmentGain = replacementStabilizedValue - existingUseValue - demolitionCost - displacementCost;
 ```
 
-- [ ] **Step 2: Implement existing-use and displacement economics**
+Only higher-intensity replacement definitions are eligible. Require `redevelopmentGain > preFinanceDevelopmentCost * 0.05` in addition to normal developer feasibility/hurdle checks.
 
-For occupied residential buildings:
+- [ ] **Step 3: Enumerate occupied residential opportunities only every 250 ticks**
 
-```ts
-existingUseValue = Math.max(0, stabilizedRentalValue + ownerOccupiedValueShare);
-demolitionCost = currentDefinition.baseConstructionCost * HOUSING_CONFIG.demolitionCostRatio;
-displacementCost = representedHouseholdsInBuilding * HOUSING_CONFIG.displacementCostPerHousehold;
-redevelopmentGain = replacementStabilizedValue - existingUseValue - demolitionCost - displacementCost;
-```
+Vacant-lot evaluation remains every 10 ticks. Commercial/industrial occupied redevelopment remains out of scope.
 
-Require replacement definition intensity rank to be strictly greater than current definition intensity and `redevelopmentGain > preFinanceDevelopmentCost * 0.05` before marking the candidate feasible.
+- [ ] **Step 4: Implement transactional replacement execution**
 
-- [ ] **Step 3: Change development opportunity enumeration carefully**
+Before displacement/removal, snapshot `buildings.list()` and `housing.snapshotState()`. On success: displace households -> remove old building -> remove old supply ledger -> start awarded construction. If start fails: restore full building snapshot + housing snapshot, cancel developer commitment at 100% recovery, then rethrow.
 
-Every 10 ticks keep vacant-lot opportunities. Only when `tick % HOUSING_CADENCE.redevelopment === 0`, also evaluate occupied residential lots returned by housing redevelopment signals. Commercial/industrial occupied redevelopment remains out of scope.
+- [ ] **Step 5: RED multi-step filtering-chain test**
 
-- [ ] **Step 4: Execute an awarded replacement deterministically**
+Add new high-end supply and prove at least three deterministic moves propagate vacancies down-market, ending with a lower-income household gaining an existing-stock option previously unavailable. Assert unit conservation after every step.
 
-For an award with `replacementBuildingId`:
-
-```ts
-this.housing.displaceBuilding(replacementBuildingId, 'redevelopment');
-const removed = this.buildings.removeById(replacementBuildingId);
-if (!removed) {
-  this.developerMarket.cancelProject(award.buildingId, 1);
-  continue;
-}
-this.housing.removeSupplyBuilding(replacementBuildingId);
-this.buildings.startDevelopment(this.clock.tick, lot, award);
-```
-
-If construction start throws, restore/cancel through a tested rollback helper rather than silently losing the prior state. The helper must snapshot the affected housing households/ledger before mutation and restore them if project start fails.
-
-- [ ] **Step 5: Write deterministic filtering-chain test**
-
-Construct three rental buildings A/B/C and three income tiers. Complete new high-end building D. Run enough market cycles to prove: high-income household moves A→D, middle-income moves B→A, lower-income moves C→B (or equivalent ordered chain), and at least one lower-income household gains an option in previously unavailable existing stock. Assert unit conservation after every move.
-
-- [ ] **Step 6: Run tests and commit**
+- [ ] **Step 6: GREEN + commit**
 
 ```bash
 node --experimental-strip-types --test tests/housing-redevelopment.test.ts tests/housing-market.test.ts tests/housing-development.test.ts
@@ -1008,103 +654,57 @@ git commit -m "feat: add endogenous residential redevelopment"
 
 ---
 
-### Task 10: Extend Save V7 with housing state and deterministic old-V7 bootstrap
+### Task 10: Save V7 housing persistence and old-V7 migration
 
-**Files:**
-- Modify: `src/save/saveV7.ts`
-- Modify: `src/save/save.ts` only if exported housing snapshot types require it
-- Modify: `tests/save-v7.test.ts`
-- Modify: `docs/SAVE_FORMAT.md` after tests are green
+**Files:** Modify `src/save/saveV7.ts`, `tests/save-v7.test.ts`, then `docs/SAVE_FORMAT.md` after GREEN.
 
-**Interfaces:**
-- New serialized field: `housingMarket: HousingMarketStateSnapshot`.
-- `hydrateCoreV7()` accepts both new V7 saves with housing state and prior V7 saves that lack the field.
-- Old V7 migration preserves existing buildings/developer state and deterministically initializes housing from aggregate population without fabricating historical move events or mortgages.
-
-- [ ] **Step 1: Write failing new-V7 round-trip test**
+- [ ] **Step 1: RED exact round-trip/continuation test**
 
 ```ts
-test('Save V7 round-trips authoritative housing state exactly', () => {
+test('Save V7 round-trips housing state and future deterministically', () => {
   const core = buildHousingCity();
   core.step(800);
   const save = serializeCore(core);
-  assert.ok('housingMarket' in save);
   const loaded = hydrateCore(structuredClone(save));
   assert.deepEqual(serializeCore(loaded), save);
-  core.step(500);
-  loaded.step(500);
+  core.step(500); loaded.step(500);
   assert.deepEqual(serializeCore(loaded), serializeCore(core));
 });
 ```
 
-- [ ] **Step 2: Write prior-V7 bootstrap test**
+- [ ] **Step 2: RED prior-V7 bootstrap test**
 
-Create a normal new V7 save, delete `housingMarket` from a mutable clone, hydrate it, and assert:
-- developer commitments remain unchanged;
-- residential ledgers exist for occupied residential buildings;
-- represented housing population equals the old aggregate population clipped only by configured practical overcrowding capacity;
-- no `lastMoveReason='historical-*'` events are invented;
-- no mortgage proxy is fabricated for legacy owners.
+Delete `housingMarket` from a mutable clone of a valid V7 save. Hydrate and assert developer commitments unchanged, all occupied residential buildings have ledgers, represented residents equal old aggregate population, no historical move events are invented, and legacy owners have `mortgage: null` rather than fabricated debt.
 
-- [ ] **Step 3: Implement housing serialization and migration**
+- [ ] **Step 3: Implement extension without version bump**
 
-`serializeCoreV7()` always writes `housingMarket: core.housing.snapshotState()`.
+`SaveV7` now serializes `housingMarket: HousingMarketStateSnapshot`. Hydrator accepts the field as optional at runtime only for old V7 compatibility. If present: validate references then restore. If absent: `bootstrapLegacyPopulation(oldPopulation, occupiedBuildings, tick)`. Finally `population.sync(housing.population())`.
 
-In `hydrateCoreV7()`:
-1. hydrate the inherited V6/V7 physical/economy/developer state exactly as today;
-2. if `housingMarket` exists, validate references then `core.housing.restoreState()`;
-3. otherwise call `core.housing.bootstrapLegacyPopulation(core.population.population, core.buildings.occupied(), core.clock.tick)`;
-4. call `core.population.sync(core.housing.population())`;
-5. rebuild derived housing conditions on the next normal cadence rather than inventing historical diagnostics.
+- [ ] **Step 4: Corruption tests**
 
-- [ ] **Step 4: Add corruption tests**
+Reject missing/non-residential household building references, missing ledger building, duplicate household IDs, product-unit mismatch, resident load above practical overcrowding ceiling, invalid mortgage/economic values, and inconsistent derived population before mutating housing state.
 
-Reject:
-- household assignment to missing/non-residential building;
-- ledger for missing building;
-- duplicate household IDs;
-- product unit totals that do not reconcile;
-- represented occupants above practical overcrowding ceiling;
-- non-finite/negative rent, price, income, savings, mortgage principal/rate/payment;
-- housing population total inconsistent with household weights and sizes.
-
-Validation must complete before mutating the hydrated core housing state.
-
-- [ ] **Step 5: Run V7 plus historical save regressions**
+- [ ] **Step 5: Historical save regression + docs + commit**
 
 ```bash
 node --experimental-strip-types --test tests/save-v7.test.ts tests/save-v6.test.ts tests/save-v5.test.ts tests/save-v4.test.ts tests/save-v3.test.ts
 npm run typecheck
-```
-
-Expected: PASS; older explicit serializers/hydrators remain genuine compatibility tests.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/save/saveV7.ts src/save/save.ts tests/save-v7.test.ts docs/SAVE_FORMAT.md
-git commit -m "feat: persist Phase 7 housing market state"
+git add src/save/saveV7.ts tests/save-v7.test.ts docs/SAVE_FORMAT.md
+git commit -m "feat: persist V7 housing market state"
 ```
 
 ---
 
-### Task 11: Authoritative housing diagnostics and compact UI
+### Task 11: Housing diagnostics and compact UI
 
-**Files:**
-- Create: `src/ui/HousingPanel.ts`
-- Modify: `src/ui/Inspector.ts`
-- Modify: `src/app/GameApp.ts`
-- Modify: `src/styles.css`
-- Test: `tests/housing-presentation.test.ts`
+**Files:** Create `src/ui/HousingPanel.ts`, `tests/housing-presentation.test.ts`; modify `Inspector.ts`, `GameApp.ts`, `styles.css`.
 
-**Interfaces:**
-- `HousingMarketSnapshot` must expose: resident population, represented households, renter/owner households, vacant rental units, vacant for-sale units, rental vacancy rate, median/effective rent, median sale price, comfortable/manageable/stressed/severe burden counts, overcrowded households, displaced/unhoused households, active searchers, in/out migration in last cycle, turnover, ownership-qualified searchers, and citywide redevelopment pressure.
-- `HousingMarketSystem.buildingDiagnostics(buildingId)` returns building-specific causes and market values.
+**Snapshot must expose:** population, represented households, renter/owner households, rental/for-sale vacancy, median/effective rent, median sale price, burden buckets, overcrowding, displaced/unhoused/searching households, in/out migration, turnover, ownership-qualified searchers, redevelopment pressure.
 
-- [ ] **Step 1: Write failing presentation test**
+- [ ] **Step 1: RED panel test**
 
 ```ts
-test('housing panel renders authoritative affordability vacancy tenure and displacement metrics', () => {
+test('housing panel renders authoritative vacancy affordability tenure and displacement', () => {
   const html = new HousingPanel().render(sampleHousingSnapshot());
   assert.match(html, /Vacancy/i);
   assert.match(html, /Rent/i);
@@ -1114,30 +714,19 @@ test('housing panel renders authoritative affordability vacancy tenure and displ
 });
 ```
 
-- [ ] **Step 2: Implement `HousingPanel` as a pure renderer**
+- [ ] **Step 2: Implement pure `HousingPanel.render(snapshot)`**
 
-Follow the existing `EconomyPanel` pattern: `render(snapshot): string`, no DOM queries and no invented values. Keep KPI formatting helpers local.
+Follow `EconomyPanel`: no DOM queries, no invented values, only formatting.
 
-- [ ] **Step 3: Extend residential inspector diagnostics**
+- [ ] **Step 3: Add residential inspector causes**
 
-For selected residential buildings render:
-- physical/product units and occupied/vacant split;
-- asking/effective rent;
-- sale price;
-- qualified applicant/buyer pressure;
-- resident income and burden;
-- quality/access/habitability;
-- top rent-change drivers;
-- existing-use value and redevelopment pressure;
-- number of residents at displacement risk.
+Show unit/product split, asking/effective rent, sale value, applicant/buyer pressure, resident income/burden, quality/access/habitability, rent-change drivers, existing-use value, redevelopment pressure, and displacement-risk households.
 
-Do not expose raw mutable system objects to the UI.
+- [ ] **Step 4: Minimal app integration**
 
-- [ ] **Step 4: Mount the panel without growing `GameApp` responsibilities**
+`GameApp` only mounts/updates the panel. Keep all housing formatting in `HousingPanel` and inspector code.
 
-`GameApp` may instantiate and call `HousingPanel`, but housing formatting/rendering logic stays in `src/ui/HousingPanel.ts`. Add only the minimal container/update integration in `GameApp.ts`.
-
-- [ ] **Step 5: Run tests and commit**
+- [ ] **Step 5: GREEN + build + commit**
 
 ```bash
 node --experimental-strip-types --test tests/housing-presentation.test.ts tests/economy-presentation.test.ts
@@ -1149,70 +738,27 @@ git commit -m "feat: expose housing market diagnostics"
 
 ---
 
-### Task 12: Scale, determinism, regression sweep, documentation, and release-quality verification
+### Task 12: 250k scale, full acceptance matrix, docs, final verification
 
-**Files:**
-- Create: `tests/housing-scale.test.ts`
-- Modify: `README.md`
-- Modify: `docs/SAVE_FORMAT.md`
-- Modify tests only where this task discovers a genuine regression; production fixes must be separately explained in the commit.
-
-**Interfaces:**
-- No new gameplay interface; this task proves the integrated Phase 7 slice meets its acceptance contract.
+**Files:** Create `tests/housing-scale.test.ts`; modify `README.md` and final `docs/SAVE_FORMAT.md` wording if needed.
 
 - [ ] **Step 1: Add 250k-equivalent scale test**
 
-Construct synthetic residential supply and cohorts representing at least 250,000 residents. Use cohort weights so initial entity count is under 5,000. Run at least 20 housing market cycles and assert:
+Build supply/cohorts representing at least 250,000 residents with initial entity count under 5,000; run 20 housing market cycles; assert population retained, household entities remain below 8,000, and all unit invariants hold. Wall-clock time may be logged but is not an authoritative assertion.
 
-```ts
-assert.equal(system.population() >= 250_000, true);
-assert.equal(system.households.list().length < 8_000, true);
-assert.equal(system.validateUnitConservation(), true);
-```
+- [ ] **Step 2: Add deterministic twin-run scale test**
 
-Record elapsed time only as diagnostic output; do not make wall-clock timing an authoritative simulation assertion. The acceptance criterion is bounded entity growth and completion without pathological all-to-all state explosion.
+Run two identical 250k systems for the same 20 cycles and `deepEqual` their authoritative snapshots.
 
-- [ ] **Step 2: Add deterministic twin-run stress test**
+- [ ] **Step 3: Verify acceptance matrix in named tests**
 
-Create two identical 250k-equivalent systems, run the same 20 market cycles, and `deepEqual` their authoritative snapshots.
+Coverage must prove: deterministic replay; vacancy rent cuts; qualified-demand rent growth; affordability rejection; mortgage-rate purchasing-power decline; carless access preference; overcrowding move pressure; job-loss burden; displacement state preservation; unhoused out-migration; real filtering chain; generic demand insufficient for construction; housing economics feeding developers; occupied-parcel hurdle economics; old-V7 bootstrap; V7 exact round-trip; commercial/industrial compatibility; physical-utility gating; unit conservation; bounded 250k entity count.
 
-- [ ] **Step 3: Run the exact acceptance-behavior matrix**
+- [ ] **Step 4: Update README**
 
-Verify tests explicitly cover:
-1. deterministic replay;
-2. high vacancy lowers rents;
-3. qualified excess demand raises rents gradually;
-4. unaffordable units are rejected;
-5. higher mortgage rates reduce purchasing power;
-6. carless households prefer stronger accessibility when otherwise comparable;
-7. overcrowding increases move/search pressure;
-8. job loss can create burden and relocation;
-9. displacement preserves household economics while forcing search;
-10. persistent inability to rehouse can cause out-migration;
-11. new supply can create a multi-step filtering chain;
-12. positive generic residential demand does not guarantee construction;
-13. effective rent/sale value feed developer underwriting;
-14. occupied low-intensity parcels redevelop only after existing-use/demolition/displacement economics and developer hurdle clear;
-15. prior V7 saves bootstrap deterministically;
-16. new V7 housing state round-trips exactly;
-17. commercial/industrial developer behavior remains compatible;
-18. missing physical utilities still block private development;
-19. unit conservation holds after move, split, displacement, redevelopment, save/load;
-20. household entity count stays bounded at 250k-equivalent scale.
+Document adaptive cohorts, rental/ownership markets, mortgage/equity proxies, explicit assignments, migration/displacement/filtering, and housing-driven development/redevelopment as canonical V7 Phase 7 behavior.
 
-- [ ] **Step 4: Update documentation only after all focused tests are green**
-
-README Phase 7 section must state that V7 now contains:
-- adaptive household cohorts;
-- rental/ownership markets;
-- affordability/mortgage proxies;
-- explicit residential assignments;
-- migration/displacement/filtering;
-- housing-market-driven development and redevelopment.
-
-`docs/SAVE_FORMAT.md` must document `housingMarket` as a canonical V7 field and explain migration from older V7 saves lacking that field.
-
-- [ ] **Step 5: Run full verification from a clean working tree**
+- [ ] **Step 5: Fresh full verification**
 
 ```bash
 npm test
@@ -1223,22 +769,16 @@ npm run test:smoke
 git status --short
 ```
 
-Expected:
-- all tests pass;
-- typecheck passes;
-- lint passes;
-- build passes;
-- smoke passes;
-- only intentionally uncommitted files are shown; ideally output is empty.
+Do not claim completion from any earlier run.
 
-- [ ] **Step 6: Commit documentation/scale verification artifacts**
+- [ ] **Step 6: Commit scale/docs**
 
 ```bash
 git add tests/housing-scale.test.ts README.md docs/SAVE_FORMAT.md
 git commit -m "test: verify Phase 7 housing market at scale"
 ```
 
-- [ ] **Step 7: Run the complete verification commands again after the final commit**
+- [ ] **Step 7: Fresh verification after final commit**
 
 ```bash
 npm test
@@ -1248,25 +788,16 @@ npm run build
 npm run test:smoke
 ```
 
-Do not claim completion from an earlier run. Record the final test count and exact final commit SHA for the completion report.
+Record final test count and exact commit SHA in the completion report.
 
 ---
 
 ## Dependency Order
 
-Tasks must execute in order because the interfaces are cumulative:
+`1 contracts -> 2 cohorts -> 3 income -> 4 supply -> 5 choice -> 6 market -> 7 population/mobility -> 8 development -> 9 redevelopment -> 10 persistence -> 11 UI -> 12 scale/verification`
 
-`1 data/contracts -> 2 cohorts -> 3 income -> 4 supply -> 5 choice -> 6 market -> 7 core/population/mobility -> 8 developer underwriting -> 9 redevelopment -> 10 save -> 11 UI -> 12 scale/full verification`
-
-Task 11 may be worked in parallel with Task 10 only after Task 6's `HousingMarketSnapshot` is stable. Tasks 8 and 9 must remain sequential because redevelopment relies on tenure-aware project economics.
+Task 11 may only begin after Task 6's snapshot interface is stable. Task 9 must follow Task 8 because redevelopment requires tenure-aware project economics.
 
 ## Review Gates
 
-After each task:
-1. run its focused test set;
-2. run `npm run typecheck`;
-3. inspect the diff for unrelated changes;
-4. commit the task independently;
-5. have a fresh reviewer verify spec compliance and code quality before moving on.
-
-Any unexpected regression uses `superpowers:systematic-debugging` before attempting a fix. Any claim that the feature is complete requires `superpowers:verification-before-completion` and fresh final verification output.
+After every task: run the focused tests, run typecheck, inspect for unrelated changes, commit independently, then obtain a fresh spec-compliance/code-quality review. Any unexpected failure uses `superpowers:systematic-debugging` before a fix. Completion requires `superpowers:verification-before-completion` with fresh final command output.
