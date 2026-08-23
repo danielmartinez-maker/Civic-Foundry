@@ -78,6 +78,21 @@ test('redevelopment execution blocks all demolition while residents are already 
   assert.equal(result.decisions[0]?.reason, 'unplaced-residents');
 });
 
+test('redevelopment execution blocks a building while its prior developer commitment is still active', () => {
+  const result = new RedevelopmentExecutionSystem().evaluate(
+    housing,
+    [{
+      pressure: pressure(),
+      residentCapacity: 10,
+      affordabilityScore: 0.8,
+      activeCommitment: true,
+      replacementEvaluation: evaluation(),
+    }],
+  );
+  assert.equal(result.opportunities.length, 0);
+  assert.equal(result.decisions[0]?.reason, 'active-commitment');
+});
+
 test('redevelopment execution reserves relocation slack cumulatively in deterministic pressure order', () => {
   const first = { pressure: pressure({ lotId: 'lot:a', buildingId: 'building:lot:a', pressure: 0.6 }), residentCapacity: 10, affordabilityScore: 0.8, replacementEvaluation: evaluation({ lotId: 'lot:a' }) };
   const second = { pressure: pressure({ lotId: 'lot:b', buildingId: 'building:lot:b', pressure: 0.5 }), residentCapacity: 10, affordabilityScore: 0.8, replacementEvaluation: evaluation({ lotId: 'lot:b' }) };
