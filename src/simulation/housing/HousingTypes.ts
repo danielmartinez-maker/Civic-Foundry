@@ -25,7 +25,6 @@ export type HouseholdCreateInput = Readonly<{
   unitRequirement: number; vehicleAccess: boolean; liquidSavings: number; mortgage?: MortgageProxy | null; housingCost?: number;
   preferences?: HouseholdPreferenceWeights; moveFriction?: number;
 }>;
-
 export type HouseholdStateSnapshot = Readonly<{ households: readonly HouseholdCohort[]; nextId: number }>;
 
 export type HousingBuildingLedger = Readonly<{
@@ -55,4 +54,38 @@ export type HousingUtilityComponents = Readonly<{
 export type HousingChoiceResult = Readonly<{
   buildingId: string; tenure: 'renter' | 'owner'; eligible: boolean; totalUtility: number; housingCost: number;
   components: HousingUtilityComponents; rejectionReasons: readonly string[]; mortgage: MortgageQuote | null;
+}>;
+
+export type HousingBuildingConditions = Readonly<{
+  quality: number; accessibility: number; services: number; neighborhood: number; habitability: number;
+}>;
+export type HousingMarketTickInput = Readonly<{
+  tick: number;
+  buildings: readonly import('../buildings/BuildingSystem.ts').Building[];
+  firms: readonly import('../economy/FirmSystem.ts').Firm[];
+  marketInterestRate: number;
+  employmentVacancies: number;
+  conditionsByBuilding: Readonly<Record<string, HousingBuildingConditions>>;
+}>;
+export type HouseholdTravelDemand = Readonly<{
+  originBuildingId: string; destinationBuildingId?: string; commuterWeight: number; shoppingWeight: number;
+}>;
+export type HousingMarketSnapshot = Readonly<{
+  population: number; representedHouseholds: number; renterHouseholds: number; ownerHouseholds: number;
+  searchingHouseholds: number; displacedHouseholds: number; unhousedHouseholds: number;
+  rentalVacancyRate: number; forSaleVacancyRate: number; medianAskingRent: number; medianEffectiveRent: number; medianSalePrice: number;
+  comfortableHouseholds: number; manageableHouseholds: number; stressedHouseholds: number; severeBurdenHouseholds: number;
+  overcrowdedHouseholds: number; inMigrationHouseholds: number; outMigrationHouseholds: number; turnover: number;
+  ownershipQualifiedSearchers: number; redevelopmentPressure: number;
+}>;
+export type HousingMarketStateSnapshot = Readonly<{
+  households: HouseholdStateSnapshot; supply: HousingSupplyStateSnapshot; nextMigrantArchetype: number;
+  cumulativeInMigration: number; cumulativeOutMigration: number;
+}>;
+export type HousingMarketSignal = Readonly<{
+  effectiveRentPerUnit: number; salePricePerUnit: number; rentalVacancyRate: number;
+  qualifiedRentalPressure: number; qualifiedBuyerPressure: number;
+}>;
+export type HousingRedevelopmentSignal = Readonly<{
+  buildingId: string; existingUseValue: number; displacementHouseholds: number; redevelopmentPressure: number;
 }>;
