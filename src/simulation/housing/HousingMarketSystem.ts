@@ -1,6 +1,7 @@
 import { getBuildingDefinition } from '../../data/buildings.ts';
 import { HOUSEHOLD_WAGE_BY_ARCHETYPE, HOUSING_CADENCE, HOUSING_CONFIG, MIGRANT_ARCHETYPES } from '../../data/housing.ts';
 import { clamp, clamp01 } from '../core/types.ts';
+import type { Firm } from '../economy/FirmSystem.ts';
 import { HouseholdCohortSystem } from './HouseholdCohortSystem.ts';
 import { HouseholdIncomeSystem } from './HouseholdIncomeSystem.ts';
 import { HousingChoiceSystem } from './HousingChoiceSystem.ts';
@@ -8,6 +9,7 @@ import { HousingSupplySystem } from './HousingSupplySystem.ts';
 import type {
   HouseholdAffordabilityState,
   HouseholdCohort,
+  HouseholdTravelDemand,
   HousingBuildingConditions,
   HousingCandidate,
   HousingChoiceResult,
@@ -74,6 +76,28 @@ export class HousingMarketSystem {
   }
 
   population(): number { return this.households.residentPopulation(); }
+
+  travelDemand(firms: readonly Firm[]): HouseholdTravelDemand[] {
+    const firmsById = new Map(firms.map((firm) => [firm.id, firm] as const));
+    return this.households.list()
+      .filter((household) => household.buildingId !== null)
+      .map((household): HouseholdTravelDemand => {
+        const employerBuildings = household.employerFirmIds
+          .map((firmId) => firmsById.get(firmId)?.buildingId)
+          .filter((buildingId): buildingId is string => buildingId !== undefined)
+          .sort();
+        const commuterWeight = household.employedWorkers * household.weight;
+        const shoppingWeight = Math.max(0, Math.round(household.householdSize * household.weight * 0.25));
+        return Object.freeze({
+          originBuildingId: household.buildingId!,
+          ...(employerBuildings[0] ? { destinationBuildingId: employerBuildings[0] } : {}),
+          commuterWeight,
+          shoppingWeight,
+        });
+      })
+      .filter((item) => item.commuterWeight > 0 || item.shoppingWeight > 0)
+      .sort((a, b) => a.originBuildingId.localeCompare(b.originBuildingId) || (a.destinationBuildingId ?? '').localeCompare(b.destinationBuildingId ?? ''));
+  }
 
   snapshot(): HousingMarketSnapshot {
     const households = this.households.list();
