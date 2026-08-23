@@ -2,6 +2,7 @@ import type { ZoneType } from '../core/types.ts';
 import { BUILDING_DEFINITIONS, BUILDING_DEFINITION_BY_ID, type BuildingDefinition } from '../../data/buildings.ts';
 import type { Lot } from '../../world/lots/LotSystem.ts';
 import type { DevelopmentAward } from '../development/DevelopmentTypes.ts';
+import type { HousingProduct } from '../housing/HousingTypes.ts';
 
 export type BuildingStatus = 'construction' | 'occupied';
 export type Building = {
@@ -18,6 +19,9 @@ export type Building = {
   projectCost?: number;
   requiredEquity?: number;
   awardScore?: number;
+  housingProduct?: HousingProduct;
+  rentalProductUnits?: number;
+  forSaleProductUnits?: number;
 };
 
 export function definitionForBuilding(building: Pick<Building, 'definitionId' | 'zone'>): BuildingDefinition {
@@ -78,6 +82,16 @@ export class BuildingSystem {
   removeAt(x: number, y: number): Building | undefined {
     for (const [lotId, building] of this.buildings.entries()) {
       if (building.x === x && building.y === y) {
+        this.buildings.delete(lotId);
+        return { ...building };
+      }
+    }
+    return undefined;
+  }
+
+  removeById(id: string): Building | undefined {
+    for (const [lotId, building] of this.buildings.entries()) {
+      if (building.id === id) {
         this.buildings.delete(lotId);
         return { ...building };
       }
