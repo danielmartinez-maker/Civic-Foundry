@@ -49,6 +49,10 @@ const baseContext = {
   constructionCostIndex: 1,
   marketInterestRate: 0.05,
   zoningMaxIntensity: 'high' as const,
+  marketPressure: 0.8,
+  marketRentMultiplier: 1,
+  marketVacancyRate: 0.10,
+  landValueMultiplier: 1,
 };
 
 async function feasibilitySystem() {
@@ -61,33 +65,53 @@ function definition(id: string) {
   return catalog.getBuildingDefinition!(id) as import('../src/data/buildings.ts').BuildingDefinition;
 }
 
-test('higher rent-side demand improves parcel underwriting', async () => {
+test('higher market rent multiplier improves parcel underwriting', async () => {
   const system = await feasibilitySystem();
   const project = definition('residential_rowhouse');
-  const weak = system.evaluateLot(lot, [project], { ...baseContext, demand: 0.15 })[0]!;
-  const strong = system.evaluateLot(lot, [project], { ...baseContext, demand: 1.0 })[0]!;
+  const weak = system.evaluateLot(lot, [project], { ...baseContext, marketRentMultiplier: 0.75 })[0]!;
+  const strong = system.evaluateLot(lot, [project], { ...baseContext, marketRentMultiplier: 1.35 })[0]!;
   assert.ok(strong.achievableRent > weak.achievableRent);
   assert.ok(strong.netOperatingIncome > weak.netOperatingIncome);
   assert.ok(strong.returnOnCost > weak.returnOnCost);
 });
 
-test('vacancy taxes financing and construction costs suppress project return', async () => {
+test('higher explicit market vacancy suppresses project income and return', async () => {
   const system = await feasibilitySystem();
   const project = definition('commercial_block');
   const commercialLot: Lot = { ...lot, zone: 'commercial' };
-  const healthy = system.evaluateLot(commercialLot, [project], { ...baseContext, demand: 0.9, taxRate: 0.08 })[0]!;
+  const healthy = system.evaluateLot(commercialLot, [project], { ...baseContext, marketVacancyRate: 0.05 })[0]!;
+  const stressed = system.evaluateLot(commercialLot, [project], { ...baseContext, marketVacancyRate: 0.28 })[0]!;
+  assert.ok(stressed.vacancyRate > healthy.vacancyRate);
+  assert.ok(stressed.effectiveGrossIncome < healthy.effectiveGrossIncome);
+  assert.ok(stressed.netOperatingIncome < healthy.netOperatingIncome);
+  assert.ok(stressed.returnOnCost < healthy.returnOnCost);
+});
+
+test('taxes financing and construction costs still suppress project return', async () => {
+  const system = await feasibilitySystem();
+  const project = definition('commercial_block');
+  const commercialLot: Lot = { ...lot, zone: 'commercial' };
+  const healthy = system.evaluateLot(commercialLot, [project], { ...baseContext, taxRate: 0.08 })[0]!;
   const stressed = system.evaluateLot(commercialLot, [project], {
     ...baseContext,
-    demand: 0.1,
     taxRate: 0.25,
     constructionCostIndex: 1.6,
     marketInterestRate: 0.12,
   })[0]!;
-  assert.ok(stressed.vacancyRate > healthy.vacancyRate);
   assert.ok(stressed.propertyTaxes > healthy.propertyTaxes);
   assert.ok(stressed.preFinanceDevelopmentCost > healthy.preFinanceDevelopmentCost);
   assert.ok(stressed.marketFinancingCost > healthy.marketFinancingCost);
   assert.ok(stressed.returnOnCost < healthy.returnOnCost);
+});
+
+test('higher land value multiplier raises land cost and suppresses return', async () => {
+  const system = await feasibilitySystem();
+  const project = definition('residential_rowhouse');
+  const cheapLand = system.evaluateLot(lot, [project], { ...baseContext, landValueMultiplier: 0.65 })[0]!;
+  const expensiveLand = system.evaluateLot(lot, [project], { ...baseContext, landValueMultiplier: 1.55 })[0]!;
+  assert.ok(expensiveLand.landValue > cheapLand.landValue);
+  assert.ok(expensiveLand.preFinanceDevelopmentCost > cheapLand.preFinanceDevelopmentCost);
+  assert.ok(expensiveLand.returnOnCost < cheapLand.returnOnCost);
 });
 
 test('minimum services utilities access and zoning intensity reject candidates explicitly', async () => {
@@ -108,7 +132,7 @@ test('minimum services utilities access and zoning intensity reject candidates e
   assert.ok(result.rejectionReasons.includes('services'));
 });
 
-test('industrial underwriting weights freight access more heavily than person access', async () => {
+test('industrial underwriting weights freight access more heavily than person access for physical feasibility', async () => {
   const system = await feasibilitySystem();
   const project = definition('industrial_workshop');
   const industrialLot: Lot = { ...lot, zone: 'industrial' };
@@ -122,10 +146,11 @@ test('industrial underwriting weights freight access more heavily than person ac
     personAccessibility: 1,
     freightAccessibility: 0.3,
   })[0]!;
-  assert.ok(freightRich.achievableRent > personRich.achievableRent);
+  assert.ok(freightRich.accessScore > personRich.accessScore);
+  assert.ok(freightRich.riskScore < personRich.riskScore);
 });
 
-test('underwriting rejects invalid non-finite and negative financial inputs', async () => {
+test('underwriting rejects invalid market and financial inputs', async () => {
   const system = await feasibilitySystem();
   const project = definition('residential_cottage');
   assert.throws(
@@ -135,5 +160,17 @@ test('underwriting rejects invalid non-finite and negative financial inputs', as
   assert.throws(
     () => system.evaluateLot(lot, [project], { ...baseContext, marketInterestRate: -0.01 }),
     /marketInterestRate/,
+  );
+  assert.throws(
+    () => system.evaluateLot(lot, [project], { ...baseContext, marketRentMultiplier: 0 }),
+    /marketRentMultiplier/,
+  );
+  assert.throws(
+    () => system.evaluateLot(lot, [project], { ...baseContext, marketVacancyRate: 1 }),
+    /marketVacancyRate/,
+  );
+  assert.throws(
+    () => system.evaluateLot(lot, [project], { ...baseContext, landValueMultiplier: Number.NaN }),
+    /landValueMultiplier/,
   );
 });
