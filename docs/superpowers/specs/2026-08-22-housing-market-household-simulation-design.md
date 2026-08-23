@@ -3,58 +3,60 @@
 ## Status
 Approved in chat on 2026-08-22. This specification defines the next Phase 7 implementation slice on top of the canonical V7 (`0.7.0-metropolitan`) baseline on `main`.
 
-This document authorizes implementation planning only after explicit user review. It does not supersede the Metropolitan Era master design; it refines the Phase 7 Land, Housing & Development program.
+This document authorizes implementation planning only after explicit user review. It refines the Phase 7 Land, Housing & Development program in the Metropolitan Era master design.
 
 ## Product Goal
-Turn Civic Foundry's residential simulation from aggregate population growth plus static building capacity into a deterministic, endogenous housing market where households face real affordability, tenure, location, mobility, and displacement tradeoffs.
+Replace aggregate residential capacity/population behavior with a deterministic, endogenous housing market in which households face real affordability, tenure, location, mobility, and displacement tradeoffs.
 
-The system must create a causal chain that can be inspected from jobs and income through household housing decisions, rents and prices, vacancy, land value, redevelopment, new supply, filtering, displacement, and migration.
+The core causal loop is:
 
-The intended primary loop is:
+**firm employment -> household income -> housing affordability and choice -> building occupancy/vacancy/rent/price -> land value and residential market pressure -> developer underwriting -> construction/redevelopment -> new supply -> household moves, filtering, displacement, and migration**
 
-**firm employment -> household income -> housing affordability and choice -> building vacancy/rent/price -> residential market pressure -> developer achievable revenue and residual land value -> construction/redevelopment -> new housing supply -> household moves and migration**
+The player must be able to inspect why a household moved, why a building's rent changed, why a neighborhood became unaffordable, and why a developer did or did not build.
 
 ## Scope Boundary
-Phase 7 will use a hybrid household model that combines weighted household cohorts with selective explicit household-level state.
+Phase 7 uses adaptive-fidelity households: weighted household cohorts by default, selectively split into smaller cohorts or explicit weight-1 households when materially different outcomes require it.
 
 Phase 7 includes:
-- household cohorts with explicit residential assignments;
-- income, household size, worker count, dependent count, tenure preference, vehicle access, savings proxy, affordability, move friction, and displacement state;
-- renter and owner-occupier housing;
-- persistent building-level rents, effective rents, sale values, vacancy, occupancy mix, turnover, and market pressure;
-- deterministic housing search, matching, moves, cohort splitting, and cohort recombination;
-- employment-linked household income using a small wage bridge from Phase 6 firm archetypes;
-- mortgage/down-payment affordability proxies;
-- migration driven by jobs, housing availability, affordability, and residential utility;
+- explicit residential building assignments for household cohorts;
+- household size, workers, dependents, income, employment stability, vehicle access, savings proxy, tenure, housing burden, preferences, move friction, and displacement state;
+- both rental and owner-occupier housing;
+- explicit rental vs for-sale supply so the same unit cannot exist in both markets simultaneously;
+- persistent building-level asking/effective rent, sale value, vacancy, occupancy mix, turnover, quality, and market pressure;
+- deterministic search, matching, moves, cohort splitting, and recombination;
+- a small wage bridge from Phase 6 firm employment to household income;
+- stylized mortgage/down-payment qualification and owner equity;
+- migration constrained by jobs, housing availability, affordability, and residential utility;
 - temporary displaced/unhoused household state;
 - overcrowding;
-- housing filtering through real vacancy chains;
-- redevelopment pressure and occupied-parcel redevelopment economics;
-- integration with the existing developer pro forma and competition systems;
-- authoritative diagnostics and a compact housing-market UI/overlay after the simulation layer is green;
-- V7 persistence extension and deterministic migration from older V7 saves;
-- deterministic and scale acceptance tests.
+- filtering through real vacancy chains;
+- occupied-parcel redevelopment economics;
+- integration with existing developer pro formas and competing developers;
+- authoritative diagnostics and a compact housing-market UI after simulation correctness;
+- V7 save extension with deterministic migration from prior V7 saves;
+- determinism, regression, and scale acceptance tests.
 
 Phase 7 explicitly defers:
 - births, deaths, aging, retirement, household formation/dissolution, and full demographic lifecycle;
-- education attainment and occupation/skill progression;
-- detailed careers, promotions, layoffs by named worker, and long-term earnings histories;
-- explicit banks, credit scores, mortgage servicing businesses, defaults/foreclosures, securitization, and household debt portfolios;
-- welfare programs, rent control, housing vouchers, relocation mandates, and other detailed housing policy systems;
+- education attainment, occupations, skills, promotions, and detailed careers;
+- named-worker microsimulation;
+- explicit banks, credit scores, foreclosures, mortgage servicing businesses, securitization, and household debt portfolios;
+- rent control, vouchers, welfare, relocation mandates, and detailed housing-policy systems;
 - detailed homelessness services;
-- full household tax accounting and household consumption balance sheets.
+- full household taxation and consumption balance sheets.
 
-Those systems belong primarily to later demographic, government, and finance phases.
+Those belong primarily to later demographic, government, and finance phases.
 
 ## Design Principles
-1. **Deterministic outcomes.** Same save state, commands, and seed must produce the same housing future.
-2. **Explicit causality.** Housing outcomes must be explainable through economic and physical inputs rather than opaque scores.
-3. **Adaptive fidelity.** Weighted cohorts are the default; the simulation splits them only when economically meaningful outcomes diverge.
-4. **Bounded complexity.** Candidate search is bounded; cohorts merge after stabilization; the system must not degenerate into one object per real household.
-5. **Real assignments.** Housing demand is represented by households assigned to real residential buildings, not only citywide occupancy percentages.
-6. **Persistent market state.** Rents, prices, vacancy, mortgage proxies, tenure, and move state evolve over time instead of being recomputed statelessly each tick.
-7. **Endogenous residential development.** Residential developer underwriting must increasingly depend on real achievable housing-market economics rather than generic demand alone.
-8. **Phase-safe integration.** Existing Phase 5/6 mobility, firms, services, developer competition, and V7 saves remain functional during transition.
+1. **Deterministic outcomes.** Same state, commands, and seed produce the same housing future.
+2. **Inspectable causality.** Important outcomes expose their drivers and rejection/blocking reasons.
+3. **Adaptive fidelity.** Cohorts split only when economically meaningful outcomes diverge and merge when they reconverge.
+4. **Bounded complexity.** No all-households x all-units matching and no uncontrolled entity explosion.
+5. **Real assignments.** Housing demand is represented by households assigned to real residential buildings.
+6. **Persistent markets.** Rents, prices, tenure, vacancy, mortgage proxies, and move state evolve over time.
+7. **Exclusive tenure supply.** A physical housing unit is either rentable, for sale, owner-occupied, renter-occupied, or temporarily unavailable; it cannot be double-counted.
+8. **Endogenous development.** Residential projects increasingly rely on real achievable market economics rather than generic demand alone.
+9. **Phase-safe integration.** Existing mobility, firms, services, development, and V7 saves remain functional during transition.
 
 ## Architecture
 
@@ -62,22 +64,20 @@ Those systems belong primarily to later demographic, government, and finance pha
 `HousingMarketSystem` is the authoritative Phase 7 housing-domain scheduler and state owner. `SimulationCore` coordinates it but does not absorb its internal state.
 
 Responsibilities:
-- synchronize eligible residential supply;
-- coordinate household economic updates;
+- synchronize residential supply;
+- coordinate household economics;
 - identify voluntary and involuntary movers;
-- update rental and ownership market prices;
+- update rental and ownership pricing;
 - perform deterministic candidate generation and matching;
 - process moves, displacement, temporary unhoused states, and migration;
-- compute citywide and building-level housing diagnostics;
-- publish stabilized housing revenue and redevelopment signals to the developer market;
+- compute citywide/building/household diagnostics;
+- publish stabilized housing revenue, sale-value, land-value, and redevelopment signals to the developer market;
 - snapshot and restore authoritative housing state.
 
 ### HouseholdCohortSystem
-Owns weighted household entities and adaptive fidelity.
+Owns adaptive-fidelity household entities.
 
-A household entity represents one or more statistically equivalent households. It may be a weighted cohort or a single explicit household when its weight reaches one.
-
-Required authoritative fields include:
+A household entity represents one or more statistically equivalent households. Required authoritative state includes:
 - `id`;
 - `weight`;
 - `householdSize`;
@@ -85,196 +85,209 @@ Required authoritative fields include:
 - `dependents`;
 - `grossIncome`;
 - `disposableHousingIncome`;
-- `employmentState` and employment stability proxy;
-- optional employer/firm linkage where required for causality;
-- `tenure` (`renter`, `owner`, `seeking`);
+- employment state and stability proxy;
+- optional firm/employer linkage where required for causality;
+- `tenure`: `renter | owner | seeking`;
 - `buildingId` when housed;
 - `unitRequirement`;
 - `vehicleAccess`;
-- `liquidSavings` proxy;
-- `downPaymentCapacity`;
+- liquid-savings proxy;
+- down-payment capacity;
 - mortgage proxy for owners;
 - current housing cost;
-- rent/mortgage burden;
-- affordability stress state;
-- accessibility score;
-- preference weights for affordability, commute/access, services, neighborhood quality, space, density, tenure, and stability;
+- housing-cost burden;
+- affordability stress;
+- household-specific utility preference weights;
 - move friction;
 - residence tenure duration;
-- displacement risk/state;
+- displacement state/risk;
 - arrears/distress state;
 - search state;
 - last move reason;
-- deterministic creation/split metadata as needed for stable IDs.
+- stable split/creation metadata needed for deterministic IDs.
 
 ### HousingSupplySystem
-Owns one persistent housing-market ledger for each eligible occupied residential building.
+Owns one persistent market ledger per eligible occupied residential building.
 
-Required state includes:
+Physical residential definitions must gain explicit housing-unit metadata rather than inferring households directly from `residentCapacity`. At minimum each residential definition must expose:
+- `housingUnits`;
+- nominal `residentCapacity`;
+- optional practical overcrowding multiplier/capacity;
+- product suitability inputs needed to price/score the building.
+
+The building ledger contains:
 - `buildingId`;
-- nominal household units;
+- physical housing units;
 - nominal resident capacity;
 - practical overcrowding ceiling;
-- occupied household units;
+- `housingProduct`: `rental | for_sale | mixed`;
+- rentable units;
+- for-sale units;
+- renter-occupied units;
+- owner-occupied units;
+- vacant rentable units;
+- vacant for-sale units;
+- temporarily unavailable units;
 - resident load;
-- vacant units;
-- renter occupancy;
-- owner occupancy;
-- asking rent;
-- effective rent;
+- asking rent and effective rent;
 - prior rent;
-- estimated sale price or per-unit value;
-- vacancy duration;
-- qualified applicant/search pressure;
+- asking/estimated sale price;
+- vacancy duration by product where material;
+- qualified rental applicant pressure;
+- qualified buyer pressure;
 - turnover;
-- average/median resident income proxy;
+- resident-income statistics;
 - average housing-cost burden;
-- quality score;
-- accessibility score;
-- habitability/distress modifier;
-- realized rent growth;
-- redevelopment pressure inputs and outputs.
+- quality/accessibility/habitability scores;
+- realized rent/price change;
+- redevelopment-pressure inputs and result.
+
+For every building:
+
+`rentable + forSale + renterOccupied + ownerOccupied + unavailable = housingUnits`
+
+No unit may be counted twice.
+
+### Tenure Product Assignment
+Residential physical form and tenure product are separate concepts. A cottage, rowhouse, or apartment may be rental or owner product when economically plausible.
+
+For **new development**, developer underwriting evaluates eligible tenure products:
+- rental project: value from stabilized NOI/effective rents;
+- for-sale project: value from achievable sale proceeds less selling/transaction friction;
+- mixed product: allowed only for definitions/configurations explicitly marked as mixed-compatible and must have a deterministic unit split.
+
+The selected project award persists its `housingProduct` and any mixed-unit allocation. This prevents a completed project from freely switching between rental and for-sale economics every clearing cycle.
+
+For **existing pre-housing V7 buildings**, migration assigns a deterministic initial product from centralized compatibility rules by building definition, with no claim of historical accuracy. Example policy may favor owner product for cottages, mixed product for rowhouses, and rental product for apartments, but exact mapping belongs in configuration and tests.
+
+Later conversion between rental and for-sale product is out of scope unless explicitly introduced with transaction/conversion costs; Phase 7 should not allow frictionless tenure flipping.
 
 ### HousingChoiceSystem
-Pure or near-pure deterministic housing-choice engine.
-
-Responsibilities:
-- filter hard-ineligible candidate units;
-- calculate household-specific housing utility;
-- calculate rental affordability;
-- calculate ownership affordability and mortgage qualification;
-- rank candidate housing using stable deterministic tie-breaking;
-- determine whether an option clears move-friction thresholds;
-- return explicit rejection reasons and dominant utility drivers for diagnostics.
+A pure or near-pure deterministic choice engine that:
+- rejects hard-ineligible candidates;
+- calculates rental affordability;
+- calculates ownership qualification;
+- calculates household-specific utility;
+- ranks candidates with stable tie-breaking;
+- applies move-friction thresholds;
+- returns dominant positive/negative drivers and explicit rejection reasons.
 
 ### Income Bridge
-Phase 6 labor allocation currently exposes filled jobs by firm but not wages. Phase 7 will add the minimum wage bridge needed to ground housing income in real economic state.
+Phase 6 labor allocation exposes filled jobs by firm but not wages. Phase 7 adds only the wage bridge required for housing.
 
-Firm archetypes receive deterministic wage schedules or wage indices. Household worker income is derived from:
-- employment availability;
-- linked firm archetype/sector when applicable;
-- firm operating health/productivity as a bounded modifier;
-- number of employed workers represented by the household/cohort.
+Firm archetypes receive centralized wage schedules/indices. Household worker income derives from:
+- actual employment availability;
+- firm archetype/sector where linked;
+- firm operating health/productivity as bounded modifiers;
+- employed worker count represented by the household entity.
 
-The bridge must not introduce the full Phase 9 career/skill system.
+This bridge must not become a hidden Phase 9 career system.
 
-## Adaptive Fidelity: Splitting and Recombination
+## Adaptive Fidelity
 
-### Split Triggers
-A cohort splits when members represented by the same entity should experience meaningfully different outcomes. Valid triggers include:
-- only a subset can afford a candidate unit;
-- only a subset qualifies for ownership;
-- capacity constraints allow only part of the cohort to move;
-- employment changes affect a subset;
-- redevelopment/displacement creates divergent rehousing outcomes;
-- household-size or unit-fit thresholds divide the cohort;
-- mortgage/down-payment thresholds divide the cohort;
-- deterministic internal distribution boundaries imply different outcomes.
+### Cohort Splitting
+Split a cohort only when represented households should receive different outcomes. Valid triggers include:
+- only part can afford an available unit;
+- only part can qualify for ownership;
+- limited unit capacity admits only part;
+- employment outcomes divide the cohort;
+- displacement/rehousing outcomes diverge;
+- household-size or space-fit boundaries diverge;
+- savings/down-payment thresholds diverge;
+- a deterministic internal distribution boundary implies different results.
 
-Splits must be derived from deterministic thresholds or deterministic proportions. No random sampling is permitted.
+Splits use deterministic thresholds/proportions, never random sampling.
 
-### Recombination
-Compatible stabilized household entities may merge when they match on bounded dimensions such as:
+### Cohort Recombination
+Compatible stabilized entities may merge when they match on bounded dimensions such as:
 - income band;
 - household size;
 - tenure;
 - building assignment;
 - employment state;
 - vehicle access;
-- affordability stress state;
+- affordability stress;
 - search state.
 
-The merge policy must preserve aggregate population, household count, income, savings, and other conserved quantities within explicit tolerances.
+Merge operations must preserve population, represented household count, income, savings, mortgage principal/equity where applicable, and other conserved quantities within explicit numerical tolerances.
 
 ### Scale Target
-The system should represent a 250,000-resident-equivalent city with only a few thousand normal stabilized household entities, not hundreds of thousands of objects.
+A 250,000-resident-equivalent city should stabilize with only a few thousand household entities rather than hundreds of thousands.
 
 ## Employment and Income
-Household income must be connected to actual labor-market conditions.
-
-Initial wage schedules may use archetype-relative bands such as:
+Initial wage schedules may use relative archetype bands such as:
 - local retail/service: lower wage;
 - wholesale/logistics: lower-middle wage;
 - light manufacturing: middle wage;
 - assembly/advanced manufacturing: middle-high wage.
 
-Exact values belong in data/config rather than scattered literals.
+Exact values belong in data/config.
 
-Household income should respond to:
+Household income responds to:
 - number of employed workers;
 - current labor allocation;
 - firm archetype wage schedule;
-- firm operating health/productivity within bounded limits;
-- unemployment state.
+- bounded firm productivity/health modifier;
+- unemployment.
 
-Unemployed households may receive a bounded fallback-income proxy strictly to avoid pathological zero-income transitions before later government systems exist. This proxy must be explicit and configurable.
+A bounded configurable fallback-income proxy may exist for unemployed households to avoid pathological instant-zero-income behavior before later government systems exist. It must be explicit and must not masquerade as a modeled welfare program.
 
 ## Rental Market
-Each residential building carries persistent asking and effective rents.
+Each rental-capable building carries persistent asking and effective rents.
 
-### Rent Pressure
-Conceptually:
+Conceptual pressure:
 
 `rentPressure = vacancyPressure + qualifiedSearchPressure + incomeSupport + qualityPremium + accessibilityPremium - distressPenalty`
 
-Inputs:
-- occupancy relative to target occupancy;
-- qualified applicants per available unit;
-- incomes of households actually capable of renting the unit;
+Inputs include:
+- occupancy vs target occupancy;
+- qualified applicants per vacant rentable unit;
+- incomes of households actually capable of renting there;
 - neighborhood/service quality;
 - person/job/transit accessibility;
-- utilities and habitability;
+- utilities/habitability;
 - unresolved incidents, garbage, and severe service failures.
 
-### Rent Adjustment
-Rent changes are inertial:
+Rent adjusts inertially:
 
 `newAskingRent = oldAskingRent * (1 + boundedAdjustment)`
 
-The initial design target is approximately +/-3% normal movement per 100-tick market-clearing cycle, with stronger downward movement allowed under severe vacancy or habitability failure. Exact coefficients must be centralized in housing-market configuration.
+Initial target: normal movement around +/-3% per 100-tick market-clearing cycle, with stronger downward movement permitted under severe vacancy or habitability failure. Coefficients live in centralized housing configuration.
 
 ### Effective Rent
-Effective rent differs from asking rent.
+High vacancy/prolonged vacancy can create concessions:
 
-High vacancy and prolonged vacancy may produce concessions so:
+`effectiveRent <= askingRent`
 
-`effectiveRent < askingRent`
+Tight buildings may realize approximately full asking rent.
 
-Tight, high-demand buildings may realize approximately full asking rent.
-
-Residential developer underwriting must use stabilized achievable effective rent, not merely posted asking rent.
+Developer underwriting uses stabilized achievable effective rent, never unsupported posted asking rent.
 
 ## Ownership Market
-Owner-occupied housing uses a stylized but consequential financing model.
+For-sale supply uses a stylized but consequential financing model.
 
 ### Sale Value
-Estimated per-unit sale value is driven by:
-- capitalized equivalent effective rent;
+Estimated per-unit sale value depends on:
+- capitalized equivalent market rent/value anchor;
 - neighborhood quality;
 - accessibility;
-- building quality;
-- citywide ownership demand;
+- physical/building quality;
+- qualified buyer pressure;
 - market mortgage/development interest rate;
-- vacancy and market liquidity.
+- inventory/vacancy duration and liquidity.
 
-Higher interest rates must reduce purchasing power even when rents remain high.
+Higher mortgage rates must reduce household purchasing power even if rental values remain high.
 
 ### Buyer Qualification
-A buyer must satisfy:
-
-**Cash constraint**
+A buyer must satisfy all three:
 
 `downPayment + transactionReserve <= liquidSavings`
 
-**Payment constraint**
-
 `mortgagePayment / grossIncome <= maxDebtServiceRatio`
-
-**Safety constraint**
 
 `remainingSavings >= emergencyReserve`
 
-Mortgage payments use the standard amortizing-loan payment equation with a configurable stylized term.
+Mortgage payment uses the standard amortizing-loan equation with configurable term/rate assumptions.
 
 ### Mortgage Proxy
 Owner households store:
@@ -284,106 +297,105 @@ Owner households store:
 - scheduled payment;
 - purchase tick.
 
-Principal amortizes at each household-economic cycle. The proxy exists to support affordability, equity, and move friction, not to model banking.
+Principal amortizes deterministically every household-economic cycle.
 
 Owner equity proxy:
 
 `equity = estimatedUnitValue - remainingMortgagePrincipal`
 
-Equity may increase purchasing capacity for a later move.
+Equity affects later move/purchase capacity, but full household balance-sheet simulation is deferred.
 
 ## Housing Choice
-Housing choice is household-specific.
-
-Conceptual utility:
+Conceptual household utility:
 
 `U = affordability + spaceFit + commuteAccess + services + neighborhood + tenureFit + vehicleFit + densityFit + stability - movingCost - overcrowdingPenalty - displacementRisk`
 
-Weights vary by cohort characteristics.
-
-Examples:
-- lower-income households weight affordability more heavily;
-- households with more workers weight job accessibility more heavily;
-- carless households strongly weight transit/walk/person accessibility;
-- larger households penalize insufficient space;
-- owners have higher move friction;
+Weights vary by household characteristics:
+- lower-income households weight affordability more strongly;
+- households with more workers weight job accessibility more strongly;
+- carless households strongly weight transit/person accessibility;
+- larger households penalize inadequate space;
+- owners have greater move friction;
 - density preference trades space against access.
 
 ### Housing-Cost Burden
 Initial configurable bands:
-- comfortable: under 25%;
+- comfortable: <25%;
 - manageable: 25-35%;
 - stressed: 35-50%;
-- severely burdened: above 50%.
+- severely burdened: >50%.
 
-The utility penalty must be nonlinear. Severe burden may become a hard rejection for new moves even when the location scores highly on other dimensions.
+Penalty is nonlinear. Severe burden can be a hard rejection for new voluntary moves even if other attributes are attractive.
 
 ## Search and Matching
-Not every household evaluates every residence.
+Households do not evaluate every dwelling.
 
 ### Search Triggers
-Households enter search because of events including:
-- migration into the city;
+Search may begin after:
+- in-migration attempt;
 - rent shock;
-- job loss or material income change;
+- job loss/material income change;
 - overcrowding;
 - ownership opportunity;
 - poor commute/access;
-- service or neighborhood deterioration;
+- service/neighborhood deterioration;
 - displacement;
 - sustained affordability stress;
 - sustained low residential utility.
 
 ### Candidate Generation
-Candidate generation is deterministic and bounded. It should include, in order or weighted mixture:
-1. affordable units;
-2. units meeting minimum space requirements;
-3. nearby/current-neighborhood alternatives;
-4. high-access alternatives;
-5. eligible ownership opportunities;
-6. a bounded citywide fallback sample.
+Candidate generation is deterministic and bounded. It draws from:
+1. tenure-compatible available units;
+2. affordable units;
+3. units meeting minimum space requirements;
+4. nearby/current-neighborhood alternatives;
+5. high-access alternatives;
+6. ownership opportunities for qualified households;
+7. a bounded citywide fallback sample.
 
-Stable IDs and deterministic ranking break ties.
+Stable household/building/unit-group IDs break ties.
+
+### Matching and Capacity
+Matching is sequential but deterministic. Candidate ranking must account for remaining supply so accepted household weight cannot exceed available units or permitted overcrowding.
+
+If only part of a cohort can be housed, the cohort splits deterministically and only the accepted weight moves.
 
 ### Move Threshold
-A household moves voluntarily only when:
+A voluntary move occurs only when:
 
 `newUtility - currentUtility > moveThreshold`
 
-Move threshold increases with residence tenure and ownership to create realistic inertia.
+The threshold rises with residence tenure and ownership. Involuntary displacement bypasses it.
 
-Involuntary displacement bypasses this threshold.
+## Population and Migration Authority
+Once housing is active, `HousingMarketSystem` is authoritative for resident population.
 
-## Migration and Population Authority
-The housing market becomes authoritative for resident population.
-
-`PopulationSystem.population` remains available to legacy consumers but is synchronized from household/housing state. `PopulationSystem.update()` must no longer independently create or remove residents once the housing market is active.
+`PopulationSystem.population` remains for compatibility but is synchronized from housing state. Its legacy `update()` logic must not independently create/remove residents after activation.
 
 ### In-Migration
-Potential migrants are represented as deterministic external household cohorts. Their propensity to enter depends on:
-- available housing;
+Potential migrants exist as deterministic external household cohorts. Entry depends on:
+- viable available housing;
 - affordability;
-- employment opportunities;
-- wage conditions;
+- employment opportunities/wages;
 - accessibility;
 - services;
 - neighborhood quality.
 
-A positive residential demand score cannot create population when there is no viable housing.
+Positive residential demand without viable housing cannot create population.
 
 ### Out-Migration
-Households may leave after sustained:
+Households can leave after sustained:
 - unemployment;
 - severe housing burden;
 - inability to find housing;
 - displacement;
-- poor service/habitability;
+- poor habitability/services;
 - low overall residential utility.
 
-Migration must have persistence thresholds so a single bad cycle does not cause mass churn.
+Persistence thresholds prevent one bad cycle from causing mass churn.
 
 ## Displacement and Temporary Unhoused State
-When a residential building is removed or redeveloped, its occupants retain their economic and preference state and become involuntary searchers.
+When an occupied residential building is removed or redeveloped, its households retain economic/preference state and become involuntary searchers.
 
 State path:
 
@@ -399,199 +411,207 @@ Temporarily unhoused households:
 Detailed homelessness services are deferred.
 
 ## Overcrowding
-Residential supply distinguishes:
-- nominal household units;
+Housing supply distinguishes:
+- physical housing units;
 - nominal resident capacity;
 - practical overcrowding ceiling.
 
-Households may temporarily exceed ideal resident capacity within a bounded ceiling. Overcrowding increases:
-- residential dissatisfaction;
-- service demand pressure;
-- search probability.
-
-Overcrowding is not unlimited and cannot substitute permanently for housing supply.
+Households may temporarily exceed ideal resident capacity within configured bounds. Overcrowding increases dissatisfaction, service pressure, and move propensity. It cannot provide infinite de facto capacity.
 
 ## Housing Filtering
-New supply must influence affordability through real vacancy chains rather than a flat global bonus.
+New supply affects affordability through real move/vacancy chains rather than a flat global bonus.
 
-When higher-income households move into new housing, their previous units become available to other households. Older or lower-quality stock should tend to become relatively cheaper unless location demand overwhelms depreciation/filtering effects.
+Example causal chain:
+1. a higher-income renter moves into newly completed housing;
+2. their prior unit becomes vacant;
+3. that unit's effective rent responds to vacancy and applicant conditions;
+4. another household moves into it;
+5. further vacancies may propagate down-market.
 
-Tests must demonstrate at least one deterministic multi-step vacancy chain where new supply indirectly creates an affordable opportunity in existing stock.
+Tests must prove at least one deterministic multi-step filtering chain that creates an opportunity for a lower-income household in existing stock.
 
 ## Market Cadence
-Housing processes operate at multiple deterministic cadences.
+Different processes intentionally operate at different deterministic cadences.
 
 ### Every 10 ticks — Building Conditions
-- sync residential supply;
-- refresh utility/service/accessibility inputs;
+- synchronize residential supply;
+- refresh utilities/services/accessibility;
 - update quality/habitability;
-- detect demolition/removal and severe failures;
+- detect building removal/severe failure;
 - flag involuntary movers.
 
 ### Every 50 ticks — Household Economics
 - update employment-linked income;
-- update housing cost burden;
-- update mortgage amortization and savings proxy;
-- update arrears/stress;
+- update housing-cost burden;
+- amortize mortgage proxies;
+- update savings proxy and arrears/stress;
 - identify search triggers.
 
 ### Every 100 ticks — Housing Market Clearing
-- update asking rents and estimated sale prices;
-- generate deterministic candidate sets;
-- run renter and buyer matching;
+- update rents and sale prices;
+- build bounded candidate sets;
+- run rental/buyer matching;
 - process moves;
 - process temporary unhoused households;
-- process bounded in/out migration;
-- update vacancy, turnover, unmet demand, burden, and displacement diagnostics;
-- run cohort merge-back.
+- process bounded migration;
+- update vacancy, turnover, unmet demand, burden, and displacement metrics;
+- merge compatible cohorts.
 
 ### Every 250 ticks — Land and Redevelopment
-- compute stabilized residential income;
-- update building/land value signals;
+- compute stabilized residential income/sale economics;
+- update building and land-value signals;
 - identify underbuilt parcels;
-- evaluate replacement variants;
-- publish economically viable redevelopment opportunities to the existing developer market.
+- evaluate replacement physical variants and tenure products;
+- publish viable redevelopment opportunities to the existing developer market.
 
-This intentional lag allows shortages, price response, migration, and construction to unfold rather than clearing instantly.
+This lag permits shortages, price response, migration, and construction cycles rather than instant market clearing.
 
 ## Redevelopment Economics
-Redevelopment must compare the existing use with a replacement project.
+Redevelopment compares replacement economics against the existing occupied use.
 
-Conceptually:
+For rental existing use:
 
 `existingUseValue = stabilizedNOI / marketCapRate`
 
-`redevelopmentGain = newResidualLandValue - existingUseValue - demolitionCost - displacementCost`
+For owner/for-sale product, existing use value uses current sale-value/equity/acquisition economics rather than pretending it has rental NOI.
 
-A replacement project may proceed only when:
-- zoning permits it;
-- replacement feasibility clears physical/infrastructure constraints;
-- redevelopment gain clears a minimum profit buffer;
-- the developer's return clears its hurdle;
-- the developer has sufficient capital and project slots under the existing `DeveloperMarketSystem`.
+Replacement opportunity:
 
-High-density zoning permits redevelopment; it does not force it.
+`redevelopmentGain = replacementResidualLandValue - existingUseValue - demolitionCost - displacementOrAcquisitionCost`
 
-### Displacement Cost Proxy
-The economic displacement/acquisition friction may depend on:
+A replacement may proceed only when:
+- zoning/intensity permits it;
+- infrastructure/physical feasibility clears;
+- redevelopment gain clears minimum profit buffer;
+- return clears the developer hurdle;
+- developer capital and project slots are available.
+
+High-density zoning permits redevelopment; it never forces it.
+
+### Displacement/Acquisition Cost Proxy
+The cost proxy may depend on:
 - occupied household count;
 - renter/owner mix;
-- tenure duration;
+- residence tenure duration;
 - housing scarcity;
-- relocation difficulty.
+- relocation difficulty;
+- owner acquisition/equity value where relevant.
 
-This proxy represents aggregate acquisition, vacancy, relocation, transaction, and delay costs until later policy systems distinguish them explicitly.
+It represents aggregate acquisition, vacancy, relocation, transaction, and delay friction until later policy systems distinguish these explicitly.
 
 ## Developer-Market Integration
-For residential opportunities, `DevelopmentFeasibilitySystem` should increasingly consume authoritative housing-market outputs:
-- stabilized achievable effective rent;
-- comparable sale value;
-- vacancy;
+Residential development feasibility must consume authoritative housing-market signals including:
+- stabilized achievable effective rent for rental product;
+- achievable sale price and qualified buyer depth for for-sale product;
+- product-specific vacancy/inventory;
 - qualified search demand;
-- rent growth;
-- ownership demand;
+- rent/price growth;
 - affordability pressure;
 - land value;
-- redevelopment cost;
-- displacement cost.
+- redevelopment/demolition cost;
+- displacement/acquisition cost.
 
-Generic `DemandSnapshot.residential` may remain as a compatibility/UI summary but must no longer be the primary proof of residential project viability.
+`DemandSnapshot.residential` may remain as a compatibility/UI summary but is not sufficient proof of project viability.
 
-Commercial and industrial development behavior should remain unchanged except where shared interfaces are generalized safely.
+Commercial and industrial behavior remains unchanged except for safe shared-interface generalization.
 
 ## Mobility and Service Integration
-Household building assignments should eventually become the authoritative origins for person-trip generation. During this slice, integration may be staged so legacy trip generation remains functional while household-origin inputs are introduced behind a compatible interface.
+Household assignments should become the authoritative residential origins for person-trip generation. Integration may be staged behind compatible interfaces so existing mobility remains functional during implementation.
 
-Housing utility consumes authoritative accessibility/service outputs from existing systems. It must not invent independent network-distance or service-quality scores when authoritative values already exist.
+Housing utility consumes existing authoritative network/service outputs. It must not invent parallel accessibility or service systems.
 
 ## Persistence: V7 Extension
-This work remains Phase 7, so the save version stays V7.
+This remains Phase 7, so save version stays V7.
 
-`SaveV7` gains an optional-to-read, required-to-write `housingMarket` snapshot after migration support lands.
+`SaveV7` gains an optional-to-read, required-to-write `housingMarket` snapshot once migration support lands.
 
 The snapshot contains at least:
 - household/cohort entities;
 - residential building market ledgers;
+- physical/tenure unit allocations;
 - mortgage proxies;
 - search/displacement state;
-- citywide aggregate housing statistics that are authoritative rather than cheaply derivable;
+- authoritative market aggregates that are not cheaply derived;
 - deterministic next-ID counters;
-- housing-specific scheduler/random state if any deterministic generator requires it;
-- migration state needed to reproduce future outcomes.
+- housing scheduler/random state if any is introduced;
+- migration state required to reproduce future outcomes.
 
-No housing randomness should be introduced unless it is seeded, explicitly persisted, and necessary. Stable deterministic allocation is preferred.
+No randomness should be introduced unless seeded, persisted, and necessary; stable deterministic allocation is preferred.
 
-### Older V7 Migration
-A V7 save without `housingMarket` must hydrate deterministically.
+### Prior V7 Migration
+A V7 save without housing state hydrates deterministically.
 
-Migration may defensibly reconstruct:
-- housing supply from existing occupied residential buildings;
-- current aggregate population from existing V7 population state;
+Migration may reconstruct only defensible current state:
+- housing supply from occupied residential buildings;
+- explicit `housingUnits` from centralized compatibility mapping for legacy definitions until definitions themselves carry the new metadata;
+- deterministic tenure product from centralized definition-based compatibility rules;
+- existing aggregate population;
 - deterministic starter household cohorts sufficient to represent that population;
-- initial household assignments constrained by existing residential capacity;
-- initial rent/price levels from building definitions plus observable current city conditions.
+- initial assignments constrained by unit/resident capacity;
+- initial current rents/prices from building definitions and observable current city conditions.
 
-Migration must not fabricate:
-- historical mortgages;
-- historical displacement events;
+Migration must not fabricate historical:
+- mortgages;
+- displacement events;
 - move histories;
-- historical rent series;
-- historical ownership equity.
+- rent/price series;
+- ownership equity.
 
-New fields without defensible history initialize transparently to neutral current-state values.
+New historical fields initialize to explicit neutral/current-state values. Existing owner product created by migration may be represented as mortgage-free legacy ownership or another explicitly documented neutral compatibility state; it must not invent historical loan terms.
 
 ### Save Validation
 Reject corrupt state including:
-- duplicate household/cohort IDs;
-- orphaned residential building assignments;
-- assignments to non-residential or non-occupied buildings unless explicitly represented as temporary displacement state;
-- non-positive or non-finite cohort weights;
-- invalid household-size/worker/dependent relationships;
-- negative/non-finite income, savings, housing costs, mortgage balances, or prices where invalid;
+- duplicate household IDs;
+- orphaned building assignments;
+- assignment to invalid/non-residential/non-occupied buildings except explicit displaced state;
+- non-positive/non-finite cohort weights;
+- invalid household worker/dependent relationships;
+- negative/non-finite income, savings, housing costs, mortgage balances, rents, or prices where invalid;
 - impossible mortgage terms/rates;
-- unit allocation above the configured overcrowding ceiling;
-- mismatched renter/owner occupancy totals;
-- population totals inconsistent with household weights and household sizes beyond explicit migration transitional state;
-- invalid next-ID counters.
+- physical unit conservation violations;
+- occupancy above configured overcrowding ceiling;
+- inconsistent renter/owner/available unit totals;
+- population totals inconsistent with household weight x household size outside explicit transition state;
+- invalid deterministic ID counters.
 
-V7 housing state must round-trip deterministically.
+Housing-enabled V7 state must round-trip deterministically.
 
-## Diagnostics and Inspectability
+## Diagnostics
 
 ### Citywide Housing Snapshot
 Expose at least:
-- resident population from housing authority;
-- household count represented;
+- authoritative resident population;
+- represented household count;
 - household entity count;
-- renter share;
-- owner share;
-- vacancy rate;
-- median/weighted asking rent;
-- median/weighted effective rent;
-- median estimated sale price;
-- rent/mortgage burden distribution;
+- rental/owner shares;
+- rental vacancy rate;
+- for-sale inventory rate;
+- weighted asking/effective rent;
+- weighted estimated sale price;
+- burden distribution;
 - severely burdened households;
 - overcrowded households;
-- temporarily unhoused households;
-- displaced households;
+- displaced/temporarily unhoused households;
 - active searchers;
-- recent in-migration;
-- recent out-migration;
+- recent in/out migration;
 - turnover;
-- ownership qualification rate;
-- citywide qualified search pressure;
+- buyer qualification rate;
+- qualified renter/buyer pressure;
 - aggregate redevelopment pressure.
 
 ### Per-Building Diagnostics
 Expose:
+- housing product;
+- physical unit conservation breakdown;
 - asking/effective rent and change;
-- sale-value estimate;
-- units, occupancy, vacancy, renter/owner mix;
-- applicant pressure;
-- resident-income distribution proxy;
-- average housing burden;
+- sale value and change;
+- vacancy/inventory;
+- renter/owner occupancy;
+- applicant/buyer pressure;
+- resident-income proxy;
+- housing burden;
 - quality/accessibility/habitability inputs;
-- dominant rent-change factors;
+- dominant price/rent drivers;
 - redevelopment value comparison and blockers.
 
 ### Per-Household/Cohort Diagnostics
@@ -600,113 +620,118 @@ Expose:
 - tenure;
 - income and housing cost;
 - burden state;
-- utility score and dominant positive/negative drivers;
-- search status;
-- top candidate/rejection reasons when searching;
+- utility and dominant drivers;
+- search state;
+- top candidate/rejection reasons;
 - move reason;
-- displacement/out-migration reason where applicable.
-
-Diagnostics are authoritative simulation outputs and must be usable by tests and future UI.
+- displacement/out-migration reason.
 
 ## UI Scope
-UI work follows simulation correctness.
+UI follows simulation correctness.
 
-Initial UI scope:
-- compact housing-market panel with the core citywide KPIs;
-- building inspector section for housing ledger and redevelopment pressure;
-- optional housing overlay for vacancy/affordability/market pressure if existing rendering architecture supports it cleanly.
+Initial UI:
+- compact housing-market KPI panel;
+- building-inspector housing ledger and redevelopment section;
+- optional vacancy/affordability/market-pressure overlay if it fits existing rendering architecture cleanly.
 
-Do not add decorative charts or demographic dashboards that are not backed by authoritative state. Detailed demographic UI belongs to Phase 9.
+No decorative statistics disconnected from authoritative state. Detailed demographic dashboards remain Phase 9.
 
 ## Performance Requirements
-The housing market must support the Metropolitan Era scale architecture.
-
 Acceptance target:
-- at least 250,000 resident-equivalent population in a synthetic/headless housing stress scenario;
-- normal stabilized household entity count remains in the low thousands rather than approaching one object per household;
-- candidate matching is bounded and never performs an all-households x all-housing scan;
-- cohort splitting has explicit anti-explosion safeguards;
-- deterministic merge-back reduces fragmentation after shocks stabilize;
-- repeated identical stress runs produce identical state hashes/snapshots.
+- at least 250,000 resident-equivalent population in a synthetic/headless housing scenario;
+- stabilized household entity count remains low-thousands scale rather than one entity per actual household;
+- bounded candidate search, never full all-to-all matching;
+- explicit anti-explosion rules for splitting;
+- deterministic merge-back after shocks;
+- repeated identical stress runs produce identical snapshots/state hashes.
 
-Implementation planning must define a measurable entity-count ceiling or growth invariant for the stress test based on actual benchmark behavior.
+The implementation plan must choose a measurable entity-growth invariant based on actual benchmark behavior.
 
 ## Acceptance Test Matrix
-The implementation is not complete until tests demonstrate all of the following.
 
 ### Determinism
-1. Same seed, save state, city state, and commands produce identical household assignments, rents, prices, migration, and redevelopment outcomes.
-2. Save/load at a market-boundary tick produces the same future state as uninterrupted simulation.
+1. Same state/seed/commands produce identical household assignments, prices, migration, and redevelopment outcomes.
+2. Save/load at a market boundary produces the same future as uninterrupted simulation.
+
+### Supply and Tenure
+3. Housing-unit conservation holds for every building.
+4. A unit cannot be simultaneously rental-available and for-sale, or occupied by both renter and owner.
+5. New projects persist their awarded tenure product and cannot frictionlessly flip product.
+6. Legacy V7 buildings receive deterministic compatibility unit counts and tenure products.
 
 ### Rental Market
-3. Sustained high vacancy lowers effective/asking rents gradually.
-4. Sustained qualified demand raises rents gradually within configured per-cycle bounds.
-5. Posted asking rent cannot support developer revenue if effective realized rent is materially lower.
-
-### Affordability and Choice
-6. A household rejects housing that violates hard affordability limits even if neighborhood utility is otherwise superior.
-7. A moderately burdened household may rationally accept higher cost when total utility improves and the move threshold is cleared.
-8. Carless households prefer materially better person/transit accessibility when otherwise comparable.
-9. Larger households penalize undersized units and overcrowding.
-10. Ownership creates greater move friction than renting, all else equal.
+7. Sustained high rental vacancy lowers rents gradually.
+8. Sustained qualified rental demand raises rents gradually within configured bounds.
+9. Unsupported asking rents do not inflate realized developer revenue when effective rents are lower.
 
 ### Ownership
-11. Higher mortgage rates reduce maximum qualified purchase price.
-12. Insufficient down payment or reserve prevents purchase even when payment-to-income qualifies.
-13. Mortgage principal amortizes deterministically and owner equity updates consistently.
+10. Higher mortgage rates reduce maximum qualified purchase price.
+11. Insufficient down payment/reserve blocks purchase even when payment-to-income qualifies.
+12. Mortgage principal amortizes deterministically and owner equity updates consistently.
+13. For-sale inventory and qualified buyer depth affect achievable sale economics.
+
+### Affordability and Choice
+14. Hard-unaffordable housing is rejected even with superior neighborhood utility.
+15. Moderate burden can be accepted when total utility improves enough to clear move friction.
+16. Carless households prefer materially superior person/transit accessibility when otherwise comparable.
+17. Larger households penalize undersized units/overcrowding.
+18. Owners have greater move friction than renters, all else equal.
 
 ### Employment and Income
-14. Job loss or material income decline can increase housing burden and trigger search.
-15. Better labor-market outcomes support higher qualified housing demand through actual household income rather than a free global bonus.
+19. Job loss/material income decline increases burden and may trigger search.
+20. Better labor outcomes increase qualified housing demand through household income, not a free global bonus.
 
-### Cohorts
-16. Capacity/affordability divergence can split a weighted cohort deterministically.
-17. Compatible stabilized household entities merge without changing conserved aggregate quantities.
-18. Entity growth remains bounded under repeated move/displacement shocks.
+### Adaptive Fidelity
+21. Capacity/affordability divergence splits a cohort deterministically.
+22. Compatible stabilized entities merge without changing conserved aggregates.
+23. Entity growth remains bounded under repeated displacement/move shocks.
 
 ### Migration and Displacement
-19. Positive residential demand without viable housing does not create population.
-20. Displacement preserves household economic/preference state while forcing search.
-21. Temporarily unhoused households remain in population for the configured grace period and either rehouse or out-migrate deterministically.
-22. Sustained inability to secure viable housing can cause out-migration.
+24. Positive residential demand without viable housing does not create population.
+25. Displacement preserves household economic/preference state while forcing search.
+26. Temporary unhoused households remain during the configured grace period and deterministically rehouse or out-migrate.
+27. Sustained inability to secure viable housing can cause out-migration.
 
 ### Filtering
-23. New supply can create a deterministic multi-step vacancy chain that opens an existing unit to a lower-income household.
+28. New supply produces at least one deterministic multi-step vacancy chain that creates an opportunity for a lower-income household in existing stock.
 
 ### Development and Redevelopment
-24. Residential generic demand alone no longer guarantees construction.
-25. Stabilized achievable effective rents feed residential developer underwriting.
-26. An occupied low-intensity parcel redevelops only when replacement economics clear existing-use value, demolition/displacement costs, developer hurdle, capital, and slot constraints.
-27. Higher zoning capacity without sufficient economics does not force redevelopment.
-28. Strong access/rent pressure can increase residual land value and redevelopment pressure through traceable inputs.
+29. Generic residential demand alone does not guarantee construction.
+30. Stabilized effective rental revenue feeds rental-project underwriting.
+31. Achievable sale proceeds and buyer depth feed for-sale-project underwriting.
+32. An occupied low-intensity parcel redevelops only when replacement economics clear existing-use value, demolition/displacement/acquisition costs, developer hurdle, capital, and slot constraints.
+33. Higher zoning capacity without sufficient economics does not force redevelopment.
+34. Strong access and real housing pressure can raise residual land value through traceable inputs.
 
 ### Persistence
-29. Existing V7 saves without housing state hydrate deterministically.
-30. Migrated saves do not fabricate historical mortgage/displacement/move history.
-31. New housing-enabled V7 saves round-trip exactly.
-32. Corrupt housing references and impossible allocation/mortgage state are rejected.
+35. Existing V7 saves without housing state hydrate deterministically.
+36. Migration does not fabricate historical loan/displacement/move history.
+37. Housing-enabled V7 saves round-trip exactly.
+38. Corrupt housing references, unit conservation, occupancy, or mortgage state are rejected.
 
 ### Regression and Scale
-33. All pre-existing V7 tests remain green or are updated only where the documented authority transition intentionally changes behavior.
-34. Tests, typecheck, lint, build, and smoke verification pass.
-35. A 250,000-resident-equivalent headless stress test meets the bounded entity/search invariants and is deterministic across repeated runs.
+39. Pre-existing V7 tests remain green or change only where the documented population/housing authority transition intentionally changes behavior.
+40. Tests, typecheck, lint, build, and smoke verification pass.
+41. A 250,000-resident-equivalent headless stress test meets bounded entity/search invariants and repeats deterministically.
 
 ## Expected Implementation Boundaries
-Likely new or expanded files include, subject to implementation-plan refinement:
+Likely additions/changes, refined by the implementation plan:
 - `src/simulation/housing/HousingTypes.ts`
 - `src/simulation/housing/HouseholdCohortSystem.ts`
 - `src/simulation/housing/HousingSupplySystem.ts`
 - `src/simulation/housing/HousingChoiceSystem.ts`
 - `src/simulation/housing/HousingMarketSystem.ts`
-- housing configuration/data module;
-- a small Phase 6 wage/archetype extension;
+- centralized housing configuration/data;
+- residential building definitions extended with explicit housing-unit metadata;
+- development award/building metadata extended with housing product where residential;
+- a minimal Phase 6 wage/archetype extension;
 - `SimulationCore` orchestration hooks;
 - residential `DevelopmentFeasibilitySystem` market-input extension;
-- V7 save/hydration validation updates;
+- V7 save/hydration/validation updates;
 - diagnostics/UI integration;
-- focused unit/integration/save/scale tests.
+- focused unit, integration, save, regression, and scale tests.
 
-Large unrelated refactors are out of scope.
+No unrelated rewrite is allowed.
 
 ## Completion Definition
-This slice is complete when Civic Foundry no longer treats residential population and housing as a superficial capacity score. Residents must exist as adaptive-fidelity household entities assigned to real housing; income and affordability must constrain their choices; rental and ownership markets must evolve persistently; displacement and migration must have real consequences; housing-market outputs must drive residential development and redevelopment economics; and the entire system must remain deterministic, inspectable, save-safe, and scalable.
+This slice is complete when Civic Foundry no longer treats population and housing as superficial capacity scores. Residents exist as adaptive-fidelity household entities assigned to real housing; income and affordability constrain choices; rental and ownership supply are physically conserved and economically distinct; rents and prices evolve persistently; displacement, filtering, overcrowding, and migration have real consequences; housing-market outputs drive residential development and redevelopment; and the entire system is deterministic, inspectable, save-safe, and scalable.
