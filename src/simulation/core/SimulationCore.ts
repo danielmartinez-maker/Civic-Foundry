@@ -41,6 +41,8 @@ import { EconomyScheduler } from '../economy/EconomyScheduler.ts';
 import { DevelopmentFeasibilitySystem } from '../development/DevelopmentFeasibilitySystem.ts';
 import { DeveloperMarketSystem } from '../development/DeveloperMarketSystem.ts';
 import type { DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';
+import { HousingMarketSystem } from '../housing/HousingMarketSystem.ts';
+import type { HousingBuildingConditions, HousingMarketSnapshot } from '../housing/HousingTypes.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -90,6 +92,7 @@ export class SimulationCore {
   readonly economyDomain: EconomyScheduler;
   readonly developmentFeasibility: DevelopmentFeasibilitySystem;
   readonly developerMarket: DeveloperMarketSystem;
+  readonly housing: HousingMarketSystem;
 
   employmentSnapshot: EmploymentSnapshot;
   utilitySnapshot: UtilitySnapshot;
@@ -102,6 +105,7 @@ export class SimulationCore {
   educationSnapshot: EducationSnapshot;
   neighborhoodSnapshot: NeighborhoodQualitySnapshot;
   mobilitySnapshot: MobilitySnapshot;
+  housingSnapshot: HousingMarketSnapshot;
   serviceAccessByBuilding: Readonly<Record<string, BuildingServiceAccess>> = Object.freeze({});
   lastServiceGeneratedWaste = 0;
 
@@ -149,6 +153,7 @@ export class SimulationCore {
     this.economyDomain = new EconomyScheduler(this.seed);
     this.developmentFeasibility = new DevelopmentFeasibilitySystem();
     this.developerMarket = new DeveloperMarketSystem();
+    this.housing = new HousingMarketSystem();
 
     this.employmentSnapshot = this.employment.evaluate(0, 0);
     this.utilitySnapshot = this.utilities.evaluate([]);
@@ -166,6 +171,7 @@ export class SimulationCore {
     this.educationSnapshot = { eligibleStudents: 0, reachableStudents: 0, enrolledStudents: 0, effectiveSeats: 0, overcrowdedStudents: 0, averageSchoolAccessTicks: 0, educationServiceRatio: 1 };
     this.neighborhoodSnapshot = { perBuilding: Object.freeze({}), citywideServiceQuality: 1, commercialServiceQuality: 1 };
     this.mobilitySnapshot = this.mobility.snapshot();
+    this.housingSnapshot = this.housing.snapshot();
   }
 
   buildRoad(cells: readonly CellCoord[], type: RoadType): RoadPlacementResult {
@@ -254,9 +260,19 @@ export class SimulationCore {
         pathfinding: this.pathfinding,
         roadTravelTime: (edge) => this.traffic.getEdgeTravelTime(edge),
         costEpoch: this.traffic.congestionEpoch,
-        generateTrips: () => this.clock.tick % 100 === 0
-          ? this.personTrips.generate(this.clock.tick, this.buildings.occupied(), this.population.population, this.employmentSnapshot.employed, this.transportationGraph)
-          : [],
+        generateTrips: () => {
+          if (this.clock.tick % 100 !== 0) return [];
+          const occupied = this.buildings.occupied();
+          const householdDemand = this.housing.travelDemand(this.economyDomain.firms.list());
+          return this.personTrips.generate(
+            this.clock.tick,
+            occupied,
+            this.population.population,
+            this.employmentSnapshot.employed,
+            this.transportationGraph,
+            householdDemand.length > 0 ? householdDemand : undefined,
+          );
+        },
         submitCarTrip: (trip, travelerWeight, route) => {
           const freeFlowTicks = route.edgeIds.reduce((sum, edgeId) => sum + (this.transportationGraph.getEdge(edgeId)?.freeFlowTicks ?? 0), 0);
           this.traffic.submitTrip({
@@ -278,6 +294,8 @@ export class SimulationCore {
 
       if (this.clock.tick % 10 === 0) {
         this.evaluateServiceLoop();
+        this.evaluateHousingLoop();
+        this.population.sync(this.housing.population());
         this.evaluateDevelopmentMarket();
       }
       if (this.clock.tick % 50 === 0) this.evaluateCoreCityLoop();
@@ -357,6 +375,34 @@ export class SimulationCore {
     }
   }
 
+  private evaluateHousingLoop(): void {
+    const occupied = this.buildings.occupied();
+    const hasServices = this.services.listFacilities().length > 0;
+    const conditionsByBuilding: Record<string, HousingBuildingConditions> = {};
+    for (const building of occupied.filter((item) => item.zone === 'residential')) {
+      const utility = this.utilitySnapshot.perBuilding[building.id] ?? { power: 0, water: 0 };
+      const serviceQuality = hasServices
+        ? (this.neighborhoodSnapshot.perBuilding[building.id]?.combinedServiceQuality ?? this.neighborhoodSnapshot.citywideServiceQuality)
+        : 0.7;
+      const accessibility = clamp01(this.mobilitySnapshot.personAccessibility);
+      conditionsByBuilding[building.id] = Object.freeze({
+        quality: clamp01(serviceQuality),
+        accessibility,
+        services: clamp01(serviceQuality),
+        neighborhood: clamp01(serviceQuality * 0.7 + accessibility * 0.3),
+        habitability: clamp01(Math.min(utility.power, utility.water)),
+      });
+    }
+    this.housingSnapshot = this.housing.tick({
+      tick: this.clock.tick,
+      buildings: occupied,
+      firms: this.economyDomain.firms.list(),
+      marketInterestRate: this.currentDevelopmentInterestRate(),
+      employmentVacancies: this.employmentSnapshot.vacancies,
+      conditionsByBuilding: Object.freeze(conditionsByBuilding),
+    });
+  }
+
   private evaluateCoreCityLoop(): void {
     const occupied = this.buildings.occupied();
     this.utilitySnapshot = this.utilities.evaluate(occupied);
@@ -397,14 +443,7 @@ export class SimulationCore {
     const paymentRatio = this.economySnapshot.facilityOperatingCost <= 0 ? 1 : this.economySnapshot.paidOperatingCost / this.economySnapshot.facilityOperatingCost;
     this.services.setFiscalPaymentRatio(paymentRatio);
     this.serviceVehicles.syncFleet(this.services);
-
-    const essential = Math.min(this.utilitySnapshot.power.serviceRatio, this.utilitySnapshot.water.serviceRatio);
-    const employmentQuality = this.employmentSnapshot.workforce === 0 ? 1 : this.employmentSnapshot.employed / Math.max(1, this.employmentSnapshot.workforce);
-    const fiscalQuality = this.economySnapshot.unpaidOperatingCost > 0 ? paymentRatio : 1;
-    const serviceFactor = hasServices ? this.neighborhoodSnapshot.citywideServiceQuality : 0.7;
-    let attractiveness = clamp01(0.45 * essential + 0.18 * employmentQuality + 0.12 * fiscalQuality + 0.25 * serviceFactor);
-    if (this.utilitySnapshot.power.serviceRatio < 0.5 || this.utilitySnapshot.water.serviceRatio < 0.5) attractiveness = Math.min(attractiveness, 0.2);
-    this.population.update(this.buildings.residentialCapacity(), attractiveness);
+    this.population.sync(this.housing.population());
   }
 
   private evaluateDevelopmentMarket(): void {
