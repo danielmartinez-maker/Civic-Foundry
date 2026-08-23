@@ -66,7 +66,6 @@ The 10,000-request journey benchmark exceeds the 95% stable-topology cache targe
 
 The Phase V Chromium smoke creates and edits a BRT line through the browser UI, dispatches vehicles, boards/completes weighted passengers, renders a numeric ridership overlay, changes headway/fare, saves V5, destructively removes transit/road topology, reloads and confirms exact serialized restoration.
 
-
 ## 2026-08-22 — Phase 6 Firms, Production & Freight
 
 Implemented the second Metropolitan Era slice:
@@ -93,3 +92,28 @@ Implemented the second Metropolitan Era slice:
 All 12 Phase 6 causal acceptance chains pass. Representative diagnostics recorded roughly 0.7–0.8 seconds for 5,000 active-economy ticks, ~6 ms for 10,000 small indexed supplier matches, and 99/100 cache hits for repeated stable freight OD planning. Timings remain diagnostic-only.
 
 The Phase VI Chromium smoke formed 17 establishments with 17 active freight agents in the test city, verified the economy panel/firm inspector/freight overlay, saved V6, destructively removed a firm and boundary road, then restored the serialized authoritative state exactly.
+
+## 2026-08-22 — Phase 7 Land & Housing Market Signals
+
+Continued the Land, Housing & Development phase on top of the V7 developer-market baseline:
+
+- added `LandHousingMarketSystem`, a deterministic derived property-market layer for residential, commercial and industrial zones;
+- residential market pressure now responds directly to housing utilization (`population / residentialCapacity`) as well as demand, accessibility, services and utilities;
+- commercial and industrial pressure respond to their own demand plus relevant person/freight access and employment/utilities;
+- added bounded zone rent, vacancy and land-value indexes plus parcel-local adjustments for access, services, neighborhood quality, utilities and frontage;
+- moved achievable rent, explicit vacancy and land-value formation out of `DevelopmentFeasibilitySystem` and into the market layer;
+- retained project-specific zoning/access/utility/service gates, construction cost, financing, NOI, cap-rate, return and residual-land-value underwriting;
+- exposed `SimulationCore.landHousingMarketSnapshot` for diagnostics and future UI/overlay work;
+- kept Save V7 unchanged because the market contains no authoritative history and is recomputed from existing simulation state.
+
+### TDD and bugs found during integration
+
+1. **Duplicated price formation:** the developer pro-forma slice still synthesized rent, vacancy and land value internally from generic demand/access multipliers. The new market subsystem makes those signals explicit and inspectable, and underwriting now consumes them rather than creating a second market model.
+2. **Core integration contract:** the first repository-level RED run executed 223 tests; 185 passed and 38 failed with `marketPressure must be finite`. The new market/underwriting unit tests were already green, isolating the defect to `SimulationCore` not yet supplying the new parcel signals. Core wiring removed the cascade.
+3. **Derived-cache save drift risk:** a market snapshot refreshed only every 50 ticks could diverge after loading a save mid-window because that derived snapshot is intentionally not persisted. The final architecture refreshes the tiny derived market immediately before each 10-tick development evaluation and after the 50-tick city loop, preserving schema-free deterministic decisions.
+
+### Acceptance evidence
+
+Unit tests verify housing-scarcity directionality, commercial-demand monotonicity, industrial freight weighting, parcel service/utility penalties, determinism and invalid-input rejection. Underwriting tests verify that higher market rent raises NOI/return, higher vacancy suppresses income/return and higher land value raises cost/suppresses return.
+
+The integration CI cycle passed the complete repository tests, typecheck, lint and production build after core wiring. Phase 7 remains in progress: household affordability/income/tenure, housing search and moves, occupied-parcel redevelopment, mixed-use occupancy and player-facing density/market UI remain intentionally deferred.

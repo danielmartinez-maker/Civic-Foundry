@@ -126,6 +126,19 @@ test('legacy fixture definition IDs retain zone-default compatibility', () => {
   assert.equal(buildings.residentialCapacity(), 10);
 });
 
+test('SimulationCore exposes deterministic derived land and housing market metrics', () => {
+  const first = buildDevelopmentCore(true);
+  const second = buildDevelopmentCore(true);
+  first.step(100);
+  second.step(100);
+
+  assert.ok(first.landHousingMarketSnapshot.housingPressure >= 0);
+  assert.ok(first.landHousingMarketSnapshot.housingRentIndex > 0);
+  assert.ok(first.landHousingMarketSnapshot.housingVacancyRate >= 0.03);
+  assert.ok(first.landHousingMarketSnapshot.housingVacancyRate <= 0.35);
+  assert.deepEqual(first.landHousingMarketSnapshot, second.landHousingMarketSnapshot);
+});
+
 test('SimulationCore routes feasible parcels through deterministic developer awards', () => {
   const first = buildDevelopmentCore(true);
   const second = buildDevelopmentCore(true);

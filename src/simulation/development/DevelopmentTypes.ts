@@ -12,6 +12,10 @@ export type DevelopmentParcelContext = Readonly<{
   constructionCostIndex: number;
   marketInterestRate: number;
   zoningMaxIntensity: BuildingIntensity;
+  marketPressure: number;
+  marketRentMultiplier: number;
+  marketVacancyRate: number;
+  landValueMultiplier: number;
 }>;
 
 export type DevelopmentFeasibilityResult = Readonly<{
