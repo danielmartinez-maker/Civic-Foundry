@@ -44,3 +44,71 @@ export type DevelopmentFeasibilityResult = Readonly<{
   riskScore: number;
   rejectionReasons: readonly string[];
 }>;
+
+export type DeveloperPreferences = Readonly<Record<ZoneType, number>>;
+
+export type DeveloperSeed = Readonly<{
+  id: string;
+  availableCapital: number;
+  hurdleRate: number;
+  maxLeverage: number;
+  financingSpread: number;
+  riskTolerance: number;
+  maxConcurrentProjects: number;
+  minimumProjectCost: number;
+  preferences: DeveloperPreferences;
+}>;
+
+export type DeveloperState = DeveloperSeed & Readonly<{
+  committedCapital: number;
+}>;
+
+export type DeveloperMarketContext = Readonly<{
+  tick: number;
+  marketInterestRate: number;
+}>;
+
+export type DevelopmentBid = Readonly<{
+  id: string;
+  lotId: string;
+  definitionId: string;
+  zone: ZoneType;
+  developerId: string;
+  expectedReturn: number;
+  expectedReturnMargin: number;
+  requiredEquity: number;
+  financingCost: number;
+  totalDevelopmentCost: number;
+  preferenceBonus: number;
+  capitalEfficiencyBonus: number;
+  residualValueBonus: number;
+  riskPenalty: number;
+  rankScore: number;
+  residualLandValue: number;
+}>;
+
+export type DevelopmentAward = DevelopmentBid & Readonly<{
+  awardId: string;
+  buildingId: string;
+  awardTick: number;
+  completionTick: number;
+  releaseTick: number;
+}>;
+
+export type DeveloperCommitment = Readonly<{
+  awardId: string;
+  buildingId: string;
+  lotId: string;
+  definitionId: string;
+  developerId: string;
+  equity: number;
+  awardTick: number;
+  completionTick: number;
+  releaseTick: number;
+  expectedReturn: number;
+}>;
+
+export type DeveloperMarketStateSnapshot = Readonly<{
+  developers: readonly DeveloperState[];
+  commitments: readonly DeveloperCommitment[];
+}>;
