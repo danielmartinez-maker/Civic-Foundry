@@ -23,16 +23,16 @@ function managedCore(): SimulationCore {
   return core;
 }
 
-test('Save V3 round-trips authoritative city and active traffic state', () => {
+test('current Save V7 round-trips authoritative city and active traffic state', () => {
   const core = managedCore();
   assert.ok(core.traffic.activeVehicles.length > 0);
   const save = serializeCore(core);
-  assert.equal(save.saveVersion, 6);
+  assert.equal(save.saveVersion, 7);
   const hydrated = hydrateCore(JSON.parse(JSON.stringify(save)));
   assert.deepEqual(serializeCore(hydrated), save);
 });
 
-test('Save V3 deterministic continuation produces identical authoritative state', () => {
+test('current save deterministic continuation produces identical authoritative state', () => {
   const original = managedCore();
   const hydrated = hydrateCore(serializeCore(original));
   original.step(500);
