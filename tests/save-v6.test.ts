@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { hydrateCore, serializeCore, serializeCoreV5 } from '../src/save/save.ts';
+import { hydrateCoreV6, serializeCoreV6, serializeCoreV5 } from '../src/save/save.ts';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 
@@ -21,18 +21,18 @@ function advanceUntilFreight(core:SimulationCore,max=3500):void{
   assert.ok(core.economyDomain.freightVehicles.activeCount()>0,'expected active freight before save');
 }
 
-test('default save API serializes Save V6 economy state',()=>{
+test('explicit Save V6 serializer preserves the Phase 6 economy envelope',()=>{
   const core=buildCity(); core.step(1200);
-  const save=serializeCore(core);
+  const save=serializeCoreV6(core);
   assert.equal(save.saveVersion,6);
   assert.equal(save.gameVersion,'0.6.0-metropolitan');
   assert.ok('economyDomain' in save);
 });
 
-test('loading V5 does not fabricate Phase 6 economic history',()=>{
+test('loading V5 through the V6 hydrator does not fabricate Phase 6 economic history',()=>{
   const core=buildCity(); core.step(800);
   const v5=serializeCoreV5(core);
-  const loaded=hydrateCore(v5);
+  const loaded=hydrateCoreV6(v5);
   const economy=loaded.economyDomain.snapshot(loaded.clock.tick);
   assert.equal(economy.activeFirms,0);
   assert.equal(economy.cumulativeImports,0);
@@ -43,17 +43,17 @@ test('loading V5 does not fabricate Phase 6 economic history',()=>{
 
 test('Save V6 resumes active firms freight and financial accruals identically',()=>{
   const uninterrupted=buildCity(); advanceUntilFreight(uninterrupted);
-  const save=serializeCore(uninterrupted);
-  const loaded=hydrateCore(structuredClone(save));
-  assert.deepEqual(serializeCore(loaded),save);
+  const save=serializeCoreV6(uninterrupted);
+  const loaded=hydrateCoreV6(structuredClone(save));
+  assert.deepEqual(serializeCoreV6(loaded),save);
   uninterrupted.step(700); loaded.step(700);
-  assert.deepEqual(serializeCore(loaded),serializeCore(uninterrupted));
+  assert.deepEqual(serializeCoreV6(loaded),serializeCoreV6(uninterrupted));
 });
 
 test('Save V6 rejects freight routes referencing missing road edges',()=>{
   const core=buildCity(); advanceUntilFreight(core);
-  const save=structuredClone(serializeCore(core));
+  const save=structuredClone(serializeCoreV6(core));
   assert.ok(save.economyDomain.freightVehicles.vehicles.length>0);
   save.economyDomain.freightVehicles.vehicles[0]!.routeEdgeIds=['missing-edge'];
-  assert.throws(()=>hydrateCore(save),/freight.*road|road.*freight/i);
+  assert.throws(()=>hydrateCoreV6(save),/freight.*road|road.*freight/i);
 });
