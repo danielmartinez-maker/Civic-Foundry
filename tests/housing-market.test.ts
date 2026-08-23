@@ -96,6 +96,19 @@ test('migration requires viable housing and unhoused households leave only after
   assert.equal(out.snapshot().outMigrationHouseholds, 2);
 });
 
+test('an empty city may admit one bootstrap household when viable housing exists, but bootstrap does not repeat without jobs', () => {
+  const market = new HousingMarketSystem();
+  const home = building('building:b', 12, 0);
+  const input = (tick: number) => ({ tick, buildings: [home], firms: [] as Firm[], marketInterestRate: 0.05, employmentVacancies: 0, conditionsByBuilding: conditions([home.id]) });
+  market.tick(input(100));
+  assert.equal(market.households.representedHouseholds(), 1);
+  const firstPopulation = market.population();
+  assert.ok(firstPopulation > 0);
+  market.tick(input(200));
+  assert.equal(market.households.representedHouseholds(), 1);
+  assert.equal(market.population(), firstPopulation);
+});
+
 test('housing market state restores and continues deterministically', () => {
   const a = new HousingMarketSystem();
   const home = building('building:s', 12, 0);
