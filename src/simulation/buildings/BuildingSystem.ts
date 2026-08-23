@@ -20,8 +20,6 @@ export type Building = {
   awardScore?: number;
 };
 
-export type ZoneDemand = Readonly<Record<ZoneType, number>>;
-
 export function definitionForBuilding(building: Pick<Building, 'definitionId' | 'zone'>): BuildingDefinition {
   return BUILDING_DEFINITION_BY_ID[building.definitionId] ?? BUILDING_DEFINITIONS[building.zone];
 }
@@ -59,24 +57,6 @@ export class BuildingSystem {
     };
     this.buildings.set(lot.id, building);
     return { ...building };
-  }
-
-  evaluateDevelopment(tick: number, lots: readonly Lot[], demand: ZoneDemand): void {
-    for (const lot of lots) {
-      if (this.buildings.has(lot.id) || demand[lot.zone] <= 0.05) continue;
-      const definition = BUILDING_DEFINITIONS[lot.zone];
-      this.buildings.set(lot.id, {
-        id: `building:${lot.id}`,
-        lotId: lot.id,
-        x: lot.x,
-        y: lot.y,
-        zone: lot.zone,
-        definitionId: definition.id,
-        status: 'construction',
-        constructionStartedTick: tick,
-        completionTick: tick + definition.constructionTicks,
-      });
-    }
   }
 
   tick(tick: number): void {
