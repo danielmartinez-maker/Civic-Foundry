@@ -25,9 +25,17 @@ function validateContext(context: DevelopmentParcelContext): void {
   requireFinite('utilityRatio', context.utilityRatio);
   requireFinite('constructionCostIndex', context.constructionCostIndex);
   requireFinite('marketInterestRate', context.marketInterestRate);
+  requireFinite('marketPressure', context.marketPressure);
+  requireFinite('marketRentMultiplier', context.marketRentMultiplier);
+  requireFinite('marketVacancyRate', context.marketVacancyRate);
+  requireFinite('landValueMultiplier', context.landValueMultiplier);
   if (context.taxRate < 0) throw new Error('taxRate must be non-negative');
   if (context.constructionCostIndex <= 0) throw new Error('constructionCostIndex must be positive');
   if (context.marketInterestRate < 0) throw new Error('marketInterestRate must be non-negative');
+  if (context.marketPressure < 0 || context.marketPressure > 1.25) throw new Error('marketPressure must be within [0, 1.25]');
+  if (context.marketRentMultiplier <= 0) throw new Error('marketRentMultiplier must be positive');
+  if (context.marketVacancyRate < 0 || context.marketVacancyRate >= 1) throw new Error('marketVacancyRate must be within [0, 1)');
+  if (context.landValueMultiplier <= 0) throw new Error('landValueMultiplier must be positive');
   if (!(context.zoningMaxIntensity in INTENSITY_RANK)) throw new Error('invalid zoningMaxIntensity');
 }
 
@@ -72,31 +80,18 @@ export class DevelopmentFeasibilitySystem {
   ): DevelopmentFeasibilityResult {
     validateDefinition(definition);
 
-    const demand = clamp(context.demand, -1, 1);
     const personAccessibility = clamp01(context.personAccessibility);
     const freightAccessibility = clamp01(context.freightAccessibility);
     const serviceQuality = clamp01(context.serviceQuality);
-    const neighborhoodQuality = clamp01(context.neighborhoodQuality);
     const utilityRatio = clamp01(context.utilityRatio);
     const taxRate = clamp(context.taxRate, 0, 0.25);
 
-    const demandFactor = clamp(0.65 + ((demand + 1) / 2) * 0.85, 0.65, 1.50);
     const accessScore = definition.zone === 'industrial'
       ? 0.75 * freightAccessibility + 0.25 * personAccessibility
       : 0.80 * personAccessibility + 0.20 * freightAccessibility;
-    const accessFactor = clamp(0.70 + accessScore * 0.60, 0.70, 1.30);
-    const serviceFactor = clamp(0.75 + serviceQuality * 0.45, 0.75, 1.20);
-    const utilityFactor = clamp(0.50 + utilityRatio * 0.50, 0.50, 1.00);
-    const neighborhoodFactor = clamp(0.75 + neighborhoodQuality * 0.50, 0.75, 1.25);
-    const achievableRent = definition.baseRent * demandFactor * accessFactor * serviceFactor * utilityFactor * neighborhoodFactor;
-
-    const normalizedDemand = (demand + 1) / 2;
-    const weakDemandPenalty = Math.max(0, 0.5 - normalizedDemand) * 0.18;
-    const poorAccessPenalty = Math.max(0, 0.6 - accessScore) * 0.16;
-    const servicePenalty = Math.max(0, 0.6 - serviceQuality) * 0.12;
-    const strongDemandReduction = Math.max(0, normalizedDemand - 0.7) * 0.10;
+    const achievableRent = definition.baseRent * clamp(context.marketRentMultiplier, 0.50, 2.00);
     const vacancyRate = clamp(
-      definition.baseVacancy + weakDemandPenalty + poorAccessPenalty + servicePenalty - strongDemandReduction,
+      context.marketVacancyRate + (definition.baseVacancy - 0.10),
       0.03,
       0.35,
     );
@@ -112,7 +107,7 @@ export class DevelopmentFeasibilitySystem {
     const softCosts = hardConstructionCost * definition.softCostRatio;
     const deficiency = Math.max(0, 1 - Math.min(utilityRatio, serviceQuality, accessScore));
     const sitePreparationCost = hardConstructionCost * deficiency * 0.08;
-    const landValue = ZONE_BASE_LAND_VALUE[definition.zone] * demandFactor * accessFactor * serviceFactor * neighborhoodFactor;
+    const landValue = ZONE_BASE_LAND_VALUE[definition.zone] * clamp(context.landValueMultiplier, 0.40, 2.00);
     const preFinanceDevelopmentCost = landValue + hardConstructionCost + softCosts + sitePreparationCost;
     const neutralDebt = preFinanceDevelopmentCost * 0.55;
     const durationYears = definition.constructionTicks / 250;
