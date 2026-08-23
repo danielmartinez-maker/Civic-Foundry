@@ -116,4 +116,32 @@ Continued the Land, Housing & Development phase on top of the V7 developer-marke
 
 Unit tests verify housing-scarcity directionality, commercial-demand monotonicity, industrial freight weighting, parcel service/utility penalties, determinism and invalid-input rejection. Underwriting tests verify that higher market rent raises NOI/return, higher vacancy suppresses income/return and higher land value raises cost/suppresses return.
 
-The integration CI cycle passed the complete repository tests, typecheck, lint and production build after core wiring. Phase 7 remains in progress: household affordability/income/tenure, housing search and moves, occupied-parcel redevelopment, mixed-use occupancy and player-facing density/market UI remain intentionally deferred.
+The integration CI cycle passed the complete repository tests, typecheck, lint and production build after core wiring.
+
+## 2026-08-22 — Phase 7 Aggregate Housing Choice & Redevelopment Pressure
+
+Extended the property-market slice into affordability and occupied-residential redevelopment diagnostics while deliberately remaining aggregate and save-neutral:
+
+- added `HousingChoiceSystem` with deterministic lower/middle/upper income-band shares, rent-burden thresholds and quality-sensitive weighted housing allocation;
+- each occupied residential building becomes a housing option using its real building capacity/base rent plus current parcel market rent, person access, services, neighborhood quality and utilities;
+- separated raw physical housing capacity from `effectiveAffordableCapacity`, the income-share-weighted economically usable portion of existing stock;
+- fed effective affordable capacity through the existing residential-demand housing-pressure channel, causing expensive stock to increase development demand without creating a parallel demand model;
+- added citywide affordability, rent burden, cost-burdened resident, unplaced resident and per-building occupancy diagnostics;
+- kept raw physical residential capacity as `PopulationSystem`'s hard cap while applying affordability only as a bounded 0.85–1.0 modifier to migration attractiveness;
+- added `RedevelopmentPressureSystem`, ranking occupied residential parcels by the economics of feasible higher-intensity replacements after current-use opportunity cost, demolition cost and resident displacement burden;
+- used a dedicated redevelopment feasibility evaluator so occupied-parcel diagnostics cannot overwrite normal developer-market feasibility diagnostics;
+- exposed `SimulationCore.housingChoiceSnapshot` and `SimulationCore.redevelopmentPressureSnapshot` as read-only derived diagnostics;
+- kept Save V7 unchanged and added no automatic demolition, relocation, tenure or individual-household state.
+
+### TDD and integration evidence
+
+1. **Housing choice RED:** the first housing-choice CI run left all 223 existing tests green and failed only because `HousingChoiceSystem.ts` did not exist. The implemented system then passed the full test/typecheck/lint/build gate.
+2. **Affordability integration RED:** 231/232 tests passed before core wiring; the only failure was the missing `housingChoiceSnapshot`. The independent causal test already showed that identical physical stock with higher rents produces lower effective affordable capacity and therefore higher residential demand.
+3. **Redevelopment engine RED:** 232 existing tests passed and only the intentionally missing `RedevelopmentPressureSystem.ts` failed. Unit tests then covered feasible/infeasible replacements, displacement burden, deterministic ranking and validation.
+4. **Redevelopment core RED:** 238/240 tests passed; both failures were exactly the absent core redevelopment snapshot. After wiring, the full 240-test suite, typecheck, lint and build passed.
+
+### Causal boundaries
+
+Housing allocation is an aggregate market-clearing approximation rather than a hidden demographic simulation. Fixed income bands are game-economy cohorts, fractional weighted residents are allowed, and no resident object, lease, mortgage, move queue or eviction history is fabricated. Redevelopment pressure is diagnostic only: it cannot demolish a building, displace residents, alter zoning or create a developer award.
+
+The next Phase 7 work can build on these explicit signals with actual redevelopment/relocation rules, tenure and household dynamics, or player-facing housing/density tools; richer demographic state remains reserved for Phase 9.

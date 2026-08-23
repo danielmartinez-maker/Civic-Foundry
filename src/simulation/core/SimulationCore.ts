@@ -5,7 +5,7 @@ import { TerrainGrid } from '../../world/terrain/TerrainGrid.ts';
 import { RoadSystem, type RoadPlacementResult } from '../../world/roads/RoadSystem.ts';
 import { ZoningSystem } from '../zoning/ZoningSystem.ts';
 import { LotSystem, type Lot } from '../../world/lots/LotSystem.ts';
-import { BuildingSystem } from '../buildings/BuildingSystem.ts';
+import { BuildingSystem, definitionForBuilding } from '../buildings/BuildingSystem.ts';
 import { PopulationSystem } from '../population/PopulationSystem.ts';
 import { EmploymentSystem, type EmploymentSnapshot } from '../employment/EmploymentSystem.ts';
 import { TaxSystem, type TaxRevenue } from '../tax/TaxSystem.ts';
@@ -17,7 +17,7 @@ import type { CellCoord, ZoneType } from './types.ts';
 import { clamp, clamp01 } from './types.ts';
 import type { RoadType } from '../../data/roads.ts';
 import type { UtilityFacilityType } from '../../data/utilities.ts';
-import { BUILDING_VARIANTS } from '../../data/buildings.ts';
+import { BUILDING_VARIANTS, type BuildingIntensity } from '../../data/buildings.ts';
 import { TransportationGraph } from '../traffic/TransportationGraph.ts';
 import { PathfindingSystem } from '../traffic/PathfindingSystem.ts';
 import { TripGenerationSystem } from '../traffic/TripGenerationSystem.ts';
@@ -41,7 +41,9 @@ import { EconomyScheduler } from '../economy/EconomyScheduler.ts';
 import { DevelopmentFeasibilitySystem } from '../development/DevelopmentFeasibilitySystem.ts';
 import { DeveloperMarketSystem } from '../development/DeveloperMarketSystem.ts';
 import { LandHousingMarketSystem, type LandHousingMarketSnapshot } from '../development/LandHousingMarketSystem.ts';
+import { RedevelopmentPressureSystem, type RedevelopmentPressureSnapshot, type ResidentialRedevelopmentInput } from '../development/RedevelopmentPressureSystem.ts';
 import type { DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';
+import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/HousingChoiceSystem.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -51,7 +53,19 @@ export type SimulationCoreOptions = Readonly<{
   terrain?: TerrainGrid;
 }>;
 
+type LocalParcelContext = Readonly<{
+  roadAccessBonus: number;
+  personAccessibility: number;
+  freightAccessibility: number;
+  serviceQuality: number;
+  neighborhoodQuality: number;
+  utilityRatio: number;
+  constructionCostIndex: number;
+  zoningMaxIntensity: BuildingIntensity;
+}>;
+
 const DEPARTMENTS: readonly ServiceDepartment[] = ['fire', 'police', 'healthcare', 'education', 'garbage'];
+const INTENSITY_RANK: Readonly<Record<BuildingIntensity, number>> = Object.freeze({ low: 0, medium: 1, high: 2 });
 
 export class SimulationCore {
   readonly seed: number;
@@ -92,6 +106,9 @@ export class SimulationCore {
   readonly developmentFeasibility: DevelopmentFeasibilitySystem;
   readonly developerMarket: DeveloperMarketSystem;
   readonly landHousingMarket: LandHousingMarketSystem;
+  readonly housingChoice: HousingChoiceSystem;
+  readonly redevelopmentPressure: RedevelopmentPressureSystem;
+  private readonly redevelopmentFeasibility: DevelopmentFeasibilitySystem;
 
   employmentSnapshot: EmploymentSnapshot;
   utilitySnapshot: UtilitySnapshot;
@@ -109,6 +126,14 @@ export class SimulationCore {
 
   get landHousingMarketSnapshot(): LandHousingMarketSnapshot {
     return this.landHousingMarket.snapshot();
+  }
+
+  get housingChoiceSnapshot(): HousingChoiceSnapshot {
+    return this.housingChoice.snapshot();
+  }
+
+  get redevelopmentPressureSnapshot(): RedevelopmentPressureSnapshot {
+    return this.redevelopmentPressure.snapshot();
   }
 
   constructor(options: SimulationCoreOptions = {}) {
@@ -154,8 +179,11 @@ export class SimulationCore {
     this.mobility = new MobilityScheduler();
     this.economyDomain = new EconomyScheduler(this.seed);
     this.developmentFeasibility = new DevelopmentFeasibilitySystem();
+    this.redevelopmentFeasibility = new DevelopmentFeasibilitySystem();
     this.developerMarket = new DeveloperMarketSystem();
     this.landHousingMarket = new LandHousingMarketSystem();
+    this.housingChoice = new HousingChoiceSystem();
+    this.redevelopmentPressure = new RedevelopmentPressureSystem();
 
     this.employmentSnapshot = this.employment.evaluate(0, 0);
     this.utilitySnapshot = this.utilities.evaluate([]);
@@ -174,6 +202,8 @@ export class SimulationCore {
     this.neighborhoodSnapshot = { perBuilding: Object.freeze({}), citywideServiceQuality: 1, commercialServiceQuality: 1 };
     this.mobilitySnapshot = this.mobility.snapshot();
     this.refreshLandHousingMarket();
+    this.refreshHousingChoice();
+    this.refreshRedevelopmentPressure();
   }
 
   buildRoad(cells: readonly CellCoord[], type: RoadType): RoadPlacementResult {
@@ -376,9 +406,10 @@ export class SimulationCore {
     const hasServices = this.services.listFacilities().length > 0;
     const serviceQuality = hasServices ? this.neighborhoodSnapshot.citywideServiceQuality : 0.7;
     const commercialServiceQuality = hasServices ? this.neighborhoodSnapshot.commercialServiceQuality : 0.7;
+    this.refreshHousingChoice();
     this.demandSnapshot = this.demand.evaluate({
       population: this.population.population,
-      housingCapacity: this.buildings.residentialCapacity(),
+      housingCapacity: this.housingChoiceSnapshot.effectiveAffordableCapacity,
       workforce: this.employmentSnapshot.workforce,
       employed: this.employmentSnapshot.employed,
       totalJobs: this.employmentSnapshot.totalJobs,
@@ -412,8 +443,12 @@ export class SimulationCore {
     const serviceFactor = hasServices ? this.neighborhoodSnapshot.citywideServiceQuality : 0.7;
     let attractiveness = clamp01(0.45 * essential + 0.18 * employmentQuality + 0.12 * fiscalQuality + 0.25 * serviceFactor);
     if (this.utilitySnapshot.power.serviceRatio < 0.5 || this.utilitySnapshot.water.serviceRatio < 0.5) attractiveness = Math.min(attractiveness, 0.2);
+    const affordabilityFactor = 0.85 + 0.15 * this.housingChoiceSnapshot.affordabilityIndex;
+    attractiveness = clamp01(attractiveness * affordabilityFactor);
     this.population.update(this.buildings.residentialCapacity(), attractiveness);
     this.refreshLandHousingMarket();
+    this.refreshHousingChoice();
+    this.refreshRedevelopmentPressure();
   }
 
   private evaluateDevelopmentMarket(): void {
@@ -448,7 +483,7 @@ export class SimulationCore {
     }
   }
 
-  private developmentContextForLot(lot: Lot): DevelopmentParcelContext {
+  private localParcelContextForLot(lot: Lot): LocalParcelContext {
     const [roadXText, roadYText] = lot.frontageRoadKey.split(',');
     const frontage = this.roads.get(Number(roadXText), Number(roadYText));
     const roadAccessBonus = frontage?.type === 'arterial' ? 0.12 : frontage?.type === 'collector' ? 0.07 : 0.02;
@@ -466,30 +501,107 @@ export class SimulationCore {
       : 0.7;
     const neighborhoodQuality = clamp01(serviceQuality * 0.7 + personAccessibility * 0.3);
     const constructionCostIndex = clamp(1 + (1 - utilityRatio) * 0.20 + (1 - serviceQuality) * 0.10, 0.85, 1.50);
-    const zoningMaxIntensity = personAccessibility >= 0.78 && utilityRatio >= 0.85
+    const zoningMaxIntensity: BuildingIntensity = personAccessibility >= 0.78 && utilityRatio >= 0.85
       ? 'high'
       : personAccessibility >= 0.55 ? 'medium' : 'low';
-    const marketSignal = this.landHousingMarket.parcelSignal(lot.zone, {
-      personAccessibility,
-      freightAccessibility,
-      serviceQuality,
-      neighborhoodQuality,
-      utilityRatio,
-      frontageAccessBonus: roadAccessBonus,
-    });
     return {
-      demand: this.demandSnapshot[lot.zone],
-      taxRate: this.taxes.getRate(lot.zone),
+      roadAccessBonus,
       personAccessibility,
       freightAccessibility,
       serviceQuality,
       neighborhoodQuality,
       utilityRatio,
       constructionCostIndex,
-      marketInterestRate: this.currentDevelopmentInterestRate(),
       zoningMaxIntensity,
+    };
+  }
+
+  private developmentContextForLot(lot: Lot): DevelopmentParcelContext {
+    const local = this.localParcelContextForLot(lot);
+    const marketSignal = this.landHousingMarket.parcelSignal(lot.zone, {
+      personAccessibility: local.personAccessibility,
+      freightAccessibility: local.freightAccessibility,
+      serviceQuality: local.serviceQuality,
+      neighborhoodQuality: local.neighborhoodQuality,
+      utilityRatio: local.utilityRatio,
+      frontageAccessBonus: local.roadAccessBonus,
+    });
+    return {
+      demand: this.demandSnapshot[lot.zone],
+      taxRate: this.taxes.getRate(lot.zone),
+      personAccessibility: local.personAccessibility,
+      freightAccessibility: local.freightAccessibility,
+      serviceQuality: local.serviceQuality,
+      neighborhoodQuality: local.neighborhoodQuality,
+      utilityRatio: local.utilityRatio,
+      constructionCostIndex: local.constructionCostIndex,
+      marketInterestRate: this.currentDevelopmentInterestRate(),
+      zoningMaxIntensity: local.zoningMaxIntensity,
       ...marketSignal,
     };
+  }
+
+  private refreshHousingChoice(): HousingChoiceSnapshot {
+    const lotsById = new Map(this.lots.list().map((lot) => [lot.id, lot] as const));
+    const options = [];
+    for (const building of this.buildings.occupied()) {
+      if (building.zone !== 'residential') continue;
+      const lot = lotsById.get(building.lotId);
+      if (!lot) continue;
+      const definition = definitionForBuilding(building);
+      const local = this.localParcelContextForLot(lot);
+      const market = this.landHousingMarket.parcelSignal('residential', {
+        personAccessibility: local.personAccessibility,
+        freightAccessibility: local.freightAccessibility,
+        serviceQuality: local.serviceQuality,
+        neighborhoodQuality: local.neighborhoodQuality,
+        utilityRatio: local.utilityRatio,
+        frontageAccessBonus: local.roadAccessBonus,
+      });
+      options.push({
+        buildingId: building.id,
+        capacity: definition.residentCapacity,
+        monthlyRent: definition.baseRent * market.marketRentMultiplier,
+        personAccessibility: local.personAccessibility,
+        serviceQuality: local.serviceQuality,
+        neighborhoodQuality: local.neighborhoodQuality,
+        utilityRatio: local.utilityRatio,
+      });
+    }
+    return this.housingChoice.evaluate(this.population.population, options);
+  }
+
+  private refreshRedevelopmentPressure(): RedevelopmentPressureSnapshot {
+    const lotsById = new Map(this.lots.list().map((lot) => [lot.id, lot] as const));
+    const inputs: ResidentialRedevelopmentInput[] = [];
+    const occupiedResidential = this.buildings.occupied()
+      .filter((building) => building.zone === 'residential')
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    for (const building of occupiedResidential) {
+      const lot = lotsById.get(building.lotId);
+      if (!lot) continue;
+      const existingDefinition = definitionForBuilding(building);
+      const context = this.developmentContextForLot(lot);
+      const existingEvaluation = this.redevelopmentFeasibility.evaluateLot(lot, [existingDefinition], context)[0];
+      if (!existingEvaluation) continue;
+      const replacements = BUILDING_VARIANTS.residential
+        .filter((candidate) => INTENSITY_RANK[candidate.intensity] > INTENSITY_RANK[existingDefinition.intensity]);
+      const replacementEvaluations = replacements.length > 0
+        ? this.redevelopmentFeasibility.evaluateLot(lot, replacements, context)
+        : [];
+      inputs.push({
+        buildingId: building.id,
+        lotId: lot.id,
+        existingDefinitionId: existingDefinition.id,
+        existingBaseConstructionCost: existingDefinition.baseConstructionCost,
+        assignedResidents: this.housingChoiceSnapshot.byBuilding[building.id]?.assignedResidents ?? 0,
+        existingEvaluation,
+        replacementEvaluations,
+      });
+    }
+
+    return this.redevelopmentPressure.evaluate(inputs);
   }
 
   private refreshLandHousingMarket(): LandHousingMarketSnapshot {

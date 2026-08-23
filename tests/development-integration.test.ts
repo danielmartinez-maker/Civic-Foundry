@@ -6,6 +6,8 @@ import { UtilitySystem } from '../src/simulation/utilities/UtilitySystem.ts';
 import { GarbageSystem } from '../src/simulation/garbage/GarbageSystem.ts';
 import { WasteCollectionSystem } from '../src/simulation/services/WasteCollectionSystem.ts';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
+import { DemandSystem } from '../src/simulation/demand/DemandSystem.ts';
+import { HousingChoiceSystem } from '../src/simulation/housing/HousingChoiceSystem.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 import { RoadSystem } from '../src/world/roads/RoadSystem.ts';
 import { TreasurySystem } from '../src/simulation/treasury/TreasurySystem.ts';
@@ -58,6 +60,25 @@ function buildDevelopmentCore(withUtilities = true): SimulationCore {
     assert.equal(core.placeUtility('power', 4, 7).ok, true);
     assert.equal(core.placeUtility('water', 8, 7).ok, true);
   }
+  return core;
+}
+
+function buildOccupiedResidentialCore(withUtilities = true): SimulationCore {
+  const core = buildDevelopmentCore(withUtilities);
+  const residentialLot = core.lots.list().find((item) => item.zone === 'residential');
+  assert.ok(residentialLot);
+  core.buildings.restore([{
+    id: `building:${residentialLot.id}`,
+    lotId: residentialLot.id,
+    x: residentialLot.x,
+    y: residentialLot.y,
+    zone: 'residential',
+    definitionId: 'residential_cottage',
+    status: 'occupied',
+    constructionStartedTick: 0,
+    completionTick: 0,
+  }]);
+  core.population.restore(8);
   return core;
 }
 
@@ -137,6 +158,85 @@ test('SimulationCore exposes deterministic derived land and housing market metri
   assert.ok(first.landHousingMarketSnapshot.housingVacancyRate >= 0.03);
   assert.ok(first.landHousingMarketSnapshot.housingVacancyRate <= 0.35);
   assert.deepEqual(first.landHousingMarketSnapshot, second.landHousingMarketSnapshot);
+});
+
+test('effective affordable capacity makes unaffordable physical stock create more residential demand', () => {
+  const cheap = new HousingChoiceSystem().evaluate(30, [
+    { buildingId: 'building:a', capacity: 20, monthlyRent: 400, personAccessibility: 0.8, serviceQuality: 0.8, neighborhoodQuality: 0.8, utilityRatio: 1 },
+    { buildingId: 'building:b', capacity: 20, monthlyRent: 450, personAccessibility: 0.8, serviceQuality: 0.8, neighborhoodQuality: 0.8, utilityRatio: 1 },
+  ]);
+  const expensive = new HousingChoiceSystem().evaluate(30, [
+    { buildingId: 'building:a', capacity: 20, monthlyRent: 1_050, personAccessibility: 0.8, serviceQuality: 0.8, neighborhoodQuality: 0.8, utilityRatio: 1 },
+    { buildingId: 'building:b', capacity: 20, monthlyRent: 1_150, personAccessibility: 0.8, serviceQuality: 0.8, neighborhoodQuality: 0.8, utilityRatio: 1 },
+  ]);
+  assert.equal(cheap.physicalCapacity, expensive.physicalCapacity);
+  assert.ok(expensive.effectiveAffordableCapacity < cheap.effectiveAffordableCapacity);
+
+  const demand = new DemandSystem();
+  const common = {
+    population: 30,
+    workforce: 20,
+    employed: 18,
+    totalJobs: 24,
+    powerRatio: 1,
+    waterRatio: 1,
+    garbageRatio: 1,
+    taxRates: new TaxSystem().getRates(),
+    trafficJobAccessibility: 0.8,
+    trafficCommercialAccessibility: 0.8,
+    personAccessibility: 0.8,
+    serviceQuality: 0.8,
+    commercialServiceQuality: 0.8,
+  } as const;
+  const cheapDemand = demand.evaluate({ ...common, housingCapacity: cheap.effectiveAffordableCapacity });
+  const expensiveDemand = demand.evaluate({ ...common, housingCapacity: expensive.effectiveAffordableCapacity });
+  assert.ok(expensiveDemand.residential > cheapDemand.residential);
+});
+
+test('SimulationCore exposes deterministic aggregate housing allocation without replacing the physical cap', () => {
+  const first = buildOccupiedResidentialCore();
+  const second = buildOccupiedResidentialCore();
+  first.step(50);
+  second.step(50);
+
+  const housing = first.housingChoiceSnapshot;
+  assert.equal(housing.physicalCapacity, first.buildings.residentialCapacity());
+  assert.ok(housing.physicalCapacity > 0);
+  assert.ok(housing.effectiveAffordableCapacity >= 0);
+  assert.ok(housing.effectiveAffordableCapacity <= housing.physicalCapacity);
+  assert.ok(housing.affordabilityIndex >= 0 && housing.affordabilityIndex <= 1);
+  assert.ok(housing.housedResidents <= first.population.population);
+  assert.ok(first.population.population <= first.buildings.residentialCapacity());
+  assert.deepEqual(first.housingChoiceSnapshot, second.housingChoiceSnapshot);
+});
+
+test('SimulationCore exposes deterministic residential redevelopment pressure without mutating the occupied building', () => {
+  const first = buildOccupiedResidentialCore(true);
+  const second = buildOccupiedResidentialCore(true);
+  const targetId = first.buildings.occupied()[0]!.id;
+  const targetDefinition = first.buildings.occupied()[0]!.definitionId;
+
+  first.step(50);
+  second.step(50);
+
+  const snapshot = first.redevelopmentPressureSnapshot;
+  const target = snapshot.parcels.find((parcel) => parcel.buildingId === targetId);
+  assert.ok(target);
+  assert.ok(target.pressure >= 0 && target.pressure <= 1.25);
+  assert.ok(Number.isFinite(snapshot.averagePressure));
+  assert.deepEqual(first.redevelopmentPressureSnapshot, second.redevelopmentPressureSnapshot);
+  const stillOccupied = first.buildings.occupied().find((building) => building.id === targetId);
+  assert.ok(stillOccupied);
+  assert.equal(stillOccupied.definitionId, targetDefinition);
+});
+
+test('residential redevelopment pressure is zero when utilities make higher intensity replacement infeasible', () => {
+  const core = buildOccupiedResidentialCore(false);
+  const targetId = core.buildings.occupied()[0]!.id;
+  core.step(50);
+  const target = core.redevelopmentPressureSnapshot.parcels.find((parcel) => parcel.buildingId === targetId);
+  assert.ok(target);
+  assert.equal(target.pressure, 0);
 });
 
 test('SimulationCore routes feasible parcels through deterministic developer awards', () => {
