@@ -26,6 +26,8 @@ An occupied residential parcel becomes an executable redevelopment opportunity o
 
 The physical-capacity guard prevents redevelopment from causing an immediate citywide housing-capacity shortfall. The affordability guard prevents redevelopment from consuming nearly all lower-cost slack while still allowing some market transition.
 
+When more than one parcel qualifies in the same 10-tick market cycle, safeguards are reserved cumulatively in deterministic redevelopment-pressure order. After an opportunity is admitted, its existing physical and effective-affordable capacity is removed from the remaining slack used to test later opportunities. This guarantees that even if every admitted redevelopment opportunity receives an award, their combined demolition cannot violate the relocation floor.
+
 ## Redevelopment economics
 
 The pressure system already calculates:
@@ -39,8 +41,8 @@ For actual developer bidding, the replacement feasibility result is adjusted so 
 
 - `redevelopmentFrictionCost = demolitionCost + displacementCost`
 - `preFinanceDevelopmentCost += redevelopmentFrictionCost`
-- `totalDevelopmentCost += redevelopmentFrictionCost`
-- `returnOnCost`, `yieldOnCost`, and `residualLandValue` are recomputed from the adjusted cost basis.
+- neutral market financing cost is recomputed on the adjusted pre-finance basis
+- `totalDevelopmentCost`, `returnOnCost`, `yieldOnCost`, and `residualLandValue` are recomputed from the adjusted cost basis.
 
 `DeveloperMarketSystem.allocate()` then applies its normal leverage, financing spread, hurdle-rate, risk-tolerance, capital, and project-slot rules. This preserves one competitive capital market for both vacant development and redevelopment.
 
@@ -52,7 +54,7 @@ Every 10-tick development evaluation:
 2. Refresh aggregate housing choice.
 3. Refresh redevelopment pressure.
 4. Build vacant-lot opportunities as before.
-5. Build safeguarded redevelopment opportunities from occupied residential parcels.
+5. Build safeguarded redevelopment opportunities from occupied residential parcels, reserving relocation slack cumulatively.
 6. Send both opportunity sets to one `DeveloperMarketSystem.allocate()` call.
 7. For each award:
    - vacant lot -> existing `BuildingSystem.startDevelopment()`;
@@ -66,14 +68,16 @@ This slice does not model household move events. Instead, it enforces enough exi
 
 For a target building:
 
-- `postPhysicalCapacity = physicalCapacity - targetResidentCapacity`
-- `postAffordableCapacity = effectiveAffordableCapacity - targetResidentCapacity * targetAffordabilityScore`
+- `postPhysicalCapacity = remainingPhysicalCapacity - targetResidentCapacity`
+- `postAffordableCapacity = remainingAffordableCapacity - targetResidentCapacity * targetAffordabilityScore`
 
 Execution requires:
 
 - `postPhysicalCapacity >= population`
 - `postAffordableCapacity >= population * 0.85`
 - `unplacedResidents === 0`
+
+Eligible parcels are processed in the stable order already emitted by `RedevelopmentPressureSystem` (pressure descending, then lot ID). Once a parcel passes, its post-demolition capacities become the remaining capacities used for the next parcel.
 
 This is intentionally conservative. Detailed household search, tenure, leases, mortgages, displacement queues, and temporary housing remain deferred.
 
