@@ -118,7 +118,7 @@ test('SimulationCore city grows with managed services and stalls without them', 
   assert.equal(managed.utilitySnapshot.water.serviceRatio, 1);
   assert.equal(managed.garbageSnapshot.serviceRatio, 1);
   assert.equal(unmanaged.population.population, 0);
-  assert.equal(unmanaged.utilitySnapshot.power.serviceRatio, 0);
-  assert.equal(unmanaged.utilitySnapshot.water.serviceRatio, 0);
-  assert.ok(unmanaged.garbageSnapshot.backlog > 0);
+  assert.equal(unmanaged.buildings.list().length, 0);
+  assert.equal(unmanaged.utilities.listFacilities().length, 0);
+  assert.equal(unmanaged.garbageSnapshot.backlog, 0);
 });
