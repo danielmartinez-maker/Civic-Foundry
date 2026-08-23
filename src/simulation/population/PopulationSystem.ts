@@ -22,6 +22,11 @@ export class PopulationSystem {
     }
   }
 
+  sync(population: number): void {
+    if (!Number.isFinite(population) || population < 0) throw new Error('population sync must be non-negative and finite');
+    this.population = Math.floor(population);
+  }
+
   restore(population: number): void {
     if (!Number.isFinite(population) || population < 0) throw new Error('invalid population restore');
     this.population = Math.floor(population);
