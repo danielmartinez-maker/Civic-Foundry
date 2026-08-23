@@ -41,6 +41,7 @@ import { EconomyScheduler } from '../economy/EconomyScheduler.ts';
 import { DevelopmentFeasibilitySystem } from '../development/DevelopmentFeasibilitySystem.ts';
 import { DeveloperMarketSystem } from '../development/DeveloperMarketSystem.ts';
 import { LandHousingMarketSystem, type LandHousingMarketSnapshot } from '../development/LandHousingMarketSystem.ts';
+import { RedevelopmentPressureSystem, type RedevelopmentPressureSnapshot, type ResidentialRedevelopmentInput } from '../development/RedevelopmentPressureSystem.ts';
 import type { DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';
 import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/HousingChoiceSystem.ts';
 
@@ -64,6 +65,7 @@ type LocalParcelContext = Readonly<{
 }>;
 
 const DEPARTMENTS: readonly ServiceDepartment[] = ['fire', 'police', 'healthcare', 'education', 'garbage'];
+const INTENSITY_RANK: Readonly<Record<BuildingIntensity, number>> = Object.freeze({ low: 0, medium: 1, high: 2 });
 
 export class SimulationCore {
   readonly seed: number;
@@ -105,6 +107,8 @@ export class SimulationCore {
   readonly developerMarket: DeveloperMarketSystem;
   readonly landHousingMarket: LandHousingMarketSystem;
   readonly housingChoice: HousingChoiceSystem;
+  readonly redevelopmentPressure: RedevelopmentPressureSystem;
+  private readonly redevelopmentFeasibility: DevelopmentFeasibilitySystem;
 
   employmentSnapshot: EmploymentSnapshot;
   utilitySnapshot: UtilitySnapshot;
@@ -126,6 +130,10 @@ export class SimulationCore {
 
   get housingChoiceSnapshot(): HousingChoiceSnapshot {
     return this.housingChoice.snapshot();
+  }
+
+  get redevelopmentPressureSnapshot(): RedevelopmentPressureSnapshot {
+    return this.redevelopmentPressure.snapshot();
   }
 
   constructor(options: SimulationCoreOptions = {}) {
@@ -171,9 +179,11 @@ export class SimulationCore {
     this.mobility = new MobilityScheduler();
     this.economyDomain = new EconomyScheduler(this.seed);
     this.developmentFeasibility = new DevelopmentFeasibilitySystem();
+    this.redevelopmentFeasibility = new DevelopmentFeasibilitySystem();
     this.developerMarket = new DeveloperMarketSystem();
     this.landHousingMarket = new LandHousingMarketSystem();
     this.housingChoice = new HousingChoiceSystem();
+    this.redevelopmentPressure = new RedevelopmentPressureSystem();
 
     this.employmentSnapshot = this.employment.evaluate(0, 0);
     this.utilitySnapshot = this.utilities.evaluate([]);
@@ -193,6 +203,7 @@ export class SimulationCore {
     this.mobilitySnapshot = this.mobility.snapshot();
     this.refreshLandHousingMarket();
     this.refreshHousingChoice();
+    this.refreshRedevelopmentPressure();
   }
 
   buildRoad(cells: readonly CellCoord[], type: RoadType): RoadPlacementResult {
@@ -437,6 +448,7 @@ export class SimulationCore {
     this.population.update(this.buildings.residentialCapacity(), attractiveness);
     this.refreshLandHousingMarket();
     this.refreshHousingChoice();
+    this.refreshRedevelopmentPressure();
   }
 
   private evaluateDevelopmentMarket(): void {
@@ -557,6 +569,39 @@ export class SimulationCore {
       });
     }
     return this.housingChoice.evaluate(this.population.population, options);
+  }
+
+  private refreshRedevelopmentPressure(): RedevelopmentPressureSnapshot {
+    const lotsById = new Map(this.lots.list().map((lot) => [lot.id, lot] as const));
+    const inputs: ResidentialRedevelopmentInput[] = [];
+    const occupiedResidential = this.buildings.occupied()
+      .filter((building) => building.zone === 'residential')
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    for (const building of occupiedResidential) {
+      const lot = lotsById.get(building.lotId);
+      if (!lot) continue;
+      const existingDefinition = definitionForBuilding(building);
+      const context = this.developmentContextForLot(lot);
+      const existingEvaluation = this.redevelopmentFeasibility.evaluateLot(lot, [existingDefinition], context)[0];
+      if (!existingEvaluation) continue;
+      const replacements = BUILDING_VARIANTS.residential
+        .filter((candidate) => INTENSITY_RANK[candidate.intensity] > INTENSITY_RANK[existingDefinition.intensity]);
+      const replacementEvaluations = replacements.length > 0
+        ? this.redevelopmentFeasibility.evaluateLot(lot, replacements, context)
+        : [];
+      inputs.push({
+        buildingId: building.id,
+        lotId: lot.id,
+        existingDefinitionId: existingDefinition.id,
+        existingBaseConstructionCost: existingDefinition.baseConstructionCost,
+        assignedResidents: this.housingChoiceSnapshot.byBuilding[building.id]?.assignedResidents ?? 0,
+        existingEvaluation,
+        replacementEvaluations,
+      });
+    }
+
+    return this.redevelopmentPressure.evaluate(inputs);
   }
 
   private refreshLandHousingMarket(): LandHousingMarketSnapshot {
