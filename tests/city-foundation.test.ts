@@ -4,9 +4,11 @@ import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.
 import { TreasurySystem } from '../src/simulation/treasury/TreasurySystem.ts';
 import { RoadSystem } from '../src/world/roads/RoadSystem.ts';
 import { ZoningSystem } from '../src/simulation/zoning/ZoningSystem.ts';
-import { LotSystem } from '../src/world/lots/LotSystem.ts';
+import { LotSystem, type Lot } from '../src/world/lots/LotSystem.ts';
 import { BuildingSystem } from '../src/simulation/buildings/BuildingSystem.ts';
 import { PopulationSystem } from '../src/simulation/population/PopulationSystem.ts';
+import { getBuildingDefinition } from '../src/data/buildings.ts';
+import type { DevelopmentAward } from '../src/simulation/development/DevelopmentTypes.ts';
 
 function flatTerrain(width = 12, height = 8): TerrainGrid {
   const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({
@@ -16,6 +18,34 @@ function flatTerrain(width = 12, height = 8): TerrainGrid {
     biome: 'grass' as const,
   }));
   return new TerrainGrid(width, height, cells);
+}
+
+function awardForLot(lot: Lot, definitionId: string, tick = 0): DevelopmentAward {
+  const definition = getBuildingDefinition(definitionId);
+  const completionTick = tick + definition.constructionTicks;
+  return {
+    id: `bid:${lot.id}`,
+    lotId: lot.id,
+    definitionId,
+    zone: lot.zone,
+    developerId: 'fixture_developer',
+    expectedReturn: 0.2,
+    expectedReturnMargin: 0.1,
+    requiredEquity: 10_000,
+    financingCost: 1_000,
+    totalDevelopmentCost: 50_000,
+    preferenceBonus: 0,
+    capitalEfficiencyBonus: 0,
+    residualValueBonus: 0,
+    riskPenalty: 0,
+    rankScore: 0.1,
+    residualLandValue: 20_000,
+    awardId: `award:${lot.id}`,
+    buildingId: `building:${lot.id}`,
+    awardTick: tick,
+    completionTick,
+    releaseTick: completionTick + 100,
+  };
 }
 
 test('road placement validates terrain, charges exact cost, and increments revision', () => {
@@ -60,7 +90,10 @@ test('buildings move from construction to occupied and expose real capacities', 
   const lots = new LotSystem();
   lots.rebuild(roads, zoning);
   const buildings = new BuildingSystem();
-  buildings.evaluateDevelopment(0, lots.list(), { residential: 1, commercial: 1, industrial: 1 });
+  for (const lot of lots.list()) {
+    const definitionId = lot.zone === 'residential' ? 'residential_cottage' : 'commercial_shop';
+    buildings.startDevelopment(0, lot, awardForLot(lot, definitionId));
+  }
   assert.equal(buildings.list().length, 2);
   assert.ok(buildings.list().every((b) => b.status === 'construction'));
   buildings.tick(100);
