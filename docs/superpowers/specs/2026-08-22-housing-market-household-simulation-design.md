@@ -54,7 +54,7 @@ Those belong primarily to later demographic, government, and finance phases.
 4. **Bounded complexity.** No all-households x all-units matching and no uncontrolled entity explosion.
 5. **Real assignments.** Housing demand is represented by households assigned to real residential buildings.
 6. **Persistent markets.** Rents, prices, tenure, vacancy, mortgage proxies, and move state evolve over time.
-7. **Exclusive tenure supply.** A physical housing unit is either rentable, for sale, owner-occupied, renter-occupied, or temporarily unavailable; it cannot be double-counted.
+7. **Exclusive tenure supply.** A physical housing unit is either vacant-rental, vacant-for-sale, renter-occupied, owner-occupied, or temporarily unavailable; it cannot be double-counted.
 8. **Endogenous development.** Residential projects increasingly rely on real achievable market economics rather than generic demand alone.
 9. **Phase-safe integration.** Existing mobility, firms, services, development, and V7 saves remain functional during transition.
 
@@ -121,8 +121,8 @@ The building ledger contains:
 - nominal resident capacity;
 - practical overcrowding ceiling;
 - `housingProduct`: `rental | for_sale | mixed`;
-- rentable units;
-- for-sale units;
+- `rentalProductUnits`;
+- `forSaleProductUnits`;
 - renter-occupied units;
 - owner-occupied units;
 - vacant rentable units;
@@ -142,11 +142,15 @@ The building ledger contains:
 - realized rent/price change;
 - redevelopment-pressure inputs and result.
 
-For every building:
+For every building, all physical units must reconcile exactly:
 
-`rentable + forSale + renterOccupied + ownerOccupied + unavailable = housingUnits`
+`rentalProductUnits = renterOccupiedUnits + vacantRentableUnits`
 
-No unit may be counted twice.
+`forSaleProductUnits = ownerOccupiedUnits + vacantForSaleUnits`
+
+`rentalProductUnits + forSaleProductUnits + unavailableUnits = housingUnits`
+
+A rental-only project has `forSaleProductUnits = 0`; a for-sale project has `rentalProductUnits = 0`. Mixed projects persist a deterministic split. No unit may be counted twice.
 
 ### Tenure Product Assignment
 Residential physical form and tenure product are separate concepts. A cottage, rowhouse, or apartment may be rental or owner product when economically plausible.
@@ -654,7 +658,7 @@ The implementation plan must choose a measurable entity-growth invariant based o
 2. Save/load at a market boundary produces the same future as uninterrupted simulation.
 
 ### Supply and Tenure
-3. Housing-unit conservation holds for every building.
+3. Housing-unit conservation holds for every building using the explicit product/occupancy equations.
 4. A unit cannot be simultaneously rental-available and for-sale, or occupied by both renter and owner.
 5. New projects persist their awarded tenure product and cannot frictionlessly flip product.
 6. Legacy V7 buildings receive deterministic compatibility unit counts and tenure products.
