@@ -32,10 +32,10 @@ function serviceCore(): SimulationCore {
   return core;
 }
 
-test('Save V4 round-trips authoritative public-service state and active service vehicles', () => {
+test('current Save V7 round-trips authoritative public-service state and active service vehicles', () => {
   const core = serviceCore();
   const save = serializeCore(core);
-  assert.equal(save.saveVersion, 6);
+  assert.equal(save.saveVersion, 7);
   assert.ok(save.services.facilities.length >= 5);
   assert.ok(save.services.jobs.length > 0);
   assert.ok(save.services.vehicles.length > 0);
@@ -43,7 +43,7 @@ test('Save V4 round-trips authoritative public-service state and active service 
   assert.deepEqual(serializeCore(loaded), save);
 });
 
-test('Save V4 deterministic continuation reproduces identical authoritative state', () => {
+test('current save deterministic continuation reproduces identical authoritative state', () => {
   const a = serviceCore();
   const bCore = hydrateCore(JSON.parse(JSON.stringify(serializeCore(a))));
   a.step(180); bCore.step(180);
