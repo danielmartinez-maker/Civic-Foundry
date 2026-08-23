@@ -140,7 +140,7 @@ export class DeveloperMarketSystem {
 
     const candidateBids: DevelopmentBid[] = [];
     const orderedOpportunities = opportunities
-      .filter((item) => item.legal && item.feasible)
+      .filter((item) => item.legal && item.feasible && !this.commitments.has(`building:${item.lotId}`))
       .slice()
       .sort((a, b) => a.lotId.localeCompare(b.lotId) || a.definitionId.localeCompare(b.definitionId));
 
@@ -208,6 +208,7 @@ export class DeveloperMarketSystem {
       const releaseTick = completionTick + 100;
       const awardId = `development:${context.tick}:${bid.lotId}:${bid.definitionId}:${bid.developerId}`;
       const buildingId = `building:${bid.lotId}`;
+      if (this.commitments.has(buildingId)) continue;
       const award: DevelopmentAward = Object.freeze({
         ...bid,
         awardId,
