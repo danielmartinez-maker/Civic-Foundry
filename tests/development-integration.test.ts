@@ -4,6 +4,8 @@ import { BuildingSystem } from '../src/simulation/buildings/BuildingSystem.ts';
 import { TaxSystem } from '../src/simulation/tax/TaxSystem.ts';
 import { UtilitySystem } from '../src/simulation/utilities/UtilitySystem.ts';
 import { GarbageSystem } from '../src/simulation/garbage/GarbageSystem.ts';
+import { WasteCollectionSystem } from '../src/simulation/services/WasteCollectionSystem.ts';
+import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 import { RoadSystem } from '../src/world/roads/RoadSystem.ts';
 import { TreasurySystem } from '../src/simulation/treasury/TreasurySystem.ts';
@@ -44,6 +46,19 @@ function flatTerrain(width = 8, height = 8): TerrainGrid {
     elevation: 0.5, water: false, buildable: true, biome: 'grass' as const,
   }));
   return new TerrainGrid(width, height, cells);
+}
+
+function buildDevelopmentCore(withUtilities = true): SimulationCore {
+  const core = new SimulationCore({ terrain: flatTerrain(20, 12), startingFunds: 300_000, seed: 41 });
+  assert.equal(core.buildRoad(Array.from({ length: 14 }, (_, i) => ({ x: i + 2, y: 6 })), 'local').ok, true);
+  core.paintZone([{ x: 3, y: 5 }, { x: 4, y: 5 }, { x: 5, y: 5 }], 'residential');
+  core.paintZone([{ x: 7, y: 5 }, { x: 8, y: 5 }], 'commercial');
+  core.paintZone([{ x: 10, y: 5 }, { x: 11, y: 5 }], 'industrial');
+  if (withUtilities) {
+    assert.equal(core.placeUtility('power', 4, 7).ok, true);
+    assert.equal(core.placeUtility('water', 8, 7).ok, true);
+  }
+  return core;
 }
 
 test('BuildingSystem starts only an awarded project and preserves developer finance metadata', () => {
@@ -93,6 +108,15 @@ test('variant definition drives occupied capacity utilities taxes and garbage', 
   assert.equal(garbage.evaluate(occupied, roads, []).generated, 5);
 });
 
+test('routed waste collection also uses the awarded project variant', () => {
+  const buildings = new BuildingSystem();
+  buildings.startDevelopment(100, lot, award());
+  buildings.tick(170);
+  const waste = new WasteCollectionSystem();
+  assert.equal(waste.generate(buildings.occupied(), 200), 5);
+  assert.equal(waste.getBuildingWaste('building:lot:2,2')?.wasteGenerationRate, 5);
+});
+
 test('legacy fixture definition IDs retain zone-default compatibility', () => {
   const buildings = new BuildingSystem();
   buildings.restore([{
@@ -100,4 +124,35 @@ test('legacy fixture definition IDs retain zone-default compatibility', () => {
     status: 'occupied', constructionStartedTick: 0, completionTick: 0,
   }]);
   assert.equal(buildings.residentialCapacity(), 10);
+});
+
+test('SimulationCore routes feasible parcels through deterministic developer awards', () => {
+  const first = buildDevelopmentCore(true);
+  const second = buildDevelopmentCore(true);
+  first.step(600);
+  second.step(600);
+
+  assert.ok(first.buildings.list().length > 0);
+  assert.ok(first.buildings.list().some((building) => building.developerId));
+  assert.deepEqual(first.buildings.list(), second.buildings.list());
+  assert.deepEqual(first.developerMarket.snapshotState(), second.developerMarket.snapshotState());
+});
+
+test('city development is blocked when infrastructure eligibility fails', () => {
+  const core = buildDevelopmentCore(false);
+  core.step(300);
+  assert.equal(core.buildings.list().length, 0);
+  assert.equal(core.developerMarket.lastAwards().length, 0);
+});
+
+test('city development is blocked when every developer hurdle is above expected returns', () => {
+  const core = buildDevelopmentCore(true);
+  const state = core.developerMarket.snapshotState();
+  core.developerMarket.restoreState({
+    developers: state.developers.map((developer) => ({ ...developer, hurdleRate: 5 })),
+    commitments: state.commitments,
+  });
+  core.step(300);
+  assert.equal(core.buildings.list().length, 0);
+  assert.equal(core.developerMarket.lastAwards().length, 0);
 });
