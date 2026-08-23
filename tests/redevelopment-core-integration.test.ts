@@ -71,5 +71,6 @@ test('SimulationCore sends safeguarded occupied residential redevelopment throug
   }
   assert.equal(core.population.population, 6, 'demolition must not directly mutate aggregate population');
   assert.ok(core.buildings.residentialCapacity() >= core.population.population, 'remaining occupied stock must absorb current population');
-  assert.ok(core.developerMarket.lastAwards().some((award) => originalIds.has(award.buildingId)));
+  const committedBuildingIds = new Set(core.developerMarket.listCommitments().map((commitment) => commitment.buildingId));
+  assert.ok(replacements.every((replacement) => committedBuildingIds.has(replacement.id)), 'active redevelopment must retain its authoritative developer commitment');
 });
