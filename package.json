@@ -1,6 +1,6 @@
 {
   "name": "civic-foundry",
-  "version": "0.6.0-metropolitan",
+  "version": "0.7.0-metropolitan",
   "private": true,
   "type": "module",
   "scripts": {
