@@ -15,6 +15,7 @@ export type RedevelopmentExecutionInput = Readonly<{
   pressure: ResidentialRedevelopmentPressure;
   residentCapacity: number;
   affordabilityScore: number;
+  activeCommitment?: boolean;
   replacementEvaluation: DevelopmentFeasibilityResult;
 }>;
 
@@ -22,6 +23,7 @@ export type RedevelopmentExecutionDecisionReason =
   | 'admitted'
   | 'low-pressure'
   | 'unplaced-residents'
+  | 'active-commitment'
   | 'replacement-mismatch'
   | 'replacement-infeasible'
   | 'physical-capacity'
@@ -139,6 +141,10 @@ export class RedevelopmentExecutionSystem {
       }
       if (input.pressure.pressure < MINIMUM_REDEVELOPMENT_PRESSURE) {
         decisions.push(Object.freeze({ ...decisionBase, reason: 'low-pressure' }));
+        continue;
+      }
+      if (input.activeCommitment === true) {
+        decisions.push(Object.freeze({ ...decisionBase, reason: 'active-commitment' }));
         continue;
       }
       if (
