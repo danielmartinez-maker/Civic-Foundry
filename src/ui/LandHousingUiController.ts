@@ -15,6 +15,7 @@ export class LandHousingUiController {
   private mode: LandHousingOverlayMode = 'none';
   private synchronizing = false;
   private lastPanelBucket = -1;
+  private lastCore: GameApp['core'] | null = null;
 
   constructor(private readonly app: GameApp, private readonly root: HTMLElement) {
     const economySection = this.required<HTMLElement>('[data-testid="economy-panel"]').closest<HTMLElement>('.panel-section');
@@ -57,6 +58,8 @@ export class LandHousingUiController {
 
     this.bindOverlayControls();
     this.renderPanel();
+    this.lastCore = this.app.core;
+    this.lastPanelBucket = Math.floor(this.app.core.clock.tick / 10);
     this.renderOverlay();
     requestAnimationFrame(() => this.frame());
   }
@@ -135,8 +138,10 @@ export class LandHousingUiController {
   }
 
   private frame(): void {
-    const bucket = Math.floor(this.app.core.clock.tick / 10);
-    if (bucket !== this.lastPanelBucket) {
+    const currentCore = this.app.core;
+    const bucket = Math.floor(currentCore.clock.tick / 10);
+    if (currentCore !== this.lastCore || bucket !== this.lastPanelBucket) {
+      this.lastCore = currentCore;
       this.lastPanelBucket = bucket;
       this.renderPanel();
     }
