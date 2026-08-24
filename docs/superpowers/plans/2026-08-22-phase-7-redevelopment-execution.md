@@ -19,6 +19,8 @@
 - Post-demolition physical capacity must be >= current population.
 - Post-demolition effective affordable capacity must be >= 85% of current population.
 - Existing unplaced residents block redevelopment.
+- An occupied building with an active developer commitment blocks redevelopment until the commitment releases.
+- `DeveloperMarketSystem` must independently reject any second award targeting a deterministic building ID with an active commitment.
 - Relocation slack is reserved cumulatively across same-cycle candidates.
 - Redevelopment uses the existing developer market and competes with vacant-lot development.
 
@@ -52,13 +54,16 @@
 - [x] **Step 3: Implement safeguards** against current population, physical capacity, effective affordable capacity and current per-building affordability.
 - [x] **Step 4: Implement cumulative reservation** in stable redevelopment-pressure order.
 - [x] **Step 5: Implement cost-adjusted feasibility** with friction added to pre-finance cost and recomputed financing/total cost, yield-on-cost, return-on-cost and residual land value.
-- [x] **Step 6: Verify GREEN** before core integration.
+- [x] **Step 6: Add active-commitment planner blocking** so an occupied building cannot be admitted while prior developer capital remains locked to its deterministic ID.
+- [x] **Step 7: Verify GREEN** before core integration.
 
 ### Task 3: One competitive developer market for vacant and occupied parcels
 
 **Files:**
 - Modify: `src/simulation/core/SimulationCore.ts`
+- Modify: `src/simulation/development/DeveloperMarketSystem.ts`
 - Test: `tests/redevelopment-core-integration.test.ts`
+- Test: `tests/developer-market.test.ts`
 
 **Interfaces:**
 - `evaluateDevelopmentMarket()` refreshes property/housing/redevelopment state, then combines vacant and admitted redevelopment opportunities before one `DeveloperMarketSystem.allocate()` call.
@@ -71,7 +76,9 @@
 - [x] **Step 6: Remove the old occupied building from the economy domain on redevelopment and refresh all derived market/housing/redevelopment snapshots after awards.**
 - [x] **Step 7: Keep population unchanged at demolition time and verify remaining occupied stock can support current population.**
 - [x] **Step 8: Correct the test observation** to inspect persistent developer commitments rather than `lastAwards()`, which is intentionally overwritten by later auctions.
-- [x] **Step 9: Verify GREEN:** 250/250 tests passed.
+- [x] **Step 9: Add developer-market RED regression** proving a second award for `building:<lotId>` cannot overwrite an unreleased commitment; add both opportunity filtering and an award-loop backstop.
+- [x] **Step 10: Add core diagnostic RED regression** with a seeded live commitment; wire `SimulationCore` to pass live committed-building state so the planner reports `active-commitment`.
+- [x] **Step 11: Verify GREEN:** GitHub Actions run #144 passed 253/253 tests, typecheck, lint and build on the commitment-wired code head.
 
 ### Task 4: Regression, persistence and documentation
 
@@ -83,15 +90,17 @@
 
 - [x] **Step 1: Update docs** to distinguish redevelopment pressure (derived diagnostic), execution planning (derived safeguard/economic gate) and redevelopment execution (developer-backed building state transition).
 - [x] **Step 2: Preserve Save V7 schema:** executed redevelopment reuses existing building construction state plus existing developer commitment; no new authoritative envelope is needed.
-- [x] **Step 3: Run `npm test`.** Code gate: 250/250 passed.
-- [x] **Step 4: Run `npm run typecheck`.** Passed.
-- [x] **Step 5: Run `npm run lint`.** Passed.
-- [x] **Step 6: Run `npm run build`.** Passed.
-- [ ] **Step 7: Verify the final documentation head with GitHub Actions, review the final diff, merge PR #10 to `main`, and retire the obsolete conflicting Phase 7 PR under the user's consolidation instruction.**
+- [x] **Step 3: Document the active-commitment invariant and defense-in-depth developer-market duplicate guard.**
+- [x] **Step 4: Run `npm test` on the commitment-wired code head.** GitHub Actions run #144: 253/253 passed.
+- [x] **Step 5: Run `npm run typecheck`.** Passed in run #144.
+- [x] **Step 6: Run `npm run lint`.** Passed in run #144.
+- [x] **Step 7: Run `npm run build`.** Passed in run #144.
+- [ ] **Step 8: Verify the final documentation head with GitHub Actions, review the final diff, merge PR #10 to `main`, and retire the obsolete conflicting Phase 7 PR under the user's consolidation instruction.**
 
 ## Self-review
 
-- Eligibility, cost adjustment, cumulative relocation safeguards, developer competition, building replacement, population behavior and persistence are implemented as separate causal responsibilities.
+- Eligibility, cost adjustment, cumulative relocation safeguards, active-commitment gating, developer competition, building replacement, population behavior and persistence are implemented as separate causal responsibilities.
+- Planner diagnostics and the authoritative developer market deliberately duplicate the active-building-commitment check: the first provides accurate causal diagnostics, the second protects capital-ledger integrity even if callers bypass the planner.
 - No individual household, lease, mortgage, homelessness, commercial/industrial redevelopment or UI state was smuggled into the slice.
 - `RedevelopmentExecutionSystem` remains pure/derived; authoritative effects continue to live in existing `BuildingSystem` and `DeveloperMarketSystem` state.
 - No random or wall-clock source was added and no Save V7 production schema file was changed.
