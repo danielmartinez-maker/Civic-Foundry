@@ -1,0 +1,25 @@
+name: Phase 0A Isolated Performance
+
+on:
+  push:
+    branches: [phase0a-perf-pre, phase0a-perf-post]
+
+permissions:
+  contents: read
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run isolated economy benchmark five times
+        run: |
+          for i in 1 2 3 4 5; do
+            echo "PHASE0A_ISOLATED_RUN=$i"
+            node --experimental-strip-types --test tests/phase6-headless.test.ts
+          done
