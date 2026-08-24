@@ -1,3 +1,8 @@
+import type { CommandBus } from './CommandBus.ts';
+import type { DomainEventJournal } from './DomainEventJournal.ts';
+import type { RandomStreamRegistry } from './RandomStreamRegistry.ts';
+import type { SnapshotRegistry } from './SnapshotRegistry.ts';
+
 export type DomainKey = string;
 export type KernelSystemId = string;
 export type CommandType = string;
@@ -19,18 +24,12 @@ export function isDue(cadence: SystemCadence, tick: number): boolean {
   return tick >= offset && (tick - offset) % cadence.every === 0;
 }
 
-/**
- * Kernel infrastructure ports are intentionally structural here so the scheduler
- * foundation can compile independently. Later Phase 0A tasks bind these slots to
- * the concrete CommandBus, DomainEventJournal, RandomStreamRegistry and
- * SnapshotRegistry implementations without changing system definitions.
- */
 export type KernelStepContext = Readonly<{
   tick: number;
-  commands: unknown;
-  events: unknown;
-  random: unknown;
-  snapshots: unknown;
+  commands: CommandBus;
+  events: DomainEventJournal;
+  random: RandomStreamRegistry;
+  snapshots: SnapshotRegistry;
 }>;
 
 export type KernelSystemDefinition = Readonly<{
