@@ -1,0 +1,135 @@
+name: Phase 7 Core Integration Patch
+
+on:
+  push:
+    branches: [phase7-tenure-relocation]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[phase7-patch]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase7-tenure-relocation
+          fetch-depth: 0
+      - name: Apply assertion-checked core integration
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              return text.replace(old, new, 1)
+
+          # Add a non-mutating snapshot refresh for save restore / policy refresh.
+          p = Path('src/simulation/housing/HousingRelocationSystem.ts')
+          text = p.read_text()
+          marker = '''  snapshotState(): HousingRelocationState {\n'''
+          addition = '''  refreshSnapshot(population: number, options: readonly HousingTenureOption[]): HousingRelocationSnapshot {\n    finiteNonNegative('population', population);\n    const validOptions = validateOptions(options);\n    if (!this.initialized) return this.initialize(population, validOptions);\n    const represented = this.representedResidents();\n    if (Math.abs(represented - population) > 1e-6) {\n      throw new Error(`housing relocation resident conservation failed: ${represented} != ${population}`);\n    }\n    this.latest = this.buildSnapshot(population, validOptions, emptyCycle());\n    return this.snapshot();\n  }\n\n'''
+          text = replace_once(text, marker, addition + marker, 'relocation refreshSnapshot')
+          p.write_text(text)
+
+          p = Path('src/simulation/core/SimulationCore.ts')
+          text = p.read_text()
+          text = replace_once(
+              text,
+              "import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/HousingChoiceSystem.ts';\n",
+              "import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/HousingChoiceSystem.ts';\nimport { HousingTenureSystem, type HousingTenureSnapshot } from '../housing/HousingTenureSystem.ts';\nimport { HousingRelocationSystem, type HousingRelocationSnapshot, type HousingRelocationState } from '../housing/HousingRelocationSystem.ts';\nimport { housingAffordabilityScore } from '../housing/HousingEconomics.ts';\n",
+              'core imports',
+          )
+          text = replace_once(
+              text,
+              '''  readonly landHousingMarket: LandHousingMarketSystem;\n  readonly housingChoice: HousingChoiceSystem;\n  readonly redevelopmentPressure: RedevelopmentPressureSystem;\n''',
+              '''  readonly landHousingMarket: LandHousingMarketSystem;\n  readonly housingChoice: HousingChoiceSystem;\n  readonly housingTenure: HousingTenureSystem;\n  readonly housingRelocation: HousingRelocationSystem;\n  readonly redevelopmentPressure: RedevelopmentPressureSystem;\n''',
+              'core housing fields',
+          )
+          text = replace_once(
+              text,
+              '''  get housingChoiceSnapshot(): HousingChoiceSnapshot {\n    return this.housingChoice.snapshot();\n  }\n\n''',
+              '''  get housingChoiceSnapshot(): HousingChoiceSnapshot {\n    return this.housingChoice.snapshot();\n  }\n\n  get housingTenureSnapshot(): HousingTenureSnapshot {\n    return this.housingTenure.snapshot();\n  }\n\n  get housingRelocationSnapshot(): HousingRelocationSnapshot {\n    return this.housingRelocation.snapshot();\n  }\n\n''',
+              'core housing getters',
+          )
+          text = replace_once(
+              text,
+              '''    this.landHousingMarket = new LandHousingMarketSystem();\n    this.housingChoice = new HousingChoiceSystem();\n    this.redevelopmentPressure = new RedevelopmentPressureSystem();\n''',
+              '''    this.landHousingMarket = new LandHousingMarketSystem();\n    this.housingChoice = new HousingChoiceSystem();\n    this.housingTenure = new HousingTenureSystem();\n    this.housingRelocation = new HousingRelocationSystem();\n    this.redevelopmentPressure = new RedevelopmentPressureSystem();\n''',
+              'core housing constructors',
+          )
+          text = replace_once(
+              text,
+              '''    this.mobilitySnapshot = this.mobility.snapshot();\n    this.refreshLandHousingMarket();\n    this.refreshHousingChoice();\n    this.refreshRedevelopmentPressure();\n''',
+              '''    this.mobilitySnapshot = this.mobility.snapshot();\n    this.refreshLandHousingMarket();\n    this.refreshHousingTenure();\n    this.housingRelocation.initialize(this.population.population, this.housingTenureSnapshot.options);\n    this.refreshHousingChoice();\n    this.refreshRedevelopmentPressure();\n''',
+              'core constructor housing bootstrap',
+          )
+          text = replace_once(
+              text,
+              '''  setDevelopmentPolicy(patch: DevelopmentPolicyPatch): DevelopmentPolicyState {\n    const state = this.developmentPolicy.update(patch);\n    this.refreshHousingChoice();\n    this.refreshRedevelopmentPressure();\n    this.refreshRedevelopmentExecution();\n    return state;\n  }\n\n''',
+              '''  setDevelopmentPolicy(patch: DevelopmentPolicyPatch): DevelopmentPolicyState {\n    const state = this.developmentPolicy.update(patch);\n    this.refreshHousingTenure();\n    this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);\n    this.refreshHousingChoice();\n    this.refreshRedevelopmentPressure();\n    this.refreshRedevelopmentExecution();\n    return state;\n  }\n\n  restoreHousingState(state?: HousingRelocationState): HousingRelocationState {\n    this.refreshLandHousingMarket();\n    this.refreshHousingTenure();\n    if (state === undefined) {\n      this.housingRelocation.initialize(this.population.population, this.housingTenureSnapshot.options);\n    } else {\n      const buildingZones = new Map(this.buildings.occupied().map((building) => [building.id, building.zone] as const));\n      const optionCapacities = new Map(this.housingTenureSnapshot.options.map((option) => [`${option.buildingId}|${option.tenure}`, option.capacity] as const));\n      const assigned = new Map<string, number>();\n      for (const allocation of state.allocations) {\n        if (buildingZones.get(allocation.buildingId) !== 'residential') throw new Error('invalid housing allocation building reference');\n        const key = `${allocation.buildingId}|${allocation.tenure}`;\n        if (!optionCapacities.has(key)) throw new Error('invalid housing allocation tenure reference');\n        assigned.set(key, (assigned.get(key) ?? 0) + allocation.residents);\n      }\n      for (const [key, residents] of assigned) {\n        if (residents > (optionCapacities.get(key) ?? 0) + 1e-9) throw new Error('housing allocation exceeds tenure capacity');\n      }\n      this.housingRelocation.restoreState(state);\n      const represented = state.allocations.reduce((sum, item) => sum + item.residents, 0)\n        + state.unplaced.reduce((sum, item) => sum + item.residents, 0);\n      if (Math.abs(represented - this.population.population) > 1e-6) {\n        this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: false });\n      } else {\n        this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);\n      }\n    }\n    this.refreshHousingChoice();\n    this.refreshRedevelopmentPressure();\n    this.refreshRedevelopmentExecution();\n    return this.housingRelocation.snapshotState();\n  }\n\n''',
+              'core policy/restore housing state',
+          )
+          text = replace_once(
+              text,
+              '''    const building = this.buildings.removeAt(x, y);\n    if (building) {\n      this.economyDomain.removeBuilding(building.id, this.clock.tick);\n      this.developerMarket.cancelProject(building.id, 0.50);\n      return { ok: true, kind: 'building' };\n    }\n''',
+              '''    const buildingBeforeRemoval = this.buildings.getAt(x, y);\n    const housingBeforeRemoval = buildingBeforeRemoval?.zone === 'residential'\n      ? this.housingRelocation.snapshotState()\n      : undefined;\n    if (buildingBeforeRemoval?.zone === 'residential') this.housingRelocation.displaceBuilding(buildingBeforeRemoval.id);\n    const building = this.buildings.removeAt(x, y);\n    if (building) {\n      this.economyDomain.removeBuilding(building.id, this.clock.tick);\n      this.developerMarket.cancelProject(building.id, 0.50);\n      if (building.zone === 'residential') {\n        this.refreshLandHousingMarket();\n        this.refreshHousingTenure();\n        this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: false });\n        this.refreshHousingChoice();\n        this.refreshRedevelopmentPressure();\n        this.refreshRedevelopmentExecution();\n      }\n      return { ok: true, kind: 'building' };\n    }\n    if (housingBeforeRemoval) {\n      this.housingRelocation.restoreState(housingBeforeRemoval);\n      this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);\n    }\n''',
+              'core bulldoze displacement',
+          )
+          text = replace_once(
+              text,
+              '''    const commercialServiceQuality = hasServices ? this.neighborhoodSnapshot.commercialServiceQuality : 0.7;\n    this.refreshHousingChoice();\n    this.demandSnapshot = this.demand.evaluate({\n''',
+              '''    const commercialServiceQuality = hasServices ? this.neighborhoodSnapshot.commercialServiceQuality : 0.7;\n    this.refreshLandHousingMarket();\n    this.refreshHousingTenure();\n    this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: true });\n    this.refreshHousingChoice();\n    this.demandSnapshot = this.demand.evaluate({\n''',
+              'core city pre-demand housing',
+          )
+          text = replace_once(
+              text,
+              '''    this.population.update(this.buildings.residentialCapacity(), attractiveness);\n    this.refreshLandHousingMarket();\n    this.refreshHousingChoice();\n    this.refreshRedevelopmentPressure();\n''',
+              '''    this.population.update(this.buildings.residentialCapacity(), attractiveness);\n    this.refreshLandHousingMarket();\n    this.refreshHousingTenure();\n    this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: false });\n    this.refreshHousingChoice();\n    this.refreshRedevelopmentPressure();\n''',
+              'core city post-population housing',
+          )
+          text = replace_once(
+              text,
+              '''  private evaluateDevelopmentMarket(): void {\n    this.refreshLandHousingMarket();\n    this.refreshHousingChoice();\n''',
+              '''  private evaluateDevelopmentMarket(): void {\n    this.refreshLandHousingMarket();\n    this.refreshHousingTenure();\n    this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);\n    this.refreshHousingChoice();\n''',
+              'development market housing refresh',
+          )
+          text = replace_once(
+              text,
+              '''      try {\n        if (redevelopmentLotIds.has(award.lotId)) {\n          const { removed } = this.buildings.replaceDevelopment(this.clock.tick, lot, award);\n          this.economyDomain.removeBuilding(removed.id, this.clock.tick);\n        } else {\n          this.buildings.startDevelopment(this.clock.tick, lot, award);\n        }\n      } catch (error) {\n        this.developerMarket.cancelProject(award.buildingId, 1);\n        throw error;\n      }\n''',
+              '''      const housingBeforeAward = this.housingRelocation.snapshotState();\n      try {\n        if (redevelopmentLotIds.has(award.lotId)) {\n          const existing = this.buildings.occupied().find((building) => building.lotId === award.lotId);\n          if (existing?.zone === 'residential') this.housingRelocation.displaceBuilding(existing.id);\n          const { removed } = this.buildings.replaceDevelopment(this.clock.tick, lot, award);\n          this.economyDomain.removeBuilding(removed.id, this.clock.tick);\n          if (removed.zone === 'residential') {\n            this.refreshLandHousingMarket();\n            this.refreshHousingTenure();\n            this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: false });\n            this.refreshHousingChoice();\n          }\n        } else {\n          this.buildings.startDevelopment(this.clock.tick, lot, award);\n        }\n      } catch (error) {\n        this.housingRelocation.restoreState(housingBeforeAward);\n        this.refreshHousingTenure();\n        this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);\n        this.developerMarket.cancelProject(award.buildingId, 1);\n        throw error;\n      }\n''',
+              'development award displacement',
+          )
+          text = replace_once(
+              text,
+              '''    if (awards.length > 0) {\n      this.refreshLandHousingMarket();\n      this.refreshHousingChoice();\n''',
+              '''    if (awards.length > 0) {\n      this.refreshLandHousingMarket();\n      this.refreshHousingTenure();\n      this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);\n      this.refreshHousingChoice();\n''',
+              'post-award housing refresh',
+          )
+          old_housing = '''  private refreshHousingChoice(): HousingChoiceSnapshot {\n    const lotsById = new Map(this.lots.list().map((lot) => [lot.id, lot] as const));\n    const options = [];\n    const rentFactor = this.developmentPolicy.residentialRentFactor();\n    for (const building of this.buildings.occupied()) {\n      if (building.zone !== 'residential') continue;\n      const lot = lotsById.get(building.lotId);\n      if (!lot) continue;\n      const definition = definitionForBuilding(building);\n      const local = this.localParcelContextForLot(lot);\n      const market = this.landHousingMarket.parcelSignal('residential', {\n        personAccessibility: local.personAccessibility,\n        freightAccessibility: local.freightAccessibility,\n        serviceQuality: local.serviceQuality,\n        neighborhoodQuality: local.neighborhoodQuality,\n        utilityRatio: local.utilityRatio,\n        frontageAccessBonus: local.roadAccessBonus,\n      });\n      options.push({\n        buildingId: building.id,\n        capacity: definition.residentCapacity,\n        monthlyRent: definition.baseRent * market.marketRentMultiplier * rentFactor,\n        personAccessibility: local.personAccessibility,\n        serviceQuality: local.serviceQuality,\n        neighborhoodQuality: local.neighborhoodQuality,\n        utilityRatio: local.utilityRatio,\n      });\n    }\n    return this.housingChoice.evaluate(this.population.population, options);\n  }\n\n'''
+          new_housing = '''  private refreshHousingTenure(): HousingTenureSnapshot {\n    const lotsById = new Map(this.lots.list().map((lot) => [lot.id, lot] as const));\n    const inputs = [];\n    const rentFactor = this.developmentPolicy.residentialRentFactor();\n    for (const building of this.buildings.occupied()) {\n      if (building.zone !== 'residential') continue;\n      const lot = lotsById.get(building.lotId);\n      if (!lot) continue;\n      const definition = definitionForBuilding(building);\n      const local = this.localParcelContextForLot(lot);\n      const market = this.landHousingMarket.parcelSignal('residential', {\n        personAccessibility: local.personAccessibility,\n        freightAccessibility: local.freightAccessibility,\n        serviceQuality: local.serviceQuality,\n        neighborhoodQuality: local.neighborhoodQuality,\n        utilityRatio: local.utilityRatio,\n        frontageAccessBonus: local.roadAccessBonus,\n      });\n      inputs.push({\n        buildingId: building.id,\n        intensity: definition.intensity,\n        capacity: definition.residentCapacity,\n        askingRent: definition.baseRent * market.marketRentMultiplier * rentFactor,\n        personAccessibility: local.personAccessibility,\n        serviceQuality: local.serviceQuality,\n        neighborhoodQuality: local.neighborhoodQuality,\n        utilityRatio: local.utilityRatio,\n      });\n    }\n    return this.housingTenure.evaluate(this.currentDevelopmentInterestRate(), inputs);\n  }\n\n  private refreshHousingChoice(): HousingChoiceSnapshot {\n    return this.housingChoice.evaluateFromRelocation(\n      this.population.population,\n      this.housingTenureSnapshot.options,\n      this.housingRelocation.snapshotState(),\n      this.housingRelocationSnapshot,\n    );\n  }\n\n  private lowerIncomeAffordableSlackExcluding(buildingId: string): number {\n    const state = this.housingRelocation.snapshotState();\n    let slack = 0;\n    for (const option of this.housingTenureSnapshot.options) {\n      if (option.buildingId === buildingId || housingAffordabilityScore(option.monthlyCost, 'lower') <= 0) continue;\n      const assigned = state.allocations\n        .filter((allocation) => allocation.buildingId === option.buildingId && allocation.tenure === option.tenure)\n        .reduce((sum, allocation) => sum + allocation.residents, 0);\n      slack += Math.max(0, option.capacity - assigned);\n    }\n    return slack;\n  }\n\n'''
+          text = replace_once(text, old_housing, new_housing, 'housing pipeline methods')
+          text = replace_once(
+              text,
+              '''      inputs.push({\n        pressure,\n        residentCapacity: existingDefinition.residentCapacity,\n        affordabilityScore: this.housingChoiceSnapshot.byBuilding[building.id]?.affordabilityScore ?? 1,\n        replacementEvaluation,\n        activeCommitment: committedBuildingIds.has(building.id),\n      });\n''',
+              '''      const displacedLowerIncomeResidents = this.housingRelocation.snapshotState().allocations\n        .filter((allocation) => allocation.buildingId === building.id && allocation.band === 'lower')\n        .reduce((sum, allocation) => sum + allocation.residents, 0);\n      inputs.push({\n        pressure,\n        residentCapacity: existingDefinition.residentCapacity,\n        affordabilityScore: this.housingChoiceSnapshot.byBuilding[building.id]?.affordabilityScore ?? 1,\n        displacedLowerIncomeResidents,\n        lowerIncomeAffordableSlack: this.lowerIncomeAffordableSlackExcluding(building.id),\n        replacementEvaluation,\n        activeCommitment: committedBuildingIds.has(building.id),\n      });\n''',
+              'redevelopment actual lower occupants',
+          )
+          text = replace_once(
+              text,
+              '''      unplacedResidents: this.housingChoiceSnapshot.unplacedResidents,\n      minimumAffordableShare: this.developmentPolicy.snapshot().redevelopmentAffordableFloor,\n    }, inputs);\n''',
+              '''      unplacedResidents: this.housingChoiceSnapshot.unplacedResidents,\n      minimumAffordableShare: this.developmentPolicy.snapshot().redevelopmentAffordableFloor,\n      lowerIncomeRelocationProtection: this.developmentPolicy.snapshot().lowerIncomeRelocationProtection,\n    }, inputs);\n''',
+              'redevelopment protection context',
+          )
+          p.write_text(text)
+      - name: Commit patched source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/simulation/core/SimulationCore.ts src/simulation/housing/HousingRelocationSystem.ts
+          git diff --cached --check
+          git commit -m "feat: integrate persistent tenure housing into core loop [phase7-patch]"
+          git push origin HEAD:phase7-tenure-relocation
