@@ -1,5 +1,6 @@
 import { SeededRandom } from './SeededRandom.ts';
 import { SimulationClock } from './SimulationClock.ts';
+import { SimulationKernel } from '../kernel/SimulationKernel.ts';
 import { TreasurySystem } from '../treasury/TreasurySystem.ts';
 import { TerrainGrid } from '../../world/terrain/TerrainGrid.ts';
 import { RoadSystem, type RoadPlacementResult } from '../../world/roads/RoadSystem.ts';
@@ -76,6 +77,7 @@ export class SimulationCore {
   readonly seed: number;
   readonly random: SeededRandom;
   readonly clock: SimulationClock;
+  readonly kernel: SimulationKernel;
   readonly terrain: TerrainGrid;
   readonly treasury: TreasurySystem;
   readonly roads: RoadSystem;
@@ -165,6 +167,7 @@ export class SimulationCore {
     this.seed = options.seed ?? 1;
     this.random = new SeededRandom(this.seed);
     this.clock = new SimulationClock();
+    this.kernel = new SimulationKernel({ clock: this.clock, seed: this.seed });
     this.terrain = options.terrain ?? TerrainGrid.generate(options.width ?? 40, options.height ?? 24, this.seed);
     this.treasury = new TreasurySystem(options.startingFunds ?? 125_000);
     this.roads = new RoadSystem(this.terrain);
@@ -236,6 +239,14 @@ export class SimulationCore {
     this.refreshHousingChoice();
     this.refreshRedevelopmentPressure();
     this.refreshRedevelopmentExecution();
+
+    this.kernel.registerSystem({
+      id: 'legacy-v7-city',
+      reads: [],
+      writes: ['legacy-v7-city'],
+      cadence: { every: 1 },
+      execute: () => this.runLegacyV7Tick(),
+    });
   }
 
   buildRoad(cells: readonly CellCoord[], type: RoadType): RoadPlacementResult {
@@ -347,71 +358,71 @@ export class SimulationCore {
   }
 
   step(ticks = 1): void {
-    if (!Number.isInteger(ticks) || ticks < 0) throw new Error('ticks must be a non-negative integer');
-    for (let i = 0; i < ticks; i++) {
-      this.clock.step(1);
-      this.transportationGraph.rebuildIfNeeded(this.roads);
-      this.serviceVehicles.syncFleet(this.services);
+    this.kernel.step(ticks);
+  }
 
-      const serviceEvents = this.serviceVehicles.step(
-        this.transportationGraph, this.intersections, this.pathfinding,
-        (edge) => this.traffic.getEdgeTravelTime(edge), this.clock.tick,
-      );
-      this.serviceDispatch.applyVehicleEvents(serviceEvents, this.clock.tick);
-      this.wasteCollection.applyJobs(this.serviceDispatch.listJobs(), this.services, this.clock.tick);
-      this.incidents.advance(this.clock.tick, this.serviceDispatch.listJobs(), this.buildings.occupied(), this.serviceDispatch);
+  private runLegacyV7Tick(): void {
+    this.transportationGraph.rebuildIfNeeded(this.roads);
+    this.serviceVehicles.syncFleet(this.services);
 
-      const economyDomainSnapshot = this.economyDomain.tick({
-        tick: this.clock.tick,
-        ...(this.clock.tick % 250 === 0 ? { buildings: this.buildings.occupied() } : {}),
-        population: this.population.population,
-        graph: this.transportationGraph,
-        pathfinding: this.pathfinding,
-        roadTravelTime: (edge) => this.traffic.getEdgeTravelTime(edge),
-        utilityRatio: Math.min(this.utilitySnapshot.power.serviceRatio, this.utilitySnapshot.water.serviceRatio),
-        serviceRatio: this.services.listFacilities().length > 0 ? this.neighborhoodSnapshot.citywideServiceQuality : 0.7,
-        personAccessibility: this.mobilitySnapshot.personAccessibility,
-        localDemand: Math.max(0.25, Math.min(2, this.population.population / 100)),
-        width: this.terrain.width, height: this.terrain.height,
-        taxRate: (this.taxes.getRate('commercial') + this.taxes.getRate('industrial')) / 2,
-      });
-      this.employmentSnapshot = economyDomainSnapshot.employment;
+    const serviceEvents = this.serviceVehicles.step(
+      this.transportationGraph, this.intersections, this.pathfinding,
+      (edge) => this.traffic.getEdgeTravelTime(edge), this.clock.tick,
+    );
+    this.serviceDispatch.applyVehicleEvents(serviceEvents, this.clock.tick);
+    this.wasteCollection.applyJobs(this.serviceDispatch.listJobs(), this.services, this.clock.tick);
+    this.incidents.advance(this.clock.tick, this.serviceDispatch.listJobs(), this.buildings.occupied(), this.serviceDispatch);
 
-      this.mobilitySnapshot = this.mobility.tick({
-        tick: this.clock.tick,
-        roadGraph: this.transportationGraph,
-        transit: this.transit,
-        pathfinding: this.pathfinding,
-        roadTravelTime: (edge) => this.traffic.getEdgeTravelTime(edge),
-        costEpoch: this.traffic.congestionEpoch,
-        generateTrips: () => this.clock.tick % 100 === 0
-          ? this.personTrips.generate(this.clock.tick, this.buildings.occupied(), this.population.population, this.employmentSnapshot.employed, this.transportationGraph)
-          : [],
-        submitCarTrip: (trip, travelerWeight, route) => {
-          const freeFlowTicks = route.edgeIds.reduce((sum, edgeId) => sum + (this.transportationGraph.getEdge(edgeId)?.freeFlowTicks ?? 0), 0);
-          this.traffic.submitTrip({
-            id: trip.sourceTripId,
-            originBuildingId: trip.originBuildingId,
-            destinationBuildingId: trip.destinationBuildingId,
-            departureTick: trip.departureTick,
-            travelerWeight,
-            purpose: trip.purpose,
-          }, route, this.clock.tick, freeFlowTicks);
-        },
-      });
+    const economyDomainSnapshot = this.economyDomain.tick({
+      tick: this.clock.tick,
+      ...(this.clock.tick % 250 === 0 ? { buildings: this.buildings.occupied() } : {}),
+      population: this.population.population,
+      graph: this.transportationGraph,
+      pathfinding: this.pathfinding,
+      roadTravelTime: (edge) => this.traffic.getEdgeTravelTime(edge),
+      utilityRatio: Math.min(this.utilitySnapshot.power.serviceRatio, this.utilitySnapshot.water.serviceRatio),
+      serviceRatio: this.services.listFacilities().length > 0 ? this.neighborhoodSnapshot.citywideServiceQuality : 0.7,
+      personAccessibility: this.mobilitySnapshot.personAccessibility,
+      localDemand: Math.max(0.25, Math.min(2, this.population.population / 100)),
+      width: this.terrain.width, height: this.terrain.height,
+      taxRate: (this.taxes.getRate('commercial') + this.taxes.getRate('industrial')) / 2,
+    });
+    this.employmentSnapshot = economyDomainSnapshot.employment;
 
-      const edgeLoads = this.mergeEdgeLoads(this.serviceVehicles.edgeLoads(), this.mobility.vehicles.edgeLoads(), this.economyDomain.freightVehicles.edgeLoads());
-      this.traffic.step(this.transportationGraph, this.intersections, this.clock.tick, edgeLoads);
-      this.trafficSnapshot = this.trafficAnalytics.evaluate(this.traffic.edgeMetrics, this.traffic.recentOutcomes, this.traffic.activeVehicles.length);
-      this.buildings.tick(this.clock.tick);
-      this.developerMarket.advance(this.clock.tick);
+    this.mobilitySnapshot = this.mobility.tick({
+      tick: this.clock.tick,
+      roadGraph: this.transportationGraph,
+      transit: this.transit,
+      pathfinding: this.pathfinding,
+      roadTravelTime: (edge) => this.traffic.getEdgeTravelTime(edge),
+      costEpoch: this.traffic.congestionEpoch,
+      generateTrips: () => this.clock.tick % 100 === 0
+        ? this.personTrips.generate(this.clock.tick, this.buildings.occupied(), this.population.population, this.employmentSnapshot.employed, this.transportationGraph)
+        : [],
+      submitCarTrip: (trip, travelerWeight, route) => {
+        const freeFlowTicks = route.edgeIds.reduce((sum, edgeId) => sum + (this.transportationGraph.getEdge(edgeId)?.freeFlowTicks ?? 0), 0);
+        this.traffic.submitTrip({
+          id: trip.sourceTripId,
+          originBuildingId: trip.originBuildingId,
+          destinationBuildingId: trip.destinationBuildingId,
+          departureTick: trip.departureTick,
+          travelerWeight,
+          purpose: trip.purpose,
+        }, route, this.clock.tick, freeFlowTicks);
+      },
+    });
 
-      if (this.clock.tick % 10 === 0) {
-        this.evaluateServiceLoop();
-        this.evaluateDevelopmentMarket();
-      }
-      if (this.clock.tick % 50 === 0) this.evaluateCoreCityLoop();
+    const edgeLoads = this.mergeEdgeLoads(this.serviceVehicles.edgeLoads(), this.mobility.vehicles.edgeLoads(), this.economyDomain.freightVehicles.edgeLoads());
+    this.traffic.step(this.transportationGraph, this.intersections, this.clock.tick, edgeLoads);
+    this.trafficSnapshot = this.trafficAnalytics.evaluate(this.traffic.edgeMetrics, this.traffic.recentOutcomes, this.traffic.activeVehicles.length);
+    this.buildings.tick(this.clock.tick);
+    this.developerMarket.advance(this.clock.tick);
+
+    if (this.clock.tick % 10 === 0) {
+      this.evaluateServiceLoop();
+      this.evaluateDevelopmentMarket();
     }
+    if (this.clock.tick % 50 === 0) this.evaluateCoreCityLoop();
   }
 
   private evaluateServiceLoop(): void {
