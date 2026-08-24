@@ -28,10 +28,10 @@ export type ResourceSnapshot = Readonly<{ production: number; demand: number; se
 export type UtilityBuildingService = Readonly<{
   power: number;
   water: number;
-  powerDelivered: number;
-  waterDelivered: number;
-  waterPressureEligible: boolean;
-  waterPressureMargin: number;
+  powerDelivered?: number;
+  waterDelivered?: number;
+  waterPressureEligible?: boolean;
+  waterPressureMargin?: number;
   limitingReason?: DevelopmentUtilityHeadroom['limitingReason'];
 }>;
 export type UtilityNetworkSegmentSnapshot = Readonly<{
@@ -136,9 +136,9 @@ export class UtilitySystem {
   private lastProtectionAccountingTick = 0;
   private lastTick = 0;
   private lastBuildings: Building[] = [];
-  private lastPowerNetwork?: PowerNetworkSnapshot;
-  private lastWaterNetwork?: WaterNetworkSnapshot;
-  private lastSnapshot?: UtilitySnapshot;
+  private lastPowerNetwork: PowerNetworkSnapshot | undefined;
+  private lastWaterNetwork: WaterNetworkSnapshot | undefined;
+  private lastSnapshot: UtilitySnapshot | undefined;
   private flowRevision = 0;
   private lastFlowSignature = '';
   private readonly headroomCache = new Map<string, DevelopmentUtilityHeadroom>();
