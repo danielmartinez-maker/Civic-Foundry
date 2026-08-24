@@ -33,6 +33,18 @@ export type UtilityInfrastructureState = Readonly<{
   topology: UtilityTopologyState;
   facilities: readonly UtilityFacility[];
   nextFacilityId: number;
+  lastProtectionAccountingTick: number;
 }>;
 
 export type UtilityMutationResult = Readonly<{ ok: boolean; cost: number; reason?: string }>;
+
+export type DevelopmentUtilityHeadroom = Readonly<{
+  powerHeadroom: number;
+  waterHeadroom: number;
+  powerServiceRatio: number;
+  waterServiceRatio: number;
+  utilityRatio: number;
+  waterPressureEligible: boolean;
+  waterPressureMargin: number;
+  limitingReason?: 'power-connection' | 'water-connection' | 'power-capacity' | 'water-capacity' | 'water-pressure';
+}>;
