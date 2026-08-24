@@ -7,6 +7,7 @@ export type DevelopmentPolicyState = Readonly<{
   developmentFeeRate: number;
   permittingCostReduction: number;
   redevelopmentAffordableFloor: number;
+  lowerIncomeRelocationProtection: number;
 }>;
 
 export type DevelopmentPolicyPatch = Partial<DevelopmentPolicyState>;
@@ -18,6 +19,7 @@ const DEFAULT_STATE: DevelopmentPolicyState = Object.freeze({
   developmentFeeRate: 0,
   permittingCostReduction: 0,
   redevelopmentAffordableFloor: 0.85,
+  lowerIncomeRelocationProtection: 0.90,
 });
 
 function requireRange(name: string, value: number, min: number, max: number): number {
@@ -33,6 +35,7 @@ function validate(state: DevelopmentPolicyState): DevelopmentPolicyState {
   requireRange('developmentFeeRate', state.developmentFeeRate, 0, 0.20);
   requireRange('permittingCostReduction', state.permittingCostReduction, 0, 0.50);
   requireRange('redevelopmentAffordableFloor', state.redevelopmentAffordableFloor, 0.75, 1);
+  requireRange('lowerIncomeRelocationProtection', state.lowerIncomeRelocationProtection, 0.50, 1);
   return Object.freeze({ ...state });
 }
 
@@ -60,8 +63,6 @@ export class DevelopmentPolicySystem {
   }
 
   residentialRentFactor(): number {
-    // Mandated affordable capacity is modeled at 65% of market rent; the citywide
-    // blended factor is used consistently by housing choice and new-project underwriting.
     return 1 - this.state.affordableHousingShare * 0.35;
   }
 }
