@@ -8,6 +8,17 @@ function validateType(type: string): void {
   if (type.trim().length === 0) throw new Error('command type must not be empty');
 }
 
+function isolate(value: unknown): unknown {
+  if (Array.isArray(value)) return Object.freeze(value.map(isolate));
+  if (value && typeof value === 'object') {
+    const source = value as Record<string, unknown>;
+    const output: Record<string, unknown> = {};
+    for (const key of Object.keys(source)) output[key] = isolate(source[key]);
+    return Object.freeze(output);
+  }
+  return value;
+}
+
 export class CommandBus {
   private readonly handlers = new Map<CommandType, CommandHandler>();
   private queue: SequencedCommand[] = [];
@@ -26,7 +37,10 @@ export class CommandBus {
     const item: SequencedCommand = Object.freeze({
       sequence,
       enqueuedTick,
-      command: Object.freeze({ ...command }),
+      command: Object.freeze({
+        type: command.type,
+        payload: isolate(command.payload),
+      }),
     });
     this.queue.push(item);
     return sequence;
