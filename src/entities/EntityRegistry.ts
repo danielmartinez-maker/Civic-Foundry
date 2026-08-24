@@ -102,7 +102,7 @@ function resolveKnownTokenFrom(
     .filter((record) => record.handle.kind === kind
       && record.handle.legacyId === legacyId
       && record.incarnationToken === incarnationToken)
-    .sort((a, b) => canonicalHandleKey(a.handle).localeCompare(canonicalHandleKey(b.handle)));
+    .sort((a, b) => ordinalCompare(canonicalHandleKey(a.handle), canonicalHandleKey(b.handle)));
   if (matches.length !== 1) return undefined;
   return cloneHandle(matches[0]!.handle);
 }
