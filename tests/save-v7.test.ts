@@ -91,3 +91,12 @@ test('Save V7 rejects commitments referencing missing buildings', () => {
   corrupt.developmentMarket.commitments[0]!.buildingId = 'missing-building';
   assert.throws(() => hydrateCore(corrupt), /development.*building|building.*development/i);
 });
+
+test('Phase 0A kernel infrastructure does not change Save V7 schema', () => {
+  const core = new SimulationCore({ width: 12, height: 8, seed: 77 });
+  const save = serializeCore(core) as unknown as Record<string, unknown>;
+  assert.equal(save.saveVersion, 7);
+  for (const key of ['kernel', 'commands', 'events', 'randomStreams', 'invariants', 'snapshots']) {
+    assert.equal(Object.prototype.hasOwnProperty.call(save, key), false, `unexpected Phase 0A field ${key}`);
+  }
+});

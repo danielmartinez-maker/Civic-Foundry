@@ -4,11 +4,17 @@ Civic Foundry is an original browser-based city-management and urban-development
 
 ## Canonical baseline
 
-**V7 (`0.7.0-metropolitan`) is the canonical development baseline on `main` moving forward.** Older V5/V6 serializers and hydrators remain supported for compatibility and migration testing, but new development should target the V7 simulation/save contract unless a later version explicitly supersedes it.
+**V7 (`0.7.0-metropolitan`) remains the canonical gameplay/save baseline while Civic Foundry 2.0 is introduced progressively.** Civic Foundry 2.0 **Phase 0A — Kernel Skeleton & Deterministic Scheduling** now places a deterministic simulation kernel beneath V7 without changing the V7 save schema, gameplay formulas, random-number consumption, public mutation APIs, or authoritative domain ownership. Older V5/V6 serializers and hydrators remain supported for compatibility and migration testing.
+
+The current runtime path is:
+
+`GameApp → SimulationCore facade → SimulationKernel → legacy-v7-city compatibility system → unchanged V7 domain orchestration`
+
+`SimulationKernel` owns the outer fixed-step/clock boundary and provides deterministic system scheduling, sequenced commands, a domain-event journal, isolated named RNG streams, cadence-aware invariants, and diagnostic snapshot providers. In Phase 0A those new facilities are infrastructure only: the single production kernel system is `legacy-v7-city`, existing gameplay mutations remain direct `SimulationCore` APIs, no gameplay domain consumes kernel RNG streams or authoritative kernel events, and kernel diagnostic state is not persisted.
 
 The V7 baseline contains the reverified rebuild through **Phase 6 — Firms, Production & Freight** plus the complete **Phase 7 — Land, Housing & Development** domain: deterministic developer pro-formas and competition, derived property markets, affordability, renter/owner tenure economics, persistent aggregate housing relocation, safeguarded redevelopment, player-facing land/housing intelligence and housing/development policy controls.
 
-Implemented in the V7 baseline:
+Implemented in the V7 gameplay baseline:
 
 - deterministic terrain, simulation clock, treasury, construction costs and save/load
 - local, collector and arterial roads with intersections and graph revisions
@@ -57,6 +63,8 @@ Implemented in the V7 baseline:
 - infrastructure, market economics, relocation safeguards and developer-hurdle gating that prevents automatic uneconomic or housing-destructive development
 - Save V7 with exact developer-capital/commitment, development-policy and persistent housing-relocation continuation plus Save V6 economy/freight continuation
 
+Phase 0A additionally includes an immutable seven-scenario pre-kernel parity fixture. Current V7 cadence boundaries, city development, services/incidents, transit, economy/freight, housing/development, and save → hydrate → continue must serialize to the same canonical digests after kernel-shell changes.
+
 ## Toolchain
 
 The project intentionally uses an offline-capable dependency-light stack:
@@ -85,7 +93,9 @@ npm run dev
 
 ## Architecture rule
 
-`SimulationCore` composes focused authoritative systems. `MobilityScheduler` owns multimodal update order, `EconomyScheduler` owns Phase 6 firms/inventories/production/freight/trade/business lifecycle state, and the Phase 7 development/housing domain owns property-market signals, tenure economics, persistent aggregate housing occupancy/relocation, development policy, redevelopment diagnostics/planning, parcel feasibility and deterministic developer allocation.
+`SimulationCore` remains the public gameplay facade and composes focused authoritative V7 systems. `SimulationKernel` owns the outer deterministic tick boundary and currently schedules exactly one production system, `legacy-v7-city`, which executes the unchanged V7 per-tick orchestration. Future Civic Foundry 2.0 tranches may extract domains into separately registered kernel systems only after their ownership, dependencies, persistence and parity rules are reviewed.
+
+Inside V7, `MobilityScheduler` owns multimodal update order, `EconomyScheduler` owns Phase 6 firms/inventories/production/freight/trade/business lifecycle state, and the Phase 7 development/housing domain owns property-market signals, tenure economics, persistent aggregate housing occupancy/relocation, development policy, redevelopment diagnostics/planning, parcel feasibility and deterministic developer allocation.
 
 Within Phase 7, `HousingTenureSystem` derives current renter/owner options and their economics from the residential stock and financing environment. `HousingRelocationSystem` owns the persistent aggregate cohort ledger and movement/displacement history. `HousingChoiceSystem` remains the derived affordability/reporting layer over those authoritative allocations. Rendering/UI reads snapshots and submits typed mutations through public APIs; it does not manufacture simulation outcomes.
 
@@ -97,6 +107,8 @@ The Land & Housing UI consumes the existing property-market, tenure, housing-cho
 
 Current default save envelope: `saveVersion: 7`, game version `0.7.0-metropolitan`. V7 retains the complete V6 authoritative economy/transit/city state and adds the developer market state, development-policy state and persistent aggregate `housingState` required for exact continuation.
 
+Phase 0A does **not** introduce Save V8. `SimulationKernel`, its scheduler metadata, pending commands, diagnostic event journal, named RNG streams, invariant registrations and snapshot providers are excluded because none is an authoritative V7 gameplay input in this tranche. Hydration reconstructs a fresh kernel around the same restored `SimulationClock`; existing V7 RNG/domain state continues exactly.
+
 Both Phase 7 extension fields are backward-compatible within V7. Older V7 saves without development policy load the default policy. Older V7 saves without `housingState` initialize deterministic housing occupancy from current city/population state with zero fabricated movement history. Loading V6 into the V7 runtime likewise starts the default developer roster with no fabricated commitments, the default development policy and no fabricated housing movement history.
 
 Property-market snapshots, tenure-option economics, affordability/reporting snapshots, redevelopment-pressure/execution planning, overlays and render state are derived and rebuilt from authoritative state rather than persisted. The aggregate occupancy/relocation cohort ledger and its cumulative movement/displacement totals are authoritative and persisted. A redevelopment that actually executes is represented by the existing authoritative construction building plus developer commitment; displaced housing cohorts remain represented in `housingState` until rehoused or otherwise reconciled by the housing system.
@@ -105,6 +117,7 @@ Explicit V5 and V6 serializers/hydrators remain available for compatibility, mig
 
 ## Roadmap
 
+0. Civic Foundry 2.0 Phase 0A — Kernel Skeleton & Deterministic Scheduling ✅ — compatibility shell only; no gameplay-domain migration yet
 1. Phase 1 — Playable Foundation ✅
 2. Phase 2 — Core City Loop ✅
 3. Phase 3 — Traffic ✅
@@ -112,16 +125,8 @@ Explicit V5 and V6 serializers/hydrators remain available for compatibility, mig
 5. Phase 5 — Transit Revolution ✅
 6. Phase 6 — Firms, Production & Freight ✅
 7. Phase 7 — Land, Housing & Development ✅ — developer competition, property markets, affordability, renter/owner tenure, persistent aggregate cohort search/relocation/displacement, redevelopment safeguards, anti-displacement policy, Land/Housing intelligence and policy controls
-8. Phase 8 — Metropolitan Infrastructure
-9. Phase 9 — Demographic City
-10. Phase 10 — Environment & Resilience
-11. Phase 11 — Municipal Government & Finance
-12. Phase 12 — Politics & Public Opinion
-13. Phase 13 — Construction & Megaprojects
-14. Phase 14 — Regional Simulation
-15. Phase 15 — Specialized Economies & City Identity
-16. Phase 16 — Endgame, Scenarios & Modding
+8. Civic Foundry 2.0 Phase 1R onward — progressive reviewed replacement of the V7 foundation and later 2.0 systems per `docs/superpowers/specs/2026-08-24-civic-foundry-2.0-master-design.md`
 
-Individual household/person simulation is intentionally deferred to the later demographic-city phase; Phase 7 closes with deterministic aggregate cohorts rather than thousands of per-household agents.
+Individual household/person simulation remains deferred until its reviewed Civic Foundry 2.0 demographic tranche; Phase 0A deliberately changes scheduling infrastructure only.
 
 See `docs/` and `docs/superpowers/` for architecture, balancing, testing, save-format, design and implementation-plan details.
