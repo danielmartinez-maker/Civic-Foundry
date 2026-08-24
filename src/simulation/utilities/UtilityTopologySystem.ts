@@ -67,6 +67,25 @@ export class UtilityTopologySystem {
     return cell ? { ...cell } : undefined;
   }
 
+  seedCell(type: UtilityCorridorType, tier: UtilityTier, x: number, y: number): UtilityCorridorCell {
+    const existing = this.cells.get(cellKey(type, x, y));
+    if (existing) return { ...existing };
+    const reason = this.validateCell(type, tier, { x, y });
+    if (reason) throw new Error(reason);
+    const cell: UtilityCorridorCell = Object.freeze({
+      id: `utility-corridor:${this.nextCorridorId++}`,
+      type,
+      tier,
+      x,
+      y,
+      saturatedCycles: 0,
+      trippedUntilTick: 0,
+    });
+    this.cells.set(cellKey(type, x, y), cell);
+    this.revision++;
+    return { ...cell };
+  }
+
   placePath(
     type: UtilityCorridorType,
     tier: UtilityTier,
@@ -89,13 +108,8 @@ export class UtilityTopologySystem {
       if (this.cells.has(cellKey(type, coord.x, coord.y))) {
         return { ok: false, cost: costFor(type, tier) * coords.length, reason: 'corridor already exists' };
       }
-      if (isDistribution(type)) {
-        if (!this.roads.has(coord.x, coord.y)) {
-          return { ok: false, cost: costFor(type, tier) * coords.length, reason: 'road right-of-way required' };
-        }
-      } else if (!this.terrain.isBuildable(coord.x, coord.y)) {
-        return { ok: false, cost: costFor(type, tier) * coords.length, reason: 'buildable terrain required' };
-      }
+      const reason = this.validateCell(type, tier, coord);
+      if (reason) return { ok: false, cost: costFor(type, tier) * coords.length, reason };
       if (index > 0) {
         const prior = coords[index - 1];
         if (!prior || Math.abs(prior.x - coord.x) + Math.abs(prior.y - coord.y) !== 1) {
@@ -158,6 +172,31 @@ export class UtilityTopologySystem {
     return { ...existing };
   }
 
+  updateProtectionStates(
+    updates: readonly Readonly<{ id: string; saturatedCycles: number; trippedUntilTick: number }>[],
+  ): boolean {
+    if (updates.length === 0) return false;
+    const byId = new Map([...this.cells.entries()].map(([key, cell]) => [cell.id, { key, cell }] as const));
+    const seen = new Set<string>();
+    const staged: Array<{ key: string; cell: UtilityCorridorCell }> = [];
+    let changed = false;
+    for (const update of [...updates].sort((a, b) => a.id.localeCompare(b.id))) {
+      if (seen.has(update.id)) throw new Error('duplicate utility protection update');
+      seen.add(update.id);
+      const current = byId.get(update.id);
+      if (!current) throw new Error(`unknown utility corridor id: ${update.id}`);
+      if (!Number.isInteger(update.saturatedCycles) || update.saturatedCycles < 0) throw new Error('invalid utility saturation counter');
+      if (!Number.isInteger(update.trippedUntilTick) || update.trippedUntilTick < 0) throw new Error('invalid utility trip expiry');
+      const next = Object.freeze({ ...current.cell, saturatedCycles: update.saturatedCycles, trippedUntilTick: update.trippedUntilTick });
+      staged.push({ key: current.key, cell: next });
+      if (next.saturatedCycles !== current.cell.saturatedCycles || next.trippedUntilTick !== current.cell.trippedUntilTick) changed = true;
+    }
+    if (!changed) return false;
+    for (const item of staged) this.cells.set(item.key, item.cell);
+    this.revision++;
+    return true;
+  }
+
   snapshotState(): UtilityTopologyState {
     return Object.freeze({
       cells: Object.freeze(this.list().map((cell) => Object.freeze({ ...cell }))),
@@ -194,5 +233,13 @@ export class UtilityTopologySystem {
     for (const [key, cell] of restored) this.cells.set(key, cell);
     this.revision = state.revision;
     this.nextCorridorId = state.nextCorridorId;
+  }
+
+  private validateCell(type: UtilityCorridorType, tier: UtilityTier, coord: CellCoord): string | undefined {
+    if (!isCorridorType(type)) return 'invalid corridor type';
+    if (!isTier(tier)) return 'invalid corridor tier';
+    if (!Number.isInteger(coord.x) || !Number.isInteger(coord.y) || !this.terrain.inBounds(coord.x, coord.y)) return 'invalid coordinate';
+    if (isDistribution(type)) return this.roads.has(coord.x, coord.y) ? undefined : 'road right-of-way required';
+    return this.terrain.isBuildable(coord.x, coord.y) ? undefined : 'buildable terrain required';
   }
 }
