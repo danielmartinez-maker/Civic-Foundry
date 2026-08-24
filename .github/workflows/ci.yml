@@ -28,3 +28,18 @@ jobs:
         run: npm run lint
       - name: Build
         run: npm run build
+      - name: Install Playwright Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+          CHROMIUM_PATH=$(python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as p:
+              print(p.chromium.executable_path)
+          PY
+          )
+          sudo ln -sf "$CHROMIUM_PATH" /usr/bin/chromium
+      - name: Phase 6 browser smoke
+        run: npm run test:smoke
+      - name: Phase 7 browser smoke
+        run: npm run test:smoke:phase7
