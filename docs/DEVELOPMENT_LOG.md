@@ -157,6 +157,8 @@ Converted redevelopment pressure into an actual residential development path wit
 - reserves both relocation constraints cumulatively in stable pressure order so several same-cycle candidates cannot collectively over-demolish the housing stock;
 - adds demolition and aggregate displacement friction to the developer-underwritten pre-finance cost and recomputes feasibility/return economics;
 - combines admitted occupied-parcel replacements with vacant-lot opportunities in one `DeveloperMarketSystem.allocate()` call, preserving the same developer capital, leverage, risk, hurdle and concurrent-project constraints;
+- blocks redevelopment while the deterministic building identity still has an active developer commitment, with `SimulationCore` exposing `active-commitment` as the planner diagnostic;
+- independently prevents duplicate building commitments inside `DeveloperMarketSystem.allocate()`, so even a caller that bypasses planner diagnostics cannot overwrite an unreleased commitment or orphan a prior developer's committed capital;
 - on award, removes the old building from the economy-domain building lifecycle, starts higher-intensity construction in place and retains the normal developer capital commitment;
 - does not directly mutate population on demolition; the existing 50-tick population loop remains authoritative, with relocation safeguards ensuring enough occupied stock remains;
 - keeps Save V7 unchanged because the executed state is already represented by the existing construction-stage building and developer commitment while pressure/execution snapshots remain derived.
@@ -167,7 +169,9 @@ Converted redevelopment pressure into an actual residential development path wit
 2. **Execution planner RED:** all 243 existing/replacement tests passed and CI failed only because `RedevelopmentExecutionSystem.ts` was intentionally absent. The planner then passed its physical-capacity, unplaced-resident, cumulative-slack, friction-economics and mismatch/threshold tests.
 3. **Core execution RED:** before core wiring, 249/250 tests passed; the only failure was the eligible occupied parcel receiving no redevelopment award.
 4. **Integration observation fix:** after core wiring the redevelopment itself succeeded, but one assertion still inspected `DeveloperMarketSystem.lastAwards()` after a later 10-tick auction had intentionally overwritten that ephemeral diagnostic. The test was corrected to inspect the authoritative active developer commitment instead of weakening production behavior.
-5. **Final code gate:** the full 250-test suite, typecheck, lint and production build passed after the correction.
+5. **Capital-ledger review bug:** manual review found that deterministic building IDs outlive construction while developer commitments release later. A redeveloped/occupied building could therefore be reconsidered while its prior commitment was still active, allowing a second award for the same `building:<lotId>` to overwrite the commitment map entry and leave the first developer's committed capital orphaned. A developer-market regression was written first and failed exactly on the duplicate award; allocation now filters and rechecks active building commitments before awards.
+6. **Core diagnostic RED:** after the authoritative market backstop was green, a new core regression seeded a live building commitment and required redevelopment diagnostics to report `active-commitment`. The first run produced 253 tests with 252 passing; the only failure reported `physical-capacity` because `SimulationCore` had not passed live commitment state to the planner. Core now derives committed building IDs from `DeveloperMarketSystem.listCommitments()` and passes the boolean into redevelopment execution inputs.
+7. **Final code gate before documentation:** GitHub Actions run #144 passed **253/253 tests**, Typecheck, Lint and Build on the commitment-wired head.
 
 ### Causal boundaries
 
