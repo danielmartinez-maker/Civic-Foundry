@@ -1,83 +1,86 @@
-import { SimulationCore } from '../simulation/core/SimulationCore.ts';
-import { hydrateCoreV6, serializeCoreV6, SAVE_VERSION_V6, type SaveGameV6 } from './saveV6.ts';
-import type { DeveloperMarketState } from '../simulation/development/DeveloperMarketSystem.ts';
+import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
+import type { DeveloperMarketStateSnapshot } from '../simulation/development/DevelopmentTypes.ts';
 import type { DevelopmentPolicyState } from '../simulation/development/DevelopmentPolicySystem.ts';
 import type { HousingRelocationState } from '../simulation/housing/HousingRelocationSystem.ts';
+import { hydrateCoreV6, serializeCoreV6, type SaveV6 } from './saveV6.ts';
 
-export const SAVE_VERSION_V7 = '0.7.0-metropolitan' as const;
+export type SaveV7 = Omit<SaveV6, 'saveVersion' | 'gameVersion'> & {
+  saveVersion: 7;
+  gameVersion: '0.7.0-metropolitan';
+  developmentMarket: DeveloperMarketStateSnapshot;
+  developmentPolicy?: DevelopmentPolicyState;
+  housingState?: HousingRelocationState;
+};
 
-export type SaveGameV7 = Readonly<{
-  version: typeof SAVE_VERSION_V7;
-  seed: SaveGameV6['seed'];
-  rngState: SaveGameV6['rngState'];
-  clock: SaveGameV6['clock'];
-  terrain: SaveGameV6['terrain'];
-  treasury: SaveGameV6['treasury'];
-  roads: SaveGameV6['roads'];
-  zoning: SaveGameV6['zoning'];
-  buildings: SaveGameV6['buildings'];
-  population: SaveGameV6['population'];
-  taxes: SaveGameV6['taxes'];
-  utilityFacilities: SaveGameV6['utilityFacilities'];
-  nextUtilityId: SaveGameV6['nextUtilityId'];
-  garbage: SaveGameV6['garbage'];
-  tripGenerationRngState: SaveGameV6['tripGenerationRngState'];
-  traffic: SaveGameV6['traffic'];
-  serviceFacilities: SaveGameV6['serviceFacilities'];
-  serviceFunding: SaveGameV6['serviceFunding'];
-  serviceFiscalPaymentRatio: SaveGameV6['serviceFiscalPaymentRatio'];
-  nextServiceFacilityId: SaveGameV6['nextServiceFacilityId'];
-  serviceJobs: SaveGameV6['serviceJobs'];
-  nextServiceJobId: SaveGameV6['nextServiceJobId'];
-  serviceVehicles: SaveGameV6['serviceVehicles'];
-  incidentRngState: SaveGameV6['incidentRngState'];
-  incidents: SaveGameV6['incidents'];
-  nextIncidentId: SaveGameV6['nextIncidentId'];
-  waste: SaveGameV6['waste'];
-  transit: SaveGameV6['transit'];
-  mobility: SaveGameV6['mobility'];
-  firms: SaveGameV6['firms'];
-  firmLifecycle: SaveGameV6['firmLifecycle'];
-  firmFormationRngState: SaveGameV6['firmFormationRngState'];
-  production: SaveGameV6['production'];
-  inventory: SaveGameV6['inventory'];
-  trade: SaveGameV6['trade'];
-  freightDemand: SaveGameV6['freightDemand'];
-  freightVehicles: SaveGameV6['freightVehicles'];
-  nextFreightVehicleId: SaveGameV6['nextFreightVehicleId'];
-  economyScheduler: SaveGameV6['economyScheduler'];
-  developerMarket: DeveloperMarketState;
-  developmentPolicy: DevelopmentPolicyState;
-  housingRelocation: HousingRelocationState;
-}>;
-
-export type AnySaveGameV7 = SaveGameV7 | SaveGameV6;
-
-export function serializeCoreV7(core: SimulationCore): SaveGameV7 {
+export function serializeCoreV7(core: SimulationCore): SaveV7 {
+  const v6 = serializeCoreV6(core);
   return {
-    ...serializeCoreV6(core),
-    version: SAVE_VERSION_V7,
-    developerMarket: core.developerMarket.snapshotState(),
+    ...v6,
+    saveVersion: 7,
+    gameVersion: '0.7.0-metropolitan',
+    developmentMarket: core.developerMarket.snapshotState(),
     developmentPolicy: core.developmentPolicySnapshot,
-    housingRelocation: core.housingRelocation.snapshotState(),
+    housingState: core.housingRelocation.snapshotState(),
   };
 }
 
-export function hydrateCoreV7(input: AnySaveGameV7): SimulationCore {
-  if (input.version !== SAVE_VERSION_V7) {
+export function hydrateCoreV7(input: unknown): SimulationCore {
+  if (!isRecord(input)) throw new Error('save must be an object');
+  if (input.saveVersion !== 7) {
     const core = hydrateCoreV6(input);
-    core.developerMarket.restore({ developers: [], commitments: [] });
-    core.developmentPolicy.restore();
     core.restoreHousingState();
     core.rebuildEntityProjection();
     return core;
   }
-  const core = hydrateCoreV6(input);
-  core.developerMarket.restore(input.developerMarket);
-  core.developmentPolicy.restore(input.developmentPolicy);
-  core.restoreHousingState(input.housingRelocation);
+  validateEnvelope(input);
+  const save = input as unknown as SaveV7;
+  const { developmentMarket, developmentPolicy, housingState, ...v7WithoutDevelopment } = save;
+  const v6: SaveV6 = {
+    ...v7WithoutDevelopment,
+    saveVersion: 6,
+    gameVersion: '0.6.0-metropolitan',
+  };
+  const core = hydrateCoreV6(v6);
+  validateDevelopmentReferences(core, developmentMarket);
+  core.developerMarket.restoreState(developmentMarket);
+  if (developmentPolicy !== undefined) core.setDevelopmentPolicy(developmentPolicy);
+  core.restoreHousingState(housingState);
   core.rebuildEntityProjection();
   return core;
 }
 
-export { SAVE_VERSION_V6 };
+function validateEnvelope(record: Record<string, unknown>): void {
+  if (record.gameVersion !== '0.7.0-metropolitan') throw new Error('invalid V7 game version');
+  const development = requireRecord(record.developmentMarket, 'developmentMarket');
+  if (!Array.isArray(development.developers)) throw new Error('developmentMarket.developers must be an array');
+  if (!Array.isArray(development.commitments)) throw new Error('developmentMarket.commitments must be an array');
+  if (record.developmentPolicy !== undefined) requireRecord(record.developmentPolicy, 'developmentPolicy');
+  if (record.housingState !== undefined) {
+    const housing = requireRecord(record.housingState, 'housingState');
+    if (!Array.isArray(housing.allocations)) throw new Error('housingState.allocations must be an array');
+    if (!Array.isArray(housing.unplaced)) throw new Error('housingState.unplaced must be an array');
+    requireRecord(housing.totals, 'housingState.totals');
+  }
+}
+
+function validateDevelopmentReferences(core: SimulationCore, state: DeveloperMarketStateSnapshot): void {
+  const developerIds = new Set(state.developers.map((developer) => developer.id));
+  const buildings = new Map(core.buildings.list().map((building) => [building.id, building] as const));
+  for (const commitment of state.commitments) {
+    if (!developerIds.has(commitment.developerId)) throw new Error('invalid development developer reference');
+    const building = buildings.get(commitment.buildingId);
+    if (!building) throw new Error('invalid development building reference');
+    if (building.lotId !== commitment.lotId) throw new Error('invalid development lot reference');
+    if (building.definitionId !== commitment.definitionId) throw new Error('invalid development definition reference');
+    if (building.developerId && building.developerId !== commitment.developerId) throw new Error('invalid development building owner reference');
+  }
+}
+
+function requireRecord(value: unknown, name: string): Record<string, unknown> {
+  if (!isRecord(value)) throw new Error(`${name} must be an object`);
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
