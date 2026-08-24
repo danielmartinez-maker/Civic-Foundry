@@ -1,17 +1,20 @@
 import type { GameApp } from '../app/GameApp.ts';
 import { mapLandHousingOverlay, type LandHousingOverlayMode } from '../rendering/LandHousingOverlayLayer.ts';
+import { DevelopmentPolicyPanel } from './DevelopmentPolicyPanel.ts';
 import { LandHousingPanel } from './LandHousingPanel.ts';
 
 const EXISTING_OVERLAY_SELECTORS = ['#overlay', '#service-overlay', '#transit-overlay', '#economy-overlay'] as const;
 
 export class LandHousingUiController {
   private readonly panel: HTMLElement;
+  private readonly policyHost: HTMLElement;
   private readonly select: HTMLSelectElement;
   private readonly overlayCanvas: HTMLCanvasElement;
   private readonly overlayContext: CanvasRenderingContext2D;
   private readonly worldCanvas: HTMLCanvasElement;
   private readonly legend: HTMLElement;
   private readonly panelRenderer = new LandHousingPanel();
+  private readonly policyRenderer = new DevelopmentPolicyPanel();
   private mode: LandHousingOverlayMode = 'none';
   private synchronizing = false;
   private lastPanelBucket = -1;
@@ -31,9 +34,11 @@ export class LandHousingUiController {
         <option value="occupancy">Residential occupancy</option>
         <option value="redevelopment-pressure">Redevelopment pressure</option>
       </select>
-      <div data-testid="land-housing-panel" class="economy-summary"></div>`;
+      <div data-testid="land-housing-panel" class="economy-summary"></div>
+      <div data-policy-host></div>`;
     economySection.insertAdjacentElement('afterend', section);
     this.panel = this.required('[data-testid="land-housing-panel"]');
+    this.policyHost = this.required('[data-policy-host]');
     this.select = this.required<HTMLSelectElement>('[data-testid="land-housing-overlay"]');
     this.legend = this.required('#overlay-legend');
     this.worldCanvas = this.required<HTMLCanvasElement>('#world');
@@ -56,7 +61,9 @@ export class LandHousingUiController {
     if (!context) throw new Error('Canvas 2D is unavailable for land/housing overlay');
     this.overlayContext = context;
 
+    this.policyHost.innerHTML = this.policyRenderer.render(this.app.core.developmentPolicySnapshot);
     this.bindOverlayControls();
+    this.bindPolicyControls();
     this.renderPanel();
     this.lastCore = this.app.core;
     this.lastPanelBucket = Math.floor(this.app.core.clock.tick / 10);
@@ -108,6 +115,36 @@ export class LandHousingUiController {
     }
   }
 
+  private bindPolicyControls(): void {
+    this.required<HTMLButtonElement>('[data-action="apply-development-policy"]').addEventListener('click', () => {
+      const status = this.required<HTMLElement>('[data-policy-status]');
+      try {
+        const state = this.app.core.setDevelopmentPolicy({
+          densityBonus: Number(this.required<HTMLSelectElement>('[data-policy="densityBonus"]').value) as 0 | 1,
+          affordableHousingShare: Number(this.required<HTMLInputElement>('[data-policy="affordableHousingShare"]').value) / 100,
+          developmentFeeRate: Number(this.required<HTMLInputElement>('[data-policy="developmentFeeRate"]').value) / 100,
+          permittingCostReduction: Number(this.required<HTMLInputElement>('[data-policy="permittingCostReduction"]').value) / 100,
+          redevelopmentAffordableFloor: Number(this.required<HTMLInputElement>('[data-policy="redevelopmentAffordableFloor"]').value) / 100,
+        });
+        this.syncPolicyControls();
+        this.renderPanel();
+        this.renderOverlay();
+        status.textContent = `Policy applied: ${Math.round(state.affordableHousingShare * 100)}% affordable share · ${Math.round(state.redevelopmentAffordableFloor * 100)}% redevelopment floor.`;
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Policy update failed.';
+      }
+    });
+  }
+
+  private syncPolicyControls(): void {
+    const state = this.app.core.developmentPolicySnapshot;
+    this.required<HTMLSelectElement>('[data-policy="densityBonus"]').value = String(state.densityBonus);
+    this.required<HTMLInputElement>('[data-policy="affordableHousingShare"]').value = String(Math.round(state.affordableHousingShare * 100));
+    this.required<HTMLInputElement>('[data-policy="developmentFeeRate"]').value = String(Math.round(state.developmentFeeRate * 100));
+    this.required<HTMLInputElement>('[data-policy="permittingCostReduction"]').value = String(Math.round(state.permittingCostReduction * 100));
+    this.required<HTMLInputElement>('[data-policy="redevelopmentAffordableFloor"]').value = String(Math.round(state.redevelopmentAffordableFloor * 100));
+  }
+
   private bindOverlayControls(): void {
     this.select.addEventListener('change', () => {
       this.mode = this.select.value as LandHousingOverlayMode;
@@ -141,9 +178,11 @@ export class LandHousingUiController {
     const currentCore = this.app.core;
     const bucket = Math.floor(currentCore.clock.tick / 10);
     if (currentCore !== this.lastCore || bucket !== this.lastPanelBucket) {
+      const coreChanged = currentCore !== this.lastCore;
       this.lastCore = currentCore;
       this.lastPanelBucket = bucket;
       this.renderPanel();
+      if (coreChanged) this.syncPolicyControls();
     }
     if (this.mode !== 'none') this.renderOverlay();
     requestAnimationFrame(() => this.frame());
