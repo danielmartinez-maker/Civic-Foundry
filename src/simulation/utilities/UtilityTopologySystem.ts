@@ -67,11 +67,18 @@ export class UtilityTopologySystem {
     return cell ? { ...cell } : undefined;
   }
 
-  seedCell(type: UtilityCorridorType, tier: UtilityTier, x: number, y: number): UtilityCorridorCell {
+  seedCell(
+    type: UtilityCorridorType,
+    tier: UtilityTier,
+    x: number,
+    y: number,
+    sourceStubForFacilityId?: string,
+  ): UtilityCorridorCell {
     const existing = this.cells.get(cellKey(type, x, y));
     if (existing) return { ...existing };
     const reason = this.validateCell(type, tier, { x, y });
     if (reason) throw new Error(reason);
+    if (sourceStubForFacilityId !== undefined && sourceStubForFacilityId.length === 0) throw new Error('invalid utility source stub facility id');
     const cell: UtilityCorridorCell = Object.freeze({
       id: `utility-corridor:${this.nextCorridorId++}`,
       type,
@@ -80,6 +87,7 @@ export class UtilityTopologySystem {
       y,
       saturatedCycles: 0,
       trippedUntilTick: 0,
+      ...(sourceStubForFacilityId ? { sourceStubForFacilityId } : {}),
     });
     this.cells.set(cellKey(type, x, y), cell);
     this.revision++;
@@ -224,6 +232,7 @@ export class UtilityTopologySystem {
       }
       if (!Number.isInteger(raw.saturatedCycles) || raw.saturatedCycles < 0) throw new Error('invalid utility saturation counter');
       if (!Number.isInteger(raw.trippedUntilTick) || raw.trippedUntilTick < 0) throw new Error('invalid utility trip expiry');
+      if (raw.sourceStubForFacilityId !== undefined && !raw.sourceStubForFacilityId) throw new Error('invalid utility source stub facility id');
       const key = cellKey(raw.type, raw.x, raw.y);
       if (restored.has(key)) throw new Error('duplicate utility corridor layer coordinate');
       restored.set(key, Object.freeze({ ...raw }));
