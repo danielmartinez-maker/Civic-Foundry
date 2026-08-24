@@ -165,6 +165,18 @@ function emptyCycle(): CycleMetrics {
   };
 }
 
+function cloneCycle(cycle: CycleMetrics): CycleMetrics {
+  return {
+    moved: cycle.moved,
+    displaced: cycle.displaced,
+    rehoused: cycle.rehoused,
+    failed: cycle.failed,
+    movedInByBuilding: new Map(cycle.movedInByBuilding),
+    movedOutByBuilding: new Map(cycle.movedOutByBuilding),
+    displacedByBuilding: new Map(cycle.displacedByBuilding),
+  };
+}
+
 function addMetric(map: Map<string, number>, key: string, amount: number): void {
   if (amount <= 0) return;
   map.set(key, (map.get(key) ?? 0) + amount);
@@ -258,6 +270,7 @@ export class HousingRelocationSystem {
   private latest: HousingRelocationSnapshot = this.buildSnapshot(0, [], emptyCycle());
   private initialized = false;
   private pendingCycle = emptyCycle();
+  private latestCycle = emptyCycle();
 
   initialize(population: number, options: readonly HousingTenureOption[]): HousingRelocationSnapshot {
     finiteNonNegative('population', population);
@@ -266,6 +279,7 @@ export class HousingRelocationSystem {
     this.unplaced = entrantCohorts(population);
     this.totals = emptyTotals();
     this.pendingCycle = emptyCycle();
+    this.latestCycle = emptyCycle();
     const cycle = emptyCycle();
     const queue = this.unplaced.map((cohort) => ({ cohort, countFailure: false, countMoveOnPlacement: false }));
     this.unplaced = [];
@@ -323,7 +337,8 @@ export class HousingRelocationSystem {
       rehousedDisplacedResidents: this.totals.rehousedDisplacedResidents + cycle.rehoused,
       failedSearchResidents: this.totals.failedSearchResidents + cycle.failed,
     });
-    this.latest = this.buildSnapshot(input.population, options, cycle);
+    this.latestCycle = cloneCycle(cycle);
+    this.latest = this.buildSnapshot(input.population, options, this.latestCycle);
     return this.snapshot();
   }
 
@@ -363,7 +378,7 @@ export class HousingRelocationSystem {
     if (Math.abs(represented - population) > 1e-6) {
       throw new Error(`housing relocation resident conservation failed: ${represented} != ${population}`);
     }
-    this.latest = this.buildSnapshot(population, validOptions, emptyCycle());
+    this.latest = this.buildSnapshot(population, validOptions, this.latestCycle);
     return this.snapshot();
   }
 
@@ -406,6 +421,7 @@ export class HousingRelocationSystem {
     this.totals = Object.freeze({ ...state.totals });
     this.initialized = true;
     this.pendingCycle = emptyCycle();
+    this.latestCycle = emptyCycle();
     return this.snapshotState();
   }
 
