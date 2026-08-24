@@ -22,6 +22,17 @@ test('command sequences are monotonic and FIFO across command types', () => {
   assert.equal(bus.getNextSequence(), 4);
 });
 
+test('queued command payload is deeply isolated from later external mutation', () => {
+  const bus = new CommandBus();
+  const payload = { nested: { value: 1 }, rows: [{ count: 2 }] };
+  bus.enqueue({ type: 'x', payload }, 1);
+  payload.nested.value = 7;
+  payload.rows[0]!.count = 9;
+  const queued = bus.pending()[0]!;
+  assert.deepEqual(queued.command.payload, { nested: { value: 1 }, rows: [{ count: 2 }] });
+  assert.equal(Object.isFrozen(queued.command.payload), true);
+});
+
 test('future-tick commands remain pending until eligible', () => {
   const bus = new CommandBus();
   const seen: number[] = [];
