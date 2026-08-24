@@ -36,6 +36,10 @@ function requireFiniteNonNegative(name: string, value: number): void {
   if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be finite and non-negative`);
 }
 
+function requireFinite(name: string, value: number): void {
+  if (!Number.isFinite(value)) throw new Error(`${name} must be finite`);
+}
+
 export function housingBurden(monthlyCost: number, band: HousingIncomeBand): number {
   requireFiniteNonNegative('monthlyCost', monthlyCost);
   return monthlyCost / HOUSING_BAND_PROFILES[band].monthlyIncome;
@@ -48,9 +52,10 @@ export function housingAffordabilityScore(monthlyCost: number, band: HousingInco
 }
 
 export function housingQualityScore(inputs: HousingQualityInputs): number {
-  for (const [name, value] of Object.entries(inputs)) {
-    if (!Number.isFinite(value)) throw new Error(`${name} must be finite`);
-  }
+  requireFinite('personAccessibility', inputs.personAccessibility);
+  requireFinite('serviceQuality', inputs.serviceQuality);
+  requireFinite('neighborhoodQuality', inputs.neighborhoodQuality);
+  requireFinite('utilityRatio', inputs.utilityRatio);
   return clamp01(
     0.30 * clamp01(inputs.neighborhoodQuality)
     + 0.25 * clamp01(inputs.serviceQuality)
