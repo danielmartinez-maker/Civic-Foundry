@@ -92,8 +92,17 @@ type AnySave = SaveV2Like | SaveV3 | SaveV4;
 
 function copyUtilitySnapshot(snapshot: UtilitySnapshot): UtilitySnapshot {
   const perBuilding: Record<string, { power: number; water: number }> = {};
-  for (const [id, service] of Object.entries(snapshot.perBuilding)) perBuilding[id] = { ...service };
-  return { power: { ...snapshot.power }, water: { ...snapshot.water }, perBuilding };
+  for (const [id, service] of Object.entries(snapshot.perBuilding)) perBuilding[id] = { power: service.power, water: service.water };
+  return {
+    power: { ...snapshot.power },
+    water: { ...snapshot.water },
+    perBuilding,
+    powerNetwork: snapshot.powerNetwork ?? { segments: Object.freeze({}), edgeFlow: Object.freeze({}) },
+    waterNetwork: snapshot.waterNetwork ?? { segments: Object.freeze({}), edgeFlow: Object.freeze({}) },
+    networkOperatingCost: snapshot.networkOperatingCost ?? 0,
+    saturatedSegments: snapshot.saturatedSegments ?? 0,
+    trippedSegments: snapshot.trippedSegments ?? 0,
+  };
 }
 
 function copyIntersectionSnapshot(snapshot: IntersectionSnapshot): IntersectionSnapshot {
