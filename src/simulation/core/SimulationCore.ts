@@ -500,7 +500,7 @@ export class SimulationCore {
     const commercialServiceQuality = hasServices ? this.neighborhoodSnapshot.commercialServiceQuality : 0.7;
     this.refreshLandHousingMarket();
     this.refreshHousingTenure();
-    this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: true });
+    this.syncHousingPopulationWithoutVoluntaryMoves();
     this.refreshHousingChoice();
     this.demandSnapshot = this.demand.evaluate({
       population: this.population.population,
@@ -543,7 +543,7 @@ export class SimulationCore {
     this.population.update(this.buildings.residentialCapacity(), attractiveness);
     this.refreshLandHousingMarket();
     this.refreshHousingTenure();
-    this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: false });
+    this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: true });
     this.refreshHousingChoice();
     this.refreshRedevelopmentPressure();
     this.refreshRedevelopmentExecution();
