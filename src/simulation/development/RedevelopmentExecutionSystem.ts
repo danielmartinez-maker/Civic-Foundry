@@ -190,10 +190,10 @@ export class RedevelopmentExecutionSystem {
         decisions.push(Object.freeze({ ...decisionBase, reason: 'affordable-capacity' }));
         continue;
       }
+      const requiredLowerIncomeSlack = displacedLowerIncomeResidents * lowerIncomeRelocationProtection;
       if (
         displacedLowerIncomeResidents > 0
-        && Math.max(0, lowerIncomeAffordableSlack - reservedLowerIncomeSlack)
-          < displacedLowerIncomeResidents * lowerIncomeRelocationProtection
+        && Math.max(0, lowerIncomeAffordableSlack - reservedLowerIncomeSlack) < requiredLowerIncomeSlack
       ) {
         decisions.push(Object.freeze({ ...decisionBase, reason: 'lower-income-relocation' }));
         continue;
@@ -212,7 +212,7 @@ export class RedevelopmentExecutionSystem {
       opportunities.push(adjusted);
       remainingPhysicalCapacity = postPhysicalCapacity;
       remainingEffectiveAffordableCapacity = postAffordableCapacity;
-      reservedLowerIncomeSlack += displacedLowerIncomeResidents;
+      reservedLowerIncomeSlack += requiredLowerIncomeSlack;
       decisions.push(Object.freeze({ ...decisionBase, reason: 'admitted' }));
     }
 
