@@ -2,13 +2,14 @@ import type { DevelopmentFeasibilityResult } from './DevelopmentTypes.ts';
 import type { ResidentialRedevelopmentPressure } from './RedevelopmentPressureSystem.ts';
 
 const MINIMUM_REDEVELOPMENT_PRESSURE = 0.25;
-const MINIMUM_POST_REDEVELOPMENT_AFFORDABLE_SHARE = 0.85;
+const DEFAULT_MINIMUM_POST_REDEVELOPMENT_AFFORDABLE_SHARE = 0.85;
 
 export type RedevelopmentRelocationContext = Readonly<{
   population: number;
   physicalCapacity: number;
   effectiveAffordableCapacity: number;
   unplacedResidents: number;
+  minimumAffordableShare?: number;
 }>;
 
 export type RedevelopmentExecutionInput = Readonly<{
@@ -110,6 +111,8 @@ export class RedevelopmentExecutionSystem {
     requireFiniteNonNegative('physicalCapacity', context.physicalCapacity);
     requireFiniteNonNegative('effectiveAffordableCapacity', context.effectiveAffordableCapacity);
     requireFiniteNonNegative('unplacedResidents', context.unplacedResidents);
+    const minimumAffordableShare = context.minimumAffordableShare ?? DEFAULT_MINIMUM_POST_REDEVELOPMENT_AFFORDABLE_SHARE;
+    requireFiniteUnit('minimumAffordableShare', minimumAffordableShare);
 
     const sorted = inputs.slice().sort((a, b) =>
       b.pressure.pressure - a.pressure.pressure
@@ -171,7 +174,7 @@ export class RedevelopmentExecutionSystem {
       }
       const removedAffordableCapacity = input.residentCapacity * input.affordabilityScore;
       const postAffordableCapacity = remainingEffectiveAffordableCapacity - removedAffordableCapacity;
-      if (postAffordableCapacity < context.population * MINIMUM_POST_REDEVELOPMENT_AFFORDABLE_SHARE) {
+      if (postAffordableCapacity < context.population * minimumAffordableShare) {
         decisions.push(Object.freeze({ ...decisionBase, reason: 'affordable-capacity' }));
         continue;
       }
