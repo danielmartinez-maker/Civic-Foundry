@@ -1,16 +1,14 @@
 name: Phase 7 Review Fix Target
 
 on:
-  pull_request_target:
+  push:
     branches: [main]
-    types: [ready_for_review, synchronize]
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'phase7-tenure-relocation' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
