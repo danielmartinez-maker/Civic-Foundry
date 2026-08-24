@@ -50,6 +50,12 @@ import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/Hous
 import { HousingTenureSystem, type HousingTenureSnapshot } from '../housing/HousingTenureSystem.ts';
 import { HousingRelocationSystem, type HousingRelocationSnapshot, type HousingRelocationState } from '../housing/HousingRelocationSystem.ts';
 import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';
+import { EntityRegistry } from '../../entities/EntityRegistry.ts';
+import { EntityReferenceGraph } from '../../entities/EntityReferenceGraph.ts';
+import { LegacyV7EntityProjector } from '../../entities/LegacyV7EntityProjector.ts';
+import { commitEntityProjection } from '../../entities/EntityProjection.ts';
+import { assertEntityIntegrity, buildEntityDiagnostics, type EntityDiagnosticsSnapshot } from '../../entities/EntityDiagnostics.ts';
+import type { UnresolvedEntityReference } from '../../entities/EntityTypes.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -78,6 +84,8 @@ export class SimulationCore {
   readonly random: SeededRandom;
   readonly clock: SimulationClock;
   readonly kernel: SimulationKernel;
+  readonly entityRegistry: EntityRegistry;
+  readonly entityReferences: EntityReferenceGraph;
   readonly terrain: TerrainGrid;
   readonly treasury: TreasurySystem;
   readonly roads: RoadSystem;
@@ -120,6 +128,8 @@ export class SimulationCore {
   readonly redevelopmentExecution: RedevelopmentExecutionSystem;
   readonly developmentPolicy: DevelopmentPolicySystem;
   private readonly redevelopmentFeasibility: DevelopmentFeasibilitySystem;
+  private readonly entityProjector: LegacyV7EntityProjector;
+  private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);
 
   employmentSnapshot: EmploymentSnapshot;
   utilitySnapshot: UtilitySnapshot;
@@ -163,11 +173,18 @@ export class SimulationCore {
     return this.developmentPolicy.snapshot();
   }
 
+  get entityDiagnostics(): EntityDiagnosticsSnapshot {
+    return buildEntityDiagnostics(this.entityRegistry, this.entityReferences, this.lastUnresolvedEntityReferences);
+  }
+
   constructor(options: SimulationCoreOptions = {}) {
     this.seed = options.seed ?? 1;
     this.random = new SeededRandom(this.seed);
     this.clock = new SimulationClock();
     this.kernel = new SimulationKernel({ clock: this.clock, seed: this.seed });
+    this.entityRegistry = new EntityRegistry();
+    this.entityReferences = new EntityReferenceGraph();
+    this.entityProjector = new LegacyV7EntityProjector();
     this.terrain = options.terrain ?? TerrainGrid.generate(options.width ?? 40, options.height ?? 24, this.seed);
     this.treasury = new TreasurySystem(options.startingFunds ?? 125_000);
     this.roads = new RoadSystem(this.terrain);
@@ -239,6 +256,7 @@ export class SimulationCore {
     this.refreshHousingChoice();
     this.refreshRedevelopmentPressure();
     this.refreshRedevelopmentExecution();
+    this.syncEntityProjection();
 
     this.kernel.registerSystem({
       id: 'legacy-v7-city',
@@ -246,6 +264,19 @@ export class SimulationCore {
       writes: ['legacy-v7-city'],
       cadence: { every: 1 },
       execute: () => this.runLegacyV7Tick(),
+    });
+    this.kernel.registerSystem({
+      id: 'entity-registry-sync',
+      reads: ['legacy-v7-city'],
+      writes: ['entity-registry'],
+      cadence: { every: 1 },
+      after: ['legacy-v7-city'],
+      execute: () => this.syncEntityProjection(),
+    });
+    this.kernel.invariants.register({
+      id: 'entity-referential-integrity',
+      cadence: { every: 1 },
+      check: () => assertEntityIntegrity(this.entityRegistry, this.entityReferences),
     });
   }
 
@@ -359,6 +390,19 @@ export class SimulationCore {
 
   step(ticks = 1): void {
     this.kernel.step(ticks);
+  }
+
+  rebuildEntityProjection(): void {
+    this.syncEntityProjection();
+  }
+
+  private syncEntityProjection(): void {
+    const result = commitEntityProjection(
+      this.entityRegistry,
+      this.entityReferences,
+      this.entityProjector.project(this),
+    );
+    this.lastUnresolvedEntityReferences = result.unresolved;
   }
 
   private runLegacyV7Tick(): void {
