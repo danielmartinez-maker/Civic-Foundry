@@ -1,15 +1,16 @@
 name: Phase 7 Inspector Patch
 
 on:
-  push:
-    branches: [phase7-tenure-relocation]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, '[phase7-inspector-patch]') }}
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
