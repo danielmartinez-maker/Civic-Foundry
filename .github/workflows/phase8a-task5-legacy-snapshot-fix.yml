@@ -1,0 +1,35 @@
+name: Phase8A Task5 Legacy Snapshot Fix
+
+on:
+  push:
+    branches: [phase8a-utility-networks]
+    paths: [.github/workflows/phase8a-task5-legacy-snapshot-fix.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase8a-utility-networks
+          fetch-depth: 0
+      - name: Add neutral diagnostics to legacy utility snapshots
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/save/saveLegacy.ts')
+          s = p.read_text()
+          old = """function copyUtilitySnapshot(snapshot: UtilitySnapshot): UtilitySnapshot {\n  const perBuilding: Record<string, { power: number; water: number }> = {};\n  for (const [id, service] of Object.entries(snapshot.perBuilding)) perBuilding[id] = { ...service };\n  return { power: { ...snapshot.power }, water: { ...snapshot.water }, perBuilding };\n}"""
+          new = """function copyUtilitySnapshot(snapshot: UtilitySnapshot): UtilitySnapshot {\n  const perBuilding: Record<string, { power: number; water: number }> = {};\n  for (const [id, service] of Object.entries(snapshot.perBuilding)) perBuilding[id] = { power: service.power, water: service.water };\n  return {\n    power: { ...snapshot.power },\n    water: { ...snapshot.water },\n    perBuilding,\n    powerNetwork: snapshot.powerNetwork ?? { segments: Object.freeze({}), edgeFlow: Object.freeze({}) },\n    waterNetwork: snapshot.waterNetwork ?? { segments: Object.freeze({}), edgeFlow: Object.freeze({}) },\n    networkOperatingCost: snapshot.networkOperatingCost ?? 0,\n    saturatedSegments: snapshot.saturatedSegments ?? 0,\n    trippedSegments: snapshot.trippedSegments ?? 0,\n  };\n}"""
+          if old not in s:
+              raise SystemExit('legacy utility snapshot seam not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/save/saveLegacy.ts
+          git commit -m "fix: normalize legacy utility snapshots for Phase 8A [phase8a-task5]"
+          git push origin HEAD:phase8a-utility-networks
