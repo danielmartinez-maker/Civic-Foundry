@@ -17,7 +17,7 @@ const TERRAIN_COLORS = { grass: '#7b9365', forest: '#5f7953', rock: '#74777a', w
 const ZONE_COLORS = { residential: '#63b36d', commercial: '#5f91d8', industrial: '#c39b58' } as const;
 const ROAD_COLORS = { local: '#4b5157', collector: '#383f45', arterial: '#252b30' } as const;
 const BUILDING_COLORS = { residential: '#d8e6d0', commercial: '#d4e3f6', industrial: '#ead9b8' } as const;
-const FACILITY_LABELS = { power: '⚡', water: '●', landfill: '♻' } as const;
+const FACILITY_LABELS = { power: '⚡', water: '●', landfill: '♻', power_substation: '▣', water_pump: '◉' } as const;
 const SERVICE_LABELS = { fire_station: 'F', police_station: 'P', clinic: '+', elementary_school: 'S', landfill: 'W', recycling_center: 'R' } as const;
 
 export class WorldRenderer {
