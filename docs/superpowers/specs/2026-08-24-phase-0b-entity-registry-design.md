@@ -573,6 +573,44 @@ It is not added to Save V7.
 
 After hydration, continuity is reconstructed only from available V7 authoritative state. Exact historical distinctions that cannot be reconstructed are intentionally absent.
 
+# Hydration Reconstruction of Historical Weak Targets
+
+Phase 0B must not use the current active entity merely because its raw V7 ID matches a weak reference that may predate replacement.
+
+When hydrating a Save V7, the projector may reconstruct a minimal historical incarnation **only when surviving authoritative state proves that an earlier incarnation existed**.
+
+For example, if an active traffic vehicle has:
+
+```text
+originBuildingId = building:lot:8,12
+departureTick = 120
+```
+
+and the current building with that same V7 ID has:
+
+```text
+constructionStartedTick = 170
+```
+
+then the surviving authoritative timestamps prove that the vehicle's origin reference cannot refer to the current building incarnation. The projector may therefore reconstruct:
+
+- one historical building handle representing the proven pre-current incarnation;
+- one current building handle representing the active incarnation;
+- the vehicle's weak origin reference targeting the proven historical handle.
+
+This reconstruction records **identity existence only**. It must not invent definition, owner, construction cost, demolition tick, or any other historical attributes not present in surviving authoritative state.
+
+If the surviving state proves only that at least one prior incarnation existed, Phase 0B reconstructs only the minimum number of generations required by the evidence. It must not guess that multiple unobserved replacements occurred.
+
+If authoritative state cannot distinguish whether a weak raw-string reference targets the current incarnation or an earlier one, the projector must not silently choose. The reference must be represented as an explicit unresolved compatibility diagnostic or external/derived reference according to the implementation plan, and it must not participate as a falsely resolved weak handle.
+
+The implementation plan must define the exact deterministic evidence rules for each required weak-reference relation. Tests must cover both provable historical reconstruction and ambiguous cases.
+
+This rule preserves both master invariants:
+
+- no fabricated history;
+- stale references never silently retarget to a replacement.
+
 # Kernel Integration
 
 Phase 0A currently schedules one compatibility system:
@@ -615,7 +653,8 @@ The kernel invariant runner gains a registry invariant that validates:
 - no dangling strong reference;
 - no dangling owned reference;
 - source handles exist;
-- weak references target known handles;
+- weak references target known handles when deterministically resolvable;
+- unresolved compatibility references are explicitly classified and never masquerade as resolved handles;
 - reference graph has deterministic canonical ordering.
 
 Invariant failure must include enough diagnostic data to identify:
@@ -639,6 +678,8 @@ export type EntityRegistrySnapshot = Readonly<{
 }>;
 ```
 
+If unresolved compatibility references exist, diagnostics expose them separately from `references` so consumers cannot mistake them for resolved entity handles.
+
 The kernel diagnostic snapshot may include this entity snapshot through the existing `SnapshotRegistry`.
 
 Canonical ordering:
@@ -660,6 +701,7 @@ The snapshot is diagnostic and is not part of Save V7.
 - active/historical counts;
 - inbound/outbound reference counts;
 - dangling-reference reports;
+- unresolved compatibility-reference reports;
 - generation history per legacy key;
 - canonical snapshot digest support for tests;
 - concise invariant failure formatting.
@@ -680,7 +722,7 @@ Examples:
 - strong reference to unknown target;
 - owned reference to unknown target.
 
-Unknown weak targets also fail unless the exact historical handle is already known.
+Unknown weak targets fail as resolved weak references. If the V7 compatibility projector cannot resolve them exactly, it must classify them explicitly as unresolved compatibility references rather than invent a target generation.
 
 A failed projection leaves the previously committed registry/reference state unchanged.
 
@@ -695,6 +737,8 @@ Tests must prove:
 - generation advancement independent of map insertion order;
 - canonical snapshot hash identical across repeat runs;
 - hydration reconstruction identical across repeat runs;
+- evidence-derived historical reconstruction is order-independent;
+- unresolved compatibility-reference classification is deterministic;
 - no `localeCompare`-dependent ordering in canonical kernel/entity infrastructure;
 - no randomness used in registry identity assignment.
 
@@ -718,7 +762,9 @@ construct SimulationCore
 → restore shared clock and legacy RNG state
 → rebuild dependent derived V7 state
 → rebuild EntityRegistry from restored authoritative state
+→ reconstruct only evidence-proven historical identity needed by surviving references
 → rebuild EntityReferenceGraph
+→ classify any genuinely ambiguous compatibility references explicitly
 → run entity referential-integrity validation
 → return hydrated core
 ```
@@ -731,6 +777,7 @@ For a fixed V7 save:
 
 - hydrate A → registry snapshot hash X;
 - hydrate B → registry snapshot hash X;
+- unresolved compatibility diagnostics, if any, are identical across both hydrations;
 - hydrate → continue N ticks must match the existing V7 parity fixture;
 - registry rebuild must not alter gameplay state or RNG state.
 
@@ -798,6 +845,7 @@ Test:
 - owned reference requires active target;
 - weak reference may target known historical handle;
 - weak reference cannot auto-retarget after replacement;
+- unresolved compatibility reference remains separate from resolved graph;
 - external reference behavior;
 - inbound/outbound lookup;
 - duplicate relation normalization;
@@ -826,6 +874,8 @@ Test at minimum:
 - transit line → stop strong references;
 - stop deletion and line repair remain valid;
 - active traffic vehicle keeps original building generation as weak reference;
+- hydration reconstructs a pre-current historical building handle when timestamps prove it existed;
+- ambiguous post-hydration weak references are never silently bound to current replacements;
 - deterministic projection independent of source ordering.
 
 ## Hydration Tests
@@ -833,6 +883,8 @@ Test at minimum:
 Test:
 
 - same Save V7 hydrated twice gives identical registry snapshot;
+- same Save V7 hydrated twice gives identical unresolved-reference diagnostics;
+- evidence-derived historical generation reconstruction is deterministic;
 - registry rebuild consumes no simulation tick;
 - registry rebuild consumes no gameplay RNG draw;
 - save serialization contains no new registry fields;
@@ -930,37 +982,39 @@ Phase 0B is complete only when all of the following are satisfied.
 6. Required building→lot, firm→building, transit-line→stop, and traffic-vehicle→building references are projected.
 7. Strong and owned dangling references fail validation.
 8. Weak references may target known historical incarnations and never auto-retarget.
-9. Reference graph ordering is deterministic.
-10. Projection is atomic on failure.
+9. Ambiguous compatibility references are explicitly unresolved rather than falsely resolved.
+10. Reference graph ordering is deterministic.
+11. Projection is atomic on failure.
 
 ## Determinism
 
-11. Equivalent source orderings produce byte-equivalent canonical registry snapshots.
-12. Repeat runs produce identical registry hashes.
-13. No gameplay RNG state is consumed or altered.
-14. Registry synchronization is frame-rate independent and kernel-scheduled.
+12. Equivalent source orderings produce byte-equivalent canonical registry snapshots.
+13. Repeat runs produce identical registry hashes.
+14. Evidence-derived historical reconstruction is deterministic and minimal.
+15. No gameplay RNG state is consumed or altered.
+16. Registry synchronization is frame-rate independent and kernel-scheduled.
 
 ## Compatibility
 
-15. Existing immutable V7 parity fixture remains exact.
-16. Save V7 schema remains unchanged.
-17. Existing public V7 string IDs remain unchanged.
-18. Save→hydrate reconstructs identical registry state without advancing the clock.
-19. Existing gameplay-domain tests remain green.
-20. Browser smoke remains green.
+17. Existing immutable V7 parity fixture remains exact.
+18. Save V7 schema remains unchanged.
+19. Existing public V7 string IDs remain unchanged.
+20. Save→hydrate reconstructs identical registry state and unresolved diagnostics without advancing the clock.
+21. Existing gameplay-domain tests remain green.
+22. Browser smoke remains green.
 
 ## Performance
 
-21. Representative simulation median regression is at or below the 5% target, or any larger measured delta is investigated and resolved/justified before merge.
-22. Registry lookup/reference operations meet the expected bounded complexity described in this spec.
-23. Diagnostic history or snapshots do not grow unbounded per tick.
+23. Representative simulation median regression is at or below the 5% target, or any larger measured delta is investigated and resolved/justified before merge.
+24. Registry lookup/reference operations meet the expected bounded complexity described in this spec.
+25. Diagnostic history or snapshots do not grow unbounded per tick.
 
 ## Documentation and Review
 
-24. `docs/ARCHITECTURE.md` documents the registry boundary and compatibility projection.
-25. README architecture notes are updated if user-facing developer documentation requires it.
-26. Implementation evidence records tests, parity, save compatibility, performance, and final commit SHA.
-27. Legacy domain ownership is not removed in Phase 0B.
+26. `docs/ARCHITECTURE.md` documents the registry boundary and compatibility projection.
+27. README architecture notes are updated if user-facing developer documentation requires it.
+28. Implementation evidence records tests, parity, save compatibility, performance, and final commit SHA.
+29. Legacy domain ownership is not removed in Phase 0B.
 
 # Completion Gate
 
