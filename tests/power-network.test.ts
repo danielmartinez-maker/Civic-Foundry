@@ -41,7 +41,7 @@ test('a directional substation bridges transmission into distribution with finit
     inputCoord: { x: 1, y: 1 }, outputCoord: { x: 3, y: 1 },
   };
   const full = system.evaluate({
-    corridors, facilities: [source, substation], demands: [{ id: 'b1', x: 4, y: 1, demand: 600 }], tick: 0,
+    corridors, facilities: [source, substation], demands: [{ id: 'b1', x: 4, y: 1, demand: 180 }], tick: 0,
   });
   assert.equal(full.perBuilding.b1?.serviceRatio, 1);
   const capped = system.evaluate({
