@@ -283,7 +283,7 @@ export class SimulationCore {
       this.housingRelocation.initialize(this.population.population, this.housingTenureSnapshot.options);
     } else {
       const buildingZones = new Map(this.buildings.occupied().map((building) => [building.id, building.zone] as const));
-      const optionCapacities = new Map(this.housingTenureSnapshot.options.map((option) => [`${option.buildingId}|${option.tenure}`, option.capacity] as const));
+      const optionCapacities = new Map<string, number>(this.housingTenureSnapshot.options.map((option) => [`${option.buildingId}|${option.tenure}`, option.capacity] as const));
       const assigned = new Map<string, number>();
       for (const allocation of state.allocations) {
         if (buildingZones.get(allocation.buildingId) !== 'residential') throw new Error('invalid housing allocation building reference');
