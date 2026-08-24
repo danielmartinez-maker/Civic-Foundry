@@ -16,6 +16,9 @@ export type DevelopmentParcelContext = Readonly<{
   marketRentMultiplier: number;
   marketVacancyRate: number;
   landValueMultiplier: number;
+  policyAffordableHousingShare?: number;
+  policyDevelopmentFeeRate?: number;
+  policyPermittingCostReduction?: number;
 }>;
 
 export type DevelopmentFeasibilityResult = Readonly<{

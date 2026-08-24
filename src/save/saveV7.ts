@@ -1,11 +1,13 @@
 import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import type { DeveloperMarketStateSnapshot } from '../simulation/development/DevelopmentTypes.ts';
+import type { DevelopmentPolicyState } from '../simulation/development/DevelopmentPolicySystem.ts';
 import { hydrateCoreV6, serializeCoreV6, type SaveV6 } from './saveV6.ts';
 
 export type SaveV7 = Omit<SaveV6, 'saveVersion' | 'gameVersion'> & {
   saveVersion: 7;
   gameVersion: '0.7.0-metropolitan';
   developmentMarket: DeveloperMarketStateSnapshot;
+  developmentPolicy?: DevelopmentPolicyState;
 };
 
 export function serializeCoreV7(core: SimulationCore): SaveV7 {
@@ -15,6 +17,7 @@ export function serializeCoreV7(core: SimulationCore): SaveV7 {
     saveVersion: 7,
     gameVersion: '0.7.0-metropolitan',
     developmentMarket: core.developerMarket.snapshotState(),
+    developmentPolicy: core.developmentPolicySnapshot,
   };
 }
 
@@ -23,7 +26,7 @@ export function hydrateCoreV7(input: unknown): SimulationCore {
   if (input.saveVersion !== 7) return hydrateCoreV6(input);
   validateEnvelope(input);
   const save = input as unknown as SaveV7;
-  const { developmentMarket, ...v7WithoutDevelopment } = save;
+  const { developmentMarket, developmentPolicy, ...v7WithoutDevelopment } = save;
   const v6: SaveV6 = {
     ...v7WithoutDevelopment,
     saveVersion: 6,
@@ -32,6 +35,7 @@ export function hydrateCoreV7(input: unknown): SimulationCore {
   const core = hydrateCoreV6(v6);
   validateDevelopmentReferences(core, developmentMarket);
   core.developerMarket.restoreState(developmentMarket);
+  if (developmentPolicy !== undefined) core.setDevelopmentPolicy(developmentPolicy);
   return core;
 }
 
@@ -40,6 +44,7 @@ function validateEnvelope(record: Record<string, unknown>): void {
   const development = requireRecord(record.developmentMarket, 'developmentMarket');
   if (!Array.isArray(development.developers)) throw new Error('developmentMarket.developers must be an array');
   if (!Array.isArray(development.commitments)) throw new Error('developmentMarket.commitments must be an array');
+  if (record.developmentPolicy !== undefined) requireRecord(record.developmentPolicy, 'developmentPolicy');
 }
 
 function validateDevelopmentReferences(core: SimulationCore, state: DeveloperMarketStateSnapshot): void {
