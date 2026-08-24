@@ -65,14 +65,22 @@ A highway cell may coexist with a surface-road cell at the same world coordinate
 
 `RoadSystem` continues to own only local/collector/arterial surface streets.
 
-### 2. Transportation graph composition
+### 2. Reuse the Phase 8A `InfrastructureGraph`
+
+`HighwaySystem` reuses the minimal `InfrastructureGraph` introduced in Phase 8A for deterministic limited-access topology construction, stable adjacency ordering and capacity metadata.
+
+It does **not** use utility max-flow semantics for traffic. The shared graph is only the common topology/capacity substrate. Highway traffic remains authoritative in `TransportationGraph` + `TrafficSystem`.
+
+This preserves the approved shared-infrastructure architecture without turning one generic graph into a domain-god object.
+
+### 3. Transportation graph composition
 
 `TransportationGraph` remains the canonical graph consumed by pathfinding, traffic, service vehicles, mobility and freight.
 
 Its build step is extended to compose:
 
 - surface-road nodes/edges from `RoadSystem`
-- limited-access nodes/edges from `HighwaySystem`
+- limited-access nodes/edges derived by `HighwaySystem`
 - explicit connector edges from ramps/interchanges
 
 Use distinct stable IDs:
@@ -87,16 +95,22 @@ A surface and highway node can occupy the same coordinate and remain disconnecte
 
 Topology cache invalidation depends on both road revision and highway revision.
 
-### 3. Highway classes
+### 4. Highway classes
 
 Initial base definitions:
 
-| Class | Free-flow speed | Weighted capacity/min | Base construction cost/cell | Access |
-| --- | ---: | ---: | ---: | --- |
-| expressway | 6 cells/s | 420 | higher than arterial | limited |
-| highway | 8 cells/s | 720 | highest | limited |
+| Class | Free-flow speed | Weighted capacity/min | Access |
+| --- | ---: | ---: | --- |
+| expressway | 6 cells/s | 420 | limited |
+| highway | 8 cells/s | 720 | limited |
 
-Construction cost constants must be calibrated against the current treasury/building economy so a metropolitan corridor is a strategic capital decision rather than a trivial upgrade.
+Construction and operating cost constants live in data definitions. They are balance constants rather than architectural constants, but must satisfy these required relationships:
+
+- expressway construction cost/cell > arterial construction cost/cell
+- highway construction cost/cell > expressway construction cost/cell
+- Tier 2/3 upgrade cost is positive and less than rebuilding the same corridor from scratch
+- highway operating cost/cell > expressway operating cost/cell > 0
+- a metropolitan corridor must be material relative to the starting treasury and therefore cannot be spam-built without fiscal consequence
 
 Both classes are limited access:
 
@@ -107,7 +121,7 @@ Both classes are limited access:
 
 Contiguous cardinal highway cells connect automatically to one another within the limited-access layer.
 
-### 4. Upgrade tiers
+### 5. Upgrade tiers
 
 Every highway cell has tier `1 | 2 | 3`.
 
@@ -129,7 +143,7 @@ Upgrade construction cost charges only the delta from the current tier. Operatin
 
 No downgrade in Phase 8B.
 
-### 5. Ramps and interchanges
+### 6. Ramps and interchanges
 
 Access is explicit.
 
@@ -146,17 +160,27 @@ Eligible surface road:
 
 Local roads cannot connect directly to a highway ramp in Phase 8B.
 
-Ramp edges are bidirectional in the first implementation. Their finite weighted capacity and connector delay make them real bottlenecks.
+Initial ramp transport characteristics:
+
+- weighted rated capacity: `180/min`
+- fixed connector free-flow delay: `3 ticks`
+- bidirectional in the first implementation
 
 #### Interchange
 
 An interchange is a higher-capacity access connector between a limited-access node and an arterial surface node. It represents a larger grade-separated junction and supports greater connector throughput with lower per-vehicle connector delay than a simple ramp, at much higher construction/operating cost.
 
+Initial interchange transport characteristics:
+
+- weighted rated capacity: `360/min`
+- fixed connector free-flow delay: `1 tick`
+- bidirectional in the first implementation
+
 Phase 8B does not model arbitrary multi-level highway-over-highway geometry. Contiguous/branching highway corridors already connect in the limited-access layer; explicit interchange objects in this slice primarily model high-capacity highway-to-surface access.
 
 A highway passing over a surface road without a ramp/interchange has zero graph connection.
 
-### 6. Routing and generalized cost
+### 7. Routing and generalized cost
 
 Existing A* remains the route engine. It receives composed graph edges with class-specific travel time/capacity.
 
@@ -172,13 +196,15 @@ Freight naturally benefits because:
 
 If freight and car routes have equal generalized cost, existing stable edge-ID tie breaking remains deterministic.
 
-### 7. Traffic and congestion
+### 8. Traffic and congestion
 
 Highway edges enter the authoritative `TrafficSystem` like other transportation edges but use highway capacity/free-flow definitions.
 
+Rated capacity is a congestion threshold, not a hard cap on instantaneous weighted demand. Highway/connector utilization may exceed `1.0`, and that overload must increase experienced travel time/queueing through the existing traffic mechanics.
+
 Limited-access edges do not use ordinary intersection service at every cell. Queue/service delay applies at explicit connector edges and at genuine limited-access merge/branch points only.
 
-The first implementation may treat a simple contiguous highway node as unconstrained through-movement except for edge capacity. Ramps/interchanges have explicit connector service capacity.
+The first implementation treats a simple contiguous highway node as unconstrained through-movement except for edge congestion capacity. Ramps/interchanges have explicit connector service capacity and can queue traffic.
 
 Traffic analytics must include highway edges in:
 
@@ -190,7 +216,7 @@ Traffic analytics must include highway edges in:
 
 Overlay/inspection must distinguish surface and limited-access congestion.
 
-### 8. Induced demand
+### 9. Induced demand
 
 Phase 8B models induced travel through measured accessibility, not a flat road-building bonus.
 
@@ -210,7 +236,7 @@ No additional induced-demand state needs persistence.
 
 Freight does not receive a separate artificial multiplier. Better logistics already increases firm competitiveness/output through the Phase 6 economy, which can organically create more freight orders.
 
-### 9. Surface access and land-development consequences
+### 10. Surface access and land-development consequences
 
 Highways do not create frontage and therefore do not create `LotSystem` development access.
 
@@ -220,16 +246,18 @@ Do not add a flat land-value bonus merely for being near a highway.
 
 Add a bounded local corridor-nuisance diagnostic to represent noise/severance before the later environmental phase:
 
-- residential/commercial cells cardinally or diagonally adjacent to an expressway/highway cell receive a local nuisance penalty
-- penalty decays to zero by Manhattan distance `3`
+- residential/commercial cells at Manhattan distance `1` from an expressway/highway cell receive the maximum local nuisance penalty
+- nuisance decays linearly to zero at Manhattan distance `3`
 - maximum nuisance score at distance `1` is `0.12` for highway and `0.08` for expressway
+- at distance `2`, the score is half the maximum
+- at distance `3` or greater, the score is zero
 - industrial parcels receive no nuisance penalty in Phase 8B
 
 The nuisance score feeds existing neighborhood/property-market quality channels as a bounded negative modifier. It must never bypass utility/service/accessibility calculations.
 
 This creates the intended spatial trade-off: a neighborhood can gain metropolitan access through a nearby interchange while immediate corridor-adjacent parcels bear a local penalty.
 
-### 10. Freight corridor behavior
+### 11. Freight corridor behavior
 
 Phase 8B does not introduce a separate freight-road designation system.
 
@@ -237,7 +265,7 @@ A highway becomes a freight corridor when its actual generalized cost makes frei
 
 Acceptance tests must prove a heavy freight route switches to a highway when it reduces generalized cost and can switch back when connector/highway congestion makes the surface route cheaper.
 
-### 11. Construction and treasury semantics
+### 12. Construction and treasury semantics
 
 Player mutations route through typed `SimulationCore` APIs.
 
@@ -262,7 +290,7 @@ Connector placement validates both referenced layers and does not silently creat
 
 Demolition immediately invalidates affected graph routes. Active vehicles use the existing reroute/failure behavior and may not retain stale connector/highway edge references.
 
-### 12. Simulation ordering
+### 13. Simulation ordering
 
 Relevant order remains:
 
@@ -276,7 +304,7 @@ Relevant order remains:
 
 Induced discretionary demand uses the prior/current stable accessibility snapshot on the existing trip-generation cadence rather than recursively generating additional trips inside the same tick.
 
-### 13. Persistence — Save V8 extension
+### 14. Persistence — Save V8 extension
 
 Phase 8B extends the Phase 8A Save V8 envelope rather than introducing V9.
 
@@ -310,7 +338,7 @@ Hydration validates:
 - no duplicate connector identity
 - active traffic route references after graph reconstruction
 
-### 14. UI and player controls
+### 15. UI and player controls
 
 Add metropolitan-road tools to the Infrastructure surface:
 
@@ -344,15 +372,15 @@ Inspector:
 - tier
 - free-flow speed
 - current speed
-- capacity
-- load/utilization
+- rated capacity
+- current weighted load/utilization, including values above `1.0`
 - connector status
 - operating cost
 - nearby nuisance contribution
 
 The main world renderer visually differentiates limited-access infrastructure from ordinary roads and renders it as a separate layer. It must not imply an intersection where the graph has none.
 
-### 15. Public API direction
+### 16. Public API direction
 
 Likely seams:
 
@@ -365,7 +393,7 @@ Likely seams:
 
 Exact naming may vary during implementation only if ownership and typed-mutation boundaries remain unchanged.
 
-### 16. Error handling and invariants
+### 17. Error handling and invariants
 
 Required invariants:
 
@@ -374,12 +402,13 @@ Required invariants:
 - local roads cannot directly host highway access connectors
 - highway cells never produce building frontage/lots
 - edge load/utilization is finite and non-negative
-- connector/highway capacity is never exceeded by realized traffic accounting
+- rated capacity is finite and positive; traffic utilization may exceed `1.0` and must remain observable rather than clipped away
+- connector queue service never emits more weighted traffic per service interval than the connector's service capacity permits
 - topology revision invalidates routes/cache deterministically
 - demolition cannot leave stale active route references
 - identical topology/state yields identical routes and graph ordering independent of input iteration
 
-### 17. Tests and acceptance criteria
+### 18. Tests and acceptance criteria
 
 TDD coverage must prove at minimum:
 
@@ -390,12 +419,12 @@ TDD coverage must prove at minimum:
 5. highways create no frontage lots or direct building access
 6. highway/expressway definitions provide greater speed/capacity and greater cost than arterials
 7. Tier 2/3 upgrades raise capacity by exactly the specified multipliers
-8. connector capacity can become the bottleneck even when highway mainline capacity remains available
+8. connector demand can exceed rated capacity, creating utilization above `1.0` and queueing while the mainline remains uncongested
 9. freight prefers the highway when generalized freight cost is lower
 10. congestion can reverse that freight route decision
 11. improved person accessibility increases discretionary trip weight but never above the 1.15 cap
 12. mandatory commute weight is unchanged by the induced-demand multiplier
-13. corridor nuisance is strongest adjacent to residential/commercial cells and zero by distance 3
+13. corridor nuisance is strongest at distance 1, half-strength at distance 2 and zero by distance 3
 14. industrial parcels receive zero nuisance penalty
 15. positive land/development effects arise through measured access rather than raw proximity
 16. removing a highway/connector invalidates or reroutes active users safely
