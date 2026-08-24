@@ -1,6 +1,6 @@
 import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import { ROAD_DEFINITIONS } from '../data/roads.ts';
-import { BUILDING_DEFINITIONS } from '../data/buildings.ts';
+import { BUILDING_DEFINITIONS, BUILDING_DEFINITION_BY_ID } from '../data/buildings.ts';
 import { SERVICE_DEFINITIONS } from '../data/services.ts';
 
 
@@ -62,10 +62,11 @@ export function inspectCell(core: SimulationCore, x: number, y: number): Inspect
   }
   const building = core.buildings.getAt(x, y);
   if (building) {
-    const definition = BUILDING_DEFINITIONS[building.zone];
+    const definition = BUILDING_DEFINITION_BY_ID[building.definitionId] ?? BUILDING_DEFINITIONS[building.zone];
     const service = core.utilitySnapshot.perBuilding[building.id] ?? { power: 0, water: 0 };
     const firm = core.economyDomain.getFirmAtBuilding(building.id);
     const firmLines: string[] = [];
+    const housingLines: string[] = [];
     if (firm) {
       const inventories = core.economyDomain.getFirmInventories(firm.id);
       const financials = core.economyDomain.getFirmFinancials(firm.id);
@@ -81,12 +82,30 @@ export function inspectCell(core: SimulationCore, x: number, y: number): Inspect
         `Active shipments in / out: ${vehicles.filter((v) => v.shipment.destinationId === firm.id).length} / ${vehicles.filter((v) => v.shipment.originId === firm.id).length}`,
       );
     }
+    if (building.zone === 'residential' && building.status === 'occupied') {
+      const allocation = core.housingChoiceSnapshot.byBuilding[building.id];
+      const pressure = core.redevelopmentPressureSnapshot.parcels.find((item) => item.buildingId === building.id);
+      const decision = core.redevelopmentExecutionSnapshot.decisions.find((item) => item.buildingId === building.id);
+      if (allocation) {
+        housingLines.push(
+          `Housing occupancy: ${Math.round(allocation.occupancyRate * 100)}% · ${allocation.assignedResidents.toFixed(1)}/${definition.residentCapacity} residents`,
+          `Affordability: ${Math.round(allocation.affordabilityScore * 100)}%`,
+          `Average rent burden: ${Math.round(allocation.averageRentBurden * 100)}%`,
+          `Cost-burdened residents: ${allocation.costBurdenedResidents.toFixed(1)}`,
+        );
+      }
+      housingLines.push(
+        `Redevelopment pressure: ${pressure ? pressure.pressure.toFixed(2) : 'n/a'}`,
+        `Redevelopment status: ${decision ? decision.reason.replaceAll('-', ' ') : 'not evaluated'}`,
+      );
+    }
     return {
       kind: 'building',
       title: `${building.zone[0]?.toUpperCase() ?? ''}${building.zone.slice(1)} building`,
       lines: [
         `Status: ${building.status}`,
         ...firmLines,
+        ...housingLines,
         `Residents capacity: ${definition.residentCapacity}`,
         `Jobs capacity: ${definition.jobCapacity}`,
         `Power service: ${Math.round(service.power * 100)}%`,
