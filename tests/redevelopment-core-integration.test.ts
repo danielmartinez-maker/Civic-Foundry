@@ -74,3 +74,36 @@ test('SimulationCore sends safeguarded occupied residential redevelopment throug
   const committedBuildingIds = new Set(core.developerMarket.listCommitments().map((commitment) => commitment.buildingId));
   assert.ok(replacements.every((replacement) => committedBuildingIds.has(replacement.id)), 'active redevelopment must retain its authoritative developer commitment');
 });
+
+test('SimulationCore redevelopment diagnostics block a building while its prior developer commitment is active', () => {
+  const core = redevelopmentCore(3, 6);
+  const target = core.buildings.list().sort((a, b) => a.id.localeCompare(b.id))[0]!;
+  const snapshot = core.developerMarket.snapshotState();
+  const developer = snapshot.developers[0]!;
+  const equity = 1_000;
+
+  core.developerMarket.restoreState({
+    developers: snapshot.developers.map((item) => item.id === developer.id
+      ? { ...item, availableCapital: item.availableCapital - equity, committedCapital: equity }
+      : item),
+    commitments: [{
+      awardId: `development:0:${target.lotId}:residential_cottage:${developer.id}`,
+      buildingId: target.id,
+      lotId: target.lotId,
+      definitionId: 'residential_cottage',
+      developerId: developer.id,
+      equity,
+      awardTick: 0,
+      completionTick: 0,
+      releaseTick: 100,
+      expectedReturn: 0.10,
+    }],
+  });
+
+  core.step(10);
+
+  const decision = core.redevelopmentExecutionSnapshot.decisions.find((item) => item.buildingId === target.id);
+  assert.ok(decision, 'expected redevelopment diagnostics for committed occupied building');
+  assert.equal(decision.reason, 'active-commitment');
+  assert.equal(core.developerMarket.listCommitments().filter((item) => item.buildingId === target.id).length, 1);
+});
