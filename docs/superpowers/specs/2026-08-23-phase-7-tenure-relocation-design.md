@@ -1,123 +1,96 @@
 # Civic Foundry — Phase 7 Tenure, Housing Search & Relocation Design
 
-Date: 2026-08-23
+Date: 2026-08-24
 Target branch: `phase7-tenure-relocation`
 Baseline: `main` at `18e9cad4084307bea204dfdbdbc51211b1b652b9`
-Canonical runtime/save baseline: V7 `0.7.0-metropolitan`
+Canonical runtime/save baseline: Save V7 / `0.7.0-metropolitan`
 
 ## Objective
 
-Complete the two remaining major mechanical slices of Phase 7 as one integrated housing-market package:
+Complete the two remaining major Phase 7 mechanical slices as one integrated package:
 
-1. add aggregate tenure depth so residential stock can distinguish rental and owner-occupied economics; and
-2. replace stateless whole-city reallocation with a persistent deterministic cohort ledger that can represent staying, moving, displacement, rehousing, and failed housing searches.
+1. add aggregate rental-versus-ownership tenure economics; and
+2. replace stateless whole-city housing reallocation with persistent deterministic cohort placement, search, displacement, and rehousing.
 
-The design must preserve Civic Foundry's deterministic simulation architecture, existing development/property-market systems, and aggregate demographic abstraction. It must not introduce thousands of individual household agents.
+The implementation must preserve Civic Foundry's aggregate deterministic architecture. It must not introduce individual household/person agents, deed-level ownership, banks, leases, mortgages as contracts, or a second parallel housing-market simulation.
 
-The key architectural change is that housing occupancy becomes persistent authoritative state at the aggregate cohort level. The existing housing-choice layer remains responsible for affordability and quality diagnostics, while a new relocation system owns where residents are actually placed over time.
+The architectural change is that residential occupancy becomes authoritative persistent cohort state. Market rents, local quality, development economics, and population remain sourced from the existing Phase 7 systems.
 
-## Why these slices are one package
+## Why tenure and relocation ship together
 
-Tenure and relocation are causally coupled rather than independent features.
+Tenure and relocation are causally coupled. Renters and owners face different monthly housing costs; financing conditions change ownership affordability; redevelopment must displace actual occupants; and anti-displacement safeguards need the band/tenure composition of the building being removed. Vacancy and turnover therefore need persistent occupancy rather than decorative derived statistics.
 
-- Renters and owners face different monthly housing costs.
-- Financing conditions change ownership affordability and therefore search behavior.
-- Redevelopment displaces actual occupants, not a freshly recomputed citywide allocation.
-- Anti-displacement protections require knowing which income bands and tenure cohorts occupy a building before demolition.
-- Vacancy and turnover are outcomes of persistent occupancy, not independent decorative statistics.
+Both slices share one authoritative cohort ledger and one optional Save V7 state extension.
 
-Implementing tenure without persistent relocation would make renter/owner data cosmetic. Implementing relocation without tenure would immediately require a second redesign once ownership economics arrive. Therefore both slices share one authoritative cohort ledger and one save-state extension.
+## Existing systems to preserve
+
+The implementation builds on, rather than replaces:
+
+- `LandHousingMarketSystem` for market pressure, rent, vacancy, and parcel price signals;
+- `DevelopmentFeasibilitySystem` for project underwriting;
+- `DevelopmentPolicySystem` for player housing/development policy;
+- `HousingChoiceSystem` for affordability/quality reporting;
+- `RedevelopmentPressureSystem` for occupied-parcel redevelopment pressure;
+- `RedevelopmentExecutionSystem` for redevelopment admission;
+- `DeveloperMarketSystem` for deterministic developer capital allocation;
+- `SimulationCore` as orchestration boundary; and
+- Save V7 as the canonical save envelope.
+
+No new subsystem may independently recalculate market rent, project returns, population, or redevelopment eligibility.
 
 ## Scope
 
 ### In scope
 
-1. Aggregate housing cohorts by income band, tenure, and building.
-2. Two tenure types: `renter` and `owner`.
-3. Rental capacity and owner-occupied capacity for each occupied residential building.
-4. Market-derived asking rent and implied purchase price.
-5. Mortgage-equivalent monthly ownership cost based on current development interest conditions.
-6. Taxes/maintenance as bounded ownership carrying costs.
-7. Tenure affordability and attractiveness by income band.
-8. Persistent building occupancy rather than whole-city reallocation on every housing refresh.
-9. Deterministic search and relocation for displaced, unplaced, new, cost-burdened, and limited voluntary movers.
-10. Explicit unplaced and displaced cohort state.
-11. Redevelopment displacement uses the actual cohorts occupying the building.
-12. Lower-income relocation protection as an additional redevelopment safeguard.
-13. Citywide tenure share, vacancy, turnover, movement, displacement, rehousing, and failed-search diagnostics.
-14. Building-level tenure and relocation diagnostics.
-15. Save V7 persistence using an optional `housingState` field for backward compatibility.
-16. Land/Housing UI expansion for tenure and relocation metrics.
-17. Tenure and relocation-pressure overlays.
-18. Deterministic tests, save compatibility tests, long-run invariants, and browser acceptance.
+- aggregate cohorts by income band, tenure, and residential building;
+- `renter` and `owner` tenure modes;
+- deterministic rental/ownership capacity split by residential intensity;
+- asking rent, implied purchase price, mortgage-equivalent monthly owner cost;
+- owner/renter affordability and tenure preference by income band;
+- persistent occupancy, vacancy, and turnover;
+- deterministic search for displaced, previously unplaced, new, severely cost-burdened, and limited voluntary movers;
+- explicit unplaced/displaced cohorts;
+- redevelopment displacement from actual current allocations;
+- targeted lower-income rehousing protection;
+- citywide and building-level tenure/relocation diagnostics;
+- optional Save V7 `housingState` persistence;
+- Land/Housing panel and inspector expansion;
+- `tenure` and `relocation-pressure` overlays;
+- deterministic unit/integration/save/invariant/browser acceptance tests.
 
 ### Explicitly deferred
 
-- individual household/person agents;
-- family size, age, marital status, children, detailed demographics, births, deaths, or Phase 9 population simulation;
-- deed-level ownership, landlords, banks, mortgage contracts, amortization schedules, foreclosure, lease contracts, or eviction court processes;
+- individual households or persons;
+- family size, age, children, births/deaths, education mobility, or other Phase 9 demographics;
+- landlords, banks, deed transactions, mortgage balances, foreclosures, leases, evictions, or rent control;
 - speculative property trading;
 - mixed-use tenure allocation;
 - subsidized-housing waiting lists;
-- neighborhood attachment by named household;
-- commute-origin household micro-simulation;
-- homelessness services or shelter systems;
+- homelessness/shelter services;
 - commercial/industrial tenant relocation;
-- regional migration between multiple cities;
-- property tax assessment reform beyond the bounded owner carrying-cost abstraction;
-- rent control as a new policy instrument in this slice.
-
-## Existing architecture to preserve
-
-The implementation must build on the current Phase 7 systems rather than replace them:
-
-- `LandHousingMarketSystem` remains the authoritative derived property-market signal producer.
-- `DevelopmentFeasibilitySystem` remains the authoritative project underwriting system.
-- `DevelopmentPolicySystem` remains the authoritative player housing/development policy state.
-- `HousingChoiceSystem` remains the affordability/quality reporting layer but no longer fabricates authoritative occupancy from scratch.
-- `RedevelopmentPressureSystem` remains the diagnostic source of occupied-parcel redevelopment pressure.
-- `RedevelopmentExecutionSystem` remains the admission layer for residential redevelopment.
-- `DeveloperMarketSystem` remains the shared deterministic development-capital allocation mechanism.
-- `SimulationCore` remains the orchestration boundary.
-- Save V7 remains the canonical save envelope.
-
-No parallel simulation may independently calculate market rents, development economics, housing occupancy, or redevelopment eligibility.
+- multi-city migration.
 
 ## Core domain model
 
-### Income bands
-
-Continue using the existing Phase 7 bands:
+Continue using:
 
 ```ts
 export type HousingIncomeBand = 'lower' | 'middle' | 'upper';
 ```
 
-Existing income assumptions remain game-economy constants:
+Existing game-economy assumptions remain:
 
-| Band | Population share | Monthly income | Preferred max housing burden |
+| Band | Population share | Monthly income | Preferred max burden |
 | --- | ---: | ---: | ---: |
 | lower | 45% | 1,500 | 35% |
 | middle | 40% | 2,600 | 32% |
 | upper | 15% | 4,500 | 28% |
 
-These are simulation units, not real-world currency claims.
-
-### Tenure
-
 Add:
 
 ```ts
 export type HousingTenure = 'renter' | 'owner';
-```
 
-Tenure is modeled at cohort level. A resident belongs to one income band and one tenure mode while assigned to a building.
-
-### Cohort identity
-
-Authoritative occupancy is represented by aggregate cohorts:
-
-```ts
 export type HousingCohortAllocation = Readonly<{
   buildingId: string;
   band: HousingIncomeBand;
@@ -126,19 +99,15 @@ export type HousingCohortAllocation = Readonly<{
 }>;
 ```
 
-There is no durable random household identifier. Cohorts with identical `buildingId + band + tenure` are merged. Fractional weighted residents are permitted, matching the existing aggregate population model.
-
-Unplaced/displaced cohorts omit `buildingId` and retain only band, tenure preference, residents, and displacement metadata where applicable.
+Cohorts with the same `(buildingId, band, tenure)` are merged. Fractional residents remain allowed because the existing population/housing model is aggregate.
 
 ## `HousingTenureSystem`
 
-Create:
+Create `src/simulation/housing/HousingTenureSystem.ts`.
 
-`src/simulation/housing/HousingTenureSystem.ts`
+This system is deterministic and derived. It owns no occupancy history. It turns current occupied residential buildings plus existing market/financing signals into tenure-specific options.
 
-This system is deterministic and derived. It owns no occupancy history. It converts occupied residential buildings plus market/financing conditions into tenure-specific housing options consumed by relocation and diagnostics.
-
-### Public types
+### Public shape
 
 ```ts
 export type HousingTenureOption = Readonly<{
@@ -173,45 +142,35 @@ export type HousingTenureSnapshot = Readonly<{
 
 ### Capacity split
 
-Every occupied residential building exposes rental and ownership capacity using a deterministic intensity-based base tenure mix.
-
-Initial simulation constants:
-
-| Residential intensity | Owner share | Renter share |
+| Intensity | Owner share | Renter share |
 | --- | ---: | ---: |
 | low | 60% | 40% |
 | medium | 40% | 60% |
 | high | 25% | 75% |
 
-For a building with resident capacity `C`:
+For physical resident capacity `C`:
 
 ```text
 ownershipCapacity = C * ownerShare
 rentalCapacity = C - ownershipCapacity
 ```
 
-This does not imply every low-density building is a detached house or every high-density building is rented. It is a Phase 7 aggregate tenure-market abstraction.
-
-The sum of both tenure capacities must equal the building's physical resident capacity exactly.
+The two capacities must sum exactly to `C`.
 
 ### Rental cost
 
-Use the same existing residential market rent channel already used by housing choice:
+There is one residential rent channel:
 
 ```text
 askingRent =
   definition.baseRent
-  * parcelMarketSignal.marketRentMultiplier
-  * developmentPolicy.residentialRentFactor()
+  * LandHousingMarketSystem.parcelSignal(...).marketRentMultiplier
+  * DevelopmentPolicySystem.residentialRentFactor()
 ```
 
-No second rent model is allowed.
+`HousingTenureSystem` must consume this signal, not create another rent model.
 
 ### Implied purchase price
-
-Owner pricing is derived from the same rent/asset-value environment rather than an independent sale-price simulation.
-
-Use a bounded gross-rent capitalization relationship:
 
 ```text
 annualMarketRent = askingRent * 12
@@ -219,13 +178,9 @@ capitalizationRate = clamp(0.045 + 0.40 * marketInterestRate, 0.05, 0.09)
 impliedPurchasePrice = annualMarketRent / capitalizationRate
 ```
 
-The formula deliberately makes purchase prices respond to the same rent stream while higher financing rates raise the capitalization rate and moderate asset prices.
-
 ### Monthly ownership cost
 
-Use a mortgage-equivalent annuity rather than a deed-level mortgage contract.
-
-Simulation constants:
+Constants:
 
 ```text
 loanToValue = 0.80
@@ -233,27 +188,20 @@ mortgageTermMonths = 360
 annualCarryingCostRate = 0.015
 ```
 
-Monthly financed principal:
-
 ```text
 principal = impliedPurchasePrice * loanToValue
 monthlyRate = marketInterestRate / 12
-```
-
-Monthly mortgage payment uses the standard fixed-payment annuity formula. If `monthlyRate` is zero, payment is `principal / mortgageTermMonths`.
-
-Owner carrying cost:
-
-```text
+mortgagePayment = monthlyRate === 0
+  ? principal / mortgageTermMonths
+  : principal * monthlyRate * (1 + monthlyRate)^mortgageTermMonths
+    / ((1 + monthlyRate)^mortgageTermMonths - 1)
 monthlyCarryingCost = impliedPurchasePrice * annualCarryingCostRate / 12
 monthlyOwnerCost = mortgagePayment + monthlyCarryingCost
 ```
 
-The unfinanced 20% equity portion is not modeled as a cash-balance transaction. Its economic effect is represented indirectly through lower ownership propensity among lower-income cohorts.
+The 20% equity portion is not a cash transaction in Phase 7.
 
-### Tenure propensity
-
-Default desired owner shares by income band:
+### Desired tenure shares
 
 | Band | Desired owner share | Desired renter share |
 | --- | ---: | ---: |
@@ -261,27 +209,15 @@ Default desired owner shares by income band:
 | middle | 50% | 50% |
 | upper | 70% | 30% |
 
-These values are preferences used in search scoring, not hard quotas.
-
-Higher ownership monthly burden reduces effective owner attractiveness. A cohort may rent even when its base preference favors ownership, and may own even when base preference favors renting if owner housing is sufficiently affordable and available.
+They are preferences, not quotas.
 
 ## `HousingRelocationSystem`
 
-Create:
+Create `src/simulation/housing/HousingRelocationSystem.ts`.
 
-`src/simulation/housing/HousingRelocationSystem.ts`
-
-This is the new authoritative state owner for aggregate residential placement.
+This is the authoritative owner of aggregate residential placement history.
 
 ### Authoritative state
-
-```ts
-export type HousingRelocationState = Readonly<{
-  allocations: readonly HousingCohortAllocation[];
-  unplaced: readonly UnplacedHousingCohort[];
-  totals: HousingRelocationTotals;
-}>;
-```
 
 ```ts
 export type UnplacedHousingCohort = Readonly<{
@@ -291,101 +227,71 @@ export type UnplacedHousingCohort = Readonly<{
   displaced: boolean;
   displacedFromBuildingId?: string;
 }>;
-```
 
-```ts
 export type HousingRelocationTotals = Readonly<{
   movedResidents: number;
   displacedResidents: number;
   rehousedDisplacedResidents: number;
   failedSearchResidents: number;
 }>;
-```
 
-`totals` are cumulative save-persisted counters used for diagnostics. Per-cycle movement metrics are derived separately in the latest snapshot.
-
-### Snapshot
-
-```ts
-export type HousingRelocationSnapshot = Readonly<{
-  population: number;
-  housedResidents: number;
-  unplacedResidents: number;
-  renterResidents: number;
-  ownerResidents: number;
-  renterShare: number;
-  ownerShare: number;
-  rentalVacancyRate: number;
-  ownershipVacancyRate: number;
-  movedResidentsThisCycle: number;
-  displacedResidentsThisCycle: number;
-  rehousedDisplacedResidentsThisCycle: number;
-  failedSearchResidentsThisCycle: number;
-  costBurdenedResidents: number;
-  byBand: Readonly<Record<HousingIncomeBand, HousingRelocationBandSnapshot>>;
-  byBuilding: Readonly<Record<string, HousingBuildingRelocationSnapshot>>;
+export type HousingRelocationState = Readonly<{
+  allocations: readonly HousingCohortAllocation[];
+  unplaced: readonly UnplacedHousingCohort[];
+  totals: HousingRelocationTotals;
 }>;
 ```
 
-Building diagnostics include:
+`totals` are cumulative persisted diagnostics. Per-cycle diagnostics are part of the latest derived snapshot.
 
-- total assigned residents;
-- renter residents;
-- owner residents;
-- rental occupancy rate;
-- ownership occupancy rate;
+### Snapshot requirements
+
+The latest snapshot must expose at least:
+
+- population, housed, and unplaced residents;
+- renter/owner resident totals and shares;
+- rental and ownership vacancy rates;
+- moved/displaced/rehoused/failed-search residents this cycle;
+- cumulative totals;
 - cost-burdened residents;
-- moved-in residents this cycle;
-- moved-out residents this cycle;
-- displaced residents this cycle.
+- by-band housed/unplaced/renter/owner/cost-burdened residents;
+- by-building total/renter/owner occupancy, cost burden, moves in/out, and displacement this cycle.
 
-### Invariants
+### Conservation invariants
 
-At the end of every reconciliation:
+After every reconcile:
 
 ```text
-sum(allocated residents) + sum(unplaced residents) = population
+sum(allocations.residents) + sum(unplaced.residents) = population
 ```
 
-For every building and tenure:
+For every building/tenure:
 
 ```text
-allocated residents <= tenure capacity
+allocated <= tenure option capacity
 ```
 
 For every building:
 
 ```text
-renter residents + owner residents <= physical resident capacity
+renter + owner <= physical residential capacity
 ```
 
-All resident counts remain finite and non-negative.
+Counts must be finite and non-negative. Search and displacement may move resident mass but may never create or destroy it.
 
-No resident mass may be created or destroyed by relocation.
+## Shared scoring
 
-## Search scoring
+`HousingChoiceSystem` and `HousingRelocationSystem` must use shared exported helpers/constants rather than duplicate affordability logic.
 
-Relocation uses the same underlying affordability and quality concepts as current housing choice but adds tenure fit and move friction.
-
-For a band/tenure option:
+For a band/option:
 
 ```text
-housingBurden = monthlyCost / monthlyIncome
-```
-
-Affordability uses the existing Phase 7 linear rule:
-
-```text
+burden = monthlyCost / monthlyIncome
 affordabilityScore = clamp(
-  (2 * maxPreferredBurden - housingBurden) / maxPreferredBurden,
+  (2 * maxPreferredBurden - burden) / maxPreferredBurden,
   0,
   1
 )
-```
-
-Quality remains:
-
-```text
 qualityScore =
   0.30 * neighborhoodQuality
   + 0.25 * serviceQuality
@@ -393,9 +299,20 @@ qualityScore =
   + 0.20 * utilityRatio
 ```
 
-Tenure preference score is `1` for the cohort's preferred tenure and the complementary desired-share weight for the other tenure. The exact implementation must remain bounded `[0,1]`.
+### Exact tenure preference score
 
-Candidate score:
+For band `b`, let `desiredOwnerShare[b]` and `desiredRenterShare[b]` be the table above.
+
+```text
+tenurePreferenceScore(optionTenure) =
+  optionTenure === cohort.tenurePreference
+    ? 1
+    : desiredShare[b][optionTenure]
+```
+
+Thus cross-tenure search is always possible, but preserving the preferred tenure receives the strongest preference contribution.
+
+### Candidate score and stable ordering
 
 ```text
 candidateScore =
@@ -404,577 +321,360 @@ candidateScore =
   + 0.15 * tenurePreferenceScore
 ```
 
-Candidates sort by:
+Candidates order by:
 
-1. descending candidate score;
-2. lower monthly cost;
-3. stable `buildingId`;
-4. stable tenure order `renter` before `owner`.
-
-This total ordering guarantees deterministic placement.
+1. descending `candidateScore`;
+2. lower `monthlyCost`;
+3. stable `buildingId` ascending;
+4. tenure order `renter` before `owner`.
 
 ## Reconciliation lifecycle
 
-The relocation system performs one deterministic reconciliation cycle on the 50-tick core-city cadence and on immediate displacement events.
+The regular housing reconcile runs once per 50-tick city loop. Forced displacement also triggers immediate targeted reconciliation after residential removal/redevelopment.
 
-### Priority 1: forced displacement
+Priority is strict:
 
-Residents whose building has been removed/redeveloped are removed from allocation state and become displaced unplaced cohorts.
+1. displaced cohorts;
+2. previously unplaced cohorts;
+3. new population entrants;
+4. severely cost-burdened cohorts;
+5. limited voluntary movers.
 
-They search first.
+### Displaced cohorts
 
-Their original band is preserved. Their original tenure becomes their initial tenure preference, but cross-tenure rehousing is allowed if the preferred tenure cannot house them affordably.
+When a residential building disappears, `displaceBuilding(buildingId)` removes its actual allocations and converts them to unplaced cohorts with `displaced = true` and `displacedFromBuildingId` set.
 
-### Priority 2: previously unplaced residents
+Their original band and tenure are preserved as search preference. Cross-tenure rehousing is allowed.
 
-Existing unplaced cohorts search before newly added population. This prevents indefinite starvation behind population growth.
+### Previously unplaced cohorts
 
-### Priority 3: new population entrants
+They search before new population so repeated failure is not starved by growth.
 
-If authoritative city population exceeds the total residents represented in relocation state, the delta is split across income bands using the existing Phase 7 population shares.
+### New population entrants
 
-Each band's initial tenure preference is split using the default desired tenure shares. These are aggregate cohorts rather than individual entrants.
+If authoritative population is above represented resident mass, split the delta by existing income shares, then by desired tenure shares. These entrants are not counted as displacement or historical moves.
 
-### Priority 4: cost-burdened movers
+If authoritative population falls, remove resident mass deterministically in reverse priority: unplaced first, then lowest-scoring housed allocations, with stable tie-breaking. Population contraction is not counted as relocation or displacement.
 
-Residents whose housing burden exceeds twice their preferred burden threshold become mandatory searchers.
+### Severe cost burden
 
-Residents above the preferred burden but at or below twice the threshold are eligible for limited voluntary cost-relief turnover rather than forced moves.
+A housed cohort is severely burdened when:
 
-### Priority 5: voluntary movers
+```text
+burden > 2 * preferredMaxBurden
+```
 
-To prevent the simulation from instantly re-sorting every resident whenever rents shift, voluntary mobility is bounded.
+Such residents become mandatory searchers, but they are **not evicted into unplaced state merely because search fails**. The algorithm first evaluates alternatives while reserving their current slot. A severe-burden move occurs only for the portion that can obtain an alternative with `candidateScore > currentScore`. Any unmatched portion remains in its current allocation and remains cost-burdened.
 
-Initial constant:
+This prevents the housing-search system itself from manufacturing homelessness.
+
+### Voluntary turnover
 
 ```text
 maximumVoluntaryTurnoverPerCycle = 0.02
-```
-
-At most 2% of currently housed residents may voluntarily move in one 50-tick housing cycle.
-
-A voluntary move is permitted only when the best alternative score exceeds the current option score by at least:
-
-```text
 minimumMoveScoreImprovement = 0.10
 ```
 
-This creates meaningful stickiness while still allowing filtering between price tiers over time.
+At most 2% of residents housed at the start of the regular 50-tick reconcile may voluntarily move. A voluntary move requires:
 
-### Partial cohort moves
+```text
+bestAlternativeScore >= currentScore + 0.10
+```
 
-Cohorts may split. If only part of a cohort can fit in the highest-ranked option, that portion moves and the remainder continues searching.
+Severely burdened mandatory movers are not charged against the 2% voluntary cap.
 
-After processing, identical allocations are merged by `(buildingId, band, tenure)`.
+### Partial moves
+
+Cohorts may split to fit available capacity. Identical `(buildingId, band, tenure)` allocations are merged after each reconciliation.
 
 ## Initialization and backward compatibility
 
-### New-game initialization
-
-The first time relocation state is needed for a city with no persisted housing state:
+For a new city or V7 save without `housingState`:
 
 1. derive current tenure options;
-2. split current population into income bands;
-3. split each band by desired tenure shares;
-4. run one deterministic placement pass with no historical movement counters;
-5. place any unmatched residents into `unplaced`;
-6. set cumulative movement/displacement totals to zero.
+2. split population by income shares;
+3. split each income band by desired tenure shares;
+4. perform deterministic initial placement;
+5. put unmatched cohorts in `unplaced`;
+6. set cumulative movement/displacement/failed-search totals to zero.
 
-Initialization is not counted as migration, turnover, or displacement.
+Initialization is not counted as movement or displacement.
 
-### Older V7 saves
-
-When loading an existing V7 save without `housingState`, run the same deterministic initialization after the rest of the save has hydrated.
-
-Do not fabricate historical moves, displacement, or failed-search totals.
-
-### V6 and older saves
-
-Existing save migration continues through the current V6/V7 loader path. Once the core reaches V7 state, missing `housingState` initializes deterministically as above.
+V6 and older saves continue through the existing migration path; once hydrated as V7, missing housing state initializes by the same rule.
 
 ## `HousingChoiceSystem` refactor
 
-`HousingChoiceSystem` remains, but its responsibility changes.
+`HousingChoiceSystem` remains the public affordability/quality reporting layer but stops owning authoritative placement.
 
-It must no longer independently allocate the entire city population from scratch once relocation state exists.
+It must accept the current tenure options plus the authoritative relocation snapshot/state and compute:
 
-Instead it consumes:
+- physical capacity;
+- effective affordable capacity;
+- affordability index;
+- housed/unplaced residents;
+- cost-burden share;
+- by-band diagnostics; and
+- by-building diagnostics.
 
-- tenure options;
-- current authoritative relocation allocation;
-- unplaced cohorts;
+`assignedResidents` and occupancy must come from `HousingRelocationSystem`, not a fresh allocation pass.
 
-and produces the existing affordability-oriented `HousingChoiceSnapshot` plus compatible building and band diagnostics.
-
-Existing public fields used by demand, redevelopment, UI, and tests must be preserved whenever semantically valid:
-
-- `population`;
-- `physicalCapacity`;
-- `effectiveAffordableCapacity`;
-- `housedResidents`;
-- `unplacedResidents`;
-- `affordabilityIndex`;
-- `costBurdenedResidents`;
-- `costBurdenShare`;
-- `byBand`;
-- `byBuilding`.
-
-`byBuilding.assignedResidents` must now reflect authoritative relocation allocation rather than a synthetic reallocation.
-
-Effective affordable capacity remains a derived market metric and must not become a hard physical population cap.
-
-## Population synchronization
-
-The authoritative city population remains `PopulationSystem.population`.
-
-`HousingRelocationSystem` does not independently decide citywide population growth or decline.
-
-After `PopulationSystem.update()` changes population:
-
-- if population increased, relocation creates new entrant cohorts for the positive delta;
-- if population decreased, the system removes resident mass deterministically from unplaced cohorts first, then the most cost-burdened housed cohorts, with stable tie breaking.
-
-Population synchronization must preserve the invariant that relocation-state resident mass equals authoritative population after reconciliation.
+Existing public fields should be preserved where practical to avoid unnecessary UI/test churn.
 
 ## Redevelopment integration
 
-### Pre-demolition occupant capture
+### Actual occupants
 
-Before `BuildingSystem.replaceDevelopment()` removes an occupied residential building, `SimulationCore` must capture the authoritative cohort allocations for that building.
+`RedevelopmentPressureSystem` and `RedevelopmentExecutionSystem` must receive the actual current occupants of each residential building from relocation state.
 
-The replacement operation then:
+Before approving redevelopment of occupied residential stock, execution must continue existing physical/effective-affordable capacity protections and additionally evaluate whether the displaced lower-income cohort can be rehoused.
 
-1. removes the old building;
-2. removes its allocation entries from relocation state;
-3. converts those residents into displaced cohorts carrying original band and tenure preference;
-4. records displacement counters;
-5. starts the replacement development through the existing developer-market path;
-6. triggers immediate rehousing against remaining occupied residential stock.
+### Lower-income protection
 
-The under-construction replacement provides zero housing capacity until it becomes occupied under existing building lifecycle rules.
-
-### Bulldozing
-
-Manual bulldozing of an occupied residential building follows the same displacement path.
-
-It must not silently delete residents from housing state.
-
-### Redevelopment admission safeguards
-
-Current physical-capacity and effective-affordable-capacity safeguards remain.
-
-Add band-specific lower-income rehousing protection.
-
-For each redevelopment candidate, estimate the immediately available affordable replacement capacity for the actual lower-income residents currently assigned to the building.
-
-A redevelopment candidate is ineligible when:
-
-```text
-affordableLowerIncomeReplacementCapacity
-< displacedLowerIncomeResidents * lowerIncomeProtectionFloor
-```
-
-The new policy field is:
+Add one policy field to `DevelopmentPolicyState`:
 
 ```ts
 lowerIncomeRelocationProtection: number
 ```
 
-Bounds:
+Bounds: `[0.50, 1.00]`.
+Default: `0.90`.
+
+For a candidate redevelopment, calculate:
 
 ```text
-0.50 to 1.00
+displacedLower = lower-income residents currently allocated to the building
+lowerAffordableSlack =
+  sum over all remaining renter+owner tenure option vacancies where
+  affordabilityScore('lower', option) > 0
 ```
 
-Default:
+Exclude the building being redeveloped from the slack calculation.
+
+If `displacedLower === 0`, this safeguard passes.
+Otherwise require:
 
 ```text
-0.90
+lowerAffordableSlack >= displacedLower * lowerIncomeRelocationProtection
 ```
 
-Interpretation:
+This is a targeted admission safeguard. It does not guarantee every individual move because Phase 7 uses aggregate cohorts.
 
-- `0.50`: permissive; only half of affected lower-income residents need an immediately affordable replacement path;
-- `0.90`: default strong protection;
-- `1.00`: all affected lower-income residents must have affordable replacement capacity before redevelopment can proceed.
+### Execution order
 
-This is in addition to, not a replacement for, the existing aggregate redevelopment affordability floor.
+When a redevelopment award replaces an occupied residential building:
 
-## Development policy integration
+1. call `housingRelocation.displaceBuilding(existingBuildingId)` before the building disappears;
+2. execute `buildings.replaceDevelopment(...)`;
+3. remove the old building from the economy domain;
+4. refresh tenure options without the removed stock;
+5. immediately reconcile displaced/unplaced cohorts against remaining stock;
+6. continue normal developer commitment handling.
 
-Extend `DevelopmentPolicyState` with:
+If replacement throws, displacement state must be restored together with the failed replacement path so occupants are not lost. The implementation should capture relocation state before displacement and restore it on failure.
+
+Manual bulldozing of an occupied residential building uses the same displacement hook before removal and immediate reconciliation afterward.
+
+## `SimulationCore` orchestration
+
+Add authoritative/derived members for:
 
 ```ts
-lowerIncomeRelocationProtection: number;
+readonly housingTenure: HousingTenureSystem;
+readonly housingRelocation: HousingRelocationSystem;
+housingTenureSnapshot: HousingTenureSnapshot;
+housingRelocationSnapshot: HousingRelocationSnapshot;
 ```
 
-`DevelopmentPolicySystem` must validate and clamp it to `[0.50, 1.00]`.
+Refactor current `refreshHousingChoice()` into a three-stage housing pipeline:
 
-The Land/Housing policy UI gains one control:
+1. `refreshHousingTenure()` — derives current tenure options from occupied residential buildings, parcel market signals, local context, policy, and current development interest rate;
+2. `reconcileHousing()` — mutates authoritative cohort placement only at initialization, regular 50-tick reconciliation, explicit displacement, load restoration, or explicit policy refresh that requires reconciliation;
+3. `refreshHousingChoice()` — reports affordability/occupancy from current tenure + relocation state.
 
-- Lower-income relocation protection
+### Regular 50-tick city-loop ordering
 
-Existing V7 saves with `developmentPolicy` but without this newer field must receive the default `0.90` during restoration. Restoration must normalize partial legacy policy objects safely rather than assuming every current field exists.
+1. refresh utilities/employment/taxes and existing city snapshots;
+2. refresh land/housing market from current population/capacity;
+3. refresh housing tenure economics;
+4. reconcile existing cohorts and unplaced residents;
+5. refresh housing choice diagnostics;
+6. evaluate demand using `effectiveAffordableCapacity`;
+7. settle finance and compute attractiveness;
+8. apply existing bounded affordability modifier;
+9. update population using raw physical residential capacity;
+10. reconcile the resulting population delta;
+11. refresh market, tenure, housing choice, redevelopment pressure, and redevelopment execution snapshots.
 
-## Financing signal
+Development remains on the 10-tick cadence. It may refresh derived housing/market snapshots, but regular voluntary relocation remains a 50-tick event.
 
-`HousingTenureSystem` must consume the same market interest-rate source used for development underwriting:
+## Save V7
+
+Keep:
 
 ```ts
-SimulationCore.currentDevelopmentInterestRate()
+saveVersion: 7
+gameVersion: '0.7.0-metropolitan'
 ```
-
-The implementation may expose/refactor a shared helper if necessary, but it may not create a second independent interest-rate formula.
-
-This ensures tighter municipal/development financing conditions also make ownership financing more expensive.
-
-## Core-city loop ordering
-
-The 50-tick core-city loop becomes:
-
-1. refresh utilities, services, employment, taxes, and other existing city snapshots;
-2. refresh land/housing market from current population/demand context;
-3. build tenure economics/options from current occupied residential stock;
-4. reconcile existing relocation state against removed/changed housing options and current population;
-5. produce housing-choice diagnostics from authoritative relocation state;
-6. evaluate demand using effective affordable capacity;
-7. settle municipal finance;
-8. calculate attractiveness including affordability;
-9. call `PopulationSystem.update()` using raw physical residential capacity as the hard cap;
-10. synchronize relocation state to any population delta and run entrant/outflow reconciliation;
-11. refresh land/housing market using the updated population;
-12. refresh tenure options and relocation diagnostics once more;
-13. refresh housing-choice diagnostics;
-14. refresh redevelopment pressure and execution eligibility.
-
-The goal is a final public snapshot that reflects the latest population, rent, tenure, and allocation state rather than one-cycle-stale values.
-
-## Development-loop ordering
-
-The existing 10-tick development cadence remains.
-
-Before evaluating redevelopment opportunities:
-
-1. refresh land/housing market;
-2. refresh tenure economics;
-3. refresh housing-choice diagnostics;
-4. refresh redevelopment pressure;
-5. refresh redevelopment execution using actual cohort occupancy and lower-income safeguards.
-
-When a redevelopment award executes, displacement reconciliation happens immediately before the next ordinary 50-tick housing cycle.
-
-## Vacancy
-
-Vacancy is measured from authoritative occupied capacity rather than the purely market-derived vacancy estimate.
-
-Citywide rental vacancy:
-
-```text
-1 - renterResidents / totalRentalCapacity
-```
-
-Citywide ownership vacancy:
-
-```text
-1 - ownerResidents / totalOwnershipCapacity
-```
-
-Both are clamped to `[0,1]` and return `0` when the relevant tenure capacity is zero.
-
-`LandHousingMarketSystem.housingVacancyRate` remains the market-derived pricing signal. The new relocation snapshot's rental/ownership vacancy rates are realized occupancy outcomes. The UI must label them distinctly to avoid conflating them.
-
-## Filtering between price tiers
-
-Persistent relocation creates gradual filtering.
-
-When new higher-quality or higher-cost stock opens:
-
-- higher-income cohorts may move into it if the score improvement exceeds the move threshold;
-- vacated older stock becomes available to lower-income cohorts in later priority processing;
-- the 2% voluntary-turnover cap prevents instantaneous citywide reshuffling.
-
-This is the intended Phase 7 representation of filtering. No explicit building-age depreciation model is required in this slice.
-
-## UI and overlays
-
-Extend the existing Land/Housing intelligence surfaces rather than creating a separate top-level housing application.
-
-### Land/Housing panel additions
-
-Citywide metrics:
-
-- Owner share
-- Renter share
-- Rental vacancy
-- Ownership vacancy
-- Moved residents this cycle
-- Displaced residents this cycle
-- Rehoused displaced residents this cycle
-- Failed housing searches this cycle
-- Unplaced residents
-- Cost-burdened residents
-
-Policy control:
-
-- Lower-income relocation protection
-
-### Residential building inspector additions
-
-For an occupied residential building show:
-
-- assigned residents;
-- renter residents;
-- owner residents;
-- rental occupancy;
-- ownership occupancy;
-- asking rent;
-- implied purchase price;
-- monthly owner cost;
-- cost-burdened residents;
-- moved in this cycle;
-- moved out this cycle;
-- displaced this cycle when relevant.
-
-### Overlays
-
-Add two mutually exclusive Land/Housing overlay modes:
-
-1. `tenure`
-   - scalar should represent owner share per occupied residential building;
-   - no-data buildings render as no-data rather than zero.
-
-2. `relocation-pressure`
-   - scalar combines recent moved-out/displaced residents and current cost burden;
-   - intended to identify neighborhoods under churn/displacement stress;
-   - bounded `[0,1]`.
-
-These join the existing Land/Housing overlay selector and must preserve the existing rule that only one overlay canvas/layer is active at once.
-
-## Save V7 persistence
-
-Do not introduce Save V8.
 
 Extend `SaveV7` with:
 
 ```ts
-housingState?: HousingRelocationState;
+housingState?: HousingRelocationState
 ```
 
-Serialization writes the current relocation state.
+Serialization always writes `core.housingRelocation.snapshotState()`.
 
-Hydration behavior:
+Hydration rules:
 
-- when `housingState` exists, validate and restore it after buildings/population have been hydrated;
-- reject references to missing/non-residential buildings;
-- reject negative/non-finite resident counts;
-- reject tenure allocations that exceed building tenure capacity after economics are reconstructed;
-- verify total resident mass equals authoritative population within a small floating-point tolerance;
-- when absent, initialize deterministically with zero historical counters.
+- if `housingState` is present, validate references and restore it;
+- if absent, initialize deterministically with zero historical counters;
+- reject duplicate allocation keys, negative/non-finite residents, missing building references, allocations to non-residential buildings, invalid tenure/band values, and capacity violations;
+- after restore, reconcile only the population delta caused by older save semantics; do not re-sort valid persisted occupants.
 
-Save V7 remains backward compatible with saves produced before this feature.
+## UI and overlays
 
-## State restoration and normalization
+Extend the existing Land/Housing UI rather than add a separate root panel.
 
-Restoration must not trust serialized derived metrics.
+### Panel metrics
 
-Persist only authoritative relocation allocations, unplaced cohorts, and cumulative counters.
+Show at minimum:
 
-Do not persist:
+- renter share;
+- owner share;
+- rental vacancy;
+- ownership vacancy;
+- average asking rent;
+- average monthly ownership cost;
+- moved this cycle;
+- displaced this cycle;
+- rehoused displaced this cycle;
+- failed search/unplaced residents;
+- lower-income rehousing slack ratio.
 
-- asking rents;
-- purchase prices;
-- owner monthly costs;
-- vacancy rates;
-- affordability scores;
-- overlay values;
-- per-cycle movement snapshots.
+Extend residential inspector diagnostics with building renter/owner mix, tenure occupancy, cost burden, moves in/out, and displacement.
 
-All of these are recomputed from authoritative buildings, policies, markets, and housing state after load.
+### New overlay modes
 
-## Determinism
+Add two mutually exclusive Land/Housing overlay modes alongside existing affordability/occupancy/redevelopment modes:
 
-All relocation logic must be order-stable.
+`tenure`
+- building value = `ownerResidents / assignedResidents`;
+- no assigned residents = 0;
+- displayed as owner-share intensity.
 
-Rules:
+`relocation-pressure`
+- building value = clamp01((movedOutThisCycle + displacedThisCycle + costBurdenedResidents) / max(1, assignedResidents + movedOutThisCycle));
+- empty/no-history building = 0.
 
-- sort buildings by `buildingId` before generating options;
-- use explicit band ordering;
-- use explicit tenure ordering;
-- use total-order candidate comparisons with deterministic tie breakers;
-- never rely on object property iteration for allocation priority;
-- no `Math.random()`;
-- no wall-clock time;
-- no async race-sensitive housing mutation.
+Overlay mode switching must preserve the existing mutual-exclusion rule and must not mutate simulation state.
 
-Two identical cores given identical commands and ticks must produce identical housing allocations and relocation counters.
+### Lower-income rehousing slack ratio
 
-## Performance constraints
-
-The system must remain aggregate and scale with buildings/cohorts rather than residents.
-
-Expected state complexity:
+Citywide panel metric:
 
 ```text
-O(residential buildings * income bands * tenure modes)
+lowerAffordableVacancy =
+  sum tenure-option vacancy where affordabilityScore('lower', option) > 0
+lowerIncomeResidents = housingRelocation.byBand.lower.housedResidents
+lowerIncomeRehousingSlackRatio = lowerIncomeResidents === 0
+  ? 1
+  : lowerAffordableVacancy / lowerIncomeResidents
 ```
 
-At most six allocation cohorts per residential building are required before merging.
+This metric may exceed 1; display may cap for percentage visualization but authoritative diagnostics should retain the uncapped finite ratio.
 
-Search may rank housing options per mover cohort, but implementation should avoid per-resident loops.
+## Policy UI
 
-No implementation step may create arrays proportional to raw population count.
+Add `lowerIncomeRelocationProtection` to the existing Development Policy panel as a percent control, default 90%, bounded 50–100%.
 
-## Error handling
+Applying policy must update authoritative policy state, refresh tenure/choice/redevelopment diagnostics, and preserve current cohort allocations unless a capacity/policy validity change requires reconciliation.
 
-Fail fast on corrupted authoritative housing state during save hydration.
+## Testing and acceptance
 
-Runtime reconciliation should self-heal expected simulation changes:
+### RED/GREEN requirements
 
-- missing building because of demolition -> convert affected allocation to displaced cohort;
-- changed tenure capacities -> move only overflow into search queues;
-- population increase -> create entrant cohorts;
-- population decrease -> deterministically remove resident mass;
-- completed new housing -> expose new capacity on next option refresh.
+Implementation follows TDD. Add failing tests before each production subsystem or behavior.
 
-Unexpected negative capacities, NaN costs, duplicate invalid state, or unknown tenure/band values are programmer/save errors and should throw.
+### Unit behavior
 
-## Testing strategy
+Tests must prove:
 
-Implementation follows TDD. Each subsystem starts with failing tests that demonstrate the missing behavior before production code is added.
+- tenure capacities sum to physical capacity;
+- rent uses the existing market/policy rent signal;
+- higher interest rates raise monthly owner financing cost under otherwise identical conditions;
+- implied purchase price and owner cost remain finite/bounded;
+- deterministic candidate ordering including exact cross-tenure preference behavior;
+- cheaper/otherwise equal rental stock attracts renter cohorts;
+- ownership becomes less attractive as owner monthly burden rises;
+- allocations conserve population and never exceed tenure/building capacity;
+- identical inputs/state produce identical relocation results;
+- voluntary turnover cannot exceed 2% of start-of-cycle housed residents;
+- severe cost burden does not evict residents merely because no better slot exists;
+- displaced residents search before old unplaced and new entrants;
+- failed displaced search leaves explicit displaced unplaced state;
+- partial cohort moves preserve mass;
+- population contraction is deterministic and not counted as displacement;
+- redevelopment displacement targets actual cohorts in the removed building;
+- lower-income protection can block an otherwise feasible redevelopment;
+- spare but unaffordable capacity does not satisfy lower-income protection;
+- successful rehousing increments displacement and rehousing diagnostics correctly.
 
-### Tenure economics tests
+### Save compatibility
 
-Verify:
+Tests must prove:
 
-1. rental + ownership capacity equals physical capacity;
-2. low-density stock has a higher owner share than high-density stock;
-3. higher market rent raises asking rent and implied purchase price;
-4. higher interest rates raise monthly owner financing cost under otherwise identical conditions;
-5. tenure options are deterministic and finite;
-6. policy affordable-rent factor continues to affect residential asking rent consistently.
+- V7 round-trip preserves allocations, unplaced cohorts, tenure, and cumulative totals;
+- old V7 without `housingState` initializes deterministically with zero historical counters;
+- V6 migration still works;
+- malformed housing-state references/capacity are rejected.
 
-### Relocation tests
+### Long-run invariants
 
-Verify:
+Run a deterministic multi-cycle test with development and population changes and assert after each housing cycle:
 
-1. initialization conserves population;
-2. no building/tenure exceeds capacity;
-3. cheaper comparable rental housing attracts renter cohorts over time;
-4. higher owner financing cost suppresses owner placement when rental alternatives exist;
-5. voluntary turnover is capped at 2% per cycle;
-6. small score differences below 0.10 do not trigger voluntary moves;
-7. displaced residents search before ordinary voluntary movers;
-8. unaffordable spare housing does not count as successful rehousing for lower-income cohorts;
-9. failed searches remain explicitly unplaced;
-10. identical inputs produce identical allocations;
-11. population growth creates entrant cohorts without fabricating movement history;
-12. population decline conserves mass and removes unplaced/cost-burdened residents first.
-
-### Redevelopment tests
-
-Verify:
-
-1. redevelopment captures the actual current occupant cohorts;
-2. execution records displacement before replacement construction;
-3. displaced residents are not left assigned to a removed building;
-4. immediate rehousing uses remaining occupied stock only;
-5. lower-income protection can block an otherwise economically feasible redevelopment;
-6. raising protection from 0.90 to 1.00 cannot make a previously blocked lower-income case eligible;
-7. manual residential bulldozing uses the same displacement path;
-8. developer commitments/capital behavior remains unchanged apart from redevelopment eligibility.
-
-### Save tests
-
-Verify:
-
-1. current V7 saves round-trip housing allocations and cumulative relocation counters;
-2. legacy V7 without `housingState` initializes deterministically;
-3. legacy V7 partial development-policy state receives `lowerIncomeRelocationProtection = 0.90`;
-4. corrupted building references fail load;
-5. over-capacity housing allocations fail load;
-6. resident-mass mismatch fails load;
-7. derived tenure economics are recomputed rather than trusted from save data.
-
-### Long-run invariant tests
-
-Run deterministic multi-cycle scenarios covering rent changes, development, population growth, and redevelopment, asserting after every cycle:
-
-- population conservation;
-- no tenure-capacity overflow;
-- no building-capacity overflow;
-- finite metrics;
-- no orphan building references;
-- deterministic repeated-run equality.
-
-### Presentation tests
-
-Verify:
-
-- Land/Housing panel includes all new tenure/relocation metrics;
-- policy panel includes lower-income relocation protection;
-- residential inspector exposes tenure economics/allocation diagnostics;
-- `tenure` and `relocation-pressure` overlays appear;
-- overlay mutual exclusion remains intact;
-- core replacement after save/load resynchronizes UI from the new authoritative housing state.
+- resident conservation;
+- no capacity violations;
+- no NaN/Infinity;
+- no negative vacancy;
+- deterministic repeatability from the same seed/state.
 
 ### Browser acceptance
 
-Extend the existing Phase 7 Chromium smoke flow to:
+Extend the Phase 7 Playwright smoke to verify:
 
-1. build a deterministic test city;
-2. confirm owner/renter metrics render;
-3. create a rent/tenure condition that produces a measurable cohort move;
-4. execute or simulate an eligible residential redevelopment;
-5. confirm displacement/rehousing counters change in authoritative `window.__civicApp.core` state;
-6. change lower-income relocation protection through the UI and verify authoritative policy state;
-7. select tenure overlay;
-8. select relocation-pressure overlay;
-9. verify only one Land/Housing overlay is active;
-10. save/load and verify housing state survives core replacement.
+- tenure and relocation metrics render;
+- new overlay modes exist and remain mutually exclusive;
+- a deterministic test city shows renter and owner occupancy;
+- changing development interest conditions changes owner-cost diagnostics;
+- applying lower-income relocation protection changes authoritative policy state;
+- redevelopment/manual removal updates displacement diagnostics without browser errors;
+- save/load restores housing state and UI.
 
-## Compatibility requirements
+### Final verification gate
 
-- Save version stays `7`.
-- Game version stays `0.7.0-metropolitan`.
-- Existing V7 saves remain loadable.
-- Existing physical residential capacity remains the hard population cap.
-- `DemandSystem` continues using effective affordable capacity.
-- Developer underwriting and capital-market logic remain authoritative and are not duplicated.
-- Existing policy controls retain their semantics.
-- Existing Land/Housing overlays and inspector diagnostics remain available.
+Before merge, exact branch head must pass:
 
-## README / roadmap update
+```text
+Tests
+Typecheck
+Lint
+Build
+Phase 7 Chromium smoke
+```
 
-After implementation, README should describe Phase 7 as including:
+Also review PR diff, submitted reviews, and inline review threads before merge.
 
-- deterministic developer underwriting;
-- developer competition/capital allocation;
-- property-market rent/vacancy/land values;
-- aggregate affordability;
-- rental vs ownership economics;
-- persistent cohort housing allocation;
-- household search/relocation at aggregate cohort level;
-- redevelopment displacement and rehousing;
-- targeted lower-income relocation protection;
-- Land/Housing intelligence and policy controls.
+## Documentation and Phase 7 completion
 
-At that point the two previously remaining mechanical slices — tenure depth and relocation/displacement — are complete.
+Update README/roadmap to state that Phase 7 now includes:
 
-Phase 7 closure still requires only the final stabilization pass: balance, long-run stress tests, performance, save compatibility, UI polish, and cleanup of stale labels/copy. That closure work is not a new simulation subsystem.
+- deterministic developer pro formas and competing developers;
+- land/property markets;
+- aggregate affordability and housing choice;
+- redevelopment pressure/execution;
+- housing/development policy controls;
+- renter/owner tenure economics;
+- persistent aggregate housing search, relocation, displacement, and rehousing;
+- Land/Housing intelligence and overlays.
 
-## Acceptance criteria
-
-This design is complete when all of the following are true:
-
-1. Residential stock exposes deterministic rental and owner-occupied economics.
-2. Housing occupancy persists across simulation cycles instead of being fully regenerated.
-3. Population is represented by aggregate band/tenure/building cohorts, not individual agents.
-4. Residents can stay, move, be displaced, be rehoused, or remain unplaced.
-5. Move decisions react to affordability, quality, tenure preference, financing cost, vacancy, and bounded turnover.
-6. Redevelopment displaces the actual cohorts in the demolished building.
-7. Lower-income redevelopment protection uses actual affected lower-income residents and available affordable replacement capacity.
-8. Population mass and building capacities remain invariant-correct.
-9. Housing state survives Save V7 round trips.
-10. Legacy V7 saves initialize housing state deterministically without fabricated history.
-11. Player UI exposes tenure, vacancy, relocation, displacement, and protection policy consequences.
-12. Tests, typecheck, lint, build, and Chromium Phase 7 smoke all pass on the exact final branch head.
+After this package and the final verification/balance cleanup pass, Phase 7 — Land, Housing & Development is mechanically complete and the roadmap may advance to Phase 8 — Metropolitan Infrastructure.
