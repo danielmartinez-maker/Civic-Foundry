@@ -126,12 +126,12 @@ Construction/operating cost constants live in data definitions and must preserve
 
 Existing `power` utility facilities remain valid low-capacity generation facilities with production `180`. They may inject directly into adjacent `power_distribution` or `power_transmission` topology. This preserves small-city usability and avoids inventing migration-only facilities.
 
-Add `power_substation` as a utility facility. A substation bridges transmission to distribution and has finite transfer capacity. Distribution demand cannot consume transmission capacity without either a substation bridge or a direct low-capacity source connection.
+Add `power_substation` as a utility facility. A substation does not generate electricity. Its authoritative placement records one adjacent transmission input coordinate and one adjacent distribution output coordinate. It creates a directed finite-capacity bridge from transmission to distribution. The input and output coordinates must exist at placement time and cannot be the same corridor cell. Distribution demand cannot consume transmission capacity without either a substation bridge or a direct low-capacity source connection.
 
 Power flow evaluation:
 
 1. create source nodes from operational power facilities
-2. create transmission/distribution graph layers and substation bridge edges
+2. create transmission/distribution graph layers and directed substation bridge edges
 3. create building sink edges only for occupied buildings adjacent to distribution corridor
 4. building sink capacity equals the building's exact power demand
 5. run deterministic max flow with sorted node/edge order
@@ -144,7 +144,7 @@ When several maximum-flow solutions are possible, deterministic adjacency and st
 
 Existing `water` facilities remain valid low-capacity treated-water sources with production `150`. They may inject directly into adjacent `water_main` or `water_trunk` topology.
 
-Add `water_pump` as a facility that bridges/boosts water trunk/main networks with finite throughput.
+Add `water_pump` as a finite-throughput booster. A pump does not create water. Its authoritative placement records one upstream adjacent water-corridor coordinate and one downstream adjacent water-corridor coordinate. The two coordinates must be distinct. Flow may cross the pump only from upstream to downstream. The pump resets pressure head on its downstream side but remains constrained by actual upstream delivered flow and its transfer capacity.
 
 Water has two independent constraints:
 
@@ -153,12 +153,12 @@ Water has two independent constraints:
 
 Pressure uses a deliberately simplified deterministic head model:
 
-- a source or pump emits `8.0` head units
+- a source or pump discharge emits `8.0` head units
 - every traversed corridor edge consumes `0.25` head units
-- uphill travel additionally consumes `8 * max(0, destinationElevation - sourceElevation)` head units
+- uphill travel additionally consumes `8 * max(0, toElevation - fromElevation)` head units for that edge
 - downhill travel receives no pressure credit beyond avoiding the uphill penalty
 - an edge/node is pressure-eligible only while remaining head is greater than zero
-- a pump resets outgoing head to `8.0` subject to its own transfer capacity
+- a pump discharge resets outgoing head to `8.0` subject to its own transfer capacity and actual upstream flow
 
 Pressure propagation uses a deterministic best-remaining-head traversal with stable-ID tie breaking. Only pressure-eligible edges participate in the water max-flow network.
 
@@ -245,6 +245,8 @@ Save V8 extends V7 and persists authoritative utility infrastructure state:
 
 - utility corridor cells by resource/network class/tier
 - expanded facility list and deterministic next IDs
+- substation transmission-input/distribution-output references
+- pump upstream/downstream references
 - saturation counters
 - trip expiry ticks
 - utility topology revision/cursors only where required for exact continuation
@@ -276,8 +278,8 @@ Player tools:
 - draw power transmission
 - draw water main
 - draw water trunk
-- place substation
-- place pump
+- place substation by selecting its transmission input and distribution output
+- place pump by selecting its upstream and downstream water-network endpoints
 - upgrade selected utility path to next tier
 - bulldoze/remove utility path/facility through typed `SimulationCore` APIs
 
@@ -302,7 +304,8 @@ Likely public seams:
 
 - `SimulationCore.buildUtilityPath(...)`
 - `SimulationCore.upgradeUtilityPath(...)`
-- `SimulationCore.placeUtility(...)` extended for new facility types
+- `SimulationCore.placeUtility(...)` for source/legacy facility types
+- `SimulationCore.placeUtilityBridge(...)` for directional substation/pump placement
 - `SimulationCore.removeUtilityAt(...)`
 - `UtilitySystem.snapshotState()` / `restoreState()`
 - `UtilitySystem.evaluate(...)`
@@ -320,7 +323,9 @@ Placement rejects atomically for:
 - invalid layer transitions
 - insufficient treasury
 - upgrades above Tier 3
-- facility collision or missing required network adjacency
+- facility collision
+- substation without valid distinct adjacent transmission input and distribution output
+- pump without valid distinct upstream/downstream water-network endpoints
 
 No partial treasury debit or partial path placement may occur on failure.
 
@@ -329,6 +334,7 @@ Required invariants:
 - delivered resource never exceeds source production
 - segment realized flow never exceeds operational segment capacity
 - building delivered flow never exceeds building demand
+- substations and pumps never create net resource flow
 - tripped segments carry zero flow
 - water flow cannot traverse pressure-ineligible edges
 - totals equal the sum of per-building delivered demand within floating-point tolerance
@@ -345,15 +351,15 @@ TDD coverage must prove at minimum:
 4. upgrading the bottleneck increases deliverable service/headroom
 5. two equivalent input orderings produce identical flow and utilization snapshots
 6. a building adjacent only to transmission/trunk receives no direct service
-7. a substation bridges transmission to distribution
+7. a directional substation bridges transmission to distribution without creating electricity
 8. elevation can make a water consumer pressure-ineligible
-9. a pump restores pressure reach and remains capacity constrained
+9. a directional pump restores pressure reach, cannot create water and remains capacity constrained
 10. three consecutive saturated 50-tick evaluations trip a segment for exactly 100 ticks
 11. a tripped segment creates a deterministic outage and later returns to service
 12. development of a high-demand candidate is rejected when local residual headroom is below its `minimumUtilityRatio`
 13. an infrastructure upgrade can make that same candidate feasible without an artificial development bonus
 14. V7 migration creates deterministic Tier 1 road-following utility networks with zero invented outage history
-15. Save V8 round-trips topology, upgrades and active trip state and continues deterministically
+15. Save V8 round-trips topology, directional bridge references, upgrades and active trip state and continues deterministically
 16. long-run utility evaluation remains finite and respects capacity invariants
 17. Chromium smoke exercises building/upgrading a power path and water path and sees authoritative overlay/inspector state
 
