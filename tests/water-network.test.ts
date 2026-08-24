@@ -9,6 +9,11 @@ const terrainWithElevation = (elevations: number[]): TerrainGrid => new TerrainG
   1,
   elevations.map((elevation) => ({ elevation, water: false, buildable: true, biome: 'grass' as const })),
 );
+const flatTerrain = (width: number, height: number, elevation = 0.5): TerrainGrid => new TerrainGrid(
+  width,
+  height,
+  Array.from({ length: width * height }, () => ({ elevation, water: false, buildable: true, biome: 'grass' as const })),
+);
 const cell = (id: string, type: UtilityCorridorType, x: number, y = 0, tier: UtilityTier = 1): UtilityCorridorCell => ({
   id, type, x, y, tier, saturatedCycles: 0, trippedUntilTick: 0,
 });
@@ -69,9 +74,24 @@ test('pump bridges trunk to main, resets pressure, and remains transfer-capacity
   assert.equal(full.perBuilding.b1?.serviceRatio, 1);
   assert.ok((full.perBuilding.b1?.pressureMargin ?? 0) > 0);
 
-  const sources: UtilityFacility[] = Array.from({ length: 9 }, (_, index) => ({ id: `utility:${index + 1}`, type: 'water' as const, x: 0, y: 0 }));
-  const capped = system.evaluate({
-    corridors, facilities: [...sources, pump], demands: [{ id: 'b1', x: 4, y: 0, demand: 1_400 }], tick: 0,
+  const branchTerrain = flatTerrain(5, 3);
+  const branchSystem = new WaterNetworkSystem(branchTerrain);
+  const branchCorridors = [
+    cell('t1', 'water_trunk', 1, 1, 3),
+    cell('m0', 'water_main', 3, 1, 3),
+    cell('m1', 'water_main', 4, 1, 3),
+    cell('m2', 'water_main', 3, 2, 3),
+  ];
+  const branchPump: UtilityFacility = {
+    id: 'utility:pump', type: 'water_pump', x: 2, y: 1,
+    inputCoord: { x: 1, y: 1 }, outputCoord: { x: 3, y: 1 },
+  };
+  const sources: UtilityFacility[] = Array.from({ length: 9 }, (_, index) => ({ id: `utility:${index + 1}`, type: 'water' as const, x: 0, y: 1 }));
+  const capped = branchSystem.evaluate({
+    corridors: branchCorridors,
+    facilities: [...sources, branchPump],
+    demands: [{ id: 'b1', x: 4, y: 2, demand: 1_400 }],
+    tick: 0,
   });
   assert.equal(capped.perBuilding.b1?.delivered, 1_200);
 });
