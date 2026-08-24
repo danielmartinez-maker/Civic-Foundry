@@ -1,7 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { performance } from 'node:perf_hooks';
 import { SimulationClock } from '../src/simulation/core/SimulationClock.ts';
+import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { SimulationKernel } from '../src/simulation/kernel/SimulationKernel.ts';
+import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
+
+function flatTerrain(width = 40, height = 24): TerrainGrid {
+  const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({
+    elevation: 0.5,
+    water: false,
+    buildable: true,
+    biome: 'grass' as const,
+  }));
+  return new TerrainGrid(width, height, cells);
+}
+
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)]!;
+}
+
+function timeCityTicks(ticks: number): number {
+  const core = new SimulationCore({ terrain: flatTerrain(), seed: 42, startingFunds: 5_000_000 });
+  core.step(100);
+  const start = performance.now();
+  core.step(ticks);
+  return performance.now() - start;
+}
 
 test('kernel advances shared clock and executes due systems exactly once per tick', () => {
   const clock = new SimulationClock();
@@ -111,4 +137,16 @@ test('system exceptions abort the current tick after clock advance and prevent l
   assert.throws(() => kernel.step(1), /system boom/);
   assert.equal(clock.tick, 1);
   assert.deepEqual(seen, ['fail']);
+});
+
+test('Phase 0A compatibility stepping remains finite across repeated deterministic headless runs', () => {
+  const samples = [timeCityTicks(1_000), timeCityTicks(1_000), timeCityTicks(1_000)];
+  assert.ok(samples.every((value) => Number.isFinite(value) && value >= 0));
+  const medianMs = median(samples);
+  assert.ok(Number.isFinite(medianMs));
+  console.log('PHASE0A_KERNEL_CITY_BENCHMARK', JSON.stringify({
+    ticks: 1_000,
+    samplesMs: samples.map((value) => Number(value.toFixed(2))),
+    medianMs: Number(medianMs.toFixed(2)),
+  }));
 });
