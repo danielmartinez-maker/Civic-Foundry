@@ -7,6 +7,8 @@ import { inspectCell } from '../src/ui/Inspector.ts';
 import { mapLandHousingOverlay, type LandHousingOverlayMode } from '../src/rendering/LandHousingOverlayLayer.ts';
 import type { LandHousingMarketSnapshot } from '../src/simulation/development/LandHousingMarketSystem.ts';
 import type { HousingChoiceSnapshot } from '../src/simulation/housing/HousingChoiceSystem.ts';
+import type { HousingTenureSnapshot } from '../src/simulation/housing/HousingTenureSystem.ts';
+import type { HousingRelocationSnapshot } from '../src/simulation/housing/HousingRelocationSystem.ts';
 import type { RedevelopmentPressureSnapshot } from '../src/simulation/development/RedevelopmentPressureSystem.ts';
 import type { RedevelopmentExecutionSnapshot } from '../src/simulation/development/RedevelopmentExecutionSystem.ts';
 
@@ -75,6 +77,54 @@ function sampleHousing(): HousingChoiceSnapshot {
   };
 }
 
+function sampleTenure(): HousingTenureSnapshot {
+  return {
+    marketInterestRate: 0.065,
+    byBuilding: {
+      home: {
+        buildingId: 'home', totalCapacity: 100, rentalCapacity: 60, ownershipCapacity: 40,
+        askingRent: 1200, impliedPurchasePrice: 240000, monthlyOwnerCost: 1550,
+      },
+    },
+    options: [
+      { buildingId: 'home', tenure: 'renter', capacity: 60, monthlyCost: 1200, monthlyRent: 1200, personAccessibility: 0.8, serviceQuality: 0.8, neighborhoodQuality: 0.8, utilityRatio: 1 },
+      { buildingId: 'home', tenure: 'owner', capacity: 40, monthlyCost: 1550, impliedPurchasePrice: 240000, personAccessibility: 0.8, serviceQuality: 0.8, neighborhoodQuality: 0.8, utilityRatio: 1 },
+    ],
+  };
+}
+
+function sampleRelocation(): HousingRelocationSnapshot {
+  return {
+    population: 100,
+    housedResidents: 93,
+    unplacedResidents: 7,
+    renterResidents: 58,
+    ownerResidents: 35,
+    renterShare: 58 / 93,
+    ownerShare: 35 / 93,
+    rentalVacancyRate: 0.08,
+    ownershipVacancyRate: 0.12,
+    movedResidentsThisCycle: 4,
+    displacedResidentsThisCycle: 3,
+    rehousedDisplacedResidentsThisCycle: 2,
+    failedSearchResidentsThisCycle: 1,
+    costBurdenedResidents: 35,
+    totals: { movedResidents: 17, displacedResidents: 8, rehousedDisplacedResidents: 6, failedSearchResidents: 4 },
+    byBand: {
+      lower: { band: 'lower', housedResidents: 38, unplacedResidents: 7, renterResidents: 31, ownerResidents: 7, costBurdenedResidents: 24 },
+      middle: { band: 'middle', housedResidents: 40, unplacedResidents: 0, renterResidents: 22, ownerResidents: 18, costBurdenedResidents: 11 },
+      upper: { band: 'upper', housedResidents: 15, unplacedResidents: 0, renterResidents: 5, ownerResidents: 10, costBurdenedResidents: 0 },
+    },
+    byBuilding: {
+      home: {
+        buildingId: 'home', assignedResidents: 93, renterResidents: 58, ownerResidents: 35,
+        rentalOccupancyRate: 58 / 60, ownershipOccupancyRate: 35 / 40, costBurdenedResidents: 35,
+        movedInResidentsThisCycle: 4, movedOutResidentsThisCycle: 3, displacedResidentsThisCycle: 2,
+      },
+    },
+  };
+}
+
 function samplePressure(): RedevelopmentPressureSnapshot {
   return {
     parcels: [{
@@ -102,18 +152,22 @@ function sampleExecution(): RedevelopmentExecutionSnapshot {
   };
 }
 
-test('land and housing panel exposes market, affordability, income-band, and redevelopment diagnostics', () => {
-  const html = new LandHousingPanel().render(sampleMarket(), sampleHousing(), samplePressure(), sampleExecution());
+test('land and housing panel exposes market, affordability, tenure, relocation, and redevelopment diagnostics', () => {
+  const html = new LandHousingPanel().render(
+    sampleMarket(), sampleHousing(), sampleTenure(), sampleRelocation(), samplePressure(), sampleExecution(),
+  );
   for (const label of [
     'Residential market', 'Commercial market', 'Industrial market', 'Rent index', 'Vacancy', 'Land value',
     'Physical capacity', 'Effective affordable capacity', 'Affordability', 'Cost burden', 'Unplaced residents',
     'Lower income', 'Middle income', 'Upper income', 'High-pressure parcels', 'Active commitment',
+    'Renter share', 'Owner share', 'Rental vacancy', 'Ownership vacancy', 'Average asking rent', 'Average owner cost',
+    'Moved this cycle', 'Displaced this cycle', 'Rehoused displaced', 'Failed searches', 'Lower-income affordable slack',
   ]) assert.match(html, new RegExp(label, 'i'));
 });
 
-test('affordability and occupancy overlays map authoritative housing allocation deterministically', () => {
+test('affordability, occupancy, tenure, and relocation overlays map authoritative housing state deterministically', () => {
   const core = housingCore();
-  const modes: LandHousingOverlayMode[] = ['affordability', 'occupancy'];
+  const modes: LandHousingOverlayMode[] = ['affordability', 'occupancy', 'tenure', 'relocation-pressure'];
   for (const mode of modes) {
     const mapped = mapLandHousingOverlay(core, mode);
     assert.equal(mapped.mode, mode);
@@ -122,8 +176,22 @@ test('affordability and occupancy overlays map authoritative housing allocation 
     assert.deepEqual(mapped.cells.map((cell) => cell.buildingId), [...mapped.cells.map((cell) => cell.buildingId)].sort());
     for (const cell of mapped.cells) {
       const allocation = core.housingChoiceSnapshot.byBuilding[cell.buildingId];
+      const relocation = core.housingRelocationSnapshot.byBuilding[cell.buildingId];
       assert.ok(allocation);
-      assert.equal(cell.value, mode === 'affordability' ? allocation.affordabilityScore : allocation.occupancyRate);
+      assert.ok(relocation);
+      if (mode === 'affordability') assert.equal(cell.value, allocation.affordabilityScore);
+      if (mode === 'occupancy') assert.equal(cell.value, allocation.occupancyRate);
+      if (mode === 'tenure') {
+        const expected = relocation.assignedResidents > 0 ? relocation.ownerResidents / relocation.assignedResidents : 0;
+        assert.equal(cell.value, expected);
+      }
+      if (mode === 'relocation-pressure') {
+        const expected = Math.max(0, Math.min(1,
+          (relocation.movedOutResidentsThisCycle + relocation.displacedResidentsThisCycle + relocation.costBurdenedResidents)
+          / Math.max(1, relocation.assignedResidents + relocation.movedOutResidentsThisCycle),
+        ));
+        assert.equal(cell.value, expected);
+      }
       assert.match(cell.label, /%/);
     }
   }
@@ -145,13 +213,18 @@ test('redevelopment pressure overlay exposes deterministic planner reasons', () 
   }
 });
 
-test('residential building inspection explains housing allocation and redevelopment status', () => {
+test('residential building inspection explains housing allocation, tenure, relocation, and redevelopment status', () => {
   const core = housingCore();
   const building = core.buildings.occupied().sort((a, b) => a.id.localeCompare(b.id))[0]!;
   const inspection = inspectCell(core, building.x, building.y);
   assert.equal(inspection.kind, 'building');
   const text = inspection.lines.join('\n');
-  for (const label of ['Housing occupancy', 'Affordability', 'Average rent burden', 'Cost-burdened residents', 'Redevelopment pressure', 'Redevelopment status']) {
+  for (const label of [
+    'Housing occupancy', 'Affordability', 'Average rent burden', 'Cost-burdened residents',
+    'Tenure mix', 'Rental occupancy', 'Ownership occupancy', 'Asking rent', 'Owner monthly cost',
+    'Moved in this cycle', 'Moved out this cycle', 'Displaced this cycle',
+    'Redevelopment pressure', 'Redevelopment status',
+  ]) {
     assert.match(text, new RegExp(label, 'i'));
   }
 });

@@ -1,6 +1,17 @@
 import { clamp01 } from '../core/types.ts';
+import {
+  HOUSING_ALLOCATION_ORDER,
+  HOUSING_BAND_PROFILES,
+  HOUSING_BANDS,
+  housingAffordabilityScore,
+  housingBurden,
+  housingQualityScore,
+  type HousingIncomeBand,
+} from './HousingEconomics.ts';
+import type { HousingRelocationSnapshot, HousingRelocationState } from './HousingRelocationSystem.ts';
+import type { HousingTenureOption } from './HousingTenureSystem.ts';
 
-export type HousingIncomeBand = 'lower' | 'middle' | 'upper';
+export type { HousingIncomeBand } from './HousingEconomics.ts';
 
 export type HousingOption = Readonly<{
   buildingId: string;
@@ -43,21 +54,6 @@ export type HousingChoiceSnapshot = Readonly<{
   byBuilding: Readonly<Record<string, HousingBuildingAllocation>>;
 }>;
 
-type BandProfile = Readonly<{
-  share: number;
-  monthlyIncome: number;
-  maxRentBurden: number;
-}>;
-
-const BAND_PROFILES: Readonly<Record<HousingIncomeBand, BandProfile>> = Object.freeze({
-  lower: Object.freeze({ share: 0.45, monthlyIncome: 1_500, maxRentBurden: 0.35 }),
-  middle: Object.freeze({ share: 0.40, monthlyIncome: 2_600, maxRentBurden: 0.32 }),
-  upper: Object.freeze({ share: 0.15, monthlyIncome: 4_500, maxRentBurden: 0.28 }),
-});
-
-const ALLOCATION_ORDER: readonly HousingIncomeBand[] = ['upper', 'middle', 'lower'];
-const BANDS: readonly HousingIncomeBand[] = ['lower', 'middle', 'upper'];
-
 function finite(name: string, value: number): void {
   if (!Number.isFinite(value)) throw new Error(`${name} must be finite`);
 }
@@ -65,20 +61,6 @@ function finite(name: string, value: number): void {
 function nonNegative(name: string, value: number): void {
   finite(name, value);
   if (value < 0) throw new Error(`${name} must be non-negative`);
-}
-
-function affordabilityScore(monthlyRent: number, profile: BandProfile): number {
-  const burden = monthlyRent / profile.monthlyIncome;
-  return clamp01((2 * profile.maxRentBurden - burden) / profile.maxRentBurden);
-}
-
-function qualityScore(option: HousingOption): number {
-  return clamp01(
-    0.30 * clamp01(option.neighborhoodQuality)
-    + 0.25 * clamp01(option.serviceQuality)
-    + 0.25 * clamp01(option.personAccessibility)
-    + 0.20 * clamp01(option.utilityRatio),
-  );
 }
 
 function validateOption(option: HousingOption): void {
@@ -102,11 +84,18 @@ function emptyBand(band: HousingIncomeBand, targetResidents = 0): HousingBandSna
   });
 }
 
+function targetsForPopulation(population: number): Readonly<Record<HousingIncomeBand, number>> {
+  const upper = population * HOUSING_BAND_PROFILES.upper.share;
+  const middle = population * HOUSING_BAND_PROFILES.middle.share;
+  return Object.freeze({
+    upper,
+    middle,
+    lower: Math.max(0, population - upper - middle),
+  });
+}
+
 function emptySnapshot(population = 0): HousingChoiceSnapshot {
-  const upper = emptyBand('upper', population * BAND_PROFILES.upper.share);
-  const middle = emptyBand('middle', population * BAND_PROFILES.middle.share);
-  const lowerTarget = Math.max(0, population - upper.targetResidents - middle.targetResidents);
-  const lower = emptyBand('lower', lowerTarget);
+  const targets = targetsForPopulation(population);
   return Object.freeze({
     population,
     physicalCapacity: 0,
@@ -116,7 +105,11 @@ function emptySnapshot(population = 0): HousingChoiceSnapshot {
     affordabilityIndex: 1,
     costBurdenedResidents: 0,
     costBurdenShare: 0,
-    byBand: Object.freeze({ lower, middle, upper }),
+    byBand: Object.freeze({
+      lower: emptyBand('lower', targets.lower),
+      middle: emptyBand('middle', targets.middle),
+      upper: emptyBand('upper', targets.upper),
+    }),
     byBuilding: Object.freeze({}),
   });
 }
@@ -138,6 +131,10 @@ type BuildingAccumulator = {
 export class HousingChoiceSystem {
   private latest: HousingChoiceSnapshot = emptySnapshot();
 
+  /**
+   * Legacy stateless aggregate allocator retained for standalone diagnostics/tests.
+   * SimulationCore uses evaluateFromRelocation() so authoritative occupancy is persistent.
+   */
   evaluate(population: number, options: readonly HousingOption[]): HousingChoiceSnapshot {
     nonNegative('population', population);
     const sorted = options.slice().sort((a, b) => a.buildingId.localeCompare(b.buildingId));
@@ -155,18 +152,17 @@ export class HousingChoiceSystem {
     const evaluated: EvaluatedOption[] = sorted.map((option) => {
       const burdenByBand = {} as Record<HousingIncomeBand, number>;
       const affordabilityByBand = {} as Record<HousingIncomeBand, number>;
-      for (const band of BANDS) {
-        const profile = BAND_PROFILES[band];
-        burdenByBand[band] = option.monthlyRent / profile.monthlyIncome;
-        affordabilityByBand[band] = affordabilityScore(option.monthlyRent, profile);
+      for (const band of HOUSING_BANDS) {
+        burdenByBand[band] = housingBurden(option.monthlyRent, band);
+        affordabilityByBand[band] = housingAffordabilityScore(option.monthlyRent, band);
       }
-      const weightedAffordability = BANDS.reduce(
-        (sum, band) => sum + BAND_PROFILES[band].share * affordabilityByBand[band],
+      const weightedAffordability = HOUSING_BANDS.reduce(
+        (sum, band) => sum + HOUSING_BAND_PROFILES[band].share * affordabilityByBand[band],
         0,
       );
       return Object.freeze({
         option,
-        quality: qualityScore(option),
+        quality: housingQualityScore(option),
         burdenByBand: Object.freeze(burdenByBand),
         affordabilityByBand: Object.freeze(affordabilityByBand),
         weightedAffordability: clamp01(weightedAffordability),
@@ -196,17 +192,11 @@ export class HousingChoiceSystem {
       }] as const),
     );
 
-    const upperTarget = population * BAND_PROFILES.upper.share;
-    const middleTarget = population * BAND_PROFILES.middle.share;
-    const targets: Record<HousingIncomeBand, number> = {
-      upper: upperTarget,
-      middle: middleTarget,
-      lower: Math.max(0, population - upperTarget - middleTarget),
-    };
+    const targets = targetsForPopulation(population);
     const bandSnapshots = {} as Record<HousingIncomeBand, HousingBandSnapshot>;
 
-    for (const band of ALLOCATION_ORDER) {
-      const profile = BAND_PROFILES[band];
+    for (const band of HOUSING_ALLOCATION_ORDER) {
+      const profile = HOUSING_BAND_PROFILES[band];
       let remainingResidents = targets[band];
       let assignedResidents = 0;
       let rentBurdenTotal = 0;
@@ -227,7 +217,7 @@ export class HousingChoiceSystem {
         const accumulator = buildingAccumulators.get(item.option.buildingId)!;
         accumulator.assignedResidents += assigned;
         accumulator.rentBurdenTotal += assigned * burden;
-        if (burden > profile.maxRentBurden) {
+        if (burden > profile.maxHousingBurden) {
           accumulator.costBurdenedResidents += assigned;
           costBurdenedResidents += assigned;
         }
@@ -283,6 +273,109 @@ export class HousingChoiceSystem {
         middle: bandSnapshots.middle,
         upper: bandSnapshots.upper,
       }),
+      byBuilding: Object.freeze(byBuilding),
+    });
+    return this.latest;
+  }
+
+  evaluateFromRelocation(
+    population: number,
+    options: readonly HousingTenureOption[],
+    state: HousingRelocationState,
+    relocation: HousingRelocationSnapshot,
+  ): HousingChoiceSnapshot {
+    nonNegative('population', population);
+    const sorted = options.slice().sort((a, b) =>
+      a.buildingId.localeCompare(b.buildingId) || a.tenure.localeCompare(b.tenure));
+    const optionMap = new Map(sorted.map((option) => [`${option.buildingId}|${option.tenure}`, option] as const));
+    const buildingIds = [...new Set(sorted.map((option) => option.buildingId))].sort();
+
+    const physicalCapacity = sorted.reduce((sum, option) => sum + option.capacity, 0);
+    const effectiveAffordableCapacity = Math.min(
+      physicalCapacity,
+      Math.max(0, sorted.reduce((sum, option) => {
+        const weighted = HOUSING_BANDS.reduce(
+          (bandSum, band) => bandSum + HOUSING_BAND_PROFILES[band].share * housingAffordabilityScore(option.monthlyCost, band),
+          0,
+        );
+        return sum + option.capacity * clamp01(weighted);
+      }, 0)),
+    );
+    const affordabilityIndex = physicalCapacity > 0
+      ? clamp01(effectiveAffordableCapacity / physicalCapacity)
+      : 1;
+
+    const targets = targetsForPopulation(population);
+    const byBand = {} as Record<HousingIncomeBand, HousingBandSnapshot>;
+    for (const band of HOUSING_BANDS) {
+      const allocations = state.allocations.filter((item) => item.band === band);
+      const assignedResidents = allocations.reduce((sum, item) => sum + item.residents, 0);
+      const unplacedResidents = state.unplaced.filter((item) => item.band === band).reduce((sum, item) => sum + item.residents, 0);
+      let burdenTotal = 0;
+      let costBurdenedResidents = 0;
+      for (const allocation of allocations) {
+        const option = optionMap.get(`${allocation.buildingId}|${allocation.tenure}`);
+        if (!option) continue;
+        const burden = housingBurden(option.monthlyCost, band);
+        burdenTotal += burden * allocation.residents;
+        if (burden > HOUSING_BAND_PROFILES[band].maxHousingBurden) costBurdenedResidents += allocation.residents;
+      }
+      byBand[band] = Object.freeze({
+        band,
+        targetResidents: targets[band],
+        assignedResidents,
+        unplacedResidents,
+        averageRentBurden: assignedResidents > 0 ? burdenTotal / assignedResidents : 0,
+        costBurdenedResidents,
+      });
+    }
+
+    const byBuilding: Record<string, HousingBuildingAllocation> = {};
+    for (const buildingId of buildingIds) {
+      const buildingOptions = sorted.filter((option) => option.buildingId === buildingId);
+      const capacity = buildingOptions.reduce((sum, option) => sum + option.capacity, 0);
+      const allocations = state.allocations.filter((item) => item.buildingId === buildingId);
+      const assignedResidents = allocations.reduce((sum, item) => sum + item.residents, 0);
+      let burdenTotal = 0;
+      let costBurdenedResidents = 0;
+      for (const allocation of allocations) {
+        const option = optionMap.get(`${allocation.buildingId}|${allocation.tenure}`);
+        if (!option) continue;
+        const burden = housingBurden(option.monthlyCost, allocation.band);
+        burdenTotal += burden * allocation.residents;
+        if (burden > HOUSING_BAND_PROFILES[allocation.band].maxHousingBurden) costBurdenedResidents += allocation.residents;
+      }
+      const weightedAffordability = capacity > 0
+        ? buildingOptions.reduce((sum, option) => {
+          const optionWeighted = HOUSING_BANDS.reduce(
+            (bandSum, band) => bandSum + HOUSING_BAND_PROFILES[band].share * housingAffordabilityScore(option.monthlyCost, band),
+            0,
+          );
+          return sum + option.capacity * clamp01(optionWeighted);
+        }, 0) / capacity
+        : 1;
+      byBuilding[buildingId] = Object.freeze({
+        buildingId,
+        assignedResidents,
+        occupancyRate: capacity > 0 ? clamp01(assignedResidents / capacity) : 0,
+        affordabilityScore: clamp01(weightedAffordability),
+        averageRentBurden: assignedResidents > 0 ? burdenTotal / assignedResidents : 0,
+        costBurdenedResidents,
+      });
+    }
+
+    this.latest = Object.freeze({
+      population,
+      physicalCapacity,
+      effectiveAffordableCapacity,
+      housedResidents: relocation.housedResidents,
+      unplacedResidents: relocation.unplacedResidents,
+      affordabilityIndex,
+      costBurdenedResidents: relocation.costBurdenedResidents,
+      costBurdenShare: relocation.housedResidents > 0
+        ? clamp01(relocation.costBurdenedResidents / relocation.housedResidents)
+        : 0,
+      byBand: Object.freeze(byBand),
       byBuilding: Object.freeze(byBuilding),
     });
     return this.latest;

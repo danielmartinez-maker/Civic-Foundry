@@ -3,6 +3,7 @@ import type { ResidentialRedevelopmentPressure } from './RedevelopmentPressureSy
 
 const MINIMUM_REDEVELOPMENT_PRESSURE = 0.25;
 const DEFAULT_MINIMUM_POST_REDEVELOPMENT_AFFORDABLE_SHARE = 0.85;
+const DEFAULT_LOWER_INCOME_RELOCATION_PROTECTION = 0.90;
 
 export type RedevelopmentRelocationContext = Readonly<{
   population: number;
@@ -10,12 +11,15 @@ export type RedevelopmentRelocationContext = Readonly<{
   effectiveAffordableCapacity: number;
   unplacedResidents: number;
   minimumAffordableShare?: number;
+  lowerIncomeRelocationProtection?: number;
 }>;
 
 export type RedevelopmentExecutionInput = Readonly<{
   pressure: ResidentialRedevelopmentPressure;
   residentCapacity: number;
   affordabilityScore: number;
+  displacedLowerIncomeResidents?: number;
+  lowerIncomeAffordableSlack?: number;
   activeCommitment?: boolean;
   replacementEvaluation: DevelopmentFeasibilityResult;
 }>;
@@ -29,6 +33,7 @@ export type RedevelopmentExecutionDecisionReason =
   | 'replacement-infeasible'
   | 'physical-capacity'
   | 'affordable-capacity'
+  | 'lower-income-relocation'
   | 'redevelopment-economics';
 
 export type RedevelopmentExecutionDecision = Readonly<{
@@ -112,7 +117,9 @@ export class RedevelopmentExecutionSystem {
     requireFiniteNonNegative('effectiveAffordableCapacity', context.effectiveAffordableCapacity);
     requireFiniteNonNegative('unplacedResidents', context.unplacedResidents);
     const minimumAffordableShare = context.minimumAffordableShare ?? DEFAULT_MINIMUM_POST_REDEVELOPMENT_AFFORDABLE_SHARE;
+    const lowerIncomeRelocationProtection = context.lowerIncomeRelocationProtection ?? DEFAULT_LOWER_INCOME_RELOCATION_PROTECTION;
     requireFiniteUnit('minimumAffordableShare', minimumAffordableShare);
+    requireFiniteUnit('lowerIncomeRelocationProtection', lowerIncomeRelocationProtection);
 
     const sorted = inputs.slice().sort((a, b) =>
       b.pressure.pressure - a.pressure.pressure
@@ -121,6 +128,7 @@ export class RedevelopmentExecutionSystem {
 
     let remainingPhysicalCapacity = context.physicalCapacity;
     let remainingEffectiveAffordableCapacity = context.effectiveAffordableCapacity;
+    let reservedLowerIncomeSlack = 0;
     const opportunities: DevelopmentFeasibilityResult[] = [];
     const decisions: RedevelopmentExecutionDecision[] = [];
 
@@ -130,6 +138,10 @@ export class RedevelopmentExecutionSystem {
       requireFiniteNonNegative('redevelopment pressure', input.pressure.pressure);
       requireFiniteNonNegative('demolitionCost', input.pressure.demolitionCost);
       requireFiniteNonNegative('displacementCost', input.pressure.displacementCost);
+      const displacedLowerIncomeResidents = input.displacedLowerIncomeResidents ?? 0;
+      const lowerIncomeAffordableSlack = input.lowerIncomeAffordableSlack ?? 0;
+      requireFiniteNonNegative('displacedLowerIncomeResidents', displacedLowerIncomeResidents);
+      requireFiniteNonNegative('lowerIncomeAffordableSlack', lowerIncomeAffordableSlack);
 
       const decisionBase = {
         lotId: input.pressure.lotId,
@@ -178,6 +190,14 @@ export class RedevelopmentExecutionSystem {
         decisions.push(Object.freeze({ ...decisionBase, reason: 'affordable-capacity' }));
         continue;
       }
+      const requiredLowerIncomeSlack = displacedLowerIncomeResidents * lowerIncomeRelocationProtection;
+      if (
+        displacedLowerIncomeResidents > 0
+        && Math.max(0, lowerIncomeAffordableSlack - reservedLowerIncomeSlack) < requiredLowerIncomeSlack
+      ) {
+        decisions.push(Object.freeze({ ...decisionBase, reason: 'lower-income-relocation' }));
+        continue;
+      }
 
       const adjusted = adjustedForRedevelopment(
         input.replacementEvaluation,
@@ -192,6 +212,7 @@ export class RedevelopmentExecutionSystem {
       opportunities.push(adjusted);
       remainingPhysicalCapacity = postPhysicalCapacity;
       remainingEffectiveAffordableCapacity = postAffordableCapacity;
+      reservedLowerIncomeSlack += requiredLowerIncomeSlack;
       decisions.push(Object.freeze({ ...decisionBase, reason: 'admitted' }));
     }
 

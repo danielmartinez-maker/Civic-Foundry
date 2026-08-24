@@ -26,7 +26,7 @@ function advanceUntilCommitment(core: SimulationCore, max = 200): void {
   assert.ok(core.developerMarket.listCommitments().length > 0, 'expected active development commitment before save');
 }
 
-test('default save API serializes Save V7 developer market state', () => {
+test('default save API serializes Save V7 developer market and housing relocation state', () => {
   const core = buildDevelopmentCity();
   advanceUntilCommitment(core);
   const save = serializeCore(core);
@@ -34,26 +34,51 @@ test('default save API serializes Save V7 developer market state', () => {
   assert.equal(save.gameVersion, '0.7.0-metropolitan');
   assert.ok('developmentMarket' in save);
   assert.deepEqual(save.developmentMarket, core.developerMarket.snapshotState());
+  assert.ok('housingState' in save);
+  assert.deepEqual((save as any).housingState, (core as any).housingRelocation.snapshotState());
 });
 
-test('Save V7 resumes developer capital commitments and future awards identically', () => {
+test('Save V7 resumes developer capital commitments, housing state, and future awards identically', () => {
   const uninterrupted = buildDevelopmentCity();
   advanceUntilCommitment(uninterrupted);
   const save = serializeCore(uninterrupted);
   const loaded = hydrateCore(structuredClone(save));
   assert.deepEqual(serializeCore(loaded), save);
+  assert.deepEqual((loaded as any).housingRelocation.snapshotState(), (uninterrupted as any).housingRelocation.snapshotState());
   uninterrupted.step(700);
   loaded.step(700);
   assert.deepEqual(serializeCore(loaded), serializeCore(uninterrupted));
 });
 
-test('loading V6 starts with default developers and no fabricated commitments', () => {
+test('loading V6 starts with default developers, no fabricated commitments, and zero housing movement history', () => {
   const core = buildDevelopmentCity();
   core.step(20);
   const v6 = serializeCoreV6(core);
   const loaded = hydrateCore(v6);
   assert.equal(loaded.developerMarket.listDevelopers().length, 4);
   assert.equal(loaded.developerMarket.listCommitments().length, 0);
+  assert.deepEqual((loaded as any).housingRelocation.snapshotState().totals, {
+    movedResidents: 0,
+    displacedResidents: 0,
+    rehousedDisplacedResidents: 0,
+    failedSearchResidents: 0,
+  });
+});
+
+test('older Save V7 without housingState initializes deterministically with zero history', () => {
+  const core = buildDevelopmentCity();
+  core.step(100);
+  const save = structuredClone(serializeCore(core)) as any;
+  delete save.housingState;
+  const first = hydrateCore(structuredClone(save));
+  const second = hydrateCore(structuredClone(save));
+  assert.deepEqual((first as any).housingRelocation.snapshotState(), (second as any).housingRelocation.snapshotState());
+  assert.deepEqual((first as any).housingRelocation.snapshotState().totals, {
+    movedResidents: 0,
+    displacedResidents: 0,
+    rehousedDisplacedResidents: 0,
+    failedSearchResidents: 0,
+  });
 });
 
 test('Save V7 rejects commitments referencing missing buildings', () => {

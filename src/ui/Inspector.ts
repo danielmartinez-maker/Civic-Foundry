@@ -84,6 +84,8 @@ export function inspectCell(core: SimulationCore, x: number, y: number): Inspect
     }
     if (building.zone === 'residential' && building.status === 'occupied') {
       const allocation = core.housingChoiceSnapshot.byBuilding[building.id];
+      const tenure = core.housingTenureSnapshot.byBuilding[building.id];
+      const relocation = core.housingRelocationSnapshot.byBuilding[building.id];
       const pressure = core.redevelopmentPressureSnapshot.parcels.find((item) => item.buildingId === building.id);
       const decision = core.redevelopmentExecutionSnapshot.decisions.find((item) => item.buildingId === building.id);
       if (allocation) {
@@ -92,6 +94,25 @@ export function inspectCell(core: SimulationCore, x: number, y: number): Inspect
           `Affordability: ${Math.round(allocation.affordabilityScore * 100)}%`,
           `Average rent burden: ${Math.round(allocation.averageRentBurden * 100)}%`,
           `Cost-burdened residents: ${allocation.costBurdenedResidents.toFixed(1)}`,
+        );
+      }
+      if (relocation) {
+        const assigned = Math.max(0, relocation.assignedResidents);
+        const renterShare = assigned > 0 ? relocation.renterResidents / assigned : 0;
+        const ownerShare = assigned > 0 ? relocation.ownerResidents / assigned : 0;
+        housingLines.push(
+          `Tenure mix: ${Math.round(renterShare * 100)}% renter · ${Math.round(ownerShare * 100)}% owner`,
+          `Rental occupancy: ${Math.round(relocation.rentalOccupancyRate * 100)}%`,
+          `Ownership occupancy: ${Math.round(relocation.ownershipOccupancyRate * 100)}%`,
+          `Moved in this cycle: ${relocation.movedInResidentsThisCycle.toFixed(1)}`,
+          `Moved out this cycle: ${relocation.movedOutResidentsThisCycle.toFixed(1)}`,
+          `Displaced this cycle: ${relocation.displacedResidentsThisCycle.toFixed(1)}`,
+        );
+      }
+      if (tenure) {
+        housingLines.push(
+          `Asking rent: $${Math.round(tenure.askingRent).toLocaleString()}`,
+          `Owner monthly cost: $${Math.round(tenure.monthlyOwnerCost).toLocaleString()}`,
         );
       }
       housingLines.push(

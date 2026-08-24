@@ -32,6 +32,8 @@ export class LandHousingUiController {
         <option value="none">Off</option>
         <option value="affordability">Housing affordability</option>
         <option value="occupancy">Residential occupancy</option>
+        <option value="tenure">Owner / renter tenure</option>
+        <option value="relocation-pressure">Relocation pressure</option>
         <option value="redevelopment-pressure">Redevelopment pressure</option>
       </select>
       <div data-testid="land-housing-panel" class="economy-summary"></div>
@@ -75,6 +77,8 @@ export class LandHousingUiController {
     this.panel.innerHTML = this.panelRenderer.render(
       this.app.core.landHousingMarketSnapshot,
       this.app.core.housingChoiceSnapshot,
+      this.app.core.housingTenureSnapshot,
+      this.app.core.housingRelocationSnapshot,
       this.app.core.redevelopmentPressureSnapshot,
       this.app.core.redevelopmentExecutionSnapshot,
     );
@@ -96,7 +100,9 @@ export class LandHousingUiController {
         ? Math.round(normalized * 120)
         : this.mode === 'occupancy'
           ? Math.round(210 - normalized * 170)
-          : Math.round(45 - normalized * 45);
+          : this.mode === 'tenure'
+            ? Math.round(215 + normalized * 65)
+            : Math.round(45 - normalized * 45);
 
       this.overlayContext.save();
       this.overlayContext.fillStyle = `hsla(${hue}, 82%, 52%, ${0.20 + normalized * 0.42})`;
@@ -125,11 +131,12 @@ export class LandHousingUiController {
           developmentFeeRate: Number(this.required<HTMLInputElement>('[data-policy="developmentFeeRate"]').value) / 100,
           permittingCostReduction: Number(this.required<HTMLInputElement>('[data-policy="permittingCostReduction"]').value) / 100,
           redevelopmentAffordableFloor: Number(this.required<HTMLInputElement>('[data-policy="redevelopmentAffordableFloor"]').value) / 100,
+          lowerIncomeRelocationProtection: Number(this.required<HTMLInputElement>('[data-policy="lowerIncomeRelocationProtection"]').value) / 100,
         });
         this.syncPolicyControls();
         this.renderPanel();
         this.renderOverlay();
-        status.textContent = `Policy applied: ${Math.round(state.affordableHousingShare * 100)}% affordable share · ${Math.round(state.redevelopmentAffordableFloor * 100)}% redevelopment floor.`;
+        status.textContent = `Policy applied: ${Math.round(state.affordableHousingShare * 100)}% affordable share · ${Math.round(state.redevelopmentAffordableFloor * 100)}% redevelopment floor · ${Math.round(state.lowerIncomeRelocationProtection * 100)}% lower-income relocation protection.`;
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Policy update failed.';
       }
@@ -143,6 +150,7 @@ export class LandHousingUiController {
     this.required<HTMLInputElement>('[data-policy="developmentFeeRate"]').value = String(Math.round(state.developmentFeeRate * 100));
     this.required<HTMLInputElement>('[data-policy="permittingCostReduction"]').value = String(Math.round(state.permittingCostReduction * 100));
     this.required<HTMLInputElement>('[data-policy="redevelopmentAffordableFloor"]').value = String(Math.round(state.redevelopmentAffordableFloor * 100));
+    this.required<HTMLInputElement>('[data-policy="lowerIncomeRelocationProtection"]').value = String(Math.round(state.lowerIncomeRelocationProtection * 100));
   }
 
   private bindOverlayControls(): void {

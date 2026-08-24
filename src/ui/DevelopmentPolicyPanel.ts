@@ -14,8 +14,9 @@ export class DevelopmentPolicyPanel {
       <label class="tax-row policy-row"><span>Development fee</span><input data-policy="developmentFeeRate" data-testid="policy-development-fee" type="number" min="0" max="20" step="1" value="${percent(state.developmentFeeRate)}"><b>%</b></label>
       <label class="tax-row policy-row"><span>Permitting incentive</span><input data-policy="permittingCostReduction" data-testid="policy-permitting-incentive" type="number" min="0" max="50" step="5" value="${percent(state.permittingCostReduction)}"><b>%</b></label>
       <label class="tax-row policy-row"><span>Redevelopment affordability floor</span><input data-policy="redevelopmentAffordableFloor" data-testid="policy-redevelopment-floor" type="number" min="75" max="100" step="1" value="${percent(state.redevelopmentAffordableFloor)}"><b>%</b></label>
+      <label class="tax-row policy-row"><span>Lower-income relocation protection</span><input data-policy="lowerIncomeRelocationProtection" data-testid="policy-lower-income-relocation" type="number" min="50" max="100" step="1" value="${percent(state.lowerIncomeRelocationProtection)}"><b>%</b></label>
       <button data-action="apply-development-policy" data-testid="apply-development-policy">Apply policy</button>
-      <p class="legend" data-policy-status>Defaults preserve baseline economics. Policies affect future underwriting and current aggregate affordability.</p>
+      <p class="legend" data-policy-status>Policies affect underwriting, affordability, density, and lower-income redevelopment safeguards.</p>
     </div>`;
   }
 }

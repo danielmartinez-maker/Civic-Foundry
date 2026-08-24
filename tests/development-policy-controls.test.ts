@@ -63,6 +63,7 @@ test('development policy state is bounded, deterministic, and density bonus rais
     developmentFeeRate: 0,
     permittingCostReduction: 0,
     redevelopmentAffordableFloor: 0.85,
+    lowerIncomeRelocationProtection: 0.90,
   });
   const state = policy.update({
     densityBonus: 1,
@@ -70,12 +71,16 @@ test('development policy state is bounded, deterministic, and density bonus rais
     developmentFeeRate: 0.06,
     permittingCostReduction: 0.25,
     redevelopmentAffordableFloor: 0.95,
-  });
+    lowerIncomeRelocationProtection: 0.97,
+  } as any);
   assert.equal(policy.adjustMaxIntensity('residential', 'medium'), 'high');
   assert.equal(policy.adjustMaxIntensity('commercial', 'medium'), 'medium');
+  assert.equal((policy.snapshot() as any).lowerIncomeRelocationProtection, 0.97);
   assert.deepEqual(policy.snapshot(), state);
   assert.throws(() => policy.update({ affordableHousingShare: 0.31 }), /affordableHousingShare/i);
   assert.throws(() => policy.update({ redevelopmentAffordableFloor: 0.70 }), /redevelopmentAffordableFloor/i);
+  assert.throws(() => policy.update({ lowerIncomeRelocationProtection: 0.49 } as any), /lowerIncomeRelocationProtection/i);
+  assert.throws(() => policy.update({ lowerIncomeRelocationProtection: 1.01 } as any), /lowerIncomeRelocationProtection/i);
 });
 
 test('affordable requirement and development fee weaken residential underwriting while permitting incentive offsets cost', () => {
@@ -119,6 +124,32 @@ test('redevelopment affordable-capacity floor is policy-controlled instead of ha
   assert.equal(protective.decisions[0]?.reason, 'affordable-capacity');
 });
 
+test('lower-income relocation protection blocks redevelopment when affordable slack cannot rehouse protected occupants', () => {
+  const system = new RedevelopmentExecutionSystem();
+  const replacement = new DevelopmentFeasibilitySystem().evaluateLot(lot, [getBuildingDefinition('residential_rowhouse')!], baseContext)[0]!;
+  const input = {
+    pressure: {
+      buildingId: 'building:lot:4,4', lotId: lot.id, existingDefinitionId: 'residential_cottage',
+      bestReplacementDefinitionId: replacement.definitionId, currentUseValue: 20_000, demolitionCost: 1_000,
+      displacementCost: 1_000, netRedevelopmentValue: 30_000, pressure: 0.5,
+    },
+    residentCapacity: 10,
+    affordabilityScore: 1,
+    displacedLowerIncomeResidents: 8,
+    lowerIncomeAffordableSlack: 6,
+    replacementEvaluation: replacement,
+  } as any;
+  const result = system.evaluate({
+    population: 50,
+    physicalCapacity: 100,
+    effectiveAffordableCapacity: 90,
+    unplacedResidents: 0,
+    minimumAffordableShare: 0.85,
+    lowerIncomeRelocationProtection: 0.90,
+  } as any, [input]);
+  assert.equal(result.decisions[0]?.reason, 'lower-income-relocation');
+});
+
 test('SimulationCore policy controls change aggregate affordability and persist in Save V7', () => {
   const core = housingCore();
   const baselineAffordability = core.housingChoiceSnapshot.affordabilityIndex;
@@ -128,7 +159,8 @@ test('SimulationCore policy controls change aggregate affordability and persist 
     developmentFeeRate: 0.04,
     permittingCostReduction: 0.20,
     redevelopmentAffordableFloor: 0.95,
-  });
+    lowerIncomeRelocationProtection: 0.96,
+  } as any);
   assert.deepEqual(core.developmentPolicySnapshot, policy);
   assert.ok(core.housingChoiceSnapshot.affordabilityIndex >= baselineAffordability);
   const save = serializeCore(core);

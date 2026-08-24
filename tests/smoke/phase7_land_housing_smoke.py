@@ -69,11 +69,21 @@ def main() -> None:
         """)
 
         panel = page.locator('[data-testid="land-housing-panel"]').inner_text()
-        for label in ["Residential market", "Physical capacity", "Affordability", "High-pressure parcels"]:
+        for label in [
+            "Residential market", "Physical capacity", "Affordability", "High-pressure parcels",
+            "Renter share", "Owner share", "Rental vacancy", "Ownership vacancy",
+            "Average asking rent", "Average owner cost", "Moved this cycle", "Displaced this cycle",
+            "Rehoused displaced", "Failed searches", "Lower-income affordable slack",
+        ]:
             assert label in panel
 
         inspector = page.locator('#inspector-content').inner_text()
-        for label in ["Housing occupancy", "Affordability", "Average rent burden", "Redevelopment pressure", "Redevelopment status"]:
+        for label in [
+            "Housing occupancy", "Affordability", "Average rent burden", "Tenure mix",
+            "Rental occupancy", "Ownership occupancy", "Asking rent", "Owner monthly cost",
+            "Moved in this cycle", "Moved out this cycle", "Displaced this cycle",
+            "Redevelopment pressure", "Redevelopment status",
+        ]:
             assert label in inspector
 
         page.locator('[data-testid="policy-density-bonus"]').select_option("1")
@@ -81,6 +91,7 @@ def main() -> None:
         page.locator('[data-testid="policy-development-fee"]').fill("5")
         page.locator('[data-testid="policy-permitting-incentive"]').fill("25")
         page.locator('[data-testid="policy-redevelopment-floor"]').fill("95")
+        page.locator('[data-testid="policy-lower-income-relocation"]').fill("90")
         page.locator('[data-testid="apply-development-policy"]').click()
         policy = page.evaluate("window.__civicApp.core.developmentPolicySnapshot")
         assert policy == {
@@ -89,6 +100,7 @@ def main() -> None:
             "developmentFeeRate": 0.05,
             "permittingCostReduction": 0.25,
             "redevelopmentAffordableFloor": 0.95,
+            "lowerIncomeRelocationProtection": 0.9,
         }
         assert "Policy applied" in page.locator('[data-policy-status]').inner_text()
 
@@ -96,6 +108,46 @@ def main() -> None:
         page.locator('[data-testid="land-housing-overlay"]').select_option("affordability")
         assert page.locator('[data-testid="economy-overlay"]').input_value() == "none"
         assert "Housing affordability" in page.locator('#overlay-legend').inner_text()
+
+        page.locator('[data-testid="land-housing-overlay"]').select_option("tenure")
+        assert "Housing tenure" in page.locator('#overlay-legend').inner_text()
+        page.locator('[data-testid="land-housing-overlay"]').select_option("relocation-pressure")
+        assert "Relocation pressure" in page.locator('#overlay-legend').inner_text()
+
+        save_load = page.evaluate("""
+        async () => {
+          const { serializeCore, hydrateCore } = await import('http://civic.test/src/save/save.js');
+          const app = window.__civicApp;
+          const save = serializeCore(app.core);
+          const before = JSON.stringify(save.housingState);
+          app.core = hydrateCore(structuredClone(save));
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+          const after = JSON.stringify(app.core.housingRelocation.snapshotState());
+          return {same: before === after, policy: app.core.developmentPolicySnapshot};
+        }
+        """)
+        assert save_load["same"] is True
+        assert save_load["policy"]["lowerIncomeRelocationProtection"] == 0.9
+
+        displacement = page.evaluate("""
+        async () => {
+          const app = window.__civicApp;
+          const target = Object.values(app.core.housingRelocationSnapshot.byBuilding)
+            .filter(item => item.assignedResidents > 0)
+            .sort((a,b)=>a.buildingId.localeCompare(b.buildingId))[0];
+          if (!target) throw new Error('expected assigned residential building');
+          const building = app.core.buildings.getById(target.buildingId);
+          if (!building) throw new Error('expected residential building');
+          const result = app.core.bulldozeAt(building.x, building.y);
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+          return {result, relocation: app.core.housingRelocationSnapshot};
+        }
+        """)
+        assert displacement["result"]["ok"] is True
+        assert displacement["result"]["kind"] == "building"
+        assert displacement["relocation"]["displacedResidentsThisCycle"] > 0
+        represented = displacement["relocation"]["housedResidents"] + displacement["relocation"]["unplacedResidents"]
+        assert abs(represented - displacement["relocation"]["population"]) < 1e-6
 
         page.locator('[data-testid="traffic-overlay"]').select_option("congestion")
         assert page.locator('[data-testid="land-housing-overlay"]').input_value() == "none"
@@ -105,7 +157,12 @@ def main() -> None:
 
     if errors:
         raise AssertionError("browser page errors: " + repr(errors))
-    print("PHASE7_LAND_HOUSING_POLICY_SMOKE_PASS", {"setup": setup, "policy": policy})
+    print("PHASE7_TENURE_RELOCATION_SMOKE_PASS", {
+        "setup": setup,
+        "policy": policy,
+        "save_load": save_load,
+        "displaced": displacement["relocation"]["displacedResidentsThisCycle"],
+    })
 
 
 if __name__ == "__main__":

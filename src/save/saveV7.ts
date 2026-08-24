@@ -1,6 +1,7 @@
 import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import type { DeveloperMarketStateSnapshot } from '../simulation/development/DevelopmentTypes.ts';
 import type { DevelopmentPolicyState } from '../simulation/development/DevelopmentPolicySystem.ts';
+import type { HousingRelocationState } from '../simulation/housing/HousingRelocationSystem.ts';
 import { hydrateCoreV6, serializeCoreV6, type SaveV6 } from './saveV6.ts';
 
 export type SaveV7 = Omit<SaveV6, 'saveVersion' | 'gameVersion'> & {
@@ -8,6 +9,7 @@ export type SaveV7 = Omit<SaveV6, 'saveVersion' | 'gameVersion'> & {
   gameVersion: '0.7.0-metropolitan';
   developmentMarket: DeveloperMarketStateSnapshot;
   developmentPolicy?: DevelopmentPolicyState;
+  housingState?: HousingRelocationState;
 };
 
 export function serializeCoreV7(core: SimulationCore): SaveV7 {
@@ -18,15 +20,20 @@ export function serializeCoreV7(core: SimulationCore): SaveV7 {
     gameVersion: '0.7.0-metropolitan',
     developmentMarket: core.developerMarket.snapshotState(),
     developmentPolicy: core.developmentPolicySnapshot,
+    housingState: core.housingRelocation.snapshotState(),
   };
 }
 
 export function hydrateCoreV7(input: unknown): SimulationCore {
   if (!isRecord(input)) throw new Error('save must be an object');
-  if (input.saveVersion !== 7) return hydrateCoreV6(input);
+  if (input.saveVersion !== 7) {
+    const core = hydrateCoreV6(input);
+    core.restoreHousingState();
+    return core;
+  }
   validateEnvelope(input);
   const save = input as unknown as SaveV7;
-  const { developmentMarket, developmentPolicy, ...v7WithoutDevelopment } = save;
+  const { developmentMarket, developmentPolicy, housingState, ...v7WithoutDevelopment } = save;
   const v6: SaveV6 = {
     ...v7WithoutDevelopment,
     saveVersion: 6,
@@ -36,6 +43,7 @@ export function hydrateCoreV7(input: unknown): SimulationCore {
   validateDevelopmentReferences(core, developmentMarket);
   core.developerMarket.restoreState(developmentMarket);
   if (developmentPolicy !== undefined) core.setDevelopmentPolicy(developmentPolicy);
+  core.restoreHousingState(housingState);
   return core;
 }
 
@@ -45,6 +53,12 @@ function validateEnvelope(record: Record<string, unknown>): void {
   if (!Array.isArray(development.developers)) throw new Error('developmentMarket.developers must be an array');
   if (!Array.isArray(development.commitments)) throw new Error('developmentMarket.commitments must be an array');
   if (record.developmentPolicy !== undefined) requireRecord(record.developmentPolicy, 'developmentPolicy');
+  if (record.housingState !== undefined) {
+    const housing = requireRecord(record.housingState, 'housingState');
+    if (!Array.isArray(housing.allocations)) throw new Error('housingState.allocations must be an array');
+    if (!Array.isArray(housing.unplaced)) throw new Error('housingState.unplaced must be an array');
+    requireRecord(housing.totals, 'housingState.totals');
+  }
 }
 
 function validateDevelopmentReferences(core: SimulationCore, state: DeveloperMarketStateSnapshot): void {

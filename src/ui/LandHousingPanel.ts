@@ -1,17 +1,24 @@
 import type { LandHousingMarketSnapshot } from '../simulation/development/LandHousingMarketSystem.ts';
 import type { HousingChoiceSnapshot } from '../simulation/housing/HousingChoiceSystem.ts';
+import type { HousingTenureSnapshot } from '../simulation/housing/HousingTenureSystem.ts';
+import type { HousingRelocationSnapshot } from '../simulation/housing/HousingRelocationSystem.ts';
+import { housingAffordabilityScore } from '../simulation/housing/HousingEconomics.ts';
 import type { RedevelopmentPressureSnapshot } from '../simulation/development/RedevelopmentPressureSystem.ts';
 import type { RedevelopmentExecutionSnapshot, RedevelopmentExecutionDecisionReason } from '../simulation/development/RedevelopmentExecutionSystem.ts';
 
 const pct = (value: number): string => `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 const index = (value: number): string => Number.isFinite(value) ? value.toFixed(2) : '0.00';
 const number = (value: number): string => Number.isFinite(value) ? value.toFixed(value >= 100 ? 0 : 1) : '0';
+const money = (value: number): string => `$${Math.round(Number.isFinite(value) ? value : 0).toLocaleString()}`;
 const titleCase = (value: string): string => value.split('-').map((part) => part.length > 0 ? part[0]!.toUpperCase() + part.slice(1) : part).join(' ');
+const average = (values: readonly number[]): number => values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 
 export class LandHousingPanel {
   render(
     market: LandHousingMarketSnapshot,
     housing: HousingChoiceSnapshot,
+    tenure: HousingTenureSnapshot,
+    relocation: HousingRelocationSnapshot,
     pressure: RedevelopmentPressureSnapshot,
     execution: RedevelopmentExecutionSnapshot,
   ): string {
@@ -35,11 +42,35 @@ export class LandHousingPanel {
 
     for (const band of ['lower', 'middle', 'upper'] as const) {
       const item = housing.byBand[band];
+      const relocationBand = relocation.byBand[band];
       rows.push([
         `${band[0]!.toUpperCase()}${band.slice(1)} income`,
-        `${number(item.assignedResidents)}/${number(item.targetResidents)} housed · ${number(item.unplacedResidents)} unplaced · ${pct(item.averageRentBurden)} average rent burden`,
+        `${number(item.assignedResidents)}/${number(item.targetResidents)} housed · ${number(item.unplacedResidents)} unplaced · ${pct(item.averageRentBurden)} average rent burden · ${number(relocationBand.renterResidents)} renter / ${number(relocationBand.ownerResidents)} owner`,
       ]);
     }
+
+    const tenureBuildings = Object.values(tenure.byBuilding);
+    const lowerIncomeAffordableSlack = tenure.options.reduce((sum, option) => {
+      if (housingAffordabilityScore(option.monthlyCost, 'lower') <= 0) return sum;
+      const building = relocation.byBuilding[option.buildingId];
+      const assigned = option.tenure === 'renter' ? (building?.renterResidents ?? 0) : (building?.ownerResidents ?? 0);
+      return sum + Math.max(0, option.capacity - assigned);
+    }, 0);
+
+    rows.push(
+      ['Renter share', `${pct(relocation.renterShare)} · ${number(relocation.renterResidents)} residents`],
+      ['Owner share', `${pct(relocation.ownerShare)} · ${number(relocation.ownerResidents)} residents`],
+      ['Rental vacancy', pct(relocation.rentalVacancyRate)],
+      ['Ownership vacancy', pct(relocation.ownershipVacancyRate)],
+      ['Average asking rent', money(average(tenureBuildings.map((item) => item.askingRent)))],
+      ['Average owner cost', money(average(tenureBuildings.map((item) => item.monthlyOwnerCost)))],
+      ['Financing rate', pct(tenure.marketInterestRate)],
+      ['Moved this cycle', number(relocation.movedResidentsThisCycle)],
+      ['Displaced this cycle', number(relocation.displacedResidentsThisCycle)],
+      ['Rehoused displaced', number(relocation.rehousedDisplacedResidentsThisCycle)],
+      ['Failed searches', number(relocation.failedSearchResidentsThisCycle)],
+      ['Lower-income affordable slack', number(lowerIncomeAffordableSlack)],
+    );
 
     const reasonCounts = new Map<RedevelopmentExecutionDecisionReason, number>();
     for (const decision of execution.decisions) {
