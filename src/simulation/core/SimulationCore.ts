@@ -42,6 +42,7 @@ import { DevelopmentFeasibilitySystem } from '../development/DevelopmentFeasibil
 import { DeveloperMarketSystem } from '../development/DeveloperMarketSystem.ts';
 import { LandHousingMarketSystem, type LandHousingMarketSnapshot } from '../development/LandHousingMarketSystem.ts';
 import { RedevelopmentPressureSystem, type RedevelopmentPressureSnapshot, type ResidentialRedevelopmentInput } from '../development/RedevelopmentPressureSystem.ts';
+import { RedevelopmentExecutionSystem, type RedevelopmentExecutionInput, type RedevelopmentExecutionSnapshot } from '../development/RedevelopmentExecutionSystem.ts';
 import type { DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';
 import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/HousingChoiceSystem.ts';
 
@@ -108,6 +109,7 @@ export class SimulationCore {
   readonly landHousingMarket: LandHousingMarketSystem;
   readonly housingChoice: HousingChoiceSystem;
   readonly redevelopmentPressure: RedevelopmentPressureSystem;
+  readonly redevelopmentExecution: RedevelopmentExecutionSystem;
   private readonly redevelopmentFeasibility: DevelopmentFeasibilitySystem;
 
   employmentSnapshot: EmploymentSnapshot;
@@ -134,6 +136,10 @@ export class SimulationCore {
 
   get redevelopmentPressureSnapshot(): RedevelopmentPressureSnapshot {
     return this.redevelopmentPressure.snapshot();
+  }
+
+  get redevelopmentExecutionSnapshot(): RedevelopmentExecutionSnapshot {
+    return this.redevelopmentExecution.snapshot();
   }
 
   constructor(options: SimulationCoreOptions = {}) {
@@ -184,6 +190,7 @@ export class SimulationCore {
     this.landHousingMarket = new LandHousingMarketSystem();
     this.housingChoice = new HousingChoiceSystem();
     this.redevelopmentPressure = new RedevelopmentPressureSystem();
+    this.redevelopmentExecution = new RedevelopmentExecutionSystem();
 
     this.employmentSnapshot = this.employment.evaluate(0, 0);
     this.utilitySnapshot = this.utilities.evaluate([]);
@@ -204,6 +211,7 @@ export class SimulationCore {
     this.refreshLandHousingMarket();
     this.refreshHousingChoice();
     this.refreshRedevelopmentPressure();
+    this.refreshRedevelopmentExecution();
   }
 
   buildRoad(cells: readonly CellCoord[], type: RoadType): RoadPlacementResult {
@@ -449,10 +457,14 @@ export class SimulationCore {
     this.refreshLandHousingMarket();
     this.refreshHousingChoice();
     this.refreshRedevelopmentPressure();
+    this.refreshRedevelopmentExecution();
   }
 
   private evaluateDevelopmentMarket(): void {
     this.refreshLandHousingMarket();
+    this.refreshHousingChoice();
+    this.refreshRedevelopmentPressure();
+    const redevelopment = this.refreshRedevelopmentExecution();
     const lots = this.lots.list().sort((a, b) => a.id.localeCompare(b.id));
     const occupiedLots = new Set(this.buildings.list().map((building) => building.lotId));
     const opportunities: DevelopmentFeasibilityResult[] = [];
@@ -464,10 +476,12 @@ export class SimulationCore {
         this.developmentContextForLot(lot),
       ));
     }
+    opportunities.push(...redevelopment.opportunities);
 
     const marketInterestRate = this.currentDevelopmentInterestRate();
     const awards = this.developerMarket.allocate(opportunities, { tick: this.clock.tick, marketInterestRate });
     const lotsById = new Map(lots.map((lot) => [lot.id, lot] as const));
+    const redevelopmentLotIds = new Set(redevelopment.opportunities.map((item) => item.lotId));
     for (const award of awards) {
       const lot = lotsById.get(award.lotId);
       if (!lot) {
@@ -475,11 +489,23 @@ export class SimulationCore {
         continue;
       }
       try {
-        this.buildings.startDevelopment(this.clock.tick, lot, award);
+        if (redevelopmentLotIds.has(award.lotId)) {
+          const { removed } = this.buildings.replaceDevelopment(this.clock.tick, lot, award);
+          this.economyDomain.removeBuilding(removed.id, this.clock.tick);
+        } else {
+          this.buildings.startDevelopment(this.clock.tick, lot, award);
+        }
       } catch (error) {
         this.developerMarket.cancelProject(award.buildingId, 1);
         throw error;
       }
+    }
+
+    if (awards.length > 0) {
+      this.refreshLandHousingMarket();
+      this.refreshHousingChoice();
+      this.refreshRedevelopmentPressure();
+      this.refreshRedevelopmentExecution();
     }
   }
 
@@ -602,6 +628,43 @@ export class SimulationCore {
     }
 
     return this.redevelopmentPressure.evaluate(inputs);
+  }
+
+  private refreshRedevelopmentExecution(): RedevelopmentExecutionSnapshot {
+    const lotsById = new Map(this.lots.list().map((lot) => [lot.id, lot] as const));
+    const buildingsById = new Map(this.buildings.occupied().map((building) => [building.id, building] as const));
+    const committedBuildingIds = new Set(this.developerMarket.listCommitments().map((commitment) => commitment.buildingId));
+    const inputs: RedevelopmentExecutionInput[] = [];
+
+    for (const pressure of this.redevelopmentPressure.snapshot().parcels) {
+      if (!pressure.bestReplacementDefinitionId) continue;
+      const building = buildingsById.get(pressure.buildingId);
+      const lot = lotsById.get(pressure.lotId);
+      if (!building || !lot || building.zone !== 'residential') continue;
+      const replacement = BUILDING_VARIANTS.residential.find((candidate) => candidate.id === pressure.bestReplacementDefinitionId);
+      if (!replacement) continue;
+      const replacementEvaluation = this.redevelopmentFeasibility.evaluateLot(
+        lot,
+        [replacement],
+        this.developmentContextForLot(lot),
+      )[0];
+      if (!replacementEvaluation) continue;
+      const existingDefinition = definitionForBuilding(building);
+      inputs.push({
+        pressure,
+        residentCapacity: existingDefinition.residentCapacity,
+        affordabilityScore: this.housingChoiceSnapshot.byBuilding[building.id]?.affordabilityScore ?? 1,
+        replacementEvaluation,
+        activeCommitment: committedBuildingIds.has(building.id),
+      });
+    }
+
+    return this.redevelopmentExecution.evaluate({
+      population: this.population.population,
+      physicalCapacity: this.housingChoiceSnapshot.physicalCapacity,
+      effectiveAffordableCapacity: this.housingChoiceSnapshot.effectiveAffordableCapacity,
+      unplacedResidents: this.housingChoiceSnapshot.unplacedResidents,
+    }, inputs);
   }
 
   private refreshLandHousingMarket(): LandHousingMarketSnapshot {
