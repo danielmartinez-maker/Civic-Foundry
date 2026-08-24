@@ -633,6 +633,7 @@ export class SimulationCore {
   private refreshRedevelopmentExecution(): RedevelopmentExecutionSnapshot {
     const lotsById = new Map(this.lots.list().map((lot) => [lot.id, lot] as const));
     const buildingsById = new Map(this.buildings.occupied().map((building) => [building.id, building] as const));
+    const committedBuildingIds = new Set(this.developerMarket.listCommitments().map((commitment) => commitment.buildingId));
     const inputs: RedevelopmentExecutionInput[] = [];
 
     for (const pressure of this.redevelopmentPressure.snapshot().parcels) {
@@ -654,6 +655,7 @@ export class SimulationCore {
         residentCapacity: existingDefinition.residentCapacity,
         affordabilityScore: this.housingChoiceSnapshot.byBuilding[building.id]?.affordabilityScore ?? 1,
         replacementEvaluation,
+        activeCommitment: committedBuildingIds.has(building.id),
       });
     }
 
