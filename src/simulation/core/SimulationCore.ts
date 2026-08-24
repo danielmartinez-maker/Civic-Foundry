@@ -43,6 +43,7 @@ import { DeveloperMarketSystem } from '../development/DeveloperMarketSystem.ts';
 import { LandHousingMarketSystem, type LandHousingMarketSnapshot } from '../development/LandHousingMarketSystem.ts';
 import { RedevelopmentPressureSystem, type RedevelopmentPressureSnapshot, type ResidentialRedevelopmentInput } from '../development/RedevelopmentPressureSystem.ts';
 import { RedevelopmentExecutionSystem, type RedevelopmentExecutionInput, type RedevelopmentExecutionSnapshot } from '../development/RedevelopmentExecutionSystem.ts';
+import { DevelopmentPolicySystem, type DevelopmentPolicyPatch, type DevelopmentPolicyState } from '../development/DevelopmentPolicySystem.ts';
 import type { DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';
 import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/HousingChoiceSystem.ts';
 
@@ -110,6 +111,7 @@ export class SimulationCore {
   readonly housingChoice: HousingChoiceSystem;
   readonly redevelopmentPressure: RedevelopmentPressureSystem;
   readonly redevelopmentExecution: RedevelopmentExecutionSystem;
+  readonly developmentPolicy: DevelopmentPolicySystem;
   private readonly redevelopmentFeasibility: DevelopmentFeasibilitySystem;
 
   employmentSnapshot: EmploymentSnapshot;
@@ -140,6 +142,10 @@ export class SimulationCore {
 
   get redevelopmentExecutionSnapshot(): RedevelopmentExecutionSnapshot {
     return this.redevelopmentExecution.snapshot();
+  }
+
+  get developmentPolicySnapshot(): DevelopmentPolicyState {
+    return this.developmentPolicy.snapshot();
   }
 
   constructor(options: SimulationCoreOptions = {}) {
@@ -191,6 +197,7 @@ export class SimulationCore {
     this.housingChoice = new HousingChoiceSystem();
     this.redevelopmentPressure = new RedevelopmentPressureSystem();
     this.redevelopmentExecution = new RedevelopmentExecutionSystem();
+    this.developmentPolicy = new DevelopmentPolicySystem();
 
     this.employmentSnapshot = this.employment.evaluate(0, 0);
     this.utilitySnapshot = this.utilities.evaluate([]);
@@ -240,6 +247,14 @@ export class SimulationCore {
     const result = this.services.setFunding(department, percent);
     this.serviceVehicles.syncFleet(this.services);
     return result;
+  }
+
+  setDevelopmentPolicy(patch: DevelopmentPolicyPatch): DevelopmentPolicyState {
+    const state = this.developmentPolicy.update(patch);
+    this.refreshHousingChoice();
+    this.refreshRedevelopmentPressure();
+    this.refreshRedevelopmentExecution();
+    return state;
   }
 
   bulldozeAt(x: number, y: number): { ok: boolean; kind?: 'road' | 'building' | 'zone'; reason?: string } {
@@ -527,9 +542,10 @@ export class SimulationCore {
       : 0.7;
     const neighborhoodQuality = clamp01(serviceQuality * 0.7 + personAccessibility * 0.3);
     const constructionCostIndex = clamp(1 + (1 - utilityRatio) * 0.20 + (1 - serviceQuality) * 0.10, 0.85, 1.50);
-    const zoningMaxIntensity: BuildingIntensity = personAccessibility >= 0.78 && utilityRatio >= 0.85
+    const baseZoningMaxIntensity: BuildingIntensity = personAccessibility >= 0.78 && utilityRatio >= 0.85
       ? 'high'
       : personAccessibility >= 0.55 ? 'medium' : 'low';
+    const zoningMaxIntensity = this.developmentPolicy.adjustMaxIntensity(lot.zone, baseZoningMaxIntensity);
     return {
       roadAccessBonus,
       personAccessibility,
@@ -552,6 +568,7 @@ export class SimulationCore {
       utilityRatio: local.utilityRatio,
       frontageAccessBonus: local.roadAccessBonus,
     });
+    const policy = this.developmentPolicy.snapshot();
     return {
       demand: this.demandSnapshot[lot.zone],
       taxRate: this.taxes.getRate(lot.zone),
@@ -563,6 +580,9 @@ export class SimulationCore {
       constructionCostIndex: local.constructionCostIndex,
       marketInterestRate: this.currentDevelopmentInterestRate(),
       zoningMaxIntensity: local.zoningMaxIntensity,
+      policyAffordableHousingShare: lot.zone === 'residential' ? policy.affordableHousingShare : 0,
+      policyDevelopmentFeeRate: policy.developmentFeeRate,
+      policyPermittingCostReduction: policy.permittingCostReduction,
       ...marketSignal,
     };
   }
@@ -570,6 +590,7 @@ export class SimulationCore {
   private refreshHousingChoice(): HousingChoiceSnapshot {
     const lotsById = new Map(this.lots.list().map((lot) => [lot.id, lot] as const));
     const options = [];
+    const rentFactor = this.developmentPolicy.residentialRentFactor();
     for (const building of this.buildings.occupied()) {
       if (building.zone !== 'residential') continue;
       const lot = lotsById.get(building.lotId);
@@ -587,7 +608,7 @@ export class SimulationCore {
       options.push({
         buildingId: building.id,
         capacity: definition.residentCapacity,
-        monthlyRent: definition.baseRent * market.marketRentMultiplier,
+        monthlyRent: definition.baseRent * market.marketRentMultiplier * rentFactor,
         personAccessibility: local.personAccessibility,
         serviceQuality: local.serviceQuality,
         neighborhoodQuality: local.neighborhoodQuality,
@@ -664,6 +685,7 @@ export class SimulationCore {
       physicalCapacity: this.housingChoiceSnapshot.physicalCapacity,
       effectiveAffordableCapacity: this.housingChoiceSnapshot.effectiveAffordableCapacity,
       unplacedResidents: this.housingChoiceSnapshot.unplacedResidents,
+      minimumAffordableShare: this.developmentPolicy.snapshot().redevelopmentAffordableFloor,
     }, inputs);
   }
 
