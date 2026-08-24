@@ -41,6 +41,7 @@ def main() -> None:
         assert page.locator('[data-testid="land-housing-panel"]').is_visible()
         assert page.locator('[data-testid="land-housing-overlay"]').is_visible()
         assert page.locator('[data-testid="land-housing-overlay-canvas"]').is_visible()
+        assert page.locator('[data-testid="development-policy-controls"]').is_visible()
 
         setup = page.evaluate("""
         async () => {
@@ -75,6 +76,22 @@ def main() -> None:
         for label in ["Housing occupancy", "Affordability", "Average rent burden", "Redevelopment pressure", "Redevelopment status"]:
             assert label in inspector
 
+        page.locator('[data-testid="policy-density-bonus"]').select_option("1")
+        page.locator('[data-testid="policy-affordable-share"]').fill("20")
+        page.locator('[data-testid="policy-development-fee"]').fill("5")
+        page.locator('[data-testid="policy-permitting-incentive"]').fill("25")
+        page.locator('[data-testid="policy-redevelopment-floor"]').fill("95")
+        page.locator('[data-testid="apply-development-policy"]').click()
+        policy = page.evaluate("window.__civicApp.core.developmentPolicySnapshot")
+        assert policy == {
+            "densityBonus": 1,
+            "affordableHousingShare": 0.2,
+            "developmentFeeRate": 0.05,
+            "permittingCostReduction": 0.25,
+            "redevelopmentAffordableFloor": 0.95,
+        }
+        assert "Policy applied" in page.locator('[data-policy-status]').inner_text()
+
         page.locator('[data-testid="economy-overlay"]').select_option("firm-health")
         page.locator('[data-testid="land-housing-overlay"]').select_option("affordability")
         assert page.locator('[data-testid="economy-overlay"]').input_value() == "none"
@@ -88,7 +105,7 @@ def main() -> None:
 
     if errors:
         raise AssertionError("browser page errors: " + repr(errors))
-    print("PHASE7_LAND_HOUSING_SMOKE_PASS", setup)
+    print("PHASE7_LAND_HOUSING_POLICY_SMOKE_PASS", {"setup": setup, "policy": policy})
 
 
 if __name__ == "__main__":
