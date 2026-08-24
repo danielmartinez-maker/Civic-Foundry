@@ -269,7 +269,7 @@ export class SimulationCore {
   setDevelopmentPolicy(patch: DevelopmentPolicyPatch): DevelopmentPolicyState {
     const state = this.developmentPolicy.update(patch);
     this.refreshHousingTenure();
-    this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);
+    this.syncHousingPopulationWithoutVoluntaryMoves();
     this.refreshHousingChoice();
     this.refreshRedevelopmentPressure();
     this.refreshRedevelopmentExecution();
@@ -552,7 +552,7 @@ export class SimulationCore {
   private evaluateDevelopmentMarket(): void {
     this.refreshLandHousingMarket();
     this.refreshHousingTenure();
-    this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);
+    this.syncHousingPopulationWithoutVoluntaryMoves();
     this.refreshHousingChoice();
     this.refreshRedevelopmentPressure();
     const redevelopment = this.refreshRedevelopmentExecution();
@@ -707,6 +707,20 @@ export class SimulationCore {
       });
     }
     return this.housingTenure.evaluate(this.currentDevelopmentInterestRate(), inputs);
+  }
+
+  private syncHousingPopulationWithoutVoluntaryMoves(): HousingRelocationSnapshot {
+    const state = this.housingRelocation.snapshotState();
+    const represented = state.allocations.reduce((sum, item) => sum + item.residents, 0)
+      + state.unplaced.reduce((sum, item) => sum + item.residents, 0);
+    if (Math.abs(represented - this.population.population) > 1e-6) {
+      return this.housingRelocation.reconcile({
+        population: this.population.population,
+        options: this.housingTenureSnapshot.options,
+        allowVoluntaryMoves: false,
+      });
+    }
+    return this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);
   }
 
   private refreshHousingChoice(): HousingChoiceSnapshot {
