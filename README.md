@@ -37,10 +37,11 @@ Implemented in the V7 baseline:
 - physical housing capacity separated from effective affordable capacity, with affordability, rent burden, cost-burdened residents and unplaced-resident diagnostics
 - effective affordable capacity feeding the existing residential-demand channel while affordability applies only a bounded migration-attractiveness modifier and raw physical capacity remains the population hard cap
 - occupied residential redevelopment-pressure diagnostics comparing current-use value with feasible higher-intensity replacements, demolition cost and resident displacement burden
-- safeguarded residential redevelopment execution when pressure clears 0.25, no residents are already unplaced, and post-demolition physical and effective-affordable capacity remain above relocation floors
+- safeguarded residential redevelopment execution when pressure clears 0.25, no residents are already unplaced, no prior developer commitment remains active on the deterministic building identity, and post-demolition physical and effective-affordable capacity remain above relocation floors
 - cumulative relocation-slack reservation so several same-cycle redevelopment awards cannot collectively demolish more housing than the city can absorb
 - occupied-parcel demolition and displacement costs folded into developer underwriting before redevelopment competes with vacant-lot projects in the same deterministic capital market
 - in-place higher-intensity rebuilding that preserves deterministic building identity, enters normal construction state and retains authoritative developer capital commitments
+- defense-in-depth capital-ledger protection: redevelopment diagnostics report `active-commitment`, while `DeveloperMarketSystem` independently refuses any award that would overwrite an existing `building:<lotId>` commitment
 - parcel underwriting using market rent/vacancy/land value, taxes, service/utility/accessibility, construction cost, financing, stabilized value, return and residual land value
 - deterministic competing developers with distinct hurdle rates, leverage, capital, risk tolerances and zone preferences
 - explicit development awards, owner/finance metadata, capital commitments, cancellation recovery and post-stabilization capital recycling
@@ -76,7 +77,7 @@ npm run dev
 
 `SimulationCore` composes focused authoritative systems. `MobilityScheduler` owns multimodal update order, `EconomyScheduler` owns Phase 6 firms/inventories/production/freight/trade/business lifecycle state, and the Phase 7 development/housing domain owns derived property-market signals, aggregate housing allocation, redevelopment diagnostics/planning, parcel feasibility and deterministic developer allocation. Rendering/UI reads snapshots and submits typed mutations through public APIs; it does not manufacture simulation outcomes.
 
-Road traffic, transit attractiveness, service access, demand, finance, property-market conditions, affordability and development economics are coupled through measured travel/capacity/accessibility results. A transit line only helps when its geometry, frequency, capacity, fare and destination access make it competitive; residential demand distinguishes physical stock from economically usable stock; a parcel only develops when infrastructure, market conditions, project economics and a developer's capital/hurdle constraints permit it; an occupied residential parcel only redevelops when aggregate relocation capacity is also sufficient.
+Road traffic, transit attractiveness, service access, demand, finance, property-market conditions, affordability and development economics are coupled through measured travel/capacity/accessibility results. A transit line only helps when its geometry, frequency, capacity, fare and destination access make it competitive; residential demand distinguishes physical stock from economically usable stock; a parcel only develops when infrastructure, market conditions, project economics and a developer's capital/hurdle constraints permit it; an occupied residential parcel only redevelops when aggregate relocation capacity is sufficient and its deterministic building identity has no live developer commitment.
 
 ## Persistence
 
