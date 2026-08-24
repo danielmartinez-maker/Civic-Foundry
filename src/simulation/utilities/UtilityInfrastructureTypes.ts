@@ -12,6 +12,7 @@ export type UtilityCorridorCell = Readonly<{
   y: number;
   saturatedCycles: number;
   trippedUntilTick: number;
+  sourceStubForFacilityId?: string;
 }>;
 
 export type UtilityFacility = Readonly<{
