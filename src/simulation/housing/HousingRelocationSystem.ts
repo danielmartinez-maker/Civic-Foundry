@@ -355,6 +355,18 @@ export class HousingRelocationSystem {
     return residents;
   }
 
+  refreshSnapshot(population: number, options: readonly HousingTenureOption[]): HousingRelocationSnapshot {
+    finiteNonNegative('population', population);
+    const validOptions = validateOptions(options);
+    if (!this.initialized) return this.initialize(population, validOptions);
+    const represented = this.representedResidents();
+    if (Math.abs(represented - population) > 1e-6) {
+      throw new Error(`housing relocation resident conservation failed: ${represented} != ${population}`);
+    }
+    this.latest = this.buildSnapshot(population, validOptions, emptyCycle());
+    return this.snapshot();
+  }
+
   snapshotState(): HousingRelocationState {
     return Object.freeze({
       allocations: Object.freeze(this.allocations.map((item) => Object.freeze({ ...item }))),

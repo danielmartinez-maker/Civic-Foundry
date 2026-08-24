@@ -46,6 +46,9 @@ import { RedevelopmentExecutionSystem, type RedevelopmentExecutionInput, type Re
 import { DevelopmentPolicySystem, type DevelopmentPolicyPatch, type DevelopmentPolicyState } from '../development/DevelopmentPolicySystem.ts';
 import type { DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';
 import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/HousingChoiceSystem.ts';
+import { HousingTenureSystem, type HousingTenureSnapshot } from '../housing/HousingTenureSystem.ts';
+import { HousingRelocationSystem, type HousingRelocationSnapshot, type HousingRelocationState } from '../housing/HousingRelocationSystem.ts';
+import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -109,6 +112,8 @@ export class SimulationCore {
   readonly developerMarket: DeveloperMarketSystem;
   readonly landHousingMarket: LandHousingMarketSystem;
   readonly housingChoice: HousingChoiceSystem;
+  readonly housingTenure: HousingTenureSystem;
+  readonly housingRelocation: HousingRelocationSystem;
   readonly redevelopmentPressure: RedevelopmentPressureSystem;
   readonly redevelopmentExecution: RedevelopmentExecutionSystem;
   readonly developmentPolicy: DevelopmentPolicySystem;
@@ -134,6 +139,14 @@ export class SimulationCore {
 
   get housingChoiceSnapshot(): HousingChoiceSnapshot {
     return this.housingChoice.snapshot();
+  }
+
+  get housingTenureSnapshot(): HousingTenureSnapshot {
+    return this.housingTenure.snapshot();
+  }
+
+  get housingRelocationSnapshot(): HousingRelocationSnapshot {
+    return this.housingRelocation.snapshot();
   }
 
   get redevelopmentPressureSnapshot(): RedevelopmentPressureSnapshot {
@@ -195,6 +208,8 @@ export class SimulationCore {
     this.developerMarket = new DeveloperMarketSystem();
     this.landHousingMarket = new LandHousingMarketSystem();
     this.housingChoice = new HousingChoiceSystem();
+    this.housingTenure = new HousingTenureSystem();
+    this.housingRelocation = new HousingRelocationSystem();
     this.redevelopmentPressure = new RedevelopmentPressureSystem();
     this.redevelopmentExecution = new RedevelopmentExecutionSystem();
     this.developmentPolicy = new DevelopmentPolicySystem();
@@ -216,6 +231,8 @@ export class SimulationCore {
     this.neighborhoodSnapshot = { perBuilding: Object.freeze({}), citywideServiceQuality: 1, commercialServiceQuality: 1 };
     this.mobilitySnapshot = this.mobility.snapshot();
     this.refreshLandHousingMarket();
+    this.refreshHousingTenure();
+    this.housingRelocation.initialize(this.population.population, this.housingTenureSnapshot.options);
     this.refreshHousingChoice();
     this.refreshRedevelopmentPressure();
     this.refreshRedevelopmentExecution();
@@ -251,10 +268,45 @@ export class SimulationCore {
 
   setDevelopmentPolicy(patch: DevelopmentPolicyPatch): DevelopmentPolicyState {
     const state = this.developmentPolicy.update(patch);
+    this.refreshHousingTenure();
+    this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);
     this.refreshHousingChoice();
     this.refreshRedevelopmentPressure();
     this.refreshRedevelopmentExecution();
     return state;
+  }
+
+  restoreHousingState(state?: HousingRelocationState): HousingRelocationState {
+    this.refreshLandHousingMarket();
+    this.refreshHousingTenure();
+    if (state === undefined) {
+      this.housingRelocation.initialize(this.population.population, this.housingTenureSnapshot.options);
+    } else {
+      const buildingZones = new Map(this.buildings.occupied().map((building) => [building.id, building.zone] as const));
+      const optionCapacities = new Map(this.housingTenureSnapshot.options.map((option) => [`${option.buildingId}|${option.tenure}`, option.capacity] as const));
+      const assigned = new Map<string, number>();
+      for (const allocation of state.allocations) {
+        if (buildingZones.get(allocation.buildingId) !== 'residential') throw new Error('invalid housing allocation building reference');
+        const key = `${allocation.buildingId}|${allocation.tenure}`;
+        if (!optionCapacities.has(key)) throw new Error('invalid housing allocation tenure reference');
+        assigned.set(key, (assigned.get(key) ?? 0) + allocation.residents);
+      }
+      for (const [key, residents] of assigned) {
+        if (residents > (optionCapacities.get(key) ?? 0) + 1e-9) throw new Error('housing allocation exceeds tenure capacity');
+      }
+      this.housingRelocation.restoreState(state);
+      const represented = state.allocations.reduce((sum, item) => sum + item.residents, 0)
+        + state.unplaced.reduce((sum, item) => sum + item.residents, 0);
+      if (Math.abs(represented - this.population.population) > 1e-6) {
+        this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: false });
+      } else {
+        this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);
+      }
+    }
+    this.refreshHousingChoice();
+    this.refreshRedevelopmentPressure();
+    this.refreshRedevelopmentExecution();
+    return this.housingRelocation.snapshotState();
   }
 
   bulldozeAt(x: number, y: number): { ok: boolean; kind?: 'road' | 'building' | 'zone'; reason?: string } {
@@ -263,11 +315,28 @@ export class SimulationCore {
       this.lots.rebuild(this.roads, this.zoning);
       return { ok: true, kind: 'road' };
     }
+    const buildingBeforeRemoval = this.buildings.getAt(x, y);
+    const housingBeforeRemoval = buildingBeforeRemoval?.zone === 'residential'
+      ? this.housingRelocation.snapshotState()
+      : undefined;
+    if (buildingBeforeRemoval?.zone === 'residential') this.housingRelocation.displaceBuilding(buildingBeforeRemoval.id);
     const building = this.buildings.removeAt(x, y);
     if (building) {
       this.economyDomain.removeBuilding(building.id, this.clock.tick);
       this.developerMarket.cancelProject(building.id, 0.50);
+      if (building.zone === 'residential') {
+        this.refreshLandHousingMarket();
+        this.refreshHousingTenure();
+        this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: false });
+        this.refreshHousingChoice();
+        this.refreshRedevelopmentPressure();
+        this.refreshRedevelopmentExecution();
+      }
       return { ok: true, kind: 'building' };
+    }
+    if (housingBeforeRemoval) {
+      this.housingRelocation.restoreState(housingBeforeRemoval);
+      this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);
     }
     if (this.zoning.get(x, y)) {
       this.zoning.clear(x, y);
@@ -429,6 +498,9 @@ export class SimulationCore {
     const hasServices = this.services.listFacilities().length > 0;
     const serviceQuality = hasServices ? this.neighborhoodSnapshot.citywideServiceQuality : 0.7;
     const commercialServiceQuality = hasServices ? this.neighborhoodSnapshot.commercialServiceQuality : 0.7;
+    this.refreshLandHousingMarket();
+    this.refreshHousingTenure();
+    this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: true });
     this.refreshHousingChoice();
     this.demandSnapshot = this.demand.evaluate({
       population: this.population.population,
@@ -470,6 +542,8 @@ export class SimulationCore {
     attractiveness = clamp01(attractiveness * affordabilityFactor);
     this.population.update(this.buildings.residentialCapacity(), attractiveness);
     this.refreshLandHousingMarket();
+    this.refreshHousingTenure();
+    this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: false });
     this.refreshHousingChoice();
     this.refreshRedevelopmentPressure();
     this.refreshRedevelopmentExecution();
@@ -477,6 +551,8 @@ export class SimulationCore {
 
   private evaluateDevelopmentMarket(): void {
     this.refreshLandHousingMarket();
+    this.refreshHousingTenure();
+    this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);
     this.refreshHousingChoice();
     this.refreshRedevelopmentPressure();
     const redevelopment = this.refreshRedevelopmentExecution();
@@ -503,14 +579,26 @@ export class SimulationCore {
         this.developerMarket.cancelProject(award.buildingId, 1);
         continue;
       }
+      const housingBeforeAward = this.housingRelocation.snapshotState();
       try {
         if (redevelopmentLotIds.has(award.lotId)) {
+          const existing = this.buildings.occupied().find((building) => building.lotId === award.lotId);
+          if (existing?.zone === 'residential') this.housingRelocation.displaceBuilding(existing.id);
           const { removed } = this.buildings.replaceDevelopment(this.clock.tick, lot, award);
           this.economyDomain.removeBuilding(removed.id, this.clock.tick);
+          if (removed.zone === 'residential') {
+            this.refreshLandHousingMarket();
+            this.refreshHousingTenure();
+            this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: false });
+            this.refreshHousingChoice();
+          }
         } else {
           this.buildings.startDevelopment(this.clock.tick, lot, award);
         }
       } catch (error) {
+        this.housingRelocation.restoreState(housingBeforeAward);
+        this.refreshHousingTenure();
+        this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);
         this.developerMarket.cancelProject(award.buildingId, 1);
         throw error;
       }
@@ -518,6 +606,8 @@ export class SimulationCore {
 
     if (awards.length > 0) {
       this.refreshLandHousingMarket();
+      this.refreshHousingTenure();
+      this.housingRelocation.refreshSnapshot(this.population.population, this.housingTenureSnapshot.options);
       this.refreshHousingChoice();
       this.refreshRedevelopmentPressure();
       this.refreshRedevelopmentExecution();
@@ -587,9 +677,9 @@ export class SimulationCore {
     };
   }
 
-  private refreshHousingChoice(): HousingChoiceSnapshot {
+  private refreshHousingTenure(): HousingTenureSnapshot {
     const lotsById = new Map(this.lots.list().map((lot) => [lot.id, lot] as const));
-    const options = [];
+    const inputs = [];
     const rentFactor = this.developmentPolicy.residentialRentFactor();
     for (const building of this.buildings.occupied()) {
       if (building.zone !== 'residential') continue;
@@ -605,17 +695,40 @@ export class SimulationCore {
         utilityRatio: local.utilityRatio,
         frontageAccessBonus: local.roadAccessBonus,
       });
-      options.push({
+      inputs.push({
         buildingId: building.id,
+        intensity: definition.intensity,
         capacity: definition.residentCapacity,
-        monthlyRent: definition.baseRent * market.marketRentMultiplier * rentFactor,
+        askingRent: definition.baseRent * market.marketRentMultiplier * rentFactor,
         personAccessibility: local.personAccessibility,
         serviceQuality: local.serviceQuality,
         neighborhoodQuality: local.neighborhoodQuality,
         utilityRatio: local.utilityRatio,
       });
     }
-    return this.housingChoice.evaluate(this.population.population, options);
+    return this.housingTenure.evaluate(this.currentDevelopmentInterestRate(), inputs);
+  }
+
+  private refreshHousingChoice(): HousingChoiceSnapshot {
+    return this.housingChoice.evaluateFromRelocation(
+      this.population.population,
+      this.housingTenureSnapshot.options,
+      this.housingRelocation.snapshotState(),
+      this.housingRelocationSnapshot,
+    );
+  }
+
+  private lowerIncomeAffordableSlackExcluding(buildingId: string): number {
+    const state = this.housingRelocation.snapshotState();
+    let slack = 0;
+    for (const option of this.housingTenureSnapshot.options) {
+      if (option.buildingId === buildingId || housingAffordabilityScore(option.monthlyCost, 'lower') <= 0) continue;
+      const assigned = state.allocations
+        .filter((allocation) => allocation.buildingId === option.buildingId && allocation.tenure === option.tenure)
+        .reduce((sum, allocation) => sum + allocation.residents, 0);
+      slack += Math.max(0, option.capacity - assigned);
+    }
+    return slack;
   }
 
   private refreshRedevelopmentPressure(): RedevelopmentPressureSnapshot {
@@ -671,10 +784,15 @@ export class SimulationCore {
       )[0];
       if (!replacementEvaluation) continue;
       const existingDefinition = definitionForBuilding(building);
+      const displacedLowerIncomeResidents = this.housingRelocation.snapshotState().allocations
+        .filter((allocation) => allocation.buildingId === building.id && allocation.band === 'lower')
+        .reduce((sum, allocation) => sum + allocation.residents, 0);
       inputs.push({
         pressure,
         residentCapacity: existingDefinition.residentCapacity,
         affordabilityScore: this.housingChoiceSnapshot.byBuilding[building.id]?.affordabilityScore ?? 1,
+        displacedLowerIncomeResidents,
+        lowerIncomeAffordableSlack: this.lowerIncomeAffordableSlackExcluding(building.id),
         replacementEvaluation,
         activeCommitment: committedBuildingIds.has(building.id),
       });
@@ -686,6 +804,7 @@ export class SimulationCore {
       effectiveAffordableCapacity: this.housingChoiceSnapshot.effectiveAffordableCapacity,
       unplacedResidents: this.housingChoiceSnapshot.unplacedResidents,
       minimumAffordableShare: this.developmentPolicy.snapshot().redevelopmentAffordableFloor,
+      lowerIncomeRelocationProtection: this.developmentPolicy.snapshot().lowerIncomeRelocationProtection,
     }, inputs);
   }
 
