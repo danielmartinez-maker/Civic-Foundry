@@ -11,7 +11,9 @@ import { RoadSystem } from '../src/world/roads/RoadSystem.ts';
 import { TreasurySystem } from '../src/simulation/treasury/TreasurySystem.ts';
 import { TransitPanelController } from '../src/ui/TransitPanel.ts';
 import { serializeCoreV6, hydrateCoreV6, type SaveV6 } from '../src/save/saveV6.ts';
-import { serializeCore, hydrateCore } from '../src/save/saveLegacy.ts';
+import { serializeCore as serializeLegacy, hydrateCore as hydrateLegacy } from '../src/save/saveLegacy.ts';
+import { serializeCore as serializeCurrent, hydrateCore as hydrateCurrent } from '../src/save/save.ts';
+import { BUILDING_DEFINITIONS } from '../src/data/buildings.ts';
 import type { Firm } from '../src/simulation/economy/FirmSystem.ts';
 
 function flatTerrain(width = 12, height = 8): TerrainGrid {
@@ -49,14 +51,14 @@ test('legacy hydration cannot leave a queued traffic vehicle permanently orphane
   core.buildRoad([{ x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }], 'collector');
   core.transportationGraph.rebuildIfNeeded(core.roads);
   const edge = core.transportationGraph.edges[0]!;
-  const save = structuredClone(serializeCore(core));
+  const save = structuredClone(serializeLegacy(core));
   save.traffic.vehicles.push({
     id: 'vehicle:corrupt', tripId: 'trip:corrupt', purpose: 'commute', travelerWeight: 1,
     originBuildingId: 'origin', destinationBuildingId: 'destination', edgeIds: [edge.id], currentEdgeIndex: 0,
     edgeProgressTicks: 0, departureTick: 0, accumulatedDelayTicks: 0, freeFlowTicks: edge.freeFlowTicks,
     status: 'queued', queuedNodeId: edge.to,
   });
-  const restored = hydrateCore(save);
+  const restored = hydrateLegacy(save);
   assert.ok(restored.traffic.getVehicle('vehicle:corrupt'));
   restored.step();
   assert.equal(restored.traffic.getVehicle('vehicle:corrupt'), undefined);
@@ -148,4 +150,25 @@ test('lint is an independent source-quality gate rather than a duplicate typeche
   const pkg = JSON.parse(raw) as { scripts: Record<string, string> };
   assert.ok(pkg.scripts.lint);
   assert.notEqual(pkg.scripts.lint, pkg.scripts.typecheck);
+});
+
+test('bulldozing an incident target retires live service and waste state before an immediate save', () => {
+  const core = new SimulationCore({ terrain: flatTerrain(), seed: 41 });
+  const building = {
+    id: 'building:lot:test', lotId: 'lot:test', x: 6, y: 4, zone: 'residential' as const,
+    definitionId: BUILDING_DEFINITIONS.residential.id, status: 'occupied' as const,
+    constructionStartedTick: 0, completionTick: 0,
+  };
+  core.buildings.restore([building]);
+  const incidentId = core.incidents.createIncident('fire', building, 0.8, core.clock.tick, core.serviceDispatch);
+  const incident = core.incidents.getIncident(incidentId)!;
+  core.wasteCollection.restore([
+    { buildingId: building.id, currentCollectibleWaste: 8, wasteGenerationRate: 1, lastCollectionTick: 0, missedCollectionCount: 0 },
+  ], 0, 0, [], [[building.id, incident.serviceJobId]]);
+
+  assert.equal(core.bulldozeAt(building.x, building.y).ok, true);
+  assert.equal(core.serviceDispatch.getJob(incident.serviceJobId)?.status, 'failed');
+  assert.equal(core.incidents.getIncident(incidentId)?.status, 'resolved');
+  assert.equal(core.wasteCollection.getBuildingWaste(building.id), undefined);
+  assert.doesNotThrow(() => hydrateCurrent(structuredClone(serializeCurrent(core))));
 });
