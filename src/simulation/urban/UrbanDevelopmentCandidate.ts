@@ -1,7 +1,7 @@
 import type { BuildingDefinition } from '../../data/buildings.ts';
 import { getBuildingDefinition } from '../../data/buildings.ts';
 import {
-  PARKING_PROFILES,
+  PARKING_PROFILE_DEFINITIONS,
   PARKING_RANK,
   QUALITY_RANK,
   deterministicParkingSpaces,
@@ -55,7 +55,7 @@ export function baselineParkingSpacesForDefinition(definitionId: string): number
 }
 
 export function parkingSpacesForProfile(definitionId: string, profile: DevelopmentParkingProfile): number {
-  return deterministicParkingSpaces(rawParkingBaseline(definitionId) * PARKING_PROFILES[profile].spacesMultiplier);
+  return deterministicParkingSpaces(rawParkingBaseline(definitionId) * PARKING_PROFILE_DEFINITIONS[profile].spaceMultiplier);
 }
 
 export function useMixKeyForDefinition(definitionId: string): string {
