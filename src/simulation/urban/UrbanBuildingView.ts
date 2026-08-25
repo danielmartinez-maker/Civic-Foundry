@@ -1,5 +1,5 @@
 import { conditionBandForScore, deterministicParkingSpaces } from '../../data/urbanFabric.ts';
-import { getUrbanPrototype } from '../../data/urbanPrototypes.ts';
+import { URBAN_PROTOTYPE_BY_DEFINITION_ID } from '../../data/urbanPrototypes.ts';
 import { definitionForBuilding, type Building } from '../buildings/BuildingSystem.ts';
 import type {
   BuildingConditionBand,
@@ -133,8 +133,9 @@ export function legacyUrbanStateForBuilding(building: Building, migrationTick: n
 }
 
 export function compatibilityUrbanStateForBuilding(building: Building, tick: number): UrbanBuildingState {
-  const prototype = getUrbanPrototype(building.definitionId);
-  if (prototype.components.length === 1) return legacyUrbanStateForBuilding(building, tick);
+  if (!Number.isInteger(tick) || tick < 0) throw new Error('compatibility tick must be a non-negative integer');
+  const prototype = URBAN_PROTOTYPE_BY_DEFINITION_ID[building.definitionId];
+  if (!prototype || prototype.components.length === 1) return legacyUrbanStateForBuilding(building, tick);
   const baselineSpaces = deterministicParkingSpaces(prototype.components.reduce((sum, item) => {
     if (item.use === 'residential') return sum + item.residentCapacity * 0.20;
     if (item.use === 'commercial') return sum + item.jobCapacity * 0.35;
