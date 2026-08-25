@@ -36,20 +36,22 @@ export class BuildingMassingSystem {
 
     for (const typology of [...typologies].sort((a, b) => a.id.localeCompare(b.id))) {
       validateTypology(typology);
-      const legalUses = typology.permittedUses.filter((use) => permitted.has(use));
+      const legalUses = typology.allowedUses.filter((use) => permitted.has(use));
       if (legalUses.length === 0) continue;
+      const useMix = normalizedUseMix(typology, legalUses);
       const heightStoryLimit = Math.floor(envelope.maxHeightMeters / typology.floorToFloorHeightMeters);
-      const maxStories = Math.min(envelope.maxStories, heightStoryLimit);
-      if (maxStories < 1) continue;
+      const maxStories = Math.min(envelope.maxStories, typology.maxStories, heightStoryLimit);
+      const minStories = Math.max(1, typology.minStories);
+      if (maxStories < minStories) continue;
 
-      for (const utilization of UTILIZATION_TARGETS) {
-        const targetGFA = envelope.maxGrossFloorAreaM2 * utilization;
-        const preferredStories = Math.max(1, Math.min(maxStories, typology.preferredStories));
+      for (const targetUtilization of UTILIZATION_TARGETS) {
+        const targetGFA = envelope.maxGrossFloorAreaM2 * targetUtilization;
+        const preferredStories = Math.max(minStories, Math.min(maxStories, typology.preferredStories));
         const footprintArea = Math.min(envelope.maxFootprintAreaM2, targetGFA / preferredStories);
         if (footprintArea <= EPSILON) continue;
-        const stories = Math.max(1, Math.min(maxStories, Math.ceil(targetGFA / footprintArea)));
+        const stories = Math.max(minStories, Math.min(maxStories, Math.ceil(targetGFA / footprintArea)));
         const grossFloorAreaM2 = Math.min(targetGFA, footprintArea * stories, envelope.maxGrossFloorAreaM2);
-        const actualFootprintArea = Math.min(footprintArea, grossFloorAreaM2);
+        const actualFootprintArea = Math.min(footprintArea, grossFloorAreaM2 / stories);
         const footprint = scaledFootprint(envelope.buildableFootprint, actualFootprintArea);
         const realizedFootprintArea = polygonArea(footprint);
         const usableFloorAreaM2 = grossFloorAreaM2 * typology.efficiencyRatio;
@@ -58,7 +60,7 @@ export class BuildingMassingSystem {
           grossFloorAreaM2,
           usableFloorAreaM2,
           typology.floorToFloorHeightMeters,
-          legalUses,
+          useMix,
         );
         const uses = uniqueUses(floors);
         const realizedFAR = grossFloorAreaM2 / parcel.areaM2;
@@ -79,9 +81,10 @@ export class BuildingMassingSystem {
         if (dedupe.has(key)) continue;
         dedupe.add(key);
         candidates.push(Object.freeze({
-          id: `candidate:${parcel.id}:${typology.id}:${Math.round(utilization * 100)}`,
+          id: `candidate:${parcel.id}:${typology.id}:${Math.round(targetUtilization * 100)}`,
           parcelIds: Object.freeze([parcel.id]),
           typologyId: typology.id,
+          targetUtilization,
           footprint,
           grossFloorAreaM2,
           usableFloorAreaM2,
@@ -96,7 +99,7 @@ export class BuildingMassingSystem {
       }
     }
 
-    return Object.freeze(candidates.sort((a, b) => a.id.localeCompare(b.id)));
+    return Object.freeze(candidates);
   }
 }
 
@@ -116,7 +119,7 @@ function createFloors(
   grossFloorAreaM2: number,
   usableFloorAreaM2: number,
   floorHeight: number,
-  legalUses: readonly UseType[],
+  useMix: Readonly<Partial<Record<UseType, number>>>,
 ): readonly BuildingFloor[] {
   const floors: BuildingFloor[] = [];
   let remainingGross = grossFloorAreaM2;
@@ -125,14 +128,13 @@ function createFloors(
     const remainingFloors = stories - level + 1;
     const grossAreaM2 = level === stories ? remainingGross : grossFloorAreaM2 / stories;
     const usableAreaM2 = level === stories ? remainingUsable : usableFloorAreaM2 / stories;
-    const use = useForFloor(level, stories, legalUses);
-    const allocation: FloorUseAllocation = Object.freeze({ use, floorAreaM2: usableAreaM2 });
+    const uses = allocationsForArea(usableAreaM2, useMix);
     floors.push(Object.freeze({
       level,
       elevationMeters: (level - 1) * floorHeight,
       grossAreaM2,
       usableAreaM2,
-      uses: Object.freeze([allocation]),
+      uses,
     }));
     remainingGross -= grossAreaM2;
     remainingUsable -= usableAreaM2;
@@ -141,15 +143,44 @@ function createFloors(
   return Object.freeze(floors);
 }
 
-function useForFloor(level: number, stories: number, legalUses: readonly UseType[]): UseType {
-  if (legalUses.length === 1) return legalUses[0]!;
-  if (level === 1 && legalUses.includes('retail')) return 'retail';
-  const upper = legalUses.filter((use) => use !== 'retail');
-  if (upper.length === 0) return legalUses[0]!;
-  if (upper.includes('residential') && upper.includes('office')) {
-    return level <= Math.max(2, Math.floor(stories * 0.35)) ? 'office' : 'residential';
+function allocationsForArea(
+  usableAreaM2: number,
+  useMix: Readonly<Partial<Record<UseType, number>>>,
+): readonly FloorUseAllocation[] {
+  const entries = Object.entries(useMix)
+    .filter((entry): entry is [UseType, number] => typeof entry[1] === 'number' && entry[1] > 0)
+    .sort(([left], [right]) => left.localeCompare(right));
+  const allocations: FloorUseAllocation[] = [];
+  let remaining = usableAreaM2;
+  for (let index = 0; index < entries.length; index += 1) {
+    const [use, share] = entries[index]!;
+    const floorAreaM2 = index === entries.length - 1 ? remaining : usableAreaM2 * share;
+    allocations.push(Object.freeze({ use, floorAreaM2 }));
+    remaining -= floorAreaM2;
   }
-  return upper[0]!;
+  return Object.freeze(allocations);
+}
+
+function normalizedUseMix(
+  typology: BuildingTypology,
+  legalUses: readonly UseType[],
+): Readonly<Partial<Record<UseType, number>>> {
+  let total = 0;
+  const weighted: Partial<Record<UseType, number>> = {};
+  for (const use of legalUses) {
+    const weight = typology.defaultUseMix[use] ?? 0;
+    if (!Number.isFinite(weight) || weight < 0) throw new Error(`invalid use mix for ${typology.id}:${use}`);
+    if (weight > 0) {
+      weighted[use] = weight;
+      total += weight;
+    }
+  }
+  if (total <= EPSILON) {
+    const fallback = legalUses.includes(typology.primaryUse) ? typology.primaryUse : legalUses[0]!;
+    return Object.freeze({ [fallback]: 1 });
+  }
+  for (const use of Object.keys(weighted) as UseType[]) weighted[use] = weighted[use]! / total;
+  return Object.freeze(weighted);
 }
 
 function uniqueUses(floors: readonly BuildingFloor[]): readonly UseType[] {
@@ -174,8 +205,13 @@ function candidateKey(
 }
 
 function validateTypology(typology: BuildingTypology): void {
-  if (typology.permittedUses.length === 0) throw new Error(`typology ${typology.id} must permit at least one use`);
-  if (!Number.isFinite(typology.preferredStories) || typology.preferredStories < 1) throw new Error(`invalid preferred stories for ${typology.id}`);
+  if (typology.allowedUses.length === 0) throw new Error(`typology ${typology.id} must allow at least one use`);
+  if (!typology.allowedUses.includes(typology.primaryUse)) throw new Error(`typology ${typology.id} primary use must be allowed`);
+  if (!Number.isInteger(typology.minStories) || typology.minStories < 1) throw new Error(`invalid minimum stories for ${typology.id}`);
+  if (!Number.isInteger(typology.maxStories) || typology.maxStories < typology.minStories) throw new Error(`invalid maximum stories for ${typology.id}`);
+  if (!Number.isFinite(typology.preferredStories) || typology.preferredStories < typology.minStories || typology.preferredStories > typology.maxStories) {
+    throw new Error(`invalid preferred stories for ${typology.id}`);
+  }
   if (!Number.isFinite(typology.floorToFloorHeightMeters) || typology.floorToFloorHeightMeters <= 0) throw new Error(`invalid floor height for ${typology.id}`);
   if (!Number.isFinite(typology.efficiencyRatio) || typology.efficiencyRatio <= 0 || typology.efficiencyRatio > 1) throw new Error(`invalid efficiency for ${typology.id}`);
 }
