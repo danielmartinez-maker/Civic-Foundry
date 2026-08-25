@@ -5,6 +5,16 @@ import { getUrbanPrototype } from '../src/data/urbanPrototypes.ts';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { FirmSystem } from '../src/simulation/economy/FirmSystem.ts';
 import { urbanBusinessSiteFromView } from '../src/simulation/urban/UrbanBuildingView.ts';
+import { TerrainGrid } from '../src/world/terrain/TerrainGrid.ts';
+
+function flatTerrain(width = 6, height = 6): TerrainGrid {
+  return new TerrainGrid(width, height, Array.from({ length: width * height }, () => ({
+    elevation: 0.5,
+    water: false,
+    buildable: true,
+    biome: 'grass' as const,
+  })));
+}
 
 function installCommercialMixedBlock(core: SimulationCore): string {
   assert.equal(core.buildRoad([{ x: 1, y: 1 }], 'local').ok, true);
@@ -19,7 +29,7 @@ function installCommercialMixedBlock(core: SimulationCore): string {
     definitionId: 'commercial_mixed_block',
     status: 'occupied',
     constructionStartedTick: 0,
-    completionTick: 85,
+    completionTick: 95,
   }]);
   const prototype = getUrbanPrototype('commercial_mixed_block');
   core.urbanFabric.install({
@@ -46,7 +56,7 @@ test('mixed-use structural definitions are first-class and preserve dominant-use
 });
 
 test('mixed-use housing, jobs, and tax bases are consumed once by use component', () => {
-  const core = new SimulationCore({ width: 6, height: 6, seed: 103, startingFunds: 500_000 });
+  const core = new SimulationCore({ width: 6, height: 6, seed: 103, startingFunds: 500_000, terrain: flatTerrain() });
   const buildingId = installCommercialMixedBlock(core);
   const view = core.urbanBuildingView(buildingId);
   assert.ok(view);
@@ -69,7 +79,7 @@ test('mixed-use housing, jobs, and tax bases are consumed once by use component'
 });
 
 test('firm eligibility and job capacity come from semantic business sites', () => {
-  const core = new SimulationCore({ width: 6, height: 6, seed: 104, startingFunds: 500_000 });
+  const core = new SimulationCore({ width: 6, height: 6, seed: 104, startingFunds: 500_000, terrain: flatTerrain() });
   const buildingId = installCommercialMixedBlock(core);
   const view = core.urbanBuildingView(buildingId);
   assert.ok(view);
