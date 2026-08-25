@@ -8,52 +8,48 @@
 
 Urban Fabric 2.0 replaces Civic Foundry's cell-lot abstraction with a persistent cadastral/topological land model and extends development from fixed low/medium/high single-use buildings into parcel-constrained, mixed-use, economically evaluated projects.
 
-The target scope is:
+The pass delivers:
 
 - true cadastral parcels with explicit shared topology;
-- FAR, height, lot coverage, setbacks, minimum lot area/frontage, and overlays;
-- mixed-use buildings with explicit massing and floor-area allocation;
-- building deterioration, maintenance, vacancy, renovation, adaptive reuse, abandonment, and demolition;
+- FAR, height, lot coverage, setbacks, frontage/area rules, and overlays;
+- mixed-use building massing with floor-area-derived capacity;
+- deterioration, maintenance, vacancy, renovation, adaptive reuse, abandonment, and demolition;
 - highest-and-best-use redevelopment economics;
-- parcel subdivision and land assembly;
-- property transactions and parcel lineage;
+- deterministic parcel subdivision and land assembly;
+- ownership/transaction history and parcel lineage;
 - V8 save migration from the current V7 lot/building model;
-- parcel, zoning-envelope, and redevelopment-pressure presentation;
-- deterministic geometry and property-based topology tests.
+- cadastral, zoning-envelope, and redevelopment presentation;
+- aggressive geometry invariant and property/fuzz testing.
 
-This subsystem must preserve the existing developer-market and pro-forma work where useful. The physical/legal inputs become substantially richer; the economic layer remains the primary evaluator of whether development actually occurs.
+The existing deterministic developer-market and pro-forma systems remain the economic foundation. Urban Fabric 2.0 replaces their coarse physical/legal inputs with parcel geometry, dimensional zoning, realized building form, and existing-asset economics.
 
 ## 2. Current-state constraints
 
-The current `LotSystem` creates a `Lot` for each zoned grid cell with `id`, `x`, `y`, `zone`, and one road-frontage key. `BuildingSystem` stores one building per lot and identifies buildings by the owning lot. Building definitions are single-use, zone-bound, and expose fixed resident/job capacities. Development feasibility currently checks matching `ZoneType` and a low/medium/high `zoningMaxIntensity`.
+Today `LotSystem` creates one `Lot` per zoned grid cell with `id`, `x`, `y`, `zone`, and one road-frontage key. `BuildingSystem` stores one building per lot. Building definitions are single-use, zone-bound, and expose fixed resident/job capacities. Development legality is primarily `ZoneType` plus low/medium/high `zoningMaxIntensity`.
 
-Urban Fabric 2.0 therefore requires a replacement physical model rather than incremental fields on `Lot`.
+That model cannot represent irregular parcels, shared boundaries, meaningful setbacks, land assembly, actual FAR, mixed-use floor area, or realistic redevelopment. Urban Fabric 2.0 therefore introduces a new canonical land model rather than extending `Lot` indefinitely.
 
-The tile/grid remains useful for terrain sampling, utilities, traffic occupancy, and low-level world indexing, but it no longer defines property boundaries.
+The tile/grid remains available for terrain sampling, utilities, traffic occupancy, and low-level spatial indexing. It stops defining property boundaries.
 
-## 3. Architectural choice
+## 3. Architectural decision
 
-The selected approach is a **full cadastral/topological graph from the start**.
-
-The canonical spatial hierarchy becomes:
+The selected architecture is a **full cadastral/topological graph from the start**.
 
 ```text
 World
  └─ UrbanBlock
      └─ Parcel
-         ├─ ParcelNode
-         ├─ ParcelEdge
+         ├─ shared ParcelNodes
+         ├─ shared ParcelEdges
          ├─ frontage/access relationships
          ├─ easements / rights-of-way
          ├─ zoning assignment
          └─ buildings / development sites
 ```
 
-Adjacent parcels share boundary topology rather than keeping approximately matching duplicate polygon edges.
+Adjacent parcels share boundary topology rather than storing approximately matching duplicate polygon lines.
 
-## 4. Cadastre domain
-
-### 4.1 Core types
+## 4. Canonical cadastral model
 
 ```ts
 type WorldPoint = Readonly<{ x: number; y: number }>;
@@ -101,33 +97,33 @@ type UrbanBlock = Readonly<{
 }>;
 ```
 
-`CadastralGraph` is authoritative for nodes, edges, parcels, blocks, easements, lineage, and adjacency queries.
+`CadastralGraph` is authoritative for nodes, edges, parcels, blocks, easements, lineage, adjacency, and parcel lookup.
 
-### 4.2 Required invariants
+### 4.1 Topology invariants
 
 Every committed graph must satisfy:
 
-- closed, non-self-intersecting parcel polygons;
-- positive parcel area;
-- no overlapping parcels;
-- shared boundaries reference the same edge object;
-- valid edge endpoints;
-- no zero-length edges;
-- no orphaned nodes after normalization;
-- symmetric parcel adjacency;
-- valid block membership except explicitly modeled exceptional land;
-- frontage edges reference legal rights-of-way or recognized access facilities;
+- parcel polygons are closed and non-self-intersecting;
+- parcel area is positive;
+- parcels do not overlap;
+- shared boundaries use the same edge object;
+- every edge terminates at valid nodes;
+- there are no zero-length edges;
+- normalization leaves no orphaned nodes;
+- adjacency is symmetric;
+- parcels belong to a valid block except explicitly modeled exceptional land;
+- frontage/access references a legal right-of-way or access easement;
 - topology-derived area agrees with stored area within tolerance;
-- lineage is acyclic;
-- deterministic ordering and serialization.
+- parcel lineage is acyclic;
+- serialization order is deterministic.
 
-Geometry uses one documented world-space coordinate system and a fixed precision policy. Coordinates are normalized to centimeter-scale precision before topology identity comparisons. All tolerance decisions must be deterministic.
+World geometry uses a documented meter-based coordinate system. Coordinates are normalized to centimeter precision before topology identity comparisons. All tolerances are constants, versioned with the simulation, and deterministic.
 
-### 4.3 Ownership, access, right-of-way, easements
+## 5. Rights-of-way, access, and easements
 
-Land ownership is distinct from building ownership and project control even if the first implementation often uses the same developer/owner entity.
+Land ownership, building ownership, and developer project control are distinct concepts, even when one entity initially fills all three roles.
 
-Rights-of-way remove land from normal developable parcel capacity. Easements may preserve private ownership while granting access, utility, drainage, or pedestrian rights.
+Dedicated right-of-way is excluded from developable private parcel area. Easements preserve underlying ownership while granting defined rights.
 
 ```ts
 type EasementKind = 'access' | 'utility' | 'drainage' | 'pedestrian';
@@ -140,19 +136,19 @@ type Easement = Readonly<{
 }>;
 ```
 
-## 5. Parcel generation and topology relationship to roads
+Interior parcels may satisfy access requirements through explicit access easements. Future utility/hydrology systems can reuse the same legal geometry without changing the cadastral core.
 
-Blocks are primarily derived from the road/right-of-way network and then subdivided into cadastral parcels. A block remains stable across ordinary subdivision and assembly operations.
+## 6. Blocks and roads
 
-Transportation changes may mutate the land fabric. A newly dedicated avenue or right-of-way can split an existing block, acquire parcel land, and produce new blocks/parcels after a cadastral transaction.
+Blocks are primarily derived from road/right-of-way geometry and then subdivided into parcels. An `UrbanBlock` remains stable through ordinary parcel splits and assemblies.
 
-Road geometry is therefore a producer of cadastral constraints, not a grid neighbor lookup.
+A transportation project may mutate the land fabric. New road dedication can acquire/split private land, divide a block, and produce new block/parcel topology through the same transactional cadastral API. Road geometry therefore creates cadastral constraints; it is no longer merely checked as a neighboring tile.
 
-## 6. Atomic cadastral mutations
+## 7. Atomic cadastral mutations
 
-All land geometry changes go through `CadastralMutationSystem`.
+All land-geometry changes go through `CadastralMutationSystem`.
 
-Supported operations in Urban Fabric 2.0:
+Supported Urban Fabric 2.0 operations:
 
 ```ts
 splitParcel(parcelId, cut)
@@ -163,13 +159,30 @@ createEasement(parcelIds, geometry)
 removeEasement(easementId)
 ```
 
-Each mutation executes against a temporary affected topology, validates all invariants, recalculates derived metrics, and only then commits atomically.
+Each operation:
+
+1. copies the affected topology into a transactional working set;
+2. performs the geometric mutation;
+3. normalizes nodes/edges;
+4. validates all graph invariants;
+5. recalculates derived parcel metrics and references;
+6. commits atomically;
+7. emits a deterministic mutation/lineage event.
+
+Failure leaves canonical state unchanged.
 
 ```ts
+type CadastralTransactionKind =
+  | 'split'
+  | 'assembly'
+  | 'boundary-adjustment'
+  | 'right-of-way'
+  | 'easement';
+
 type CadastralTransaction = Readonly<{
   id: string;
   tick: number;
-  kind: 'split' | 'assembly' | 'boundary-adjustment' | 'right-of-way' | 'easement';
+  kind: CadastralTransactionKind;
   sourceParcelIds: readonly string[];
   resultingParcelIds: readonly string[];
   topologyChanges: readonly TopologyChange[];
@@ -177,47 +190,45 @@ type CadastralTransaction = Readonly<{
 }>;
 ```
 
-Failed transactions leave the authoritative graph unchanged.
+## 8. Parcel subdivision
 
-## 7. Parcel subdivision
-
-A subdivision accepts a source parcel and deterministic cut specification and produces two or more child parcels.
+A split accepts one source parcel plus a deterministic cut specification and produces two or more child parcels.
 
 Validation requires:
 
-- valid child polygons;
-- minimum parcel area unless explicitly grandfathered;
-- required frontage/access where applicable;
-- no trapped inaccessible child parcel;
-- no cut through an occupied building footprint in ordinary subdivision;
-- all existing buildings resolve wholly to a legal resulting parcel.
+- every child polygon is valid;
+- minimum parcel area is met unless the parcel is explicitly grandfathered;
+- frontage/access requirements are met where applicable;
+- the split creates no inaccessible trapped parcel;
+- an ordinary split does not cut through an occupied building footprint;
+- every preserved building is geometrically contained by a resulting parcel.
 
-Source IDs are retired to history. IDs are never recycled. Child parcels record their parent in lineage.
+The source parcel ID is retired to history and never reused. Children record the source parcel as lineage.
 
-If an existing building lies wholly inside one child parcel, its parcel relationship migrates to that child. If the proposed split bisects a structure, the mutation is rejected unless the caller is executing an explicit demolition/reconfiguration workflow.
+For preserved buildings, cadastral commit rewrites `building.parcelIds` to the child parcel(s) that contain the building. If a split intersects a building footprint, the transaction is rejected unless the caller is an explicit demolition/reconfiguration workflow.
 
-## 8. Parcel assembly
+## 9. Parcel assembly
 
-Assembly requires a contiguous set of parcels and valid project control/ownership state.
+Assembly requires a contiguous set of parcels under sufficient ownership/project control.
 
-The engine:
+The system:
 
-1. verifies adjacency and control;
-2. unions parcel polygons;
-3. removes internal property edges;
-4. preserves external boundary edges;
-5. recalculates frontage, access, area, depth, centroid, and orientation;
-6. creates a new parcel ID;
-7. records every source parcel as historical lineage;
-8. recomputes zoning/buildable-envelope capacity.
+1. validates adjacency and control;
+2. unions parcel geometry;
+3. removes internal property boundaries;
+4. preserves external edges;
+5. creates one new current parcel ID;
+6. retires all source parcel IDs to lineage;
+7. recalculates frontage, access, area, centroid, depth/orientation, and zoning capacity;
+8. rewrites preserved building references to the new parcel ID after geometric containment validation.
 
-Assembly economics include acquisition price, seller reservation premiums, transaction costs, demolition, and carrying cost. Assembly is valuable only where the larger site unlocks enough additional development value.
+Existing buildings may remain on an assembled parcel if the development strategy is hold/renovate. A redevelopment workflow may instead preserve them only until the demolition phase completes.
 
-## 9. Zoning model
+Assembly economics include acquisition prices, seller reservation/holdout premiums, transaction costs, demolition cost, and carrying cost. Assembly is pursued only when the additional site capacity/value exceeds those costs and developer return requirements.
 
-### 9.1 Zoning districts
+## 10. Dimensional zoning
 
-The existing broad `residential | commercial | industrial` legality check is replaced by a dimensional district model.
+### 10.1 Uses and districts
 
 ```ts
 type UseType =
@@ -247,30 +258,30 @@ type ZoningDistrict = Readonly<{
 }>;
 ```
 
-### 9.2 Overlays
+Conditional uses require an explicit approval flag from the policy/entitlement context; absent that approval they are illegal candidates.
 
-Base districts are independent from overlays. Initial architecture supports overlays such as floodplain, historic, airport-height, transit-oriented, waterfront/environmental, downtown bonus, and affordable-housing bonus.
+### 10.2 Overlays
 
-The effective legal envelope is the composition of:
+Base zoning is independent from overlays. The architecture supports floodplain, historic, airport-height, transit-oriented-development, waterfront/environmental, downtown bonus, and affordable-housing overlays.
 
-```text
-base district
-+ applicable overlays
-+ parcel topology
-+ right-of-way/easement constraints
-+ environmental/infrastructure constraints
-= ParcelDevelopmentEnvelope
-```
+An overlay applies explicit rule deltas such as tighter height, added setback, allowed FAR bonus, restricted uses, or preservation status. Overlay composition has a documented deterministic priority/order.
 
-### 9.3 Buildable envelope
+### 10.3 Buildable envelope
 
-`BuildableEnvelopeSystem` offsets actual parcel edges according to edge classification and applicable setbacks, then computes the legal footprint and dimensional capacity.
+`BuildableEnvelopeSystem` classifies parcel edges, offsets them by applicable setbacks, intersects overlay/right-of-way constraints, and computes the legal footprint/capacity.
 
 ```ts
+type ZoningConstraint = Readonly<{
+  code: string;
+  label: string;
+  limitingValue?: number;
+}>;
+
 type ParcelDevelopmentEnvelope = Readonly<{
   parcelId: string;
   buildableFootprint: readonly WorldPoint[];
   parcelAreaM2: number;
+  allowedFAR: number;
   maxFootprintAreaM2: number;
   maxGrossFloorAreaM2: number;
   maxHeightMeters: number;
@@ -282,17 +293,17 @@ type ParcelDevelopmentEnvelope = Readonly<{
 }>;
 ```
 
-Maximum gross floor area begins with `parcelAreaM2 * maxFAR`, but effective capacity may be lower because of setbacks, footprint geometry, height, coverage, density, and overlay rules.
+`maxGrossFloorAreaM2` begins with `parcelAreaM2 * allowedFAR` and is further constrained by the geometry-compatible combination of setbacks, lot coverage, height, story count, residential density, and overlays.
 
-The system must explicitly distinguish **allowed FAR** from **effective physically achievable FAR**.
+The engine explicitly distinguishes legal/allowed FAR from physically achievable effective FAR.
 
-### 9.4 Nonconforming buildings
+### 10.4 Nonconforming structures
 
-Rezoning never deletes existing buildings. Buildings retain their approval basis and may become legal nonconforming. New construction, expansion, renovation, conversion, and redevelopment apply the current legal rules unless a later policy system grants exceptions.
+Rezoning does not delete existing buildings. Each building retains its entitlement basis and may become legal nonconforming. Current rules apply to new construction, expansion, conversion, and redevelopment unless a policy/variance explicitly says otherwise.
 
-## 10. Building model
+## 11. Building model and entitlement
 
-Buildings become physical projects rather than one-cell fixed-capacity definitions.
+Buildings become instantiated physical projects.
 
 ```ts
 type BuildingStatus =
@@ -305,11 +316,13 @@ type BuildingStatus =
   | 'vacant'
   | 'abandoned';
 
-type BuildingFloor = Readonly<{
-  level: number;
-  elevationMeters: number;
-  grossAreaM2: number;
-  uses: readonly FloorUseAllocation[];
+type BuildingEntitlement = Readonly<{
+  approvalTick: number;
+  zoningDistrictId: string;
+  approvedUses: readonly UseType[];
+  approvedFAR: number;
+  approvedHeightMeters: number;
+  approvedCoverageRatio: number;
 }>;
 
 type FloorUseAllocation = Readonly<{
@@ -319,6 +332,27 @@ type FloorUseAllocation = Readonly<{
   jobs?: number;
   hotelRooms?: number;
   storageCapacity?: number;
+}>;
+
+type BuildingFloor = Readonly<{
+  level: number;
+  elevationMeters: number;
+  grossAreaM2: number;
+  uses: readonly FloorUseAllocation[];
+}>;
+
+type BuildingLifecycleState = Readonly<{
+  ageTicks: number;
+  condition: number;
+  structuralCondition: number;
+  systemsCondition: number;
+  exteriorCondition: number;
+  maintenanceBacklog: number;
+  deferredMaintenanceTicks: number;
+  lastMajorRenovationTick?: number;
+  effectiveAge: number;
+  vacancyDurationTicks: number;
+  distressScore: number;
 }>;
 
 type Building = Readonly<{
@@ -333,83 +367,92 @@ type Building = Readonly<{
   floors: readonly BuildingFloor[];
   status: BuildingStatus;
   yearBuilt: number;
-  condition: number;
-  maintenanceBacklog: number;
   developerId?: string;
   ownerId?: string;
   projectCost: number;
   entitlement: BuildingEntitlement;
+  lifecycle: BuildingLifecycleState;
 }>;
 ```
 
-The data model supports multiple buildings per parcel and, when legally necessary, a building referencing multiple controlled parcels.
+`BuildingLifecycleState` is the sole canonical home for condition and maintenance-backlog state; cached presentation metrics may mirror it but are never independent writable state.
 
-### 10.1 Building typologies
+The schema supports multiple buildings on one parcel. A building may reference multiple current parcels only where the legal/project structure intentionally preserves them; after a formal parcel assembly, preserved buildings normally reference the single new assembled parcel.
 
-The existing building-definition concept is retained as a typology/template catalog rather than a fixed realized building.
+## 12. Building typologies and massing
 
-Typologies define preferred floorplate, floor-to-floor height, efficiency, structural/complexity parameters, cost per square meter, maintenance rate, typical unit/job density, construction duration, conversion suitability, and other defaults.
+The existing building-definition catalog becomes a typology/template library rather than a realized fixed-capacity building table.
+
+Typologies provide preferred floorplate, floor-to-floor height, efficiency, structural/complexity factors, construction cost per square meter, maintenance rate, typical unit/job density, construction duration, conversion suitability, and similar defaults.
 
 Examples include detached house, rowhouse, courtyard apartment, podium apartment, residential tower, main-street mixed-use, office slab, office tower, strip retail, warehouse, logistics center, and industrial plant.
 
-### 10.2 Massing generation
+`BuildingMassingSystem` generates a finite deterministic candidate set from the parcel envelope. Initial strategies are:
 
-`BuildingMassingSystem` generates a finite deterministic set of candidate masses from the parcel development envelope and selected typology. Initial strategies should include maximum-footprint, balanced, compact/tower, lower-cost, maximum-legal-floor-area, and mixed-use variants where legal.
+- maximum footprint / fewer floors;
+- balanced massing;
+- compact/tower massing where appropriate;
+- lower-cost massing;
+- maximum legal floor-area massing;
+- mixed-use variant where legal and economically relevant.
 
-The engine does not need a continuous mathematical optimizer in the first implementation. A finite candidate set gives the developer system meaningful choice while remaining deterministic, testable, and performant.
+No continuous nonlinear optimizer is required in this pass.
 
-### 10.3 Mixed use and derived capacity
+## 13. Mixed use and derived capacity
 
-Mixed-use buildings allocate floor area explicitly by use and optionally by floor. Residential units, jobs, hotel rooms, storage, utilities, garbage, taxes, and rents are derived from usable floor area and use-specific density assumptions instead of fixed low/medium/high capacities.
+Floor area is allocated by use, optionally floor-by-floor. Residential units, jobs, hotel rooms, storage, utility demand, garbage, tax base, and rent potential derive from usable floor area and use-specific assumptions.
 
-Building detail remains authoritative, while high-frequency simulation systems consume cached `BuildingMetrics` aggregates.
+Floor-allocation invariants require:
 
-## 11. Building lifecycle
+- use allocations on a floor do not exceed that floor's usable area;
+- building total gross area reconciles to floor gross areas;
+- derived residential/job capacity reconciles to the canonical floor allocations;
+- uses are permitted by the building entitlement.
 
-`BuildingLifecycleSystem` updates building physical/economic condition at a lower cadence than traffic and routing systems.
+Detailed building state remains authoritative. High-frequency systems consume cached `BuildingMetrics` aggregates instead of traversing every floor.
+
+## 14. Building lifecycle and maintenance
+
+`BuildingLifecycleSystem` updates at a coarse deterministic cadence.
+
+Condition evolves from:
+
+- base aging;
+- maintenance spending;
+- deferred-maintenance backlog;
+- utilization;
+- vacancy;
+- environmental exposure;
+- infrastructure/service stress.
+
+Physical age and effective age are separate. Renovation can reduce effective age without changing `yearBuilt`.
+
+Required maintenance derives from floor area, typology maintenance rate, age, complexity, and condition. Under-maintenance increases backlog and accelerates deterioration.
+
+Condition affects achievable rent, occupancy, operating expense, asset value, utility efficiency, tax base, and redevelopment pressure.
+
+## 15. Vacancy, distress, abandonment, and safety
+
+Vacancy progresses economically through partial vacancy, chronic vacancy, distress, and abandonment. Abandonment follows sustained operating/maintenance failure rather than a fixed timer.
+
+Abandoned structures remain physically present. They may depress local desirability, provide little tax revenue, incur safety/code risk, and become redevelopment opportunities.
+
+Low structural condition can mark a building unsafe for occupancy. This pass needs the state and economic consequence; detailed municipal inspection gameplay remains outside scope.
+
+## 16. Renovation and adaptive reuse
+
+Initial renovation scopes:
+
+- **light** — interior/refit, modest recovery, short duration;
+- **major** — systems/envelope work, substantial recovery, lower effective age;
+- **gut** — near-total internal reconstruction, high condition reset, possible use conversion.
 
 ```ts
-type BuildingLifecycleState = Readonly<{
-  ageTicks: number;
-  condition: number;
-  structuralCondition: number;
-  systemsCondition: number;
-  exteriorCondition: number;
-  maintenanceBacklog: number;
-  deferredMaintenanceTicks: number;
-  lastMajorRenovationTick?: number;
-  effectiveAge: number;
-  vacancyDurationTicks: number;
-  distressScore: number;
-}>;
-```
+type RenovationScope = 'light' | 'major' | 'gut';
 
-Condition evolves deterministically from base aging, maintenance spending, deferred maintenance, utilization, vacancy, environmental exposure, and service/infrastructure stress.
-
-Physical age and effective age remain separate. Renovation can reduce effective age without rewriting the actual construction year.
-
-## 12. Maintenance, vacancy, and distress
-
-Required maintenance is derived from floor area, typology maintenance rate, age, complexity, and condition. Under-maintenance accumulates backlog and accelerates future deterioration.
-
-Condition feeds back into achievable rents, occupancy, asset value, operating cost, utility efficiency, and redevelopment pressure.
-
-Vacancy progresses economically through partial vacancy, chronic vacancy, distress, and abandonment. Abandonment is triggered by sustained inability to operate/maintain the building, not by an arbitrary timer.
-
-Abandoned structures remain present and may depress local desirability, generate little tax revenue, become unsafe, or present redevelopment opportunities.
-
-## 13. Renovation and adaptive reuse
-
-Urban Fabric 2.0 supports three initial renovation scopes:
-
-- **light** — interior/refit, modest condition recovery, short duration;
-- **major** — envelope/building systems, substantial condition recovery and lower effective age;
-- **gut** — near-total internal reconstruction, high condition reset, use conversion where legal.
-
-```ts
 type RenovationProposal = Readonly<{
   buildingId: string;
-  scope: 'light' | 'major' | 'gut';
+  scope: RenovationScope;
   cost: number;
   durationTicks: number;
   projectedCondition: number;
@@ -420,17 +463,18 @@ type RenovationProposal = Readonly<{
 }>;
 ```
 
-Adaptive reuse requires zoning legality, typology conversion suitability, adequate structural/floorplate characteristics, and a successful economic pro forma.
+Adaptive reuse requires current zoning/entitlement legality, typology conversion suitability, adequate physical characteristics, and an economic return that clears the applicable hurdle.
 
-## 14. Demolition and construction phases
+## 17. Demolition and project phases
 
-Demolition is a project state with explicit cost and duration. Cost may depend on gross floor area, structural type, height, site accessibility, and future modifiers such as hazardous materials or salvage.
+Demolition is an explicit project state with cost and duration. Cost depends on floor area, structure, height, site accessibility, and future modifiers such as hazardous materials or salvage.
 
-New development proceeds through explicit states:
+Development proceeds through:
 
 ```text
 entitlement
-→ site preparation / relocation / demolition
+→ acquisition / relocation
+→ demolition / site preparation
 → foundation
 → structure
 → enclosure
@@ -440,19 +484,27 @@ entitlement
 → stabilization
 ```
 
-The first implementation may render these phases coarsely, but financing carry and project availability must respect the states.
+Rendering may group phases coarsely, but project availability, capital commitment, and financing carry respect them.
 
-## 15. Highest-and-best-use redevelopment
+## 18. Highest-and-best-use analysis
 
-`HighestBestUseSystem` evaluates alternative strategies for each developed parcel or candidate assemblage:
+`HighestBestUseSystem` evaluates:
 
-1. hold existing asset;
-2. light/major/gut renovation;
+1. hold;
+2. renovate;
 3. adaptive reuse;
-4. demolition and redevelopment;
-5. adjacent parcel assembly and redevelopment.
+4. demolish/redevelop;
+5. assemble adjacent parcels and redevelop.
 
 ```ts
+type HighestBestUseStrategy =
+  | 'hold'
+  | 'renovate'
+  | 'convert'
+  | 'redevelop'
+  | 'assemble'
+  | 'none';
+
 type HighestBestUseResult = Readonly<{
   siteId: string;
   currentUseValue: number;
@@ -460,19 +512,19 @@ type HighestBestUseResult = Readonly<{
   bestRenovationValue?: number;
   bestConversionValue?: number;
   bestRedevelopmentValue?: number;
-  bestStrategy: 'hold' | 'renovate' | 'convert' | 'redevelop' | 'assemble' | 'none';
+  bestStrategy: HighestBestUseStrategy;
   redevelopmentPremium: number;
   projectedIRR: number;
   returnOnCost: number;
-  candidateProjects: readonly DevelopmentCandidate[];
+  candidateProjectIds: readonly string[];
 }>;
 ```
 
-Current asset value is based on stabilized NOI/cap rate less maintenance backlog and near-term capital requirements. Redevelopment must beat the opportunity cost of the existing asset plus demolition, relocation, transaction, construction, financing, and developer-profit requirements.
+Current asset value is stabilized NOI divided by an applicable cap rate, adjusted for maintenance backlog and near-term capital requirements. Redevelopment must exceed the opportunity cost of the existing asset plus acquisition, demolition, relocation, construction, financing, transaction costs, and required developer profit.
 
-## 16. Residual land value, ownership, and transactions
+Redevelopment pressure is a diagnostic/prioritization signal; it never substitutes for this pro-forma comparison.
 
-Residual land value becomes central:
+## 19. Residual land value and property transactions
 
 ```text
 stabilized project value
@@ -482,11 +534,11 @@ stabilized project value
 = residual land value
 ```
 
-A developer can acquire a site only when residual value exceeds seller reservation value and transaction costs.
-
-Seller reservation value may include current asset value, disruption/relocation premium, deterministic holdout factor, and option value from expected future development capacity.
+Acquisition requires residual value to exceed seller reservation value plus transaction costs. Seller reservation value can include current asset value, deterministic disruption/holdout premium, and option value from future development capacity.
 
 ```ts
+type PropertyTransactionPurpose = 'investment' | 'redevelopment' | 'assembly';
+
 type PropertyTransaction = Readonly<{
   id: string;
   parcelIds: readonly string[];
@@ -496,17 +548,20 @@ type PropertyTransaction = Readonly<{
   salePrice: number;
   landValue: number;
   improvementValue: number;
-  purpose: 'investment' | 'redevelopment' | 'assembly';
+  purpose: PropertyTransactionPurpose;
+}>;
+
+type ParcelOwnership = Readonly<{
+  parcelId: string;
+  ownerId: string;
+  acquisitionTick: number;
+  acquisitionBasis: number;
 }>;
 ```
 
-Property transaction history becomes available for later assessment and market-analysis systems.
+## 20. Developer-system integration
 
-## 17. Developer-market integration
-
-The existing deterministic developer system is preserved and extended.
-
-The new pipeline is:
+The existing developer systems are extended rather than discarded.
 
 ```text
 BuildingMassingSystem
@@ -519,40 +574,40 @@ HighestBestUseSystem
         ↓
 DeveloperMarketSystem
         ↓
-PropertyMarket / SiteAssembly
+PropertyMarketSystem / SiteAssemblySystem
         ↓
 RedevelopmentExecutionSystem
 ```
 
-Developers continue to differ by capital, leverage, financing spread, hurdle rate, risk tolerance, project-size capacity, and use preferences. Future typology specialization can fit the same model.
+`DevelopmentFeasibilitySystem` stops treating `zoningMaxIntensity` as the principal legal constraint. It consumes physical candidate geometry, compliance output, actual floor area, site basis, actual construction cost, market conditions, and policy parameters.
 
-`DevelopmentFeasibilitySystem` should stop treating `zoningMaxIntensity` as the principal legality constraint. It instead consumes physical project data, legal compliance results, actual floor area, actual cost, site acquisition basis, and market context.
+Developers retain different capital, leverage, financing spread, hurdle rate, risk tolerance, concurrent-project capacity, and use preferences. Typology specialization can be added without changing the pipeline.
 
-## 18. Redevelopment pressure
+## 21. Redevelopment pressure
 
-`RedevelopmentPressureSystem` becomes an explainable diagnostic derived from:
+`RedevelopmentPressureSystem` remains explainable and is derived from:
 
 - unused effective zoning capacity;
 - land value / improvement value ratio;
-- building condition and maintenance backlog;
+- building condition/backlog;
 - rent/demand strength;
-- accessibility gains;
-- rezoning or overlay changes;
+- accessibility changes;
+- rezoning/overlay changes;
 - assembly opportunity;
 - current building profitability;
-- tenant relocation costs;
+- tenant relocation cost;
 - demolition difficulty;
 - preservation restrictions.
 
-This pressure score is descriptive and prioritizing. It must not replace the actual highest-and-best-use/pro-forma decision.
+The parcel inspector surfaces the main positive and negative contributors.
 
-## 19. Tenant and household displacement
+## 22. Displacement and occupancy integrity
 
-Redevelopment may not silently delete occupants. Before demolition, households and commercial/industrial tenants must pass through relocation/termination workflows already present or extended in housing/employment systems.
+Redevelopment may not silently delete occupants. Before demolition, households and commercial/industrial occupants pass through relocation/lease-termination workflows in housing/employment systems.
 
-Development cost therefore includes applicable relocation payments, lease termination, temporary vacancy, and policy obligations.
+Development cost includes applicable relocation, temporary vacancy, lease termination, and policy obligations. If required displacement cannot be resolved under current rules, demolition does not start.
 
-## 20. Save format: V8 Urban Fabric
+## 23. Save format — V8 Urban Fabric
 
 Urban Fabric 2.0 introduces:
 
@@ -561,104 +616,119 @@ saveVersion: 8
 gameVersion: 0.8.0-urban-fabric
 ```
 
-Canonical V8 sections include:
+Canonical sections:
 
 ```ts
-urbanFabric: {
-  nodes: ParcelNode[];
-  edges: ParcelEdge[];
-  blocks: UrbanBlock[];
-  parcels: Parcel[];
-  easements: Easement[];
-  lineage: ParcelLineageEvent[];
-};
+type UrbanFabricSaveState = Readonly<{
+  nodes: readonly ParcelNode[];
+  edges: readonly ParcelEdge[];
+  blocks: readonly UrbanBlock[];
+  parcels: readonly Parcel[];
+  easements: readonly Easement[];
+  lineage: readonly ParcelLineageEvent[];
+}>;
 
-zoningV2: {
-  districts: ZoningDistrict[];
-  parcelAssignments: ...;
-  overlays: ...;
-};
+type ZoningAssignment = Readonly<{
+  parcelId: string;
+  zoningDistrictId: string;
+}>;
 
-buildingsV2: Building[];
+type ZoningOverlayAssignment = Readonly<{
+  parcelId: string;
+  overlayIds: readonly string[];
+}>;
 
-propertyMarket: {
-  transactions: PropertyTransaction[];
-  ownership: ...;
-};
+type ZoningV2SaveState = Readonly<{
+  districts: readonly ZoningDistrict[];
+  assignments: readonly ZoningAssignment[];
+  overlayAssignments: readonly ZoningOverlayAssignment[];
+}>;
+
+type PropertyMarketSaveState = Readonly<{
+  transactions: readonly PropertyTransaction[];
+  ownership: readonly ParcelOwnership[];
+}>;
+
+type SaveV8UrbanFabricSections = Readonly<{
+  urbanFabric: UrbanFabricSaveState;
+  zoningV2: ZoningV2SaveState;
+  buildingsV2: readonly Building[];
+  propertyMarket: PropertyMarketSaveState;
+}>;
 ```
 
-### 20.1 V7 migration
+Overlay rule definitions themselves remain versioned game data unless an overlay is player-authored; only parcel overlay assignments are required in normal saves.
+
+### 23.1 V7 migration
 
 V7 and older compatible saves remain loadable.
 
-Each legacy cell lot becomes a deterministic square cadastral parcel occupying the corresponding world cell. Legacy lot IDs map to deterministic parcel IDs such as `parcel:legacy:<x>,<y>`.
+Each legacy cell lot becomes a deterministic square parcel occupying the same world cell. Legacy `lot:<x>,<y>` references map through a migration table to deterministic parcel IDs such as `parcel:legacy:<x>,<y>`.
 
-Existing buildings become simple one-parcel massing objects derived from their current building definition and intensity. Existing developer commitments and housing references are remapped through the lot-to-parcel migration table.
+Existing buildings become one-parcel building masses derived from their legacy definition/intensity. Developer commitments, housing allocations, and all other lot/building references are remapped before hydration completes.
 
-No backward serialization to V7 is required.
+No backward V8→V7 serialization is required.
 
-Hydration validates all cadastral and cross-system references before state becomes active.
+V8 hydration validates topology and all cross-system references before exposing state to the simulation.
 
-## 21. Presentation and UI
+## 24. Presentation and interaction
 
-### 21.1 Cadastral overlay
+### 24.1 Cadastral overlay
 
-Add an optional parcel layer showing parcel edges, block boundaries, frontage, selected parcel geometry, and assembly candidates. Parcel boundaries remain subtle during ordinary gameplay and become prominent in zoning/land tools and close zoom.
+An optional layer shows parcel edges, block boundaries, frontage/access, selection, and assembly candidates. Parcel lines are subtle during normal play and prominent in land/zoning tools or close zoom.
 
-### 21.2 Buildable-envelope visualization
+### 24.2 Buildable-envelope overlay
 
-Parcel selection can display:
+Selecting a parcel can show:
 
 - parcel boundary;
 - setback bands;
-- legal footprint polygon;
-- maximum height/massing envelope;
+- legal footprint;
+- maximum massing/height envelope;
 - allowed FAR versus effective FAR;
 - limiting zoning constraints.
 
-### 21.3 Parcel inspector
+### 24.3 Parcel inspector
 
-The inspector should expose at minimum:
+Minimum inspector data:
 
 - area, frontage, depth/orientation;
-- district and overlays;
-- FAR, effective FAR, height, coverage, setbacks;
-- current building(s), realized FAR, age, condition;
-- land and improvement value;
-- redevelopment pressure and primary drivers/constraints;
-- lineage/history where useful.
+- base district and overlays;
+- allowed/effective FAR, height, coverage, setbacks;
+- current buildings, realized FAR, age, condition;
+- land value and improvement value;
+- redevelopment pressure and its principal drivers/constraints;
+- parcel lineage/history.
 
-Multi-parcel selection previews assembly capacity and indicative acquisition/development uplift.
+Multi-select previews an assembly's combined land area, effective capacity, indicative acquisition cost, and potential development uplift.
 
-### 21.4 Zoning controls
+### 24.4 Zoning controls
 
-The player applies zoning districts rather than only broad land-use paint. District labels may use codes such as `R2`, `R5`, `MU4`, `MU8`, `C6`, and `IND`, while the UI exposes the underlying understandable rules.
+The player applies zoning districts rather than only broad use colors. District codes may use labels such as `R2`, `R5`, `MU4`, `MU8`, `C6`, and `IND`; the UI always exposes underlying FAR/height/coverage/setback/use rules.
 
-## 22. Rendering integration
+## 25. Rendering integration
 
-Simulation geometry remains authoritative; rendering consumes lightweight render proxies.
+Simulation geometry is authoritative. Rendering consumes lightweight proxies containing footprint, height, typology/style, status, condition band, and construction phase.
 
-The isometric renderer should support generated footprints and massing rather than relying exclusively on one-cell building sprites. Existing art assets and typology sprites remain useful as facade/style selections mapped onto generated masses.
+The isometric renderer must support generated footprints/massing rather than exclusively one-cell building sprites. Existing art assets remain useful as style/facade selections mapped to generated masses.
 
-Detailed floor allocations do not need per-floor render entities. Render proxies expose footprint, projected height, typology/style, status, condition band, and construction phase.
+Per-floor use allocations do not require per-floor render entities.
 
-## 23. Performance model
+## 26. Performance model
 
-High-frequency systems do not traverse topology or individual floors unnecessarily.
+High-frequency systems do not traverse full topology or floor arrays unless necessary.
 
 Cache:
 
 - parcel area/frontage/centroid/adjacency;
-- buildable envelope and zoning capacity until invalidated;
+- spatial indexes for parcels and buildings;
+- buildable envelopes until invalidated;
 - building aggregate metrics;
-- spatial indexes for parcel/building lookup;
-- redevelopment-pressure inputs at an appropriate slower cadence.
+- redevelopment-pressure inputs at coarse cadence.
 
-Topology caches invalidate only for affected blocks/parcels after cadastral mutations, road/right-of-way changes, zoning changes, or relevant overlays.
+Affected caches invalidate on cadastral mutation, road/right-of-way change, zoning/overlay change, or relevant environmental constraint change. Lifecycle and redevelopment evaluation run at slower deterministic cadences than base movement/traffic simulation.
 
-Lifecycle and redevelopment evaluation run at coarse simulation cadence rather than every base tick.
-
-## 24. Proposed module boundaries
+## 27. Module boundaries
 
 ```text
 src/world/cadastre/
@@ -688,130 +758,130 @@ src/simulation/development/
   SiteAssemblySystem.ts
 ```
 
-`SimulationCore` orchestrates these systems through narrow interfaces. Urban Fabric 2.0 must avoid putting geometry algorithms, zoning calculations, or lifecycle internals directly into the already-large `SimulationCore.ts`.
+`SimulationCore` orchestrates these modules through narrow interfaces. Geometry algorithms, zoning calculations, and lifecycle internals do not move into the already-large core orchestrator.
 
-## 25. Testing strategy
+## 28. Testing strategy
 
-### 25.1 Geometry unit tests
+### 28.1 Geometry tests
 
-Cover polygon area, centroid, orientation, point-in-polygon, edge classification, intersection, offset, union, and split behavior.
+Cover polygon area, centroid, orientation, point-in-polygon, segment intersection, polygon intersection, offset, union, split, normalization, and edge classification.
 
-### 25.2 Cadastral invariant tests
+### 28.2 Cadastral invariant tests
 
-After every mutation, `CadastralValidator` verifies all invariants. Fixtures include rectangular, corner, narrow, and irregular parcels plus repeated split/assembly sequences.
+Every mutation ends with `CadastralValidator`. Fixtures include rectangular, corner, narrow, and irregular parcels plus repeated split/assembly/right-of-way sequences.
 
-### 25.3 Zoning tests
+### 28.3 Zoning tests
 
-Known geometry fixtures verify FAR, lot coverage, height, front/rear/side setbacks, corner-lot classification, frontage minimums, overlays, and effective-FAR constraints.
+Known fixtures verify FAR, coverage, height, story limits, front/rear/side setbacks, corner-lot classification, minimum frontage/area, overlays, conditional-use handling, and effective-FAR constraints.
 
-### 25.4 Building tests
+### 28.4 Building tests
 
-Candidate footprints must remain inside legal envelopes. Floor-use allocation must tie to usable area. Building metrics must reconcile to floor detail.
+Candidate footprints remain inside the legal envelope. Floor areas reconcile exactly to building gross/usable metrics within defined tolerance. Use allocations respect entitlement. Parcel-reference rewrite tests cover split and assembly.
 
-### 25.5 Lifecycle/economic tests
+### 28.5 Lifecycle/economic tests
 
-Required directional cases include:
+Required directional cases:
 
 - deterioration lowers hold value;
-- maintenance slows deterioration;
-- major renovation restores condition/effective age;
-- upzoning raises legal capacity and, all else equal, residual land value;
-- strong existing NOI can prevent otherwise legal redevelopment;
-- parcel assembly may unlock a higher effective FAR but proceeds only when the acquisition economics work;
+- adequate maintenance slows deterioration;
+- major renovation restores condition/reduces effective age;
+- upzoning increases capacity and, all else equal, residual land value;
+- strong existing NOI can prevent redevelopment;
+- assembly can unlock greater effective FAR but only proceeds when acquisition economics work;
 - relocation/demolition costs can reverse a redevelopment decision.
 
-### 25.6 Save determinism tests
+### 28.6 Save determinism tests
 
-`simulate → save → hydrate → simulate` must produce the same cadastral topology, project state, lifecycle state, and economic outputs as uninterrupted simulation.
+`simulate → save → hydrate → simulate` must match uninterrupted simulation for topology, ownership, building lifecycle, development commitments, and relevant economic outputs.
 
-V7 fixture migration must be deterministic and preserve cross-references.
+V7 migration fixtures must produce the same V8 IDs and cross-references on repeated loads.
 
-### 25.7 Property/fuzz tests
+### 28.7 Property/fuzz tests
 
-Generate deterministic sequences of split, assembly, boundary adjustment, and right-of-way transactions and assert:
+Generate deterministic split, assembly, boundary-adjustment, easement, and right-of-way sequences and assert:
 
-- no overlap;
+- no parcel overlap;
 - graph validity;
 - area conservation within tolerance;
 - deterministic serialization;
-- stable lineage;
-- successful round-trip hydration.
+- stable acyclic lineage;
+- valid building references;
+- successful save/hydrate round trips.
 
-A key conservation invariant is:
+Conservation invariant:
 
 ```text
 private land area + dedicated right-of-way area = original controlled area
 ```
 
-within the defined geometry tolerance.
+within the versioned geometry tolerance. Easements do not change underlying land area and therefore do not enter this sum.
 
-## 26. Failure handling
+## 29. Failure handling
 
-Geometry and cadastral errors fail closed. Invalid mutations do not partially modify canonical state.
+Geometry/cadastral operations fail closed. Invalid transactions never partially mutate canonical state.
 
-Zoning-envelope generation returns structured invalid/limiting reasons instead of silently constructing malformed geometry.
+Buildable-envelope generation returns structured invalid/limiting reasons. Invalid or illegal development candidates are rejected before developer bidding.
 
-Development candidates that cannot produce valid geometry or legal compliance are rejected before economic bidding.
+Hydration validates topology, stable IDs, ownership, building-parcel containment, developer commitments, and occupancy references. Corrupt V8 saves fail with targeted errors rather than entering partially valid runtime state.
 
-Hydration validates topology, IDs, references, and stored derived values where relevant; corrupt V8 saves fail with targeted validation errors rather than entering partially valid runtime state.
+## 30. Implementation sequence
 
-## 27. Implementation sequence
+Urban Fabric 2.0 is implemented in six testable vertical slices:
 
-Urban Fabric 2.0 should be implemented in six vertical slices:
+1. **R1 — Cadastral Core**: geometry primitives, graph, validator, block/parcel generation, spatial lookup, temporary legacy-lot compatibility facade.
+2. **R2 — Dimensional Zoning**: district catalog, overlay foundation, setbacks, FAR/coverage/height/frontage, buildable envelopes, compliance.
+3. **R3 — Building Massing & Mixed Use**: building/entitlement types, typologies, finite massing candidates, floor allocation, aggregate metrics, legacy-building migration.
+4. **R4 — Lifecycle**: condition, maintenance, vacancy/distress, renovation, adaptive reuse, demolition/project phases.
+5. **R5 — Highest-and-Best-Use Redevelopment**: asset valuation, property market, candidate comparison, developer integration, displacement costs, explainable pressure.
+6. **R6 — Split/Assembly + V8/Render/UI**: transactional subdivision/assembly, lineage/reference rewrites, V8 migration, overlays/inspector, full integration and fuzz coverage.
 
-1. **R1 — Cadastral Core**: geometry primitives, graph, block/parcel types, generation, validator, legacy compatibility facade.
-2. **R2 — Dimensional Zoning**: district catalog, overlays foundation, setbacks, FAR/coverage/height, buildable envelopes, compliance.
-3. **R3 — Building Massing & Mixed Use**: new building types, finite candidate massing, floor-area allocation, aggregate metrics, compatibility migration.
-4. **R4 — Lifecycle**: deterioration, maintenance, vacancy/distress, renovation, adaptive reuse, demolition phases.
-5. **R5 — Highest-and-Best-Use Redevelopment**: asset valuation, candidate comparison, property transactions, developer integration, displacement costs.
-6. **R6 — Split/Assembly + Save/Render/UI**: transactional subdivision and assembly, lineage, V8 migration, cadastral/zoning overlays, parcel inspector, full integration/fuzz coverage.
+Each slice maintains only the compatibility needed by unmigrated consumers. Compatibility state is derived from parcels/buildings and is never authoritative.
 
-Each slice must be testable and maintain temporary compatibility with existing simulation consumers until the next slice replaces them.
+## 31. Compatibility strategy
 
-## 28. Compatibility strategy
+`LotSystem` becomes a transitional parcel-derived facade while runtime consumers migrate. Once all runtime callers consume parcel IDs/geometry, `LotSystem` remains only where required for old-save migration or is removed.
 
-`LotSystem` should become a transitional compatibility facade during migration. New authoritative systems consume parcels. Existing consumers that still require `Lot` receive deterministic parcel-derived compatibility views until they are migrated.
+Legacy building definitions become typology seeds. New projects are not restricted to one fixed realized capacity per definition.
 
-The compatibility layer must not become a second source of truth and should be deleted or reduced to save migration after all runtime consumers move to parcels.
+Legacy `ZoneType` may remain as a derived broad-use classification for UI/backward compatibility, but current development legality comes from the V2 district/overlay/compliance system.
 
-Similarly, the current fixed building definitions remain as typology seeds while legacy tests and saves migrate. New development candidates must not be restricted to one realized fixed-capacity object per definition.
+## 32. Explicit non-goals
 
-## 29. Explicit non-goals for this pass
+This pass does not require complete implementations of:
 
-Urban Fabric 2.0 establishes interfaces for several future systems but does not require complete implementations of:
-
-- condominium/vertical strata cadastral ownership;
+- condominium/vertical strata cadastre;
 - air-rights markets;
-- eminent-domain policy and legal proceedings;
-- detailed building-code inspection;
-- individual elevators/MEP components;
+- eminent-domain legal proceedings;
+- detailed building-code inspection gameplay;
+- individual elevators or MEP component simulation;
 - continuous nonlinear massing optimization;
 - full heritage-preservation gameplay;
-- dynamic title financing/mortgage securitization;
-- exact real-world survey/legal descriptions.
+- mortgage/title securitization;
+- exact real-world survey/legal-description standards.
 
-These are deferred intentionally so the cadastral architecture remains extensible without making the initial implementation unbounded.
+The architecture leaves room for these systems without making Urban Fabric 2.0 unbounded.
 
-## 30. Acceptance criteria
+## 33. Acceptance criteria
 
-Urban Fabric 2.0 is complete when all of the following are true:
+Urban Fabric 2.0 is complete when:
 
 1. Runtime development uses persistent cadastral parcels rather than one zoned cell equaling one lot.
-2. Adjacent parcels share validated topology and survive deterministic split/assembly mutations.
-3. Zoning legality uses FAR, setbacks, height, coverage, frontage, use permissions, and overlays rather than only low/medium/high intensity.
-4. Developers evaluate physically valid candidate building masses.
-5. A building may contain multiple uses and capacity derives from floor area.
-6. Buildings age, accumulate maintenance backlog, become vacant/distressed, and can be renovated or adaptively reused.
-7. Redevelopment compares hold, renovation, conversion, redevelopment, and assembly economics.
-8. Parcel assembly has real acquisition/geometry/economic consequences.
-9. Occupants are handled before demolition rather than silently deleted.
-10. V7 saves migrate deterministically to V8.
-11. Parcel, zoning-envelope, and redevelopment diagnostics are visible to the player.
-12. Geometry/property fuzz tests demonstrate topology validity and land-area conservation across mutation sequences.
-13. Existing developer-market behavior remains deterministic after migration.
-14. Full repository test/typecheck/build/smoke gates pass before merge.
+2. Adjacent parcels share validated topology.
+3. Deterministic parcel split/assembly mutations preserve invariants, lineage, area, and building references.
+4. Zoning legality uses use permissions, FAR, setbacks, height, coverage, frontage/area, and overlays.
+5. Developers evaluate physically valid candidate building masses.
+6. Buildings can contain multiple uses and derive units/jobs/capacity from floor area.
+7. Buildings age, accumulate maintenance backlog, become vacant/distressed, and can be renovated/adaptively reused.
+8. Redevelopment compares hold, renovation, conversion, redevelopment, and assembly economics.
+9. Assembly has real geometry, acquisition, and economic consequences.
+10. Occupants are resolved before demolition.
+11. V7 saves migrate deterministically to V8 with valid references.
+12. Parcel, zoning-envelope, and redevelopment diagnostics are visible to the player.
+13. Property/fuzz tests demonstrate topology validity and area conservation.
+14. Existing developer-market behavior remains deterministic after migration.
+15. Repository test, typecheck, build, and smoke gates pass before merge.
 
-## 31. Final data flow
+## 34. Final data flow
 
 ```text
 Road / right-of-way network
@@ -846,4 +916,4 @@ RedevelopmentPressure + next HBU cycle
         ↺
 ```
 
-This establishes a persistent urban land fabric in which zoning, ownership, physical geometry, building condition, market demand, transportation access, and developer economics jointly determine how the city evolves.
+The result is a persistent urban land fabric in which geometry, zoning, ownership, building condition, transportation access, market demand, and developer economics jointly determine how the city evolves.
