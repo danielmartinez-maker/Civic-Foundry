@@ -21,8 +21,9 @@ type DrawCommand = Readonly<{
 
 export class ObjectRenderPass {
   private readonly painter = new SpritePainter();
+  private readonly assets: AssetRegistry;
 
-  constructor(private readonly assets: AssetRegistry) {}
+  constructor(assets: AssetRegistry) { this.assets = assets; }
 
   draw(ctx: CanvasRenderingContext2D, core: SimulationCore, camera: IsometricCamera, viewport: Viewport): void {
     const worldSize = { width: core.terrain.width, height: core.terrain.height };
