@@ -1,6 +1,6 @@
 import { TRANSIT_MODE_DEFINITIONS, type TransitMode } from '../../data/transit.ts';
 import type { TransportationEdge, TransportationGraph } from '../traffic/TransportationGraph.ts';
-import type { PathfindingSystem } from '../traffic/PathfindingSystem.ts';
+import type { PathfindingSystem, RouteResult } from '../traffic/PathfindingSystem.ts';
 import type { PassengerQueueSystem, TransitPassengerCohort } from './PassengerQueueSystem.ts';
 import type { TransitLine, TransitNetworkSystem } from './TransitNetworkSystem.ts';
 
@@ -129,7 +129,7 @@ export class TransitVehicleSystem {
           if (complete) { this.vehicles.delete(v.id); continue; }
         }
         if (v.dwellRemainingTicks > 0) { v.dwellRemainingTicks--; continue; }
-        if (!this.prepareNextSegment(v, line, network, graph, pathfinding, roadTravelTime)) {
+        if (!this.prepareNextSegment(v, line, network, graph, pathfinding, roadTravelTime, tick)) {
           this.fail(v, events); continue;
         }
         continue;
@@ -182,7 +182,15 @@ export class TransitVehicleSystem {
     return false;
   }
 
-  private prepareNextSegment(v: MutableVehicle, line: TransitLine, network: TransitNetworkSystem, graph: TransportationGraph, pathfinding: PathfindingSystem, roadTravelTime: (edge: TransportationEdge)=>number): boolean {
+  private prepareNextSegment(
+    v: MutableVehicle,
+    line: TransitLine,
+    network: TransitNetworkSystem,
+    graph: TransportationGraph,
+    pathfinding: PathfindingSystem,
+    roadTravelTime: (edge: TransportationEdge)=>number,
+    tick: number,
+  ): boolean {
     const nextIndex = v.stopIndex + (v.directionKey === 'forward' ? 1 : -1);
     const fromId = line.stopIds[v.stopIndex], toId = line.stopIds[nextIndex];
     if (!fromId || !toId) return false;
@@ -195,10 +203,19 @@ export class TransitVehicleSystem {
       v.state = 'moving'; v.hasDepartedOrigin = true; return true;
     }
     const surfaceMode: Exclude<TransitMode, 'metro'> = v.mode;
-    const start = this.accessNode(from.x, from.y, graph), end = this.accessNode(to.x, to.y, graph);
-    if (!start || !end) return false;
-    const route = pathfinding.findRoute(graph, start, end, { edgeCost: roadTravelTime, costKey:`transit:${v.mode}` });
-    if (!route || route.edgeIds.length === 0) return false;
+    const starts = this.accessNodes(from.x, from.y, graph), ends = this.accessNodes(to.x, to.y, graph);
+    if (starts.length === 0 || ends.length === 0) return false;
+    let route: RouteResult | null = null;
+    const costKey = `transit:${v.mode}:${Math.floor(tick / 10)}`;
+    for (const start of starts) {
+      for (const end of ends) {
+        const candidate = pathfinding.findRoute(graph, start, end, { edgeCost: roadTravelTime, costKey });
+        if (!candidate) continue;
+        if (!route || candidate.totalCost < route.totalCost - 1e-9
+          || (Math.abs(candidate.totalCost - route.totalCost) <= 1e-9 && candidate.edgeIds.join('|').localeCompare(route.edgeIds.join('|')) < 0)) route = candidate;
+      }
+    }
+    if (!route) return false;
     v.roadEdgeIds = [...route.edgeIds]; v.dedicatedRemainingTicks = 0; v.state = 'moving'; v.hasDepartedOrigin = true;
     const free = route.edgeIds.reduce((sum,id)=>sum+(graph.getEdge(id)?.freeFlowTicks??0),0);
     const actual = route.edgeIds.reduce((sum,id)=>{const edge=graph.getEdge(id);return sum+(edge?this.effectiveSurfaceTicks(surfaceMode,edge,roadTravelTime):0);},0);
@@ -212,8 +229,8 @@ export class TransitVehicleSystem {
     return raw;
   }
 
-  private accessNode(x:number,y:number,graph:TransportationGraph): string | null {
-    return CARDINAL.map(([dx,dy])=>graph.findNodeAt(x+dx,y+dy)?.id).filter((id):id is string=>id!==undefined).sort()[0]??null;
+  private accessNodes(x:number,y:number,graph:TransportationGraph): string[] {
+    return CARDINAL.map(([dx,dy])=>graph.findNodeAt(x+dx,y+dy)?.id).filter((id):id is string=>id!==undefined).sort();
   }
 
   private arriveNextStop(v: MutableVehicle): void {
