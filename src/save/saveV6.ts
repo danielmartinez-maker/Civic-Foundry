@@ -56,10 +56,23 @@ function validateEnvelope(record: Record<string, unknown>): void {
 
 function validateEconomyReferences(core: SimulationCore, state: EconomySchedulerStateSnapshot): void {
   const firmIds = new Set(state.firms.firms.map((firm) => firm.id));
+  if (firmIds.size !== state.firms.firms.length) throw new Error('duplicate economy firm');
+  const buildings = new Map(core.buildings.list().map((building) => [building.id, building] as const));
   const gatewayIds = new Set(state.trade.gateways.map((gateway) => gateway.id));
   const orderIds = new Set(state.orders.orders.map((order) => order.id));
   const shipmentIds = new Set(state.freightVehicles.vehicles.map((vehicle) => vehicle.shipment.id));
 
+  for (const firm of state.firms.firms) {
+    const building = buildings.get(firm.buildingId);
+    if (!building || building.zone !== firm.zone) throw new Error('invalid economy firm building reference');
+  }
+  const financialFirmIds = new Set<string>();
+  for (const row of state.financials) {
+    if (!firmIds.has(row.firmId)) throw new Error('invalid economy financial firm reference');
+    if (financialFirmIds.has(row.firmId)) throw new Error('duplicate economy financial firm reference');
+    financialFirmIds.add(row.firmId);
+    if (Object.values(row.values).some((value) => !Number.isFinite(value))) throw new Error('invalid economy financial value');
+  }
   for (const item of state.inventories.records) {
     if (!firmIds.has(item.firmId)) throw new Error('invalid economy inventory firm reference');
     const values = Object.values(item.record);
