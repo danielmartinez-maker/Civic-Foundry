@@ -6,6 +6,8 @@ import type { WorldGenerationConfig } from '../../world/generation/WorldGenerati
 import { resolveWorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
 import type { ScenarioWorldDefinition } from '../../world/generation/ScenarioWorldDefinition.ts';
 import type { TerrainGrid } from '../../world/terrain/TerrainGrid.ts';
+import type { DesignStormEvent, FloodResult } from '../../world/hydrology/HydrologyTypes.ts';
+import type { FloodEventResolvedPayload, FloodEventStartedPayload, WorldGeneratedPayload, WorldMigratedTo1RPayload } from '../../world/foundation/WorldFoundationTypes.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -70,6 +72,7 @@ export class SimulationCore extends LegacySimulationCore {
 
     let world: WorldFoundation;
     let generationRegistry: RandomStreamRegistry | null = null;
+    const generatedHere = injectedWorld === undefined && options.terrain === undefined;
     if (injectedWorld) {
       if (options.terrain) {
         const compatibility = injectedWorld.legacyTerrain();
@@ -114,5 +117,34 @@ export class SimulationCore extends LegacySimulationCore {
         }
       },
     });
+    if (generatedHere) {
+      const payload: WorldGeneratedPayload = {
+        seed: this.world.seed,
+        preset: this.world.config.preset,
+        width: this.world.config.width,
+        height: this.world.config.height,
+        scenarioId: this.world.scenarioId,
+      };
+      this.kernel.events.append(this.clock.tick, { type: 'WorldGenerated', source: 'world', payload });
+    }
+  }
+
+  runDesignStorm(event: DesignStormEvent): FloodResult {
+    const started: FloodEventStartedPayload = { eventId: event.id, rainfallMm: event.rainfallMm, durationHours: event.durationHours };
+    this.kernel.events.append(this.clock.tick, { type: 'FloodEventStarted', source: 'world', payload: started });
+    const result = this.world.runDesignStorm(event);
+    const resolved: FloodEventResolvedPayload = {
+      eventId: result.eventId,
+      floodedCells: result.depthMeters.filter((depth) => depth > 0).length,
+      balanceError: result.balanceError,
+    };
+    this.kernel.events.append(this.clock.tick, { type: 'FloodEventResolved', source: 'world', payload: resolved });
+    return result;
+  }
+
+  recordWorldMigrationDiagnostic(fromSaveVersion: number): void {
+    if (!Number.isInteger(fromSaveVersion) || fromSaveVersion < 0) throw new Error('migration source save version must be a non-negative integer');
+    const payload: WorldMigratedTo1RPayload = { fromSaveVersion, mode: 'legacy-flat' };
+    this.kernel.events.append(this.clock.tick, { type: 'WorldMigratedTo1R', source: 'world', payload });
   }
 }
