@@ -1,3 +1,4 @@
+import { definitionForBuilding, type Building } from '../../simulation/buildings/BuildingSystem.ts';
 import type { AssetManifestEntry, AssetOrientation } from './AssetTypes.ts';
 
 export type WeightedVariant = Readonly<{ variantKey: string; weight?: number }>;
@@ -25,26 +26,31 @@ export function selectWeightedVariantKey(stableKey: string, candidates: readonly
   return weighted[weighted.length - 1]!.variantKey;
 }
 
-export function selectVariantFamily(
-  stableKey: string,
-  entries: readonly AssetManifestEntry[],
-): string {
+export function selectVariantFamily(stableKey: string, entries: readonly AssetManifestEntry[]): string {
   const byVariant = new Map<string, number>();
-  for (const entry of entries) {
-    if (byVariant.has(entry.variantKey)) continue;
-    byVariant.set(entry.variantKey, entry.weight ?? 1);
-  }
+  for (const entry of entries) if (!byVariant.has(entry.variantKey)) byVariant.set(entry.variantKey, entry.weight ?? 1);
   return selectWeightedVariantKey(stableKey, [...byVariant].map(([variantKey, weight]) => ({ variantKey, weight })));
 }
 
-export function resolveVariantEntry(
-  entries: readonly AssetManifestEntry[],
-  variantKey: string,
-  orientation: AssetOrientation,
-): AssetManifestEntry | undefined {
+export function resolveVariantEntry(entries: readonly AssetManifestEntry[], variantKey: string, orientation: AssetOrientation): AssetManifestEntry | undefined {
   const family = entries.filter((entry) => entry.variantKey === variantKey);
   const oriented = family.find((entry) => entry.orientation === orientation);
   if (oriented) return oriented;
-  const symmetric = family.find((entry) => entry.orientation === 0 && entry.tags?.includes('symmetric'));
-  return symmetric;
+  return family.find((entry) => entry.orientation === 0 && entry.tags?.includes('symmetric'));
+}
+
+export function selectStableVariantEntry(stableKey: string, entries: readonly AssetManifestEntry[], orientation: AssetOrientation): AssetManifestEntry | undefined {
+  if (entries.length === 0) return undefined;
+  const variantKey = selectVariantFamily(stableKey, entries);
+  return resolveVariantEntry(entries, variantKey, orientation);
+}
+
+export function selectBuildingVariantEntry(building: Building, orientation: AssetOrientation, entries: readonly AssetManifestEntry[]): AssetManifestEntry | undefined {
+  const definition = definitionForBuilding(building);
+  const eligible = entries.filter((entry) => entry.category === 'building' && entry.zone === building.zone && entry.intensity === definition.intensity);
+  return selectStableVariantEntry(`${building.id}|${building.definitionId}`, eligible, orientation);
+}
+
+export function selectCoordinateVariantEntry(prefix: string, x: number, y: number, entries: readonly AssetManifestEntry[], orientation: AssetOrientation = 0): AssetManifestEntry | undefined {
+  return selectStableVariantEntry(`${prefix}|${x},${y}`, entries, orientation);
 }
