@@ -134,3 +134,26 @@ test('unchanged active entities do not enter staged known-record updates', () =>
     'unchanged immutable entity records should be reused rather than staged for replacement');
   assert.equal(prepared.highestGenerationUpdatesByLegacyKey.size, 0);
 });
+
+test('commit preserves immutable record identity for unchanged active entities', () => {
+  const registry = new EntityRegistry();
+  const stable = { kind: 'building' as const, legacyId: 'building:stable', incarnationToken: 'stable:1', metadata: { status: 'occupied' } };
+  const changing = { kind: 'building' as const, legacyId: 'building:changing', incarnationToken: 'changing:1', metadata: { status: 'construction' } };
+  registry.commitPrepared(registry.prepareProjection([stable, changing]));
+
+  const internals = registry as unknown as { activeByLegacyKey: Map<string, unknown> };
+  const stableKey = 'building\u0000building:stable';
+  const stableRecordBefore = internals.activeByLegacyKey.get(stableKey);
+  assert.ok(stableRecordBefore);
+
+  registry.commitPrepared(registry.prepareProjection([
+    stable,
+    { ...changing, metadata: { status: 'occupied' } },
+  ]));
+
+  assert.strictEqual(
+    internals.activeByLegacyKey.get(stableKey),
+    stableRecordBefore,
+    'unchanged frozen records should not be deep-cloned during an unrelated entity update',
+  );
+});
