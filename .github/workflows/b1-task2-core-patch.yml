@@ -1,0 +1,86 @@
+name: B1 Task2 Core Patch
+
+on:
+  push:
+    branches:
+      - feature/urban-depth-b1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/urban-depth-b1
+          fetch-depth: 0
+      - name: Apply surgical Task 2 adapter patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/simulation/core/SimulationCore.ts')
+          text = path.read_text()
+          if 'initializeUrbanFabricFromLegacy' in text:
+              raise SystemExit(0)
+
+          replacements = [
+              (
+                  "import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';\n",
+                  "import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';\n"
+                  "import { UrbanFabricDomain } from '../urban/UrbanFabricDomain.ts';\n"
+                  "import { buildUrbanBuildingView, legacyUrbanStateForBuilding, type UrbanBuildingView } from '../urban/UrbanBuildingView.ts';\n",
+              ),
+              (
+                  "  readonly buildings: BuildingSystem;\n  readonly population: PopulationSystem;",
+                  "  readonly buildings: BuildingSystem;\n  readonly urbanFabric: UrbanFabricDomain;\n  readonly population: PopulationSystem;",
+              ),
+              (
+                  "    this.buildings = new BuildingSystem();\n    this.population = new PopulationSystem();",
+                  "    this.buildings = new BuildingSystem();\n    this.urbanFabric = new UrbanFabricDomain();\n    this.population = new PopulationSystem();",
+              ),
+              (
+                  "  constructor(options: SimulationCoreOptions = {}) {",
+                  "  initializeUrbanFabricFromLegacy(migrationTick: number): void {\n"
+                  "    if (!Number.isInteger(migrationTick) || migrationTick < 0) throw new Error('migration tick must be a non-negative integer');\n"
+                  "    this.urbanFabric.restoreState({ buildings: [] });\n"
+                  "    const buildings = this.buildings.list().sort((a, b) => a.id.localeCompare(b.id));\n"
+                  "    for (const building of buildings) this.urbanFabric.install(legacyUrbanStateForBuilding(building, migrationTick));\n"
+                  "    this.urbanFabric.validateAgainst(new Set(buildings.map((building) => building.id)), { requireAllLiveBuildings: true });\n"
+                  "  }\n\n"
+                  "  urbanBuildingView(buildingId: string): UrbanBuildingView | undefined {\n"
+                  "    const building = this.buildings.getById(buildingId);\n"
+                  "    const state = this.urbanFabric.get(buildingId);\n"
+                  "    if (!building || !state) return undefined;\n"
+                  "    return buildUrbanBuildingView(building, state);\n"
+                  "  }\n\n"
+                  "  urbanBuildingViews(): UrbanBuildingView[] {\n"
+                  "    return this.buildings.list()\n"
+                  "      .sort((a, b) => a.id.localeCompare(b.id))\n"
+                  "      .flatMap((building) => {\n"
+                  "        const state = this.urbanFabric.get(building.id);\n"
+                  "        return state ? [buildUrbanBuildingView(building, state)] : [];\n"
+                  "      });\n"
+                  "  }\n\n"
+                  "  constructor(options: SimulationCoreOptions = {}) {",
+              ),
+          ]
+
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'expected exactly one patch anchor, found {text.count(old)}: {old[:80]!r}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+      - name: Commit patched core
+        shell: bash
+        run: |
+          if git diff --quiet -- src/simulation/core/SimulationCore.ts; then
+            exit 0
+          fi
+          git config user.name "danielmartinez-maker"
+          git config user.email "daniel.martinez@lomasaltas.edu.mx"
+          git add src/simulation/core/SimulationCore.ts
+          git commit -m "feat: wire urban building parity adapter"
+          git push origin HEAD:feature/urban-depth-b1
