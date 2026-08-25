@@ -118,12 +118,11 @@ export function buildTurnMovements(physical: TransportPhysicalNetwork): readonly
   return movements.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export function movementEffectivePermissions(
-  authority: TransportNetworkAuthority,
+export function movementEffectivePermissionsFromLaneIndex(
+  laneById: ReadonlyMap<string, Lane>,
   movement: TurnMovement,
 ): VehiclePermissionMask {
   if (!movement.allowed) return 0;
-  const laneById = new Map(authority.lanes.map((lane) => [lane.id, lane]));
   const incoming = movement.fromLaneIds
     .map((laneId) => laneById.get(laneId))
     .filter((lane): lane is Lane => lane !== undefined && isTravelLane(lane));
@@ -135,4 +134,12 @@ export function movementEffectivePermissions(
     movement.permissions,
     lanePermissionUnion(outgoing),
   );
+}
+
+export function movementEffectivePermissions(
+  authority: TransportNetworkAuthority,
+  movement: TurnMovement,
+): VehiclePermissionMask {
+  const laneById = new Map(authority.lanes.map((lane) => [lane.id, lane]));
+  return movementEffectivePermissionsFromLaneIndex(laneById, movement);
 }
