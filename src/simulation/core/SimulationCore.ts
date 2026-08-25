@@ -130,6 +130,7 @@ export class SimulationCore {
   private readonly redevelopmentFeasibility: DevelopmentFeasibilitySystem;
   private readonly entityProjector: LegacyV7EntityProjector;
   private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;
+  private lastSyncedEntitySourceRevisionKey: string | undefined;
   private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);
 
   employmentSnapshot: EmploymentSnapshot;
@@ -394,20 +395,30 @@ export class SimulationCore {
   }
 
   rebuildEntityProjection(): void {
-    this.syncEntityProjection();
-  }
+  this.lastSyncedEntitySourceRevisionKey = undefined;
+  this.entityProjector.invalidate();
+  this.syncEntityProjection();
+}
 
-  private syncEntityProjection(): void {
-    const partitions = this.entityProjector.projectPartitions(this);
-    if (partitions === this.lastSyncedEntityPartitions) return;
-    const result = commitEntityProjectionPartitions(
-      this.entityRegistry,
-      this.entityReferences,
-      partitions,
-    );
-    this.lastUnresolvedEntityReferences = result.unresolved;
-    this.lastSyncedEntityPartitions = partitions;
+private syncEntityProjection(): void {
+  const sourceRevisionKey = this.entityProjector.sourceRevisionKey(this);
+  if (sourceRevisionKey !== undefined
+    && sourceRevisionKey === this.lastSyncedEntitySourceRevisionKey) return;
+
+  const partitions = this.entityProjector.projectPartitions(this);
+  if (partitions === this.lastSyncedEntityPartitions) {
+    this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;
+    return;
   }
+  const result = commitEntityProjectionPartitions(
+    this.entityRegistry,
+    this.entityReferences,
+    partitions,
+  );
+  this.lastUnresolvedEntityReferences = result.unresolved;
+  this.lastSyncedEntityPartitions = partitions;
+  this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;
+}
 
   private runLegacyV7Tick(): void {
     this.transportationGraph.rebuildIfNeeded(this.roads);

@@ -96,16 +96,36 @@ export class LegacyV7EntityProjector {
   private lastProjection: EntityProjectionData | undefined;
   private volatileRevision = 0;
 
-  private resetForSource(source: LegacyV7EntitySource): void {
-    if (source === this.lastSource) return;
-    this.lastSource = source;
-    this.listCache.clear();
-    this.partitionCache.clear();
-    this.lastProjectedPartitions = undefined;
-    this.lastComposedPartitions = undefined;
-    this.lastProjection = undefined;
-    this.volatileRevision = 0;
-  }
+  sourceRevisionKey(source: LegacyV7EntitySource): string | undefined {
+  return stableRevisionKey([
+    source.lots.entityRevision,
+    source.buildings.entityRevision,
+    source.economyDomain.firms.entityRevision,
+    source.economyDomain.freightVehicles.entityRevision,
+    source.utilities.entityRevision,
+    source.services.entityRevision,
+    source.transit.revision,
+    source.traffic.entityRevision,
+    source.serviceVehicles.entityRevision,
+    source.incidents.entityRevision,
+  ]);
+}
+
+invalidate(): void {
+  this.lastSource = undefined;
+  this.listCache.clear();
+  this.partitionCache.clear();
+  this.lastProjectedPartitions = undefined;
+  this.lastComposedPartitions = undefined;
+  this.lastProjection = undefined;
+  this.volatileRevision = 0;
+}
+
+private resetForSource(source: LegacyV7EntitySource): void {
+  if (source === this.lastSource) return;
+  this.invalidate();
+  this.lastSource = source;
+}
 
   private cachedList<T extends Readonly<{ id: string }>>(
     name: string,
