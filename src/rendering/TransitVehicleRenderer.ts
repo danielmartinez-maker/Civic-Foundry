@@ -31,7 +31,9 @@ export function locateTransitVehicle(vehicle: TransitVehicle, network: TransitNe
 
 export class TransitVehicleRenderer {
   private readonly painter = new SpritePainter();
-  constructor(private readonly assets: AssetRegistry) {}
+  private readonly assets: AssetRegistry;
+
+  constructor(assets: AssetRegistry) { this.assets = assets; }
 
   draw(ctx: CanvasRenderingContext2D, network: TransitNetworkSystem, graph: TransportationGraph, vehicles: TransitVehicleSystem, travelTicksByEdge: ReadonlyMap<string, number>, camera: IsometricCamera, worldSize: WorldSize): void {
     const sourceScale = 0.5 * camera.zoom;
