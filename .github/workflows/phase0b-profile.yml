@@ -1,0 +1,20 @@
+name: Phase 0B Validation Fastpath Profile
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run focused profile
+        run: node --experimental-strip-types --test tests/phase0b-validation-fastpath-profile.test.ts
