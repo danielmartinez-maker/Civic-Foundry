@@ -11,8 +11,9 @@ const ZONE_COLORS = { residential: 'rgba(83,181,102,.28)', commercial: 'rgba(73,
 
 export class GroundRenderPass {
   private readonly painter = new SpritePainter();
+  private readonly assets: AssetRegistry;
 
-  constructor(private readonly assets: AssetRegistry) {}
+  constructor(assets: AssetRegistry) { this.assets = assets; }
 
   draw(ctx: CanvasRenderingContext2D, core: SimulationCore, camera: IsometricCamera, viewport: Viewport): void {
     const worldSize = { width: core.terrain.width, height: core.terrain.height };
