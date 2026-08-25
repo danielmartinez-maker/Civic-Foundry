@@ -1,4 +1,4 @@
-name: Phase 0B Revision Churn Profile
+name: Phase 0B Current Method Profile
 
 on:
   pull_request:
@@ -16,5 +16,5 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Profile entity revision churn
-        run: node --experimental-strip-types --test tests/phase0b-revision-churn-profile.test.ts
+      - name: Profile current entity synchronization
+        run: node --experimental-strip-types --test tests/phase0b-current-method-profile.test.ts
