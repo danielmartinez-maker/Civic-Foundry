@@ -309,6 +309,33 @@ export class EntityRegistry implements KnownEntityView {
     return Object.freeze(handles);
   }
 
+  assertPartitionIndexIntegrity(): void {
+    const indexed = new Set<string>();
+    const kinds = [...this.activeLegacyKeysByKind.keys()].sort(ordinalCompare);
+    for (const kind of kinds) {
+      const keys = [...(this.activeLegacyKeysByKind.get(kind) ?? [])].sort(ordinalCompare);
+      for (const legacyKey of keys) {
+        if (indexed.has(legacyKey)) {
+          throw new Error(`registry kind index duplicates active entity ${kind}: ${legacyKey}`);
+        }
+        indexed.add(legacyKey);
+        const record = this.activeByLegacyKey.get(legacyKey);
+        if (!record) {
+          throw new Error(`registry kind index ${kind} references missing active entity: ${legacyKey}`);
+        }
+        if (record.handle.kind !== kind) {
+          throw new Error(`registry kind index ${kind} references active entity of kind ${record.handle.kind}: ${legacyKey}`);
+        }
+      }
+    }
+
+    for (const [legacyKey, record] of sortedEntries(this.activeByLegacyKey)) {
+      if (!this.activeLegacyKeysByKind.get(record.handle.kind)?.has(legacyKey)) {
+        throw new Error(`registry kind index missing active ${record.handle.kind}: ${legacyKey}`);
+      }
+    }
+  }
+
   prepareProjection(entities: readonly ProjectedEntity[]): PreparedEntityProjection {
     const normalized = entities.map((entity) => {
       const legacyKey = canonicalLegacyKey(entity);
