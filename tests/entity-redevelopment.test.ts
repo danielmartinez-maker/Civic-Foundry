@@ -64,11 +64,19 @@ function buildOccupiedResidentialCore(): { core: SimulationCore; lot: Lot; build
   return { core, lot, buildingId };
 }
 
-function redevelopWithPreexistingIncident(): { core: SimulationCore; lot: Lot; buildingId: string; incidentId: string } {
-  const { core, lot, buildingId } = buildOccupiedResidentialCore();
+function createFireIncident(core: SimulationCore, buildingId: string): string {
   const original = core.buildings.getById(buildingId);
   assert.ok(original);
-  const incidentId = core.incidents.createIncident('fire', original, 0.5, 0, core.serviceDispatch);
+  const beforeIds = new Set(core.incidents.listIncidents().map((incident) => incident.id));
+  core.incidents.createIncident('fire', original, 0.5, 0, core.serviceDispatch);
+  const created = core.incidents.listIncidents().find((incident) => !beforeIds.has(incident.id));
+  assert.ok(created);
+  return created.id;
+}
+
+function redevelopWithPreexistingIncident(): { core: SimulationCore; lot: Lot; buildingId: string; incidentId: string } {
+  const { core, lot, buildingId } = buildOccupiedResidentialCore();
+  const incidentId = createFireIncident(core, buildingId);
   core.rebuildEntityProjection();
 
   core.buildings.replaceDevelopment(1, lot, awardFor(lot, 1));
@@ -77,13 +85,11 @@ function redevelopWithPreexistingIncident(): { core: SimulationCore; lot: Lot; b
 }
 
 test('same legacy building ID advances generation across redevelopment without weak-reference retargeting', () => {
-  const { core, lot, buildingId, incidentId } = buildOccupiedResidentialCore();
+  const { core, lot, buildingId } = buildOccupiedResidentialCore();
   const generation1 = core.entityRegistry.require('building', buildingId);
   assert.equal(generation1.generation, 1);
 
-  const original = core.buildings.getById(buildingId);
-  assert.ok(original);
-  core.incidents.createIncident('fire', original, 0.5, 0, core.serviceDispatch);
+  const incidentId = createFireIncident(core, buildingId);
   core.rebuildEntityProjection();
   const preReplacementEdge = core.entityReferences.list().find((edge) => edge.relation === 'incident-building');
   assert.ok(preReplacementEdge);
