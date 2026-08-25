@@ -10,7 +10,7 @@ import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.
 import { RoadSystem } from '../src/world/roads/RoadSystem.ts';
 import { TreasurySystem } from '../src/simulation/treasury/TreasurySystem.ts';
 import { TransitPanelController } from '../src/ui/TransitPanel.ts';
-import { serializeCoreV6, hydrateCoreV6 } from '../src/save/saveV6.ts';
+import { serializeCoreV6, hydrateCoreV6, type SaveV6 } from '../src/save/saveV6.ts';
 import { serializeCore, hydrateCore } from '../src/save/saveLegacy.ts';
 import type { Firm } from '../src/simulation/economy/FirmSystem.ts';
 
@@ -37,7 +37,6 @@ test('intersection snapshots preserve durable released travelers until acknowled
   const original = new IntersectionSystem();
   original.enqueue(node.id, incoming.id, { vehicleId: 'vehicle:pending', travelerWeight: 1, queuedTick: 1 });
   assert.deepEqual(original.stepNode(graph, node.id, 2), ['vehicle:pending']);
-
   const restored = new IntersectionSystem();
   restored.restore(original.snapshot());
   assert.deepEqual(restored.stepNode(graph, node.id, 3), ['vehicle:pending']);
@@ -64,29 +63,44 @@ test('legacy hydration cannot leave a queued traffic vehicle permanently orphane
   assert.equal(restored.traffic.failedTrips, 1);
 });
 
-test('V6 hydration rejects firms and financial rows that reference missing authoritative entities', () => {
+test('V6 hydration rejects a live firm that references a missing building', () => {
   const core = new SimulationCore({ terrain: flatTerrain(), seed: 19 });
-  const corrupt = structuredClone(serializeCoreV6(core));
+  const base = structuredClone(serializeCoreV6(core));
   const fakeFirm: Firm = {
     id: 'firm:corrupt', buildingId: 'building:missing', zone: 'commercial', archetype: 'retail_local', status: 'operating',
     jobCapacity: 8, filledJobs: 1, vacancies: 7, productivity: 1, cashHealth: 1,
     consecutiveLossCycles: 0, consecutiveRecoveryCycles: 0, formationTick: 0, lastOperatingMargin: 0,
   };
-  corrupt.economyDomain.firms.firms.push(fakeFirm);
-  corrupt.economyDomain.financials.push({ firmId: 'firm:missing-financial', values: { revenue: 0, inputCost: 0, wageCost: 0, utilityCost: 0, taxCost: 0, logisticsCost: 0, shortagePenalty: 0, operatingMargin: 0 } });
-  assert.throws(() => hydrateCoreV6(corrupt), /economy firm building reference|economy financial firm reference/i);
+  const corrupt = {
+    ...base,
+    economyDomain: { ...base.economyDomain, firms: { ...base.economyDomain.firms, firms: [...base.economyDomain.firms.firms, fakeFirm] } },
+  } satisfies SaveV6;
+  assert.throws(() => hydrateCoreV6(corrupt), /economy firm building reference/i);
+});
+
+test('V6 hydration rejects a financial row that references a missing firm', () => {
+  const core = new SimulationCore({ terrain: flatTerrain(), seed: 20 });
+  const base = structuredClone(serializeCoreV6(core));
+  const corrupt = {
+    ...base,
+    economyDomain: {
+      ...base.economyDomain,
+      financials: [...base.economyDomain.financials, {
+        firmId: 'firm:missing-financial',
+        values: { revenue: 0, inputCost: 0, wageCost: 0, utilityCost: 0, taxCost: 0, logisticsCost: 0, shortagePenalty: 0, operatingMargin: 0 },
+      }],
+    },
+  } satisfies SaveV6;
+  assert.throws(() => hydrateCoreV6(corrupt), /economy financial firm reference/i);
 });
 
 test('transit line configuration validates the full patch before mutating any field', () => {
   const core = new SimulationCore({ terrain: flatTerrain(), seed: 23 });
-  const controller = new TransitPanelController(core) as TransitPanelController & Partial<{
-    applyLineConfig(lineId: string, patch: { headwayTicks: number; fare: number; fleetLimit: number; enabled: boolean }): { ok: boolean; reason?: string };
-  }>;
+  const controller = new TransitPanelController(core);
   const lineId = controller.createLine('bus', 'Atomic');
   const beforeLine = core.transit.getLine(lineId)!;
   const beforeFleet = core.mobility.operations.snapshotLine(lineId).fleetLimit;
-  assert.equal(typeof controller.applyLineConfig, 'function');
-  const result = controller.applyLineConfig!(lineId, { headwayTicks: 200, fare: 3.25, fleetLimit: 9, enabled: true });
+  const result = controller.applyLineConfig(lineId, { headwayTicks: 200, fare: 3.25, fleetLimit: 9, enabled: true });
   assert.equal(result.ok, false);
   const afterLine = core.transit.getLine(lineId)!;
   assert.equal(afterLine.headwayTicks, beforeLine.headwayTicks);
