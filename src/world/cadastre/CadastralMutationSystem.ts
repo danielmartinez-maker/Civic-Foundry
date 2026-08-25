@@ -41,10 +41,16 @@ type SegmentUse = Readonly<{
 }>;
 
 export class CadastralMutationSystem {
+  private readonly graph: CadastralGraph;
+  private readonly guard: CadastralMutationGuard;
+
   constructor(
-    private readonly graph: CadastralGraph,
-    private readonly guard: CadastralMutationGuard = Object.freeze({}),
-  ) {}
+    graph: CadastralGraph,
+    guard: CadastralMutationGuard = Object.freeze({}),
+  ) {
+    this.graph = graph;
+    this.guard = guard;
+  }
 
   splitParcel(parcelId: string, cutLine: readonly WorldPoint[]): CadastralMutationResult {
     const before = this.graph.snapshot();
