@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateAssetManifest } from '../src/rendering/assets/AssetManifestValidation.ts';
+import { AssetRegistry } from '../src/rendering/assets/AssetRegistry.ts';
 import { PASS_A_ASSET_MANIFEST, PASS_A_BUILDING_VARIANTS, PASS_A_VEHICLE_FAMILIES } from '../src/rendering/assets/PassAAssetManifest.ts';
 import type { AssetManifest } from '../src/rendering/assets/AssetTypes.ts';
 
@@ -13,6 +14,12 @@ function validManifest(): AssetManifest {
 }
 
 test('valid manifest has no validation errors', () => assert.deepEqual(validateAssetManifest(validManifest()), []));
+
+test('transient atlas-not-ready fallback does not pollute diagnostics', () => {
+  const registry = new AssetRegistry(validManifest());
+  assert.equal(registry.resolveAssetId('terrain_grass_01').kind, 'fallback');
+  assert.deepEqual(registry.diagnostics(), []);
+});
 
 test('manifest validation reports duplicate IDs and invalid geometry', () => {
   const base = validManifest(); const entry = base.entries[0]!;
