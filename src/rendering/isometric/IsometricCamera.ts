@@ -13,13 +13,15 @@ import {
 } from './IsometricProjection.ts';
 
 export class IsometricCamera {
+  private readonly metrics: IsoMetrics;
   private zoomValue = 1;
   private quarterTurnValue: QuarterTurn = 0;
   private panX = 36;
   private panY = 36;
 
-  constructor(private readonly metrics: IsoMetrics = DEFAULT_ISO_METRICS) {
+  constructor(metrics: IsoMetrics = DEFAULT_ISO_METRICS) {
     if (!(metrics.tileWidth > 0) || !(metrics.tileHeight > 0)) throw new Error('isometric tile metrics must be positive');
+    this.metrics = metrics;
   }
 
   get zoom(): number { return this.zoomValue; }
