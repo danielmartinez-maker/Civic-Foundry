@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DevelopmentFeasibilitySystem } from '../src/simulation/development/DevelopmentFeasibilitySystem.ts';
+import { DeveloperMarketSystem } from '../src/simulation/development/DeveloperMarketSystem.ts';
 import type { DevelopmentCandidate } from '../src/simulation/buildings/BuildingTypes.ts';
 import type { Parcel } from '../src/world/cadastre/CadastralTypes.ts';
-import type { PhysicalDevelopmentContext } from '../src/simulation/development/DevelopmentTypes.ts';
+import type { DeveloperSeed, PhysicalDevelopmentContext } from '../src/simulation/development/DevelopmentTypes.ts';
 
 const parcel: Parcel = {
   id: 'parcel:underwriting:1',
@@ -36,6 +37,18 @@ const context: PhysicalDevelopmentContext = {
   financingSpread: 0.02,
 };
 
+const physicalDeveloper: DeveloperSeed = {
+  id: 'physical-developer',
+  availableCapital: 20_000_000,
+  hurdleRate: 0.01,
+  maxLeverage: 0.5,
+  financingSpread: 0.01,
+  riskTolerance: 1,
+  maxConcurrentProjects: 2,
+  minimumProjectCost: 0,
+  preferences: { residential: 0.02, commercial: 0.02, industrial: 0 },
+};
+
 test('larger legal mixed-use massing changes revenue cost and return from actual floor area', () => {
   const system = new DevelopmentFeasibilitySystem();
   const small = system.evaluateCandidate(candidateFixture(2_000, 1_600), parcel, context);
@@ -59,6 +72,31 @@ test('illegal zoning candidate is rejected before developer bidding', () => {
   assert.equal(result.legal, false);
   assert.equal(result.feasible, false);
   assert.ok(result.rejectionReasons.includes('zoning-compliance'));
+});
+
+test('physical mixed-use opportunity enters developer market with physical construction duration', () => {
+  const feasibility = new DevelopmentFeasibilitySystem().evaluateCandidate(
+    candidateFixture(4_000, 3_200),
+    parcel,
+    context,
+  );
+  const opportunity = {
+    ...feasibility,
+    feasible: true,
+    rejectionReasons: [],
+    stabilizedValue: feasibility.preFinanceDevelopmentCost * 2.5,
+    residualLandValue: feasibility.landValue * 2,
+    riskScore: 0.1,
+  };
+  const market = new DeveloperMarketSystem({ developers: [physicalDeveloper] });
+  const tick = 100;
+  const [award] = market.allocate([opportunity], { tick, marketInterestRate: 0.04 });
+
+  assert.ok(award);
+  assert.equal(award.lotId, parcel.id);
+  assert.equal(award.definitionId, 'main_street_mixed_use');
+  assert.equal(award.completionTick, tick + feasibility.constructionTicks);
+  assert.equal(market.listCommitments()[0]?.lotId, parcel.id);
 });
 
 function candidateFixture(grossFloorAreaM2: number, usableFloorAreaM2: number): DevelopmentCandidate {
