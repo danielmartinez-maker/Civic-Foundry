@@ -160,7 +160,7 @@ Polygon2
 BoundingBox2
 ```
 
-Coordinates use deterministic world-space numeric units. For Phase 1R, one existing tile maps to one world-space planning unit unless a scenario specifies another scale factor.
+Coordinates use deterministic world-space numeric units. For Phase 1R, one existing tile maps to one world-space planning unit unless a scenario explicitly specifies another scale factor.
 
 ### 5.2 Polygon invariants
 
@@ -311,18 +311,18 @@ Poor soil, shallow groundwater, contamination and moderate flood exposure should
 
 ### 8.1 Soil classes
 
-Initial classes should remain gameplay-legible and bounded, for example:
+Phase 1R ships the following authoritative `SoilClass` values:
 
-- rock;
-- gravel;
-- sand;
-- loam;
-- clay;
-- alluvium;
-- peat/organic;
-- fill/disturbed.
+- `rock`;
+- `gravel`;
+- `sand`;
+- `loam`;
+- `clay`;
+- `alluvium`;
+- `peat`;
+- `fill_disturbed`.
 
-The exact enum may be tuned during implementation, but generated classes must map to explicit engineering properties.
+Each class maps to explicit engineering properties. Adding new soil classes after 1R requires a save-compatible enum migration rather than silently changing generated classification.
 
 ### 8.2 Properties
 
@@ -341,7 +341,7 @@ Generated samples may vary deterministically around class baselines.
 
 1R stores contamination as a normalized physical planning input.
 
-Generated untouched worlds default to no or low contamination unless the scenario explicitly introduces disturbed/industrial legacy areas.
+Generated untouched worlds default to zero contamination. Contamination appears only through explicit scenario-authored disturbed/industrial legacy areas in Phase 1R.
 
 No health/damage simulation is required in this phase.
 
@@ -385,7 +385,7 @@ legacy terrain compatibility view
 
 ### 9.2 Randomness isolation
 
-Generation uses named deterministic random streams derived from the master seed, such as:
+Generation uses named deterministic random streams derived from the master seed:
 
 - `world.topography`;
 - `world.soils`;
@@ -393,7 +393,7 @@ Generation uses named deterministic random streams derived from the master seed,
 - `world.vegetation`;
 - `world.boundaries`.
 
-Hydrology derived from elevation should not consume arbitrary random draws.
+Hydrology derived from elevation does not consume arbitrary random draws.
 
 Changing vegetation implementation must not alter generated elevation, soils or watersheds for the same seed/configuration.
 
@@ -408,14 +408,14 @@ The generator combines:
 - bounded high-frequency local relief;
 - configurable world-form modifiers.
 
-World-form presets may include:
+Phase 1R ships exactly six world-form presets:
 
-- plain;
-- river valley;
-- basin;
-- rolling uplands;
-- ridge/mountain edge;
-- coastal/lowland when supported by the chosen boundary configuration.
+- `plain`;
+- `river_valley`;
+- `basin`;
+- `rolling_uplands`;
+- `ridge_edge`;
+- `coastal_lowland`.
 
 Presets alter generation parameters rather than invoke separate unrelated algorithms.
 
@@ -435,9 +435,11 @@ Generated maps must avoid common procedural failures:
 
 ### 10.1 Drainage graph
 
-Build a deterministic drainage graph from conditioned elevation.
+Phase 1R uses deterministic D8 flow routing over conditioned elevation.
 
-Phase 1R may use a D8-style or equivalent bounded-neighbor flow rule if it preserves:
+For each routable sample, the receiver is the valid neighboring sample with the steepest descending gradient. Equal-gradient ties resolve by one fixed clockwise neighbor precedence defined in `DrainageGraph` tests and documentation.
+
+The drainage graph must preserve:
 
 - deterministic downhill routing;
 - explicit outlets;
@@ -445,15 +447,13 @@ Phase 1R may use a D8-style or equivalent bounded-neighbor flow rule if it prese
 - depression handling;
 - watershed assignment.
 
-Tie-breaking between equally valid downslope directions must be stable and documented.
-
 ### 10.2 Depression handling
 
 Raw noise commonly creates artificial sinks.
 
-Use a deterministic priority-flood or equivalent depression-conditioning pass so that ordinary drainage has a valid path to a sink/outlet unless a depression is intentionally retained as a lake/basin.
+Phase 1R uses a deterministic priority-flood depression-conditioning pass so that ordinary drainage has a valid path to a sink/outlet unless a depression is explicitly retained as a scenario-authored lake/basin.
 
-Conditioning must preserve the source elevation separately if later gameplay needs raw topography diagnostics.
+Conditioning preserves the source elevation separately from conditioned routing elevation.
 
 ### 10.3 Watersheds
 
@@ -479,7 +479,7 @@ A channel stores enough geometry/capacity information for flood routing and late
 
 ### 11.1 Event inputs
 
-Phase 1R supports deterministic design-storm events characterized by at least:
+Phase 1R supports deterministic design-storm events characterized by:
 
 - rainfall depth or rainfall rate profile;
 - event duration;
@@ -495,12 +495,12 @@ For every flood event, model accounting must satisfy within tolerance:
 rainfall input
 =
 infiltration
-+ retained surface/channel storage
-+ flood storage
++ retained channel/surface storage
++ overbank flood storage
 + exported/outlet flow
 ```
 
-Evaporation may be omitted for short design storms if explicitly excluded from the balance.
+Evaporation is excluded from short Phase 1R design-storm events and therefore from the water-balance equation.
 
 ### 11.3 Infiltration
 
@@ -517,7 +517,7 @@ During 1R, undeveloped worlds use physical soil infiltration. The API must allow
 
 Runoff moves through the drainage graph toward channels/outlets.
 
-Channel capacity exceedance contributes to local flood storage/depth.
+Channel capacity exceedance contributes to local overbank flood storage/depth.
 
 Flood depth must be nonnegative and finite.
 
@@ -618,7 +618,7 @@ Existing V7 road tests expect exact `constructionCostPerCell * newCellCount` beh
 
 For migrated legacy-flat terrain, terrain preparation multiplier must evaluate to `1.0` so those costs remain identical.
 
-New 1R-generated worlds may apply terrain cost multipliers through a new construction-cost query without changing the legacy fixture contract.
+New 1R-generated worlds apply terrain cost multipliers through a new construction-cost query without changing the legacy fixture contract.
 
 ### 14.3 Existing direct TerrainGrid fixtures
 
@@ -639,7 +639,7 @@ The 1R implementation may provide conversion utilities, but direct construction 
 During 1R:
 
 - legality continues through `terrain.isBuildable` for compatibility;
-- generated worlds may query a world preparation-cost multiplier when computing new-world road costs;
+- generated worlds query a world preparation-cost multiplier when computing new-world road costs;
 - the road remains cell-authoritative;
 - no curved authoritative road geometry is introduced yet.
 
@@ -649,28 +649,28 @@ Zoning remains cell-oriented in 1R.
 
 It gains no authority over geography.
 
-Environmental/flood zoning overlays belong to later policy/zoning work unless a minimal restriction hook is needed for compatibility.
+Environmental/flood zoning overlays belong to later policy/zoning work unless a minimal restriction hook is required for scenario hard restrictions.
 
 ### 15.3 LotSystem
 
 The current one-cell lot system remains intact.
 
-1R may expose geometry/frontage helpers, but must not replace lot authority or split/merge behavior.
+1R exposes geometry/frontage helpers only as read infrastructure and does not replace lot authority or split/merge behavior.
 
 ### 15.4 Development economics
 
-Terrain may contribute to the existing development `constructionCostIndex` for 1R-generated worlds.
+Terrain contributes to the existing development `constructionCostIndex` for 1R-generated worlds.
 
-The integration should be additive and bounded:
+The Phase 1R integration is multiplicative and bounded:
 
 ```text
-existing utility/service cost factors
-× terrain preparation factor
+existing utility/service construction-cost index
+× terrain preparation multiplier
 ```
 
-or an equivalent mathematically explicit formulation.
+The combined value is clamped at the existing development-system safety bounds unless the implementation plan explicitly narrows those bounds through tests.
 
-Legacy-flat worlds must remain at factor `1.0`.
+Legacy-flat worlds remain at terrain factor `1.0`.
 
 ### 15.5 Renderer
 
@@ -680,13 +680,16 @@ Presentation may consume elevation, water classes and flood overlays, but render
 
 ## 16. Save Format
 
-### 16.1 New save version
+### 16.1 Save V8
 
-1R requires a new save envelope version after implementation begins.
+Phase 1R introduces `SaveV8` with:
 
-The exact numeric version is determined from repository state at implementation time.
+- `saveVersion: 8`;
+- `gameVersion: '0.8.0-world-foundation'`.
 
-The new save owns:
+`serializeCore` becomes V8-primary after the tranche reaches its save-integration step. `hydrateCore` accepts V8 and continues routing older saves through existing V3–V7 migration layers before constructing the 1R compatibility world.
+
+Save V8 owns:
 
 - generation seed/config metadata;
 - authoritative geographic hierarchy;
@@ -716,14 +719,14 @@ No fabricated historical flood series are created.
 
 1R generation itself occurs at world creation, not through arbitrary tick mutation.
 
-Initial typed events may include:
+Phase 1R defines these typed domain events:
 
 - `WorldGenerated`;
 - `WorldMigratedTo1R`;
 - `FloodEventStarted`;
 - `FloodEventResolved`.
 
-Future boundary editing commands are reserved but their topology model should be compatible with:
+Future boundary editing commands are reserved but their topology model must be compatible with:
 
 - `CreateDistrictBoundaryCommand`;
 - `AdjustAdministrativeBoundaryCommand`.
@@ -811,13 +814,14 @@ Test:
 - finite values;
 - slope/aspect consistency;
 - reasonable buildable fraction across reference seeds;
-- named RNG isolation.
+- named RNG isolation;
+- all six world-form presets produce valid worlds.
 
 ### 20.4 Soil/geotechnical tests
 
 Test:
 
-- property ranges by soil class;
+- property ranges by every Phase 1R soil class;
 - deterministic generation;
 - preparation multiplier directionality;
 - poor soil/shallow groundwater increase cost;
@@ -827,12 +831,12 @@ Test:
 
 Test:
 
-- no routed edge climbs above conditioned source elevation beyond tolerance;
+- no D8 routed edge climbs above conditioned source elevation beyond tolerance;
 - every routable sample reaches an outlet/lake/channel sink;
 - accumulation is conserved;
 - watershed membership complete;
-- deterministic tie-breaking;
-- depression conditioning stable.
+- deterministic clockwise tie-breaking;
+- priority-flood conditioning stable.
 
 ### 20.6 Flood tests
 
@@ -855,6 +859,7 @@ Retain and extend:
 - zoning behavior;
 - lot frontage behavior;
 - save V3–V7 migration suites;
+- new Save V8 serialization/hydration/migration tests;
 - isometric renderer compatibility tests;
 - kernel deterministic regression/parity tests.
 
@@ -867,7 +872,7 @@ Add a headless 1R fixture that:
 3. places road/zoning/utility content through existing APIs;
 4. runs simulation ticks;
 5. executes a design storm;
-6. saves;
+6. saves as V8;
 7. reloads;
 8. verifies byte-equivalent authoritative 1R state and unchanged downstream invariants.
 
@@ -880,7 +885,7 @@ Phase 1R is complete only when all gates pass.
 - same seed + config produces byte-equivalent geography;
 - named generation streams are isolated;
 - same flood event/state produces identical flood output;
-- save/load retains authoritative geographic state exactly.
+- Save V8 load retains authoritative geographic state exactly.
 
 ### Geography
 
@@ -897,7 +902,7 @@ Phase 1R is complete only when all gates pass.
 
 ### Hydrology
 
-- conditioned drainage does not route uphill beyond tolerance;
+- conditioned D8 drainage does not route uphill beyond tolerance;
 - watershed coverage is complete;
 - event water balance closes within defined numerical tolerance;
 - flood depth is finite, deterministic and nonnegative.
@@ -962,25 +967,28 @@ src/world/generation/
 
 src/world/migration/
   V7WorldMigration.ts
+
+src/save/
+  saveV8.ts
 ```
 
 Exact file boundaries may be adjusted during planning to keep responsibilities focused and files under normal repository size targets.
 
 ## 23. Implementation Order Constraint
 
-The implementation plan should sequence work so that each layer becomes independently testable:
+The implementation plan must sequence work so that each layer becomes independently testable:
 
 1. geometry primitives and invariants;
 2. hierarchy types/validation;
 3. physical terrain storage;
 4. deterministic terrain generator;
 5. soil/geotechnical model;
-6. drainage/depression conditioning;
+6. priority-flood depression conditioning and D8 routing;
 7. watersheds/channels;
 8. flood event model and water accounting;
 9. `WorldFoundation` composition;
 10. legacy terrain adapter and `SimulationCore` integration;
-11. save/migration;
+11. Save V8 and migration;
 12. spatial index;
 13. development/road terrain-cost hooks;
 14. presentation/diagnostic hooks if needed;
@@ -996,10 +1004,13 @@ The following are deliberate decisions rather than placeholders:
 - `WorldFoundation` is authoritative for physical geography.
 - existing tile roads/lots remain authoritative until 3R/2R respectively.
 - irregular geometry is introduced now as reusable infrastructure and geographic boundary authority.
-- generated hydrology follows terrain-derived deterministic routing.
+- Phase 1R uses the eight locked soil classes defined in section 8.
+- Phase 1R ships the six locked world-form presets defined in section 9.
+- generated hydrology uses priority-flood conditioning plus deterministic D8 routing.
 - flooding has both static susceptibility and event depth.
 - V7 migrations use a neutral legacy-flat preparation-cost profile.
 - poor but usable terrain primarily changes cost rather than becoming categorically unbuildable.
+- Save V8 is the authoritative 1R save envelope.
 - advanced weather/climate and full environmental simulation remain later phases.
 - spatial indexes are derived and rebuildable.
 - generated randomness is domain/namespaced so implementation changes in one generation layer do not perturb unrelated layers.
