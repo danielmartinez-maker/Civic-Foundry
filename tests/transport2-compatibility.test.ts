@@ -56,6 +56,15 @@ test('local-road 3R compatibility projection is field-for-field identical to V7 
   ]), 'n:1,1', 'n:4,1');
 });
 
+test('isolated legacy road cell remains a valid V7-compatible isolated node', () => {
+  const { direct, projected } = parity(roads([
+    { x: 8, y: 8, type: 'arterial' },
+  ], 14), 'n:8,8', 'n:8,8');
+  assert.deepEqual(direct.nodes, [{ id: 'n:8,8', x: 8, y: 8, roadType: 'arterial' }]);
+  assert.deepEqual(projected.nodes, direct.nodes);
+  assert.deepEqual(projected.edges, []);
+});
+
 test('mixed local collector arterial projection preserves source-cell directional edge semantics', () => {
   const { direct } = parity(roads([
     { x: 2, y: 2, type: 'local' },
