@@ -20,6 +20,7 @@ export type KernelDiagnosticSnapshot = Readonly<{
   retainedEvents: number;
   nextEventSequence: number;
   randomStreams: Readonly<Record<string, number>>;
+  faulted: boolean;
 }>;
 
 export class SimulationKernel {
@@ -32,6 +33,7 @@ export class SimulationKernel {
   readonly snapshots = new SnapshotRegistry();
 
   private dirty = true;
+  private fault: Error | null = null;
 
   constructor(options: SimulationKernelOptions) {
     this.clock = options.clock;
@@ -49,35 +51,41 @@ export class SimulationKernel {
   }
 
   registerSystem(system: KernelSystemDefinition): void {
+    if (this.fault) throw new Error(`kernel is faulted: ${this.fault.message}`);
     this.scheduler.register(system);
     this.dirty = true;
   }
 
   compile(): void {
+    if (this.fault) throw new Error(`kernel is faulted: ${this.fault.message}`);
     this.scheduler.compile();
     this.dirty = false;
   }
 
   step(ticks = 1): void {
-    if (!Number.isInteger(ticks) || !Number.isFinite(ticks) || ticks < 0) {
-      throw new Error('ticks must be a non-negative integer');
-    }
+    if (this.fault) throw new Error(`kernel is faulted: ${this.fault.message}`);
+    if (!Number.isInteger(ticks) || !Number.isFinite(ticks) || ticks < 0) throw new Error('ticks must be a non-negative integer');
     if (ticks === 0) return;
     if (this.dirty) this.compile();
 
     for (let index = 0; index < ticks; index++) {
-      this.clock.step(1);
-      const context: KernelStepContext = Object.freeze({
-        tick: this.clock.tick,
-        commands: this.commands,
-        events: this.events,
-        random: this.random,
-        snapshots: this.snapshots,
-      });
+      try {
+        this.clock.step(1);
+        const context: KernelStepContext = Object.freeze({
+          tick: this.clock.tick,
+          commands: this.commands,
+          events: this.events,
+          random: this.random,
+          snapshots: this.snapshots,
+        });
 
-      this.commands.dispatchReady(this.clock.tick, context);
-      for (const system of this.scheduler.dueSystems(this.clock.tick)) system.execute(context);
-      this.invariants.runDue(this.clock.tick, context);
+        this.commands.dispatchReady(this.clock.tick, context);
+        for (const system of this.scheduler.dueSystems(this.clock.tick)) system.execute(context);
+        this.invariants.runDue(this.clock.tick, context);
+      } catch (error) {
+        this.fault = error instanceof Error ? error : new Error(String(error));
+        throw error;
+      }
     }
   }
 
@@ -94,6 +102,7 @@ export class SimulationKernel {
       retainedEvents: this.events.list().length,
       nextEventSequence: this.events.getNextSequence(),
       randomStreams: this.random.snapshot(),
+      faulted: this.fault !== null,
     });
   }
 }
