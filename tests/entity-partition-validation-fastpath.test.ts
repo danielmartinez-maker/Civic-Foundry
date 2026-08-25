@@ -13,24 +13,32 @@ import type {
   UnresolvedEntityReference,
 } from '../src/entities/EntityTypes.ts';
 
-class CountingArray<T> extends Array<T> {
-  iterations = 0;
+type IterationCounter = { iterations: number };
 
-  override [Symbol.iterator](): ArrayIterator<T> {
-    this.iterations++;
-    return super[Symbol.iterator]();
+class CountingArray<T> extends Array<T> {
+  readonly counter: IterationCounter;
+
+  constructor(counter: IterationCounter, ...items: T[]) {
+    super(...items);
+    this.counter = counter;
   }
 
-  reset(): void { this.iterations = 0; }
+  override [Symbol.iterator](): ArrayIterator<T> {
+    this.counter.iterations++;
+    return super[Symbol.iterator]();
+  }
 }
+
+function counter(): IterationCounter { return { iterations: 0 }; }
+function reset(value: IterationCounter): void { value.iterations = 0; }
 
 function countedPartition(
   id: string,
   ownedKinds: readonly EntityKind[],
   revisionKey: string,
   entities: CountingArray<ProjectedEntity>,
-  references = new CountingArray<ProjectedReferenceIntent>(),
-  unresolved = new CountingArray<UnresolvedEntityReference>(),
+  references = new CountingArray<ProjectedReferenceIntent>(counter()),
+  unresolved = new CountingArray<UnresolvedEntityReference>(counter()),
 ): EntityProjectionPartition {
   return {
     id,
@@ -61,23 +69,26 @@ const traffic2: ProjectedEntity = {
 test('identical committed partition objects return without rescanning projection contents', () => {
   const registry = new EntityRegistry();
   const graph = new EntityReferenceGraph();
-  const entities = new CountingArray<ProjectedEntity>(building1);
-  const references = new CountingArray<ProjectedReferenceIntent>();
-  const unresolved = new CountingArray<UnresolvedEntityReference>();
+  const entityCounter = counter();
+  const referenceCounter = counter();
+  const unresolvedCounter = counter();
+  const entities = new CountingArray<ProjectedEntity>(entityCounter, building1);
+  const references = new CountingArray<ProjectedReferenceIntent>(referenceCounter);
+  const unresolved = new CountingArray<UnresolvedEntityReference>(unresolvedCounter);
   const buildings = countedPartition('buildings', ['building'], 'b1', entities, references, unresolved);
 
   commitEntityProjectionPartitions(registry, graph, [buildings]);
-  entities.reset();
-  references.reset();
-  unresolved.reset();
+  reset(entityCounter);
+  reset(referenceCounter);
+  reset(unresolvedCounter);
 
   const beforeRegistryRevision = registry.commitRevision;
   const beforeGraphRevision = graph.commitRevision;
   commitEntityProjectionPartitions(registry, graph, [buildings]);
 
-  assert.equal(entities.iterations, 0, 'steady-state cache hit must not rescan projected entities');
-  assert.equal(references.iterations, 0, 'steady-state cache hit must not rescan projected references');
-  assert.equal(unresolved.iterations, 0, 'steady-state cache hit must not rescan unresolved diagnostics');
+  assert.equal(entityCounter.iterations, 0, 'steady-state cache hit must not rescan projected entities');
+  assert.equal(referenceCounter.iterations, 0, 'steady-state cache hit must not rescan projected references');
+  assert.equal(unresolvedCounter.iterations, 0, 'steady-state cache hit must not rescan unresolved diagnostics');
   assert.equal(registry.commitRevision, beforeRegistryRevision);
   assert.equal(graph.commitRevision, beforeGraphRevision);
 });
@@ -86,9 +97,12 @@ test('a changed partition does not rescan unchanged partition projection content
   const registry = new EntityRegistry();
   const graph = new EntityReferenceGraph();
 
-  const buildingEntities = new CountingArray<ProjectedEntity>(building1);
-  const buildingReferences = new CountingArray<ProjectedReferenceIntent>();
-  const buildingUnresolved = new CountingArray<UnresolvedEntityReference>();
+  const buildingEntityCounter = counter();
+  const buildingReferenceCounter = counter();
+  const buildingUnresolvedCounter = counter();
+  const buildingEntities = new CountingArray<ProjectedEntity>(buildingEntityCounter, building1);
+  const buildingReferences = new CountingArray<ProjectedReferenceIntent>(buildingReferenceCounter);
+  const buildingUnresolved = new CountingArray<UnresolvedEntityReference>(buildingUnresolvedCounter);
   const buildings = countedPartition(
     'buildings',
     ['building'],
@@ -102,25 +116,25 @@ test('a changed partition does not rescan unchanged partition projection content
     'traffic',
     ['traffic-vehicle'],
     't1',
-    new CountingArray<ProjectedEntity>(traffic1),
+    new CountingArray<ProjectedEntity>(counter(), traffic1),
   );
   commitEntityProjectionPartitions(registry, graph, [buildings, trafficBefore]);
 
-  buildingEntities.reset();
-  buildingReferences.reset();
-  buildingUnresolved.reset();
+  reset(buildingEntityCounter);
+  reset(buildingReferenceCounter);
+  reset(buildingUnresolvedCounter);
 
   const trafficAfter = countedPartition(
     'traffic',
     ['traffic-vehicle'],
     't2',
-    new CountingArray<ProjectedEntity>(traffic1, traffic2),
+    new CountingArray<ProjectedEntity>(counter(), traffic1, traffic2),
   );
   commitEntityProjectionPartitions(registry, graph, [buildings, trafficAfter]);
 
-  assert.equal(buildingEntities.iterations, 0, 'unchanged entity partition must not be content-validated again');
-  assert.equal(buildingReferences.iterations, 0, 'unchanged reference partition must not be content-validated again');
-  assert.equal(buildingUnresolved.iterations, 0, 'unchanged unresolved partition must not be content-validated again');
+  assert.equal(buildingEntityCounter.iterations, 0, 'unchanged entity partition must not be content-validated again');
+  assert.equal(buildingReferenceCounter.iterations, 0, 'unchanged reference partition must not be content-validated again');
+  assert.equal(buildingUnresolvedCounter.iterations, 0, 'unchanged unresolved partition must not be content-validated again');
   assert.equal(registry.activeCount, 3);
 });
 
@@ -131,7 +145,7 @@ test('cached fast path still rejects a changed ownership manifest', () => {
     'buildings',
     ['building'],
     'b1',
-    new CountingArray<ProjectedEntity>(building1),
+    new CountingArray<ProjectedEntity>(counter(), building1),
   );
   commitEntityProjectionPartitions(registry, graph, [buildings]);
 
@@ -139,7 +153,7 @@ test('cached fast path still rejects a changed ownership manifest', () => {
     'buildings',
     ['building', 'firm'],
     'b2',
-    new CountingArray<ProjectedEntity>(building1),
+    new CountingArray<ProjectedEntity>(counter(), building1),
   );
   assert.throws(
     () => commitEntityProjectionPartitions(registry, graph, [invalidManifest]),
