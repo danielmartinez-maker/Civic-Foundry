@@ -178,22 +178,33 @@ function insetByEdgeSetbacks(
 function classifyEdges(parcel: Parcel, graph: CadastralGraph): ReadonlyMap<string, EdgeRole> {
   const roles = new Map<string, EdgeRole>();
   const frontage = new Set(parcel.frontageEdgeIds);
-  for (const edgeId of parcel.boundaryEdgeIds) if (frontage.has(edgeId)) roles.set(edgeId, 'front');
+  const frontageIds = parcel.boundaryEdgeIds.filter((edgeId) => frontage.has(edgeId));
+  for (const edgeId of frontageIds) roles.set(edgeId, 'front');
   const nonFrontage = parcel.boundaryEdgeIds.filter((edgeId) => !frontage.has(edgeId));
-  if (frontage.size === 0 || nonFrontage.length === 0) {
+  if (frontageIds.length === 0 || nonFrontage.length === 0) {
     for (const edgeId of nonFrontage) roles.set(edgeId, 'side');
     return roles;
   }
 
-  const frontageMidpoints = [...frontage]
-    .map((edgeId) => edgeMidpoint(graph, edgeId))
-    .filter((point): point is WorldPoint => point !== undefined);
+  const primaryFrontageId = [...frontageIds].sort((left, right) => {
+    const lengthDifference = edgeLength(graph, right) - edgeLength(graph, left);
+    return Math.abs(lengthDifference) > EPSILON ? lengthDifference : left.localeCompare(right);
+  })[0]!;
+  const primaryFrontage = graph.getEdge(primaryFrontageId);
+  const frontageStart = primaryFrontage ? graph.getNode(primaryFrontage.fromNodeId)?.point : undefined;
+  const frontageEnd = primaryFrontage ? graph.getNode(primaryFrontage.toNodeId)?.point : undefined;
+
+  if (!frontageStart || !frontageEnd) {
+    for (const edgeId of nonFrontage) roles.set(edgeId, 'side');
+    return roles;
+  }
+
   let rearId: string | undefined;
   let rearScore = -Infinity;
   for (const edgeId of nonFrontage) {
     const midpoint = edgeMidpoint(graph, edgeId);
-    if (!midpoint || frontageMidpoints.length === 0) continue;
-    const score = Math.min(...frontageMidpoints.map((front) => Math.hypot(midpoint.x - front.x, midpoint.y - front.y)));
+    if (!midpoint) continue;
+    const score = perpendicularDistanceToLine(midpoint, frontageStart, frontageEnd);
     if (score > rearScore + EPSILON || (Math.abs(score - rearScore) <= EPSILON && (rearId === undefined || edgeId < rearId))) {
       rearId = edgeId;
       rearScore = score;
@@ -201,6 +212,14 @@ function classifyEdges(parcel: Parcel, graph: CadastralGraph): ReadonlyMap<strin
   }
   for (const edgeId of nonFrontage) roles.set(edgeId, edgeId === rearId ? 'rear' : 'side');
   return roles;
+}
+
+function perpendicularDistanceToLine(point: WorldPoint, start: WorldPoint, end: WorldPoint): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= EPSILON) return 0;
+  return Math.abs(dx * (point.y - start.y) - dy * (point.x - start.x)) / length;
 }
 
 function inwardHalfPlane(
