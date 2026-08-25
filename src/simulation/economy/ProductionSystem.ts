@@ -27,11 +27,13 @@ export class ProductionSystem {
     const desiredCycles = firm.productivity * viability;
     const inputAvailable = inventories.get(firm.id, consume.commodity).onHand;
     const output = inventories.get(firm.id, produce.commodity);
-    const cycles = Math.max(0, Math.min(desiredCycles, inputAvailable / consume.units, Math.max(0, output.storageCapacity - output.onHand) / produce.units));
+    const inputLimitedCycles = Math.max(0, Math.min(desiredCycles, inputAvailable / consume.units));
+    const outputLimitedCycles = Math.max(0, Math.max(0, output.storageCapacity - output.onHand) / produce.units);
+    const cycles = Math.min(inputLimitedCycles, outputLimitedCycles);
     const consumedUnits = inventories.remove(firm.id, consume.commodity, cycles * consume.units);
     const producedUnits = inventories.add(firm.id, produce.commodity, cycles * produce.units);
     consumed[consume.commodity] = consumedUnits; produced[produce.commodity] = producedUnits;
-    const lost = Math.max(0, desiredCycles - cycles) * produce.units;
-    return { consumed, produced, soldConsumerGoods: 0, lostOutputFromInputShortage: lost, throughput: producedUnits };
+    const lostFromInputShortage = Math.max(0, desiredCycles - inputLimitedCycles) * produce.units;
+    return { consumed, produced, soldConsumerGoods: 0, lostOutputFromInputShortage: lostFromInputShortage, throughput: producedUnits };
   }
 }
