@@ -50,6 +50,15 @@ const residential = Object.freeze([
     complexityFactor: 1.08, riskWeight: 0.35,
   }),
   definition({
+    id: 'residential_mainstreet_mixed', zone: 'residential', intensity: 'medium', constructionTicks: 85,
+    residentCapacity: 22, jobCapacity: 6, powerDemand: 20, waterDemand: 16,
+    garbageGeneration: 7, taxBase: 350,
+    baseConstructionCost: 115_000, softCostRatio: 0.15, baseRent: 650,
+    operatingExpenseRatio: 0.32, baseVacancy: 0.09, baseCapRate: 0.062,
+    minimumAccess: 0.50, minimumUtilityRatio: 0.68, minimumServiceQuality: 0.48,
+    complexityFactor: 1.10, riskWeight: 0.40,
+  }),
+  definition({
     id: 'residential_apartment', zone: 'residential', intensity: 'high', constructionTicks: 100,
     residentCapacity: 72, jobCapacity: 0, powerDemand: 38, waterDemand: 34,
     garbageGeneration: 12, taxBase: 520,
@@ -57,6 +66,15 @@ const residential = Object.freeze([
     operatingExpenseRatio: 0.33, baseVacancy: 0.10, baseCapRate: 0.0575,
     minimumAccess: 0.70, minimumUtilityRatio: 0.85, minimumServiceQuality: 0.65,
     complexityFactor: 1.15, riskWeight: 0.50,
+  }),
+  definition({
+    id: 'residential_urban_mixed', zone: 'residential', intensity: 'high', constructionTicks: 110,
+    residentCapacity: 52, jobCapacity: 16, powerDemand: 50, waterDemand: 40,
+    garbageGeneration: 17, taxBase: 720,
+    baseConstructionCost: 240_000, softCostRatio: 0.18, baseRent: 550,
+    operatingExpenseRatio: 0.36, baseVacancy: 0.10, baseCapRate: 0.06,
+    minimumAccess: 0.68, minimumUtilityRatio: 0.82, minimumServiceQuality: 0.62,
+    complexityFactor: 1.18, riskWeight: 0.52,
   }),
 ] as const);
 
@@ -80,6 +98,15 @@ const commercial = Object.freeze([
     complexityFactor: 1.10, riskWeight: 0.42,
   }),
   definition({
+    id: 'commercial_mixed_block', zone: 'commercial', intensity: 'medium', constructionTicks: 95,
+    residentCapacity: 14, jobCapacity: 18, powerDemand: 30, waterDemand: 20,
+    garbageGeneration: 12, taxBase: 600,
+    baseConstructionCost: 155_000, softCostRatio: 0.16, baseRent: 1_100,
+    operatingExpenseRatio: 0.36, baseVacancy: 0.10, baseCapRate: 0.065,
+    minimumAccess: 0.58, minimumUtilityRatio: 0.72, minimumServiceQuality: 0.52,
+    complexityFactor: 1.12, riskWeight: 0.44,
+  }),
+  definition({
     id: 'commercial_office', zone: 'commercial', intensity: 'high', constructionTicks: 115,
     residentCapacity: 0, jobCapacity: 45, powerDemand: 45, waterDemand: 25,
     garbageGeneration: 16, taxBase: 900,
@@ -87,6 +114,15 @@ const commercial = Object.freeze([
     operatingExpenseRatio: 0.40, baseVacancy: 0.12, baseCapRate: 0.065,
     minimumAccess: 0.72, minimumUtilityRatio: 0.85, minimumServiceQuality: 0.68,
     complexityFactor: 1.18, riskWeight: 0.58,
+  }),
+  definition({
+    id: 'commercial_mixed_tower', zone: 'commercial', intensity: 'high', constructionTicks: 125,
+    residentCapacity: 30, jobCapacity: 38, powerDemand: 60, waterDemand: 40,
+    garbageGeneration: 22, taxBase: 1_120,
+    baseConstructionCost: 310_000, softCostRatio: 0.19, baseRent: 1_000,
+    operatingExpenseRatio: 0.40, baseVacancy: 0.11, baseCapRate: 0.0625,
+    minimumAccess: 0.75, minimumUtilityRatio: 0.88, minimumServiceQuality: 0.70,
+    complexityFactor: 1.22, riskWeight: 0.60,
   }),
 ] as const);
 
@@ -120,22 +156,14 @@ const industrial = Object.freeze([
   }),
 ] as const);
 
-export const BUILDING_VARIANTS: Readonly<Record<ZoneType, readonly BuildingDefinition[]>> = Object.freeze({
-  residential,
-  commercial,
-  industrial,
-});
+export const BUILDING_VARIANTS: Readonly<Record<ZoneType, readonly BuildingDefinition[]>> = Object.freeze({ residential, commercial, industrial });
 
 export const BUILDING_DEFINITIONS: Readonly<Record<ZoneType, BuildingDefinition>> = Object.freeze({
-  residential: residential[0],
-  commercial: commercial[0],
-  industrial: industrial[0],
+  residential: residential[0], commercial: commercial[0], industrial: industrial[0],
 });
 
 export const BUILDING_DEFINITION_BY_ID: Readonly<Record<string, BuildingDefinition>> = Object.freeze(
-  Object.fromEntries(
-    Object.values(BUILDING_VARIANTS).flat().map((item) => [item.id, item]),
-  ) as Record<string, BuildingDefinition>,
+  Object.fromEntries(Object.values(BUILDING_VARIANTS).flat().map((item) => [item.id, item])) as Record<string, BuildingDefinition>,
 );
 
 export function getBuildingDefinition(id: string): BuildingDefinition {
