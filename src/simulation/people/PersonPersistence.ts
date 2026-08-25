@@ -66,12 +66,7 @@ function clonePerson(person: PersonRecord): PersonRecord {
   });
 }
 
-export function serializePeople(store: PersonStore): PersonSavePayload {
-  const people = Object.freeze(store.list().map(clonePerson));
-  return Object.freeze({ people });
-}
-
-export function restorePeople(input: unknown, bridge: PersonEntityBridge): readonly PersonRecord[] {
+export function parsePersonSavePayload(input: unknown): PersonSavePayload {
   if (!isRecord(input)) throw new Error('person save payload must be an object');
   if (!Array.isArray(input.people)) throw new Error('people must be an array');
 
@@ -79,8 +74,18 @@ export function restorePeople(input: unknown, bridge: PersonEntityBridge): reado
   const ids = new Set<string>();
   for (const person of people) {
     if (ids.has(person.id)) throw new Error(`duplicate person: ${person.id}`);
+    if (!person.alive && person.resident) throw new Error(`deceased person cannot remain resident: ${person.id}`);
     ids.add(person.id);
   }
 
-  return bridge.createPeople(people);
+  return Object.freeze({ people: Object.freeze(people) });
+}
+
+export function serializePeople(store: PersonStore): PersonSavePayload {
+  const people = Object.freeze(store.list().map(clonePerson));
+  return Object.freeze({ people });
+}
+
+export function restorePeople(input: unknown, bridge: PersonEntityBridge): readonly PersonRecord[] {
+  return bridge.createPeople(parsePersonSavePayload(input).people);
 }
