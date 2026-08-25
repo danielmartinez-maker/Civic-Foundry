@@ -23,8 +23,10 @@ export type EntityRegistrySnapshot = Readonly<{
 
 export type PreparedEntityProjection = Readonly<{
   activeByLegacyKey: ReadonlyMap<string, EntityRecord>;
-  knownByHandleKey: ReadonlyMap<string, EntityRecord>;
-  highestGenerationByLegacyKey: ReadonlyMap<string, number>;
+  knownUpdatesByHandleKey: ReadonlyMap<string, EntityRecord>;
+  highestGenerationUpdatesByLegacyKey: ReadonlyMap<string, number>;
+  baseKnownByHandleKey: ReadonlyMap<string, EntityRecord>;
+  baseRevision: number;
 }>;
 
 export type KnownEntityView = Readonly<{
@@ -107,19 +109,49 @@ function resolveKnownTokenFrom(
   return cloneHandle(matches[0]!.handle);
 }
 
+function resolvePreparedKnownToken(
+  prepared: PreparedEntityProjection,
+  kind: EntityKind,
+  legacyId: string,
+  incarnationToken: string,
+): EntityHandle | undefined {
+  requireToken(incarnationToken);
+  const matches = new Map<string, EntityRecord>();
+  for (const record of prepared.baseKnownByHandleKey.values()) {
+    if (record.handle.kind === kind
+      && record.handle.legacyId === legacyId
+      && record.incarnationToken === incarnationToken) {
+      matches.set(canonicalHandleKey(record.handle), record);
+    }
+  }
+  for (const record of prepared.knownUpdatesByHandleKey.values()) {
+    const handleKey = canonicalHandleKey(record.handle);
+    if (record.handle.kind === kind
+      && record.handle.legacyId === legacyId
+      && record.incarnationToken === incarnationToken) {
+      matches.set(handleKey, record);
+    } else {
+      matches.delete(handleKey);
+    }
+  }
+  if (matches.size !== 1) return undefined;
+  return cloneHandle(matches.values().next().value!.handle);
+}
+
 export function preparedEntityView(prepared: PreparedEntityProjection): KnownEntityView {
   return Object.freeze({
     resolve<K extends EntityKind>(kind: K, legacyId: string): EntityHandle<K> | undefined {
       return resolveActiveFrom(prepared.activeByLegacyKey, kind, legacyId) as EntityHandle<K> | undefined;
     },
     resolveKnownByToken(kind: EntityKind, legacyId: string, incarnationToken: string): EntityHandle | undefined {
-      return resolveKnownTokenFrom(prepared.knownByHandleKey, kind, legacyId, incarnationToken);
+      return resolvePreparedKnownToken(prepared, kind, legacyId, incarnationToken);
     },
     isActive(handle: EntityHandle): boolean {
       return isActiveIn(prepared.activeByLegacyKey, handle);
     },
     isKnown(handle: EntityHandle): boolean {
-      return isKnownIn(prepared.knownByHandleKey, handle);
+      const handleKey = canonicalHandleKey(handle);
+      return prepared.knownUpdatesByHandleKey.has(handleKey) || prepared.baseKnownByHandleKey.has(handleKey);
     },
   });
 }
@@ -128,6 +160,7 @@ export class EntityRegistry implements KnownEntityView {
   private activeByLegacyKey = new Map<string, EntityRecord>();
   private knownByHandleKey = new Map<string, EntityRecord>();
   private highestGenerationByLegacyKey = new Map<string, number>();
+  private revision = 0;
 
   resolve<K extends EntityKind>(kind: K, legacyId: string): EntityHandle<K> | undefined {
     return resolveActiveFrom(this.activeByLegacyKey, kind, legacyId) as EntityHandle<K> | undefined;
@@ -184,10 +217,20 @@ export class EntityRegistry implements KnownEntityView {
       }
     }
 
-    const nextKnown = new Map<string, EntityRecord>();
-    for (const [key, record] of this.knownByHandleKey) nextKnown.set(key, cloneRecord(record, false));
-    const nextHighest = new Map(this.highestGenerationByLegacyKey);
+    const normalizedByLegacyKey = new Map<string, ProjectedEntity>();
+    for (const entity of normalized) normalizedByLegacyKey.set(canonicalLegacyKey(entity), entity);
+
     const nextActive = new Map<string, EntityRecord>();
+    const knownUpdates = new Map<string, EntityRecord>();
+    const highestUpdates = new Map<string, number>();
+
+    for (const [legacyKey, current] of this.activeByLegacyKey) {
+      const incoming = normalizedByLegacyKey.get(legacyKey);
+      if (!incoming || incoming.incarnationToken !== current.incarnationToken) {
+        const historical = cloneRecord(current, false);
+        knownUpdates.set(canonicalHandleKey(historical.handle), historical);
+      }
+    }
 
     for (const entity of normalized) {
       const legacyKey = canonicalLegacyKey(entity);
@@ -196,25 +239,38 @@ export class EntityRegistry implements KnownEntityView {
       if (current && current.incarnationToken === entity.incarnationToken) {
         record = recordFrom(entity, current.handle.generation);
       } else {
-        const generation = (nextHighest.get(legacyKey) ?? 0) + 1;
+        const generation = (this.highestGenerationByLegacyKey.get(legacyKey) ?? 0) + 1;
         record = recordFrom(entity, generation);
-        nextHighest.set(legacyKey, generation);
+        highestUpdates.set(legacyKey, generation);
       }
       nextActive.set(legacyKey, record);
-      nextKnown.set(canonicalHandleKey(record.handle), record);
+      knownUpdates.set(canonicalHandleKey(record.handle), record);
     }
 
     return Object.freeze({
       activeByLegacyKey: nextActive,
-      knownByHandleKey: nextKnown,
-      highestGenerationByLegacyKey: nextHighest,
+      knownUpdatesByHandleKey: knownUpdates,
+      highestGenerationUpdatesByLegacyKey: highestUpdates,
+      baseKnownByHandleKey: this.knownByHandleKey,
+      baseRevision: this.revision,
     });
   }
 
   commitPrepared(prepared: PreparedEntityProjection): void {
-    this.activeByLegacyKey = new Map(sortedEntries(prepared.activeByLegacyKey).map(([key, record]) => [key, cloneRecord(record, true)]));
-    this.knownByHandleKey = new Map(sortedEntries(prepared.knownByHandleKey).map(([key, record]) => [key, cloneRecord(record)]));
-    this.highestGenerationByLegacyKey = new Map(sortedEntries(prepared.highestGenerationByLegacyKey));
+    if (prepared.baseRevision !== this.revision || prepared.baseKnownByHandleKey !== this.knownByHandleKey) {
+      throw new Error('stale prepared entity projection');
+    }
+
+    this.activeByLegacyKey = new Map(
+      sortedEntries(prepared.activeByLegacyKey).map(([key, record]) => [key, cloneRecord(record, true)]),
+    );
+    for (const [key, record] of sortedEntries(prepared.knownUpdatesByHandleKey)) {
+      this.knownByHandleKey.set(key, cloneRecord(record));
+    }
+    for (const [key, generation] of sortedEntries(prepared.highestGenerationUpdatesByLegacyKey)) {
+      this.highestGenerationByLegacyKey.set(key, generation);
+    }
+    this.revision += 1;
   }
 
   snapshot(): EntityRegistrySnapshot {
