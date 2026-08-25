@@ -58,7 +58,6 @@ export type TripOutcome = Readonly<{
   actualTravelTicks: number;
 }>;
 
-
 export type TrafficStateSnapshot = Readonly<{
   vehicles: readonly TrafficVehicle[];
   outcomes: readonly TripOutcome[];
@@ -91,7 +90,19 @@ export class TrafficSystem {
   }
 
   submitTrip(trip: TripRequest, route: RouteResult, tick: number, freeFlowTicks = route.totalCost): string | null {
-    if (route.edgeIds.length === 0 || trip.travelerWeight <= 0) return null;
+    if (trip.travelerWeight <= 0) return null;
+    if (route.edgeIds.length === 0) {
+      this.completedTrips++;
+      this.recordOutcome({
+        tripId: trip.id,
+        purpose: trip.purpose,
+        travelerWeight: trip.travelerWeight,
+        success: true,
+        freeFlowTicks: Math.max(0, freeFlowTicks),
+        actualTravelTicks: 0,
+      });
+      return null;
+    }
     const id = `vehicle:${this.nextVehicleId++}`;
     this.vehicles.set(id, {
       id,
@@ -120,7 +131,7 @@ export class TrafficSystem {
 
     const queuedNodes = Object.keys(intersections.snapshot()).sort();
     for (const nodeId of queuedNodes) {
-      const released = intersections.stepNode(graph, nodeId);
+      const released = intersections.stepNode(graph, nodeId, tick);
       for (const vehicleId of released) {
         const vehicle = this.vehicles.get(vehicleId);
         if (!vehicle || vehicle.status !== 'queued') continue;
@@ -128,6 +139,7 @@ export class TrafficSystem {
         vehicle.edgeProgressTicks = 0;
         vehicle.status = 'moving';
         delete vehicle.queuedNodeId;
+        intersections.removeVehicle(vehicleId);
       }
     }
 
@@ -184,7 +196,6 @@ export class TrafficSystem {
   getEdgeTravelTime(edge: TransportationEdge): number {
     return this.edgeMetrics.find((metric) => metric.edgeId === edge.id)?.travelTimeTicks ?? edge.freeFlowTicks;
   }
-
 
   snapshotState(): TrafficStateSnapshot {
     return {
