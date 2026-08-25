@@ -329,7 +329,7 @@ export class LegacyV7EntityProjector {
             kind: 'traffic-vehicle',
             legacyId: vehicle.id,
             incarnationToken: `${vehicle.departureTick}|${vehicle.tripId}`,
-            metadata: Object.freeze({ purpose: vehicle.purpose, status: vehicle.status }),
+            metadata: Object.freeze({ purpose: vehicle.purpose }),
           });
           addBuildingWeakReference(
             builder,
