@@ -53,7 +53,7 @@ import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';
 import { EntityRegistry } from '../../entities/EntityRegistry.ts';
 import { EntityReferenceGraph } from '../../entities/EntityReferenceGraph.ts';
 import { LegacyV7EntityProjector } from '../../entities/LegacyV7EntityProjector.ts';
-import { commitEntityProjection } from '../../entities/EntityProjection.ts';
+import { commitEntityProjectionPartitions } from '../../entities/EntityProjection.ts';
 import { assertEntityIntegrity, buildEntityDiagnostics, type EntityDiagnosticsSnapshot } from '../../entities/EntityDiagnostics.ts';
 import type { UnresolvedEntityReference } from '../../entities/EntityTypes.ts';
 
@@ -397,10 +397,10 @@ export class SimulationCore {
   }
 
   private syncEntityProjection(): void {
-    const result = commitEntityProjection(
+    const result = commitEntityProjectionPartitions(
       this.entityRegistry,
       this.entityReferences,
-      this.entityProjector.project(this),
+      this.entityProjector.projectPartitions(this),
     );
     this.lastUnresolvedEntityReferences = result.unresolved;
   }
