@@ -205,14 +205,16 @@ export function preparedEntityPartitionView(
     for (const [key, record] of prepared.knownUpdatesByHandleKey) knownUpdates.set(key, record);
   }
 
+  const resolve = <K extends EntityKind>(kind: K, legacyId: string): EntityHandle<K> | undefined => {
+    const legacyKey = canonicalLegacyKey({ kind, legacyId });
+    const staged = activeUpdates.get(legacyKey);
+    if (staged) return cloneHandle(staged.handle) as EntityHandle<K>;
+    if (removed.has(legacyKey)) return undefined;
+    return registry.resolve(kind, legacyId);
+  };
+
   return Object.freeze({
-    resolve<K extends EntityKind>(kind: K, legacyId: string): EntityHandle<K> | undefined {
-      const legacyKey = canonicalLegacyKey({ kind, legacyId });
-      const staged = activeUpdates.get(legacyKey);
-      if (staged) return cloneHandle(staged.handle) as EntityHandle<K>;
-      if (removed.has(legacyKey)) return undefined;
-      return registry.resolve(kind, legacyId);
-    },
+    resolve,
     resolveKnownByToken(kind: EntityKind, legacyId: string, incarnationToken: string): EntityHandle | undefined {
       requireToken(incarnationToken);
       const matches = new Map<string, EntityHandle>();
@@ -236,7 +238,7 @@ export function preparedEntityPartitionView(
       return cloneHandle(matches.values().next().value!);
     },
     isActive(handle: EntityHandle): boolean {
-      const current = this.resolve(handle.kind, handle.legacyId);
+      const current = resolve(handle.kind, handle.legacyId);
       return current !== undefined && canonicalHandleKey(current) === canonicalHandleKey(handle);
     },
     isKnown(handle: EntityHandle): boolean {
@@ -255,6 +257,10 @@ export class EntityRegistry implements KnownEntityView {
 
   get commitRevision(): number {
     return this.revision;
+  }
+
+  get activeCount(): number {
+    return this.activeByLegacyKey.size;
   }
 
   resolve<K extends EntityKind>(kind: K, legacyId: string): EntityHandle<K> | undefined {
