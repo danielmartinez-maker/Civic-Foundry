@@ -105,10 +105,16 @@ export class SystemScheduler {
       for (let j = i + 1; j < ids.length; j++) {
         const b = this.systems.get(ids[j]!)!;
         if (!cadencesOverlap(a.cadence, b.cadence)) continue;
-        const shared = a.writes.find((domain) => b.writes.includes(domain));
-        if (shared === undefined) continue;
-        if (!reaches(a.id, b.id) && !reaches(b.id, a.id)) {
-          throw new Error(`ambiguous write conflict on domain ${shared}: ${a.id}, ${b.id}`);
+        const ordered = reaches(a.id, b.id) || reaches(b.id, a.id);
+        const sharedWrite = a.writes.find((domain) => b.writes.includes(domain));
+        if (sharedWrite !== undefined && !ordered) {
+          throw new Error(`ambiguous write conflict on domain ${sharedWrite}: ${a.id}, ${b.id}`);
+        }
+        const aWriteBRead = a.writes.find((domain) => b.reads.includes(domain));
+        const bWriteARead = b.writes.find((domain) => a.reads.includes(domain));
+        const readWriteDomain = aWriteBRead ?? bWriteARead;
+        if (readWriteDomain !== undefined && !ordered) {
+          throw new Error(`ambiguous read/write conflict on domain ${readWriteDomain}: ${a.id}, ${b.id}`);
         }
       }
     }
