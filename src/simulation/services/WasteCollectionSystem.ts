@@ -85,6 +85,11 @@ export class WasteCollectionSystem {
 
   applyJobs(jobs: readonly ServiceJob[], facilities: ServiceFacilitySystem, tick: number): void {
     for (const job of jobs.filter((item) => item.type === 'garbage_collection').sort((a, b) => a.id.localeCompare(b.id))) {
+      if (job.status === 'completed' && this.cargoByJob.has(job.id)) {
+        this.processingQueue += this.cargoByJob.get(job.id) ?? 0;
+        this.cargoByJob.delete(job.id);
+        this.jobByBuilding.delete(job.targetBuildingId);
+      }
       const state = this.states.get(job.targetBuildingId);
       if (!state) continue;
       if (job.status === 'servicing' && !this.cargoByJob.has(job.id)) {
@@ -94,11 +99,7 @@ export class WasteCollectionSystem {
         state.missedCollectionCount = 0;
         this.cargoByJob.set(job.id, collected);
       }
-      if (job.status === 'completed' && this.cargoByJob.has(job.id)) {
-        this.processingQueue += this.cargoByJob.get(job.id) ?? 0;
-        this.cargoByJob.delete(job.id);
-        this.jobByBuilding.delete(job.targetBuildingId);
-      }
+      if (job.status === 'failed') this.jobByBuilding.delete(job.targetBuildingId);
     }
     this.processQueue(facilities);
   }
