@@ -60,7 +60,7 @@ function effectiveCapacity(value: number, multiplier: number): number {
 }
 
 export function conditionCapacityMultiplier(state: Pick<UrbanBuildingState, 'conditionScore' | 'lifecycleState'>): number {
-  if (state.lifecycleState === 'construction' || state.lifecycleState === 'abandoned' || state.lifecycleState === 'condemned') return 0;
+  if (state.lifecycleState === 'construction' || state.lifecycleState === 'abandoned') return 0;
   if (state.lifecycleState === 'renovating') return 0.50;
   return state.conditionScore < 50 ? 0.85 : 1;
 }
