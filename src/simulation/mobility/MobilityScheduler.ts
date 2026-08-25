@@ -66,6 +66,7 @@ export type MobilitySchedulerStateSnapshot = Readonly<{
 
 const MAX_ACCEPTABLE: Readonly<Record<MobilityPersonTrip['purpose'], number>> = Object.freeze({ commute: 240, shopping: 180 });
 const QUEUE_PRESSURE_TICKS_PER_VEHICLE_LOAD = 60;
+const CARDINAL = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
 
 export class MobilityScheduler {
   readonly multimodalGraph = new MultimodalRoutingGraph();
@@ -199,8 +200,12 @@ export class MobilityScheduler {
   private routeTrip(trip: MobilityPersonTrip, context: MobilityTickContext): void {
     const start = trip.originRoadNodeId;
     const end = trip.destinationRoadNodeId;
-    if (!start || !end || start === end) {
+    if (!start || !end) {
       this.record({ mode: 'unmet', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: Number.POSITIVE_INFINITY, expectedWaitTicks: 0 });
+      return;
+    }
+    if (start === end) {
+      this.record({ mode: 'car', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: 0, expectedWaitTicks: 0 });
       return;
     }
 
@@ -222,7 +227,7 @@ export class MobilityScheduler {
       this.record({ mode: 'car', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: choice.chosenCost, expectedWaitTicks: 0 });
       return;
     }
-    if (choice.mode === 'transit' && transitPlan && this.enqueueTransitTrip(trip, transitPlan)) {
+    if (choice.mode === 'transit' && transitPlan && this.enqueueTransitTrip(trip, transitPlan, context.transit)) {
       this.record({ mode: 'transit', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: choice.chosenCost, expectedWaitTicks: transitPlan.expectedWaitTicks });
       return;
     }
@@ -246,7 +251,7 @@ export class MobilityScheduler {
     });
   }
 
-  private enqueueTransitTrip(trip: MobilityPersonTrip, plan: JourneyPlan): boolean {
+  private enqueueTransitTrip(trip: MobilityPersonTrip, plan: JourneyPlan, transit: TransitNetworkSystem): boolean {
     const boardingLegs = plan.legs.filter((leg) => leg.kind === 'board' && leg.lineId);
     const alightLegs = plan.legs.filter((leg) => leg.kind === 'alight' && leg.lineId);
     if (boardingLegs.length === 0 || boardingLegs.length !== alightLegs.length) return false;
@@ -258,7 +263,7 @@ export class MobilityScheduler {
       if (!board?.lineId || !alight?.lineId || board.lineId !== alight.lineId) return false;
       transfers.push({
         lineId: board.lineId,
-        directionKey: this.directionForPlan(plan, board.lineId, board.to, alight.from),
+        directionKey: this.directionForPlan(plan, transit, board.lineId, board.to),
         boardingStopId: this.stopIdFromNode(board.from),
         alightingStopId: this.stopIdFromNode(alight.to),
       });
@@ -272,7 +277,7 @@ export class MobilityScheduler {
       personTripId: trip.id,
       travelerWeight: trip.travelerWeight,
       lineId: firstBoard.lineId,
-      directionKey: this.directionForPlan(plan, firstBoard.lineId, firstBoard.to, firstAlight.from),
+      directionKey: this.directionForPlan(plan, transit, firstBoard.lineId, firstBoard.to),
       boardingStopId: this.stopIdFromNode(firstBoard.from),
       alightingStopId: this.stopIdFromNode(firstAlight.to),
       destinationRoadNodeId: trip.destinationRoadNodeId,
@@ -282,12 +287,17 @@ export class MobilityScheduler {
     return this.passengers.enqueue(cohort.boardingStopId, cohort.lineId, cohort.directionKey, cohort);
   }
 
-  private directionForPlan(plan: JourneyPlan, lineId: string, platformFrom: string, platformTo: string): 'forward' | 'reverse' {
+  private directionForPlan(plan: JourneyPlan, transit: TransitNetworkSystem, lineId: string, platformFrom: string): 'forward' | 'reverse' {
     const ride = plan.legs.find((leg) => leg.kind === 'ride' && leg.lineId === lineId && leg.from === platformFrom);
     if (!ride) return 'forward';
+    const line = transit.getLine(lineId);
+    if (!line) return 'forward';
     const fromStop = this.stopIdFromPlatform(ride.from);
     const toStop = this.stopIdFromPlatform(ride.to);
-    return fromStop.localeCompare(toStop) <= 0 ? 'forward' : 'reverse';
+    const fromIndex = line.stopIds.indexOf(fromStop);
+    const toIndex = line.stopIds.indexOf(toStop);
+    if (fromIndex < 0 || toIndex < 0) return 'forward';
+    return toIndex >= fromIndex ? 'forward' : 'reverse';
   }
 
   private stopIdFromNode(nodeId: string): string {
@@ -304,25 +314,32 @@ export class MobilityScheduler {
     const to = context.transit.getStop(toStopId);
     if (!from || !to) return Number.POSITIVE_INFINITY;
     if (mode === 'metro') return Math.max(10, (Math.abs(from.x - to.x) + Math.abs(from.y - to.y)) * 5);
-    const start = this.accessNode(from.x, from.y, context.roadGraph);
-    const end = this.accessNode(to.x, to.y, context.roadGraph);
-    if (!start || !end) return Number.POSITIVE_INFINITY;
-    const route = context.pathfinding.findRoute(context.roadGraph, start, end, {
-      edgeCost: context.roadTravelTime,
-      costKey: `mobility-segment:${context.costEpoch ?? Math.floor(context.tick / 10)}`,
-    });
+    const starts = this.accessNodes(from.x, from.y, context.roadGraph);
+    const ends = this.accessNodes(to.x, to.y, context.roadGraph);
+    if (starts.length === 0 || ends.length === 0) return Number.POSITIVE_INFINITY;
+    let route: RouteResult | null = null;
+    for (const start of starts) {
+      for (const end of ends) {
+        const candidate = context.pathfinding.findRoute(context.roadGraph, start, end, {
+          edgeCost: context.roadTravelTime,
+          costKey: `mobility-segment:${context.costEpoch ?? Math.floor(context.tick / 10)}`,
+        });
+        if (!candidate) continue;
+        if (!route || candidate.totalCost < route.totalCost - 1e-9
+          || (Math.abs(candidate.totalCost - route.totalCost) <= 1e-9 && candidate.edgeIds.join('|').localeCompare(route.edgeIds.join('|')) < 0)) route = candidate;
+      }
+    }
     if (!route) return Number.POSITIVE_INFINITY;
     const raw = route.totalCost;
     const free = route.edgeIds.reduce((sum, edgeId) => sum + (context.roadGraph.getEdge(edgeId)?.freeFlowTicks ?? 0), 0);
     return mode === 'brt' ? free + (raw - free) * 0.35 : raw;
   }
 
-  private accessNode(x: number, y: number, graph: TransportationGraph): string | null {
-    const candidates = [graph.findNodeAt(x, y - 1), graph.findNodeAt(x + 1, y), graph.findNodeAt(x, y + 1), graph.findNodeAt(x - 1, y)]
-      .filter((node): node is NonNullable<typeof node> => node !== undefined)
-      .map((node) => node.id)
+  private accessNodes(x: number, y: number, graph: TransportationGraph): string[] {
+    return CARDINAL
+      .map(([dx, dy]) => graph.findNodeAt(x + dx, y + dy)?.id)
+      .filter((id): id is string => id !== undefined)
       .sort();
-    return candidates[0] ?? null;
   }
 
   private capacityPressureTicks(): number {
