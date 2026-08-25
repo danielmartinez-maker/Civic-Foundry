@@ -99,7 +99,7 @@ export class EconomyScheduler{
       if(!this.freightVehicles.hasDispatchCapacity())break;
       const destinationNodes=this.destinationNodes(order,input.graph);if(destinationNodes.length===0)continue;
       const candidates=this.candidates(order);
-      const match=this.freightDemand.matchOrder(order,c=>c,candidate=>{const routed=this.bestCandidateRoute(candidate,destinationNodes,input);return routed?this.routeCost(routed.route,input):Infinity;});
+      const match=this.freightDemand.matchOrder(order,candidates,candidate=>{const routed=this.bestCandidateRoute(candidate,destinationNodes,input);return routed?this.routeCost(routed.route,input):Infinity;});
       if(!match)continue;
       const routed=this.bestCandidateRoute({kind:match.originKind,id:match.originId,available:match.quantity},destinationNodes,input);if(!routed)continue;
       this.dispatchMatch(order,match,routed,input);
