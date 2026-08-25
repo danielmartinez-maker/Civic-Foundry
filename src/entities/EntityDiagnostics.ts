@@ -64,25 +64,18 @@ export function buildEntityDiagnostics(
 }
 
 export function assertEntityIntegrity(registry: EntityRegistry, graph: EntityReferenceGraph): void {
-  const snapshot = registry.snapshot();
+  const active = registry.listActive();
   const activeLegacyKeys = new Set<string>();
-  const knownHandleKeys = new Set<string>();
 
-  for (const record of snapshot.known) {
-    if (!Number.isInteger(record.handle.generation) || record.handle.generation < 1) {
-      throw new Error(`invalid entity generation: ${record.handle.generation}`);
+  for (const handle of active) {
+    if (!Number.isInteger(handle.generation) || handle.generation < 1) {
+      throw new Error(`invalid entity generation: ${handle.generation}`);
     }
-    const handleKey = canonicalHandleKey(record.handle);
-    if (knownHandleKeys.has(handleKey)) throw new Error(`duplicate known entity handle: ${handleKey}`);
-    knownHandleKeys.add(handleKey);
-  }
-
-  for (const record of snapshot.active) {
-    const legacyKey = canonicalLegacyKey(record.handle);
+    const legacyKey = canonicalLegacyKey(handle);
     if (activeLegacyKeys.has(legacyKey)) throw new Error(`duplicate active entity identity: ${legacyKey}`);
     activeLegacyKeys.add(legacyKey);
-    if (!registry.isKnown(record.handle)) {
-      throw new Error(`active entity is not present in known registry: ${canonicalHandleKey(record.handle)}`);
+    if (!registry.isKnown(handle)) {
+      throw new Error(`active entity is not present in known registry: ${canonicalHandleKey(handle)}`);
     }
   }
 
