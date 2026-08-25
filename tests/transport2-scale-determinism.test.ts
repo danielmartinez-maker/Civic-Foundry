@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 import { RoadSystem, type RoadCell } from '../src/world/roads/RoadSystem.ts';
+import { TransportationGraph } from '../src/simulation/traffic/TransportationGraph.ts';
 import { LegacyRoadNetworkAdapter } from '../src/simulation/transportation/LegacyRoadNetworkAdapter.ts';
+import { LegacyTransportationGraphAdapter } from '../src/simulation/transportation/LegacyTransportationGraphAdapter.ts';
 import { TransportNetworkStore } from '../src/simulation/transportation/TransportNetworkStore.ts';
 import { buildLaneGroups } from '../src/simulation/transportation/LaneGroupBuilder.ts';
 import { buildRoutingTopology } from '../src/simulation/transportation/RoutingTopology.ts';
@@ -84,7 +86,7 @@ test('canonical authority snapshots and route results are byte-identical under s
   assert.equal(JSON.stringify(routeA), JSON.stringify(routeB));
 });
 
-test('10,000-road-cell legacy projection performs one bounded cardinal scan and reuses unchanged revisions', () => {
+test('10,000-road-cell legacy and compatibility projections stay bounded and reuse unchanged revisions', () => {
   const size = 100;
   const roadCells: RoadCell[] = [];
   for (let y = 0; y < size; y++) {
@@ -113,11 +115,51 @@ test('10,000-road-cell legacy projection performs one bounded cardinal scan and 
   assert.equal(adapter.diagnostics.roadCellsVisited, 10_000);
   assert.equal(adapter.diagnostics.adjacencyChecks, 40_000);
 
+  const directGraph = new TransportationGraph();
+  const directStarted = performance.now();
+  assert.equal(directGraph.rebuildIfNeeded(roads), true);
+  const directElapsedMs = performance.now() - directStarted;
+
+  const compatibilitySource = new LegacyRoadNetworkAdapter();
+  const compatibilityStarted = performance.now();
+  const authorityProjection = compatibilitySource.projectAuthorityIfNeeded(roads);
+  const compatibilityProjection = new LegacyTransportationGraphAdapter().project(authorityProjection);
+  const compatibilityElapsedMs = performance.now() - compatibilityStarted;
+
+  assert.equal(authorityProjection.authority.movements.length, 117_608);
+  assert.equal(compatibilityProjection.nodes.length, directGraph.nodes.length);
+  assert.equal(compatibilityProjection.edges.length, directGraph.edges.length);
+  assert.equal(compatibilityProjection.nodes.length, 10_000);
+  assert.equal(compatibilityProjection.edges.length, 39_600);
+  assert.equal(compatibilityProjection.sourceRoadRevision, 31);
+  assert.equal(compatibilitySource.diagnostics.builds, 1);
+  assert.equal(compatibilitySource.diagnostics.roadCellsVisited, 10_000);
+  assert.equal(compatibilitySource.diagnostics.adjacencyChecks, 40_000);
+
+  for (const index of [0, Math.floor(directGraph.nodes.length / 2), directGraph.nodes.length - 1]) {
+    assert.deepEqual(compatibilityProjection.nodes[index], directGraph.nodes[index]);
+  }
+  for (const index of [0, Math.floor(directGraph.edges.length / 2), directGraph.edges.length - 1]) {
+    assert.deepEqual(compatibilityProjection.edges[index], directGraph.edges[index]);
+  }
+
+  const authorityAgain = compatibilitySource.projectAuthorityIfNeeded(roads);
+  assert.strictEqual(authorityAgain, authorityProjection);
+  assert.equal(compatibilitySource.diagnostics.builds, 1);
+  assert.equal(compatibilitySource.diagnostics.roadCellsVisited, 10_000);
+  assert.equal(compatibilitySource.diagnostics.adjacencyChecks, 40_000);
+
   console.log('# TRANSPORT3R_NETWORK_SCALE', JSON.stringify({
     roadCells: 10_000,
     segments: first.physical.segments.length,
     carriageways: first.physical.carriageways.length,
+    movements: authorityProjection.authority.movements.length,
     adjacencyChecks: adapter.diagnostics.adjacencyChecks,
-    elapsedMs: Number(elapsedMs.toFixed(2)),
+    physicalProjectionMs: Number(elapsedMs.toFixed(2)),
+    directV7GraphMs: Number(directElapsedMs.toFixed(2)),
+    compatibilityPathMs: Number(compatibilityElapsedMs.toFixed(2)),
+    compatibilityToDirectRatio: directElapsedMs > 0
+      ? Number((compatibilityElapsedMs / directElapsedMs).toFixed(2))
+      : null,
   }));
 });
