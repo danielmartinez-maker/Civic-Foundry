@@ -50,6 +50,8 @@ import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/Hous
 import { HousingTenureSystem, type HousingTenureSnapshot } from '../housing/HousingTenureSystem.ts';
 import { HousingRelocationSystem, type HousingRelocationSnapshot, type HousingRelocationState } from '../housing/HousingRelocationSystem.ts';
 import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';
+import { UrbanFabricDomain } from '../urban/UrbanFabricDomain.ts';
+import { buildUrbanBuildingView, legacyUrbanStateForBuilding, type UrbanBuildingView } from '../urban/UrbanBuildingView.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -85,6 +87,7 @@ export class SimulationCore {
   readonly zoning: ZoningSystem;
   readonly lots: LotSystem;
   readonly buildings: BuildingSystem;
+  readonly urbanFabric: UrbanFabricDomain;
   readonly population: PopulationSystem;
   readonly employment: EmploymentSystem;
   readonly taxes: TaxSystem;
@@ -164,6 +167,30 @@ export class SimulationCore {
     return this.developmentPolicy.snapshot();
   }
 
+  initializeUrbanFabricFromLegacy(migrationTick: number): void {
+    if (!Number.isInteger(migrationTick) || migrationTick < 0) throw new Error('migration tick must be a non-negative integer');
+    this.urbanFabric.restoreState({ buildings: [] });
+    const buildings = this.buildings.list().sort((a, b) => a.id.localeCompare(b.id));
+    for (const building of buildings) this.urbanFabric.install(legacyUrbanStateForBuilding(building, migrationTick));
+    this.urbanFabric.validateAgainst(new Set(buildings.map((building) => building.id)), { requireAllLiveBuildings: true });
+  }
+
+  urbanBuildingView(buildingId: string): UrbanBuildingView | undefined {
+    const building = this.buildings.getById(buildingId);
+    const state = this.urbanFabric.get(buildingId);
+    if (!building || !state) return undefined;
+    return buildUrbanBuildingView(building, state);
+  }
+
+  urbanBuildingViews(): UrbanBuildingView[] {
+    return this.buildings.list()
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .flatMap((building) => {
+        const state = this.urbanFabric.get(building.id);
+        return state ? [buildUrbanBuildingView(building, state)] : [];
+      });
+  }
+
   constructor(options: SimulationCoreOptions = {}) {
     this.seed = options.seed ?? 1;
     this.random = new SeededRandom(this.seed);
@@ -175,6 +202,7 @@ export class SimulationCore {
     this.zoning = new ZoningSystem(this.terrain, this.roads);
     this.lots = new LotSystem();
     this.buildings = new BuildingSystem();
+    this.urbanFabric = new UrbanFabricDomain();
     this.population = new PopulationSystem();
     this.employment = new EmploymentSystem();
     this.taxes = new TaxSystem();
