@@ -1,6 +1,8 @@
 import {
+  canonicalHandleKey,
   canonicalLegacyKey,
   ordinalCompare,
+  type EntityHandle,
   type EntityKind,
   type ProjectedEntity,
   type ProjectedReferenceIntent,
@@ -18,6 +20,7 @@ import {
   type EntityReference,
   type PreparedReferencePartition,
 } from './EntityReferenceGraph.ts';
+import { markEntityIntegrityValidated } from './EntityDiagnostics.ts';
 
 export type EntityProjectionData = Readonly<{
   entities: readonly ProjectedEntity[];
@@ -259,6 +262,35 @@ function copyUnresolvedByPartition(
   return result;
 }
 
+function validatePartitionLifecycle(
+  graph: EntityReferenceGraph,
+  preparedRegistryPartitions: readonly PreparedEntityPartitionProjection[],
+  preparedGraphPartitions: readonly PreparedReferencePartition[],
+): void {
+  const reconciledSourceKeys = new Set<string>();
+  for (const prepared of preparedGraphPartitions) {
+    for (const sourceKey of prepared.replacementsBySourceKey.keys()) reconciledSourceKeys.add(sourceKey);
+    for (const sourceKey of prepared.removedSourceKeys) reconciledSourceKeys.add(sourceKey);
+  }
+
+  const deactivated = new Map<string, EntityHandle>();
+  for (const prepared of preparedRegistryPartitions) {
+    for (const record of prepared.knownUpdatesByHandleKey.values()) {
+      if (!record.active) deactivated.set(canonicalHandleKey(record.handle), record.handle);
+    }
+  }
+
+  for (const [targetKey, target] of [...deactivated.entries()].sort(([a], [b]) => ordinalCompare(a, b))) {
+    for (const reference of graph.incoming(target)) {
+      if (reference.semantics !== 'strong' && reference.semantics !== 'owned') continue;
+      if (reconciledSourceKeys.has(canonicalHandleKey(reference.source))) continue;
+      throw new Error(
+        `${reference.semantics} inbound entity reference prevents target replacement or deletion: ${targetKey}`,
+      );
+    }
+  }
+}
+
 export function commitEntityProjection(
   registry: EntityRegistry,
   graph: EntityReferenceGraph,
@@ -335,8 +367,10 @@ export function commitEntityProjectionPartitions(
     );
   }
 
+  validatePartitionLifecycle(graph, preparedRegistryPartitions, preparedGraphPartitions);
   registry.commitPreparedPartitions(preparedRegistryPartitions);
   graph.commitPreparedPartitions(preparedGraphPartitions);
+  markEntityIntegrityValidated(registry, graph);
 
   const unresolved = Object.freeze(
     normalized
