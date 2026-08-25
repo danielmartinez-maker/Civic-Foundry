@@ -8,7 +8,9 @@ import type { WorldSize } from './isometric/IsometricProjection.ts';
 
 export class VehicleRenderer {
   private readonly painter = new SpritePainter();
-  constructor(private readonly assets: AssetRegistry) {}
+  private readonly assets: AssetRegistry;
+
+  constructor(assets: AssetRegistry) { this.assets = assets; }
 
   draw(ctx: CanvasRenderingContext2D, graph: TransportationGraph, traffic: TrafficSystem, camera: IsometricCamera, worldSize: WorldSize): void {
     const metricByEdge = new Map(traffic.edgeMetrics.map((metric) => [metric.edgeId, metric]));
