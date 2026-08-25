@@ -1,6 +1,7 @@
 import {
   polygonArea,
-  polygonIntersection,
+  polygonDifference,
+  polygonUnion,
   type MultiPolygon,
   type PolygonRing,
   type WorldPoint,
@@ -64,6 +65,9 @@ export class BuildableEnvelopeSystem {
     const buildablePieces = dimensionallyEligible
       ? insetByEdgeSetbacks(parcel, parcelPolygon, graph, rules)
       : Object.freeze([]) as MultiPolygon;
+    if (buildablePieces.length > 1) {
+      limitingConstraints.push(constraint('disconnected-envelope', 1, buildablePieces.length, district.id));
+    }
     const buildableFootprint = largestRing(buildablePieces);
     const geometryFloorplate = buildableFootprint.length >= 3 ? polygonArea(buildableFootprint) : 0;
     const zoningFloorArea = parcel.areaM2 * rules.maxFAR;
@@ -151,12 +155,12 @@ function insetByEdgeSetbacks(
   if (ring.length < 3) return Object.freeze([]);
   const roleByEdge = classifyEdges(parcel, graph);
   const ccw = signedDoubleArea(ring) > 0;
-  let current: MultiPolygon = Object.freeze([ring]);
   const extent = polygonExtent(ring) + Math.max(
     rules.frontSetbackMeters,
     rules.rearSetbackMeters,
     rules.sideSetbackMeters,
-  ) + 1000;
+  ) + 1;
+  const exclusions: PolygonRing[] = [];
 
   for (let index = 0; index < ring.length; index += 1) {
     const start = ring[index]!;
@@ -169,10 +173,12 @@ function insetByEdgeSetbacks(
         ? rules.rearSetbackMeters
         : rules.sideSetbackMeters;
     if (setback <= 0) continue;
-    current = polygonIntersection(current, inwardHalfPlane(start, end, setback, ccw, extent));
-    if (current.length === 0) break;
+    exclusions.push(inwardExclusionStrip(start, end, setback, ccw, extent));
   }
-  return current;
+
+  if (exclusions.length === 0) return Object.freeze([ring]);
+  const excludedArea = polygonUnion(exclusions);
+  return polygonDifference(ring, excludedArea);
 }
 
 function classifyEdges(parcel: Parcel, graph: CadastralGraph): ReadonlyMap<string, EdgeRole> {
@@ -222,7 +228,7 @@ function perpendicularDistanceToLine(point: WorldPoint, start: WorldPoint, end: 
   return Math.abs(dx * (point.y - start.y) - dy * (point.x - start.x)) / length;
 }
 
-function inwardHalfPlane(
+function inwardExclusionStrip(
   start: WorldPoint,
   end: WorldPoint,
   setback: number,
@@ -236,13 +242,12 @@ function inwardHalfPlane(
   const tangent = { x: dx / length, y: dy / length };
   const leftNormal = { x: -tangent.y, y: tangent.x };
   const normal = ccw ? leftNormal : { x: -leftNormal.x, y: -leftNormal.y };
-  const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
-  const base = { x: midpoint.x + normal.x * setback, y: midpoint.y + normal.y * setback };
-  const a = { x: base.x - tangent.x * extent, y: base.y - tangent.y * extent };
-  const b = { x: base.x + tangent.x * extent, y: base.y + tangent.y * extent };
-  const c = { x: b.x + normal.x * extent * 2, y: b.y + normal.y * extent * 2 };
-  const d = { x: a.x + normal.x * extent * 2, y: a.y + normal.y * extent * 2 };
-  return Object.freeze([a, b, c, d]);
+  const outerStart = { x: start.x - tangent.x * extent, y: start.y - tangent.y * extent };
+  const outerEnd = { x: end.x + tangent.x * extent, y: end.y + tangent.y * extent };
+  const innerEnd = { x: outerEnd.x + normal.x * setback, y: outerEnd.y + normal.y * setback };
+  const innerStart = { x: outerStart.x + normal.x * setback, y: outerStart.y + normal.y * setback };
+  const strip = [outerStart, outerEnd, innerEnd, innerStart];
+  return Object.freeze(signedDoubleArea(strip) >= 0 ? strip : [...strip].reverse());
 }
 
 function findEdgeForSegment(
