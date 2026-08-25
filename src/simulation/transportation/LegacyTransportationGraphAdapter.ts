@@ -5,7 +5,6 @@ import type {
   TransportationNode,
 } from '../traffic/TransportationGraph.ts';
 import type { LegacyAuthorityProjection } from './LegacyRoadNetworkAdapter.ts';
-import { buildLaneGroups } from './LaneGroupBuilder.ts';
 import type { RoadClass } from './TransportNetworkTypes.ts';
 
 function asLegacyRoadType(roadClass: RoadClass): RoadType {
@@ -36,12 +35,12 @@ export class LegacyTransportationGraphAdapter {
       };
     });
 
-    const laneGroups = buildLaneGroups(authority);
     const capacityByCarriageway = new Map<string, number>();
-    for (const group of laneGroups) {
+    for (const lane of authority.lanes) {
+      if (lane.operatingState !== 'open' || lane.kind === 'parking' || lane.kind === 'shoulder') continue;
       capacityByCarriageway.set(
-        group.carriagewayId,
-        (capacityByCarriageway.get(group.carriagewayId) ?? 0) + group.capacityPerMinute,
+        lane.carriagewayId,
+        (capacityByCarriageway.get(lane.carriagewayId) ?? 0) + lane.baseCapacityPerMinute,
       );
     }
 
