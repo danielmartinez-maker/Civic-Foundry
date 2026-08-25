@@ -29,18 +29,9 @@ jobs:
 
           projector = Path('src/entities/LegacyV7EntityProjector.ts')
           text = projector.read_text()
-          old = '''  private resetForSource(source: LegacyV7EntitySource): void {
-            if (source === this.lastSource) return;
-            this.lastSource = source;
-            this.listCache.clear();
-            this.partitionCache.clear();
-            this.lastProjectedPartitions = undefined;
-            this.lastComposedPartitions = undefined;
-            this.lastProjection = undefined;
-            this.volatileRevision = 0;
-          }
-          '''
-          new = '''  sourceRevisionKey(source: LegacyV7EntitySource): string | undefined {
+          start = text.index('  private resetForSource(source: LegacyV7EntitySource): void {')
+          end = text.index('\n\n  private cachedList', start)
+          replacement = '''  sourceRevisionKey(source: LegacyV7EntitySource): string | undefined {
             return stableRevisionKey([
               source.lots.entityRevision,
               source.buildings.entityRevision,
@@ -69,44 +60,23 @@ jobs:
             if (source === this.lastSource) return;
             this.invalidate();
             this.lastSource = source;
-          }
-          '''
-          if old not in text:
-              raise SystemExit('projector resetForSource block not found')
-          projector.write_text(text.replace(old, new, 1))
+          }'''
+          projector.write_text(text[:start] + replacement + text[end:])
 
           core = Path('src/simulation/core/SimulationCore.ts')
           text = core.read_text()
-          old = '''  private readonly entityProjector: LegacyV7EntityProjector;
-            private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;
-            private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);
-          '''
-          new = '''  private readonly entityProjector: LegacyV7EntityProjector;
-            private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;
-            private lastSyncedEntitySourceRevisionKey: string | undefined;
-            private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);
-          '''
-          if old not in text:
-              raise SystemExit('SimulationCore entity fields block not found')
-          text = text.replace(old, new, 1)
+          field = '  private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;\n'
+          if text.count(field) != 1:
+              raise SystemExit('SimulationCore lastSyncedEntityPartitions field match count != 1')
+          text = text.replace(
+              field,
+              field + '  private lastSyncedEntitySourceRevisionKey: string | undefined;\n',
+              1,
+          )
 
-          old = '''  rebuildEntityProjection(): void {
-            this.syncEntityProjection();
-          }
-
-          private syncEntityProjection(): void {
-            const partitions = this.entityProjector.projectPartitions(this);
-            if (partitions === this.lastSyncedEntityPartitions) return;
-            const result = commitEntityProjectionPartitions(
-              this.entityRegistry,
-              this.entityReferences,
-              partitions,
-            );
-            this.lastUnresolvedEntityReferences = result.unresolved;
-            this.lastSyncedEntityPartitions = partitions;
-          }
-          '''
-          new = '''  rebuildEntityProjection(): void {
+          start = text.index('  rebuildEntityProjection(): void {')
+          end = text.index('\n\n  private runLegacyV7Tick(): void {', start)
+          replacement = '''  rebuildEntityProjection(): void {
             this.lastSyncedEntitySourceRevisionKey = undefined;
             this.entityProjector.invalidate();
             this.syncEntityProjection();
@@ -130,11 +100,8 @@ jobs:
             this.lastUnresolvedEntityReferences = result.unresolved;
             this.lastSyncedEntityPartitions = partitions;
             this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;
-          }
-          '''
-          if old not in text:
-              raise SystemExit('SimulationCore rebuild/sync block not found')
-          core.write_text(text.replace(old, new, 1))
+          }'''
+          core.write_text(text[:start] + replacement + text[end:])
           PY
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
