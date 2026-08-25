@@ -12,6 +12,7 @@ import { ordinalCompare, type LegacyEntityKey } from './EntityTypes.ts';
 import { EntityProjectionBuilder, type EntityProjectionData } from './EntityProjection.ts';
 
 type Revisioned = Readonly<{ entityRevision?: number }>;
+type CachedList = Readonly<{ revision: number; items: readonly Readonly<{ id: string }>[] }>;
 
 export type LegacyV7EntitySource = {
   lots: Revisioned & { list: () => Lot[] };
@@ -87,10 +88,32 @@ function addBuildingWeakReference(
 }
 
 export class LegacyV7EntityProjector {
+  private lastSource: LegacyV7EntitySource | undefined;
   private lastRevisionKey: string | undefined;
   private lastProjection: EntityProjectionData | undefined;
+  private readonly listCache = new Map<string, CachedList>();
+
+  private cachedList<T extends Readonly<{ id: string }>>(
+    name: string,
+    revision: number | undefined,
+    loader: () => readonly T[],
+  ): T[] {
+    if (revision === undefined) return sortedById(loader());
+    const cached = this.listCache.get(name);
+    if (cached?.revision === revision) return cached.items as T[];
+    const items = sortedById(loader());
+    this.listCache.set(name, Object.freeze({ revision, items: Object.freeze(items) }));
+    return items;
+  }
 
   project(source: LegacyV7EntitySource): EntityProjectionData {
+    if (source !== this.lastSource) {
+      this.lastSource = source;
+      this.lastRevisionKey = undefined;
+      this.lastProjection = undefined;
+      this.listCache.clear();
+    }
+
     const currentRevisionKey = revisionKey(source);
     if (currentRevisionKey !== undefined
       && currentRevisionKey === this.lastRevisionKey
@@ -99,17 +122,17 @@ export class LegacyV7EntityProjector {
     }
 
     const builder = new EntityProjectionBuilder();
-    const lots = sortedById(source.lots.list());
-    const buildings = sortedById(source.buildings.list());
-    const firms = sortedById(source.economyDomain.firms.list());
-    const utilityFacilities = sortedById(source.utilities.listFacilities());
-    const serviceFacilities = sortedById(source.services.listFacilities());
-    const transitStops = sortedById(source.transit.listStops());
-    const transitLines = sortedById(source.transit.listLines());
-    const trafficVehicles = sortedById(source.traffic.activeVehicles);
-    const serviceVehicles = sortedById(source.serviceVehicles.listVehicles());
-    const freightVehicles = sortedById(source.economyDomain.freightVehicles.listVehicles());
-    const incidents = sortedById(source.incidents.listIncidents());
+    const lots = this.cachedList('lots', source.lots.entityRevision, () => source.lots.list());
+    const buildings = this.cachedList('buildings', source.buildings.entityRevision, () => source.buildings.list());
+    const firms = this.cachedList('firms', source.economyDomain.firms.entityRevision, () => source.economyDomain.firms.list());
+    const utilityFacilities = this.cachedList('utilities', source.utilities.entityRevision, () => source.utilities.listFacilities());
+    const serviceFacilities = this.cachedList('services', source.services.entityRevision, () => source.services.listFacilities());
+    const transitStops = this.cachedList('transit-stops', source.transit.revision, () => source.transit.listStops());
+    const transitLines = this.cachedList('transit-lines', source.transit.revision, () => source.transit.listLines());
+    const trafficVehicles = this.cachedList('traffic', source.traffic.entityRevision, () => source.traffic.activeVehicles);
+    const serviceVehicles = this.cachedList('service-vehicles', source.serviceVehicles.entityRevision, () => source.serviceVehicles.listVehicles());
+    const freightVehicles = this.cachedList('freight', source.economyDomain.freightVehicles.entityRevision, () => source.economyDomain.freightVehicles.listVehicles());
+    const incidents = this.cachedList('incidents', source.incidents.entityRevision, () => source.incidents.listIncidents());
 
     const buildingById = new Map(buildings.map((building) => [building.id, building] as const));
 
