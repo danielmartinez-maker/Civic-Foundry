@@ -30,6 +30,16 @@ export class RenovationSystem {
     this.domain = domain;
   }
 
+  evaluateCandidates(inputs: readonly RenovationCandidateInput[]): RenovationCommitment[] {
+    return inputs
+      .slice()
+      .sort((a, b) => a.buildingId.localeCompare(b.buildingId)
+        || a.developerId.localeCompare(b.developerId)
+        || a.startTick - b.startTick
+        || a.definition.id.localeCompare(b.definition.id))
+      .map((input) => this.evaluateCandidate(input));
+  }
+
   evaluateCandidate(input: RenovationCandidateInput): RenovationCommitment {
     if (input.buildingId.length === 0) throw new Error('buildingId must be non-empty');
     if (input.developerId.length === 0) throw new Error('developerId must be non-empty');
