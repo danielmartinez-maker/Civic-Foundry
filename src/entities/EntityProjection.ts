@@ -26,6 +26,16 @@ export type EntityProjectionCommitResult = Readonly<{
   unresolved: readonly UnresolvedEntityReference[];
 }>;
 
+type ProjectionCommitCache = Readonly<{
+  graph: EntityReferenceGraph;
+  projection: EntityProjectionData;
+  registryRevision: number;
+  graphRevision: number;
+  result: EntityProjectionCommitResult;
+}>;
+
+const projectionCommitCache = new WeakMap<EntityRegistry, ProjectionCommitCache>();
+
 function cloneEntity(entity: ProjectedEntity): ProjectedEntity {
   const metadata = entity.metadata === undefined ? undefined : Object.freeze({ ...entity.metadata });
   return metadata === undefined
@@ -109,6 +119,15 @@ export function commitEntityProjection(
   graph: EntityReferenceGraph,
   projection: EntityProjectionData,
 ): EntityProjectionCommitResult {
+  const cached = projectionCommitCache.get(registry);
+  if (cached
+    && cached.graph === graph
+    && cached.projection === projection
+    && cached.registryRevision === registry.commitRevision
+    && cached.graphRevision === graph.commitRevision) {
+    return cached.result;
+  }
+
   const preparedRegistry = registry.prepareProjection(projection.entities);
   const view = preparedEntityView(preparedRegistry);
   const resolved: EntityReference[] = [];
@@ -166,9 +185,17 @@ export function commitEntityProjection(
   registry.commitPrepared(preparedRegistry);
   graph.commitPrepared(preparedGraph);
 
-  return Object.freeze({
+  const result = Object.freeze({
     activeEntities: registry.listActive().length,
     references: graph.list().length,
     unresolved: sortedUnresolved,
   });
+  projectionCommitCache.set(registry, Object.freeze({
+    graph,
+    projection,
+    registryRevision: registry.commitRevision,
+    graphRevision: graph.commitRevision,
+    result,
+  }));
+  return result;
 }
