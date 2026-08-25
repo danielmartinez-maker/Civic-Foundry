@@ -92,6 +92,31 @@ test('four-way intersection projection preserves every V7 node edge and route ch
   ], 13), 'n:5,4', 'n:6,5');
 });
 
+test('V7 compatibility capacity reconstruction does not enumerate turn movements', () => {
+  const source = new LegacyRoadNetworkAdapter().projectAuthorityIfNeeded(roads([
+    { x: 5, y: 4, type: 'collector' },
+    { x: 4, y: 5, type: 'local' },
+    { x: 5, y: 5, type: 'arterial' },
+    { x: 6, y: 5, type: 'collector' },
+    { x: 5, y: 6, type: 'local' },
+  ], 15));
+  let movementIterations = 0;
+  const movements = new Proxy([...source.authority.movements], {
+    get(target, property, receiver) {
+      if (property === Symbol.iterator) movementIterations += 1;
+      return Reflect.get(target, property, receiver);
+    },
+  });
+
+  const projection = new LegacyTransportationGraphAdapter().project({
+    ...source,
+    authority: { ...source.authority, movements },
+  });
+
+  assert.ok(projection.edges.length > 0);
+  assert.equal(movementIterations, 0, 'V7 graph capacity depends on lanes, not movement enumeration');
+});
+
 test('road removal rebuilds both graphs to the same surviving topology and revision source', () => {
   const roadSystem = roads([
     { x: 1, y: 7, type: 'arterial' },
