@@ -9,13 +9,24 @@ export type IntersectionQueueEntry = Readonly<{
 
 export type IntersectionSnapshot = Readonly<Record<string, readonly Readonly<{ incomingEdgeId: string; entries: readonly IntersectionQueueEntry[] }>[]>>;
 
+type MutableIntersectionQueueEntry = {
+  vehicleId: string;
+  travelerWeight: number;
+  queuedTick: number;
+  priority: 'normal' | 'emergency';
+};
+
 type ApproachQueue = {
   incomingEdgeId: string;
-  entries: IntersectionQueueEntry[];
+  entries: MutableIntersectionQueueEntry[];
 };
 
 export class IntersectionSystem {
   private readonly queues = new Map<string, ApproachQueue[]>();
+  /** Released IDs remain pending until their owning vehicle system acknowledges them via removeVehicle(). */
+  private readonly pendingReleased = new Map<string, Set<string>>();
+  /** Prevents multiple consumers from spending the same node capacity more than once in a simulation tick. */
+  private readonly lastSteppedTick = new Map<string, number>();
 
   enqueue(nodeId: string, incomingEdgeId: string, entry: IntersectionQueueEntry): void {
     if (entry.travelerWeight <= 0 || !Number.isFinite(entry.travelerWeight)) throw new Error('invalid traveler weight');
@@ -32,7 +43,12 @@ export class IntersectionSystem {
     approach.entries.sort((a, b) => (a.priority === 'emergency' ? 0 : 1) - (b.priority === 'emergency' ? 0 : 1) || a.queuedTick - b.queuedTick || a.vehicleId.localeCompare(b.vehicleId));
   }
 
-  stepNode(graph: TransportationGraph, nodeId: string): string[] {
+  stepNode(graph: TransportationGraph, nodeId: string, tick?: number): string[] {
+    const pending = this.pendingReleased.get(nodeId);
+    if (pending && pending.size > 0) return [...pending].sort();
+    if (tick !== undefined && this.lastSteppedTick.get(nodeId) === tick) return [];
+    if (tick !== undefined) this.lastSteppedTick.set(nodeId, tick);
+
     const approaches = this.queues.get(nodeId);
     if (!approaches || approaches.length === 0) return [];
     const outgoing = graph.outgoingEdges(nodeId);
@@ -46,23 +62,33 @@ export class IntersectionSystem {
     let remaining = capacity;
     const released: string[] = [];
     for (const candidate of candidates) {
-      if (candidate.entry.travelerWeight > remaining) break;
+      if (remaining <= 1e-9) break;
+      if (candidate.entry.travelerWeight > remaining + 1e-9) {
+        candidate.entry.travelerWeight -= remaining;
+        remaining = 0;
+        break;
+      }
       remaining -= candidate.entry.travelerWeight;
       released.push(candidate.entry.vehicleId);
       const index = candidate.approach.entries.findIndex((entry) => entry.vehicleId === candidate.entry.vehicleId);
       if (index >= 0) candidate.approach.entries.splice(index, 1);
     }
     this.pruneEmpty(nodeId);
+    if (released.length > 0) this.pendingReleased.set(nodeId, new Set(released));
     return released;
   }
 
   removeVehicle(vehicleId: string): void {
-    for (const [nodeId, approaches] of this.queues.entries()) {
+    for (const [nodeId, approaches] of [...this.queues.entries()]) {
       for (const approach of approaches) {
         const index = approach.entries.findIndex((entry) => entry.vehicleId === vehicleId);
         if (index >= 0) approach.entries.splice(index, 1);
       }
       this.pruneEmpty(nodeId);
+    }
+    for (const [nodeId, ids] of [...this.pendingReleased.entries()]) {
+      ids.delete(vehicleId);
+      if (ids.size === 0) this.pendingReleased.delete(nodeId);
     }
   }
 
@@ -77,7 +103,9 @@ export class IntersectionSystem {
 
   snapshot(): IntersectionSnapshot {
     const result: Record<string, Readonly<{ incomingEdgeId: string; entries: readonly IntersectionQueueEntry[] }>[]> = {};
-    for (const [nodeId, approaches] of [...this.queues.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const nodeIds = new Set([...this.queues.keys(), ...this.pendingReleased.keys()]);
+    for (const nodeId of [...nodeIds].sort()) {
+      const approaches = this.queues.get(nodeId) ?? [];
       result[nodeId] = approaches.map((approach) => ({
         incomingEdgeId: approach.incomingEdgeId,
         entries: approach.entries.map((entry) => ({ ...entry })),
@@ -88,11 +116,14 @@ export class IntersectionSystem {
 
   restore(snapshot: IntersectionSnapshot): void {
     this.queues.clear();
+    this.pendingReleased.clear();
+    this.lastSteppedTick.clear();
     for (const nodeId of Object.keys(snapshot).sort()) {
       const approaches = snapshot[nodeId] ?? [];
+      if (approaches.length === 0) continue;
       this.queues.set(nodeId, approaches.map((approach) => ({
         incomingEdgeId: approach.incomingEdgeId,
-        entries: approach.entries.map((entry) => ({ ...entry })),
+        entries: approach.entries.map((entry) => ({ ...entry, priority: entry.priority ?? 'normal' })),
       })));
     }
   }
@@ -101,6 +132,7 @@ export class IntersectionSystem {
     for (const approaches of this.queues.values()) {
       if (approaches.some((approach) => approach.entries.some((entry) => entry.vehicleId === vehicleId))) return true;
     }
+    for (const released of this.pendingReleased.values()) if (released.has(vehicleId)) return true;
     return false;
   }
 
