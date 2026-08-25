@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LegacyV7EntityProjector, type LegacyV7EntitySource } from '../src/entities/LegacyV7EntityProjector.ts';
+import type { EntityProjectionData, EntityProjectionPartition } from '../src/entities/EntityProjection.ts';
 
 function fixtureSource(): LegacyV7EntitySource {
   return {
@@ -23,6 +24,29 @@ function fixtureSource(): LegacyV7EntitySource {
     serviceVehicles: { listVehicles: () => [{ id: 'service-vehicle:service:1:1', facilityId: 'service:1', department: 'fire', vehicleType: 'fire_engine', currentJobId: null, edgeIds: [], returnEdgeIds: [], currentEdgeIndex: 0, edgeProgressTicks: 0, currentSpeed: 0, state: 'idle', accumulatedDelayTicks: 0, currentNodeId: null, destinationNodeId: null, homeNodeId: null, serviceRemainingTicks: 0 }] },
     incidents: { listIncidents: () => [{ id: 'incident:1', kind: 'fire', targetBuildingId: 'building:lot:1,1', createdTick: 35, severity: 0.5, intensity: 0.5, damage: 0, status: 'active', serviceJobId: 'service-job:1', spreadTriggered: false }] },
   };
+}
+
+function revisionedSource(): LegacyV7EntitySource {
+  const source = fixtureSource();
+  Object.assign(source.lots, { entityRevision: 1 });
+  Object.assign(source.buildings, { entityRevision: 1 });
+  Object.assign(source.economyDomain.firms, { entityRevision: 1 });
+  Object.assign(source.economyDomain.freightVehicles, { entityRevision: 1 });
+  Object.assign(source.utilities, { entityRevision: 1 });
+  Object.assign(source.services, { entityRevision: 1 });
+  Object.assign(source.transit, { revision: 1 });
+  Object.assign(source.traffic, { entityRevision: 1 });
+  Object.assign(source.serviceVehicles, { entityRevision: 1 });
+  Object.assign(source.incidents, { entityRevision: 1 });
+  return source;
+}
+
+function composePartitions(partitions: readonly EntityProjectionPartition[]): EntityProjectionData {
+  return Object.freeze({
+    entities: Object.freeze(partitions.flatMap((partition) => partition.projection.entities)),
+    references: Object.freeze(partitions.flatMap((partition) => partition.projection.references)),
+    unresolved: Object.freeze(partitions.flatMap((partition) => partition.projection.unresolved)),
+  });
 }
 
 test('V7 projector covers durable compatibility entities and deliberately excludes project identity', () => {
@@ -76,17 +100,7 @@ test('V7 projection ordering is deterministic even when every source list is rev
 });
 
 test('a transient revision rebuild does not re-list unchanged durable projection sources', () => {
-  const source = fixtureSource();
-  Object.assign(source.lots, { entityRevision: 1 });
-  Object.assign(source.buildings, { entityRevision: 1 });
-  Object.assign(source.economyDomain.firms, { entityRevision: 1 });
-  Object.assign(source.economyDomain.freightVehicles, { entityRevision: 1 });
-  Object.assign(source.utilities, { entityRevision: 1 });
-  Object.assign(source.services, { entityRevision: 1 });
-  Object.assign(source.transit, { revision: 1 });
-  Object.assign(source.traffic, { entityRevision: 1 });
-  Object.assign(source.serviceVehicles, { entityRevision: 1 });
-  Object.assign(source.incidents, { entityRevision: 1 });
+  const source = revisionedSource();
 
   let lotLists = 0;
   let buildingLists = 0;
@@ -106,4 +120,63 @@ test('a transient revision rebuild does not re-list unchanged durable projection
 
   assert.equal(lotLists, 1, 'traffic churn must not force durable lot reprojection');
   assert.equal(buildingLists, 1, 'traffic churn must not force durable building reprojection');
+});
+
+test('V7 projector exposes the exact Phase 0B partition ownership manifest', () => {
+  const partitions = new LegacyV7EntityProjector().projectPartitions(revisionedSource());
+  const ownership = new Map(partitions.map((partition) => [partition.id, [...partition.ownedKinds]]));
+  assert.deepEqual(ownership, new Map([
+    ['lots', ['lot']],
+    ['buildings', ['building']],
+    ['firms', ['firm']],
+    ['utilities', ['utility-facility']],
+    ['services', ['service-facility']],
+    ['transit', ['transit-stop', 'transit-line']],
+    ['traffic', ['traffic-vehicle']],
+    ['service-vehicles', ['service-vehicle']],
+    ['freight', ['freight-vehicle']],
+    ['incidents', ['incident']],
+  ]));
+});
+
+test('traffic-only revision change reuses unchanged durable partition projections', () => {
+  const source = revisionedSource();
+  const projector = new LegacyV7EntityProjector();
+  const first = new Map(projector.projectPartitions(source).map((partition) => [partition.id, partition]));
+
+  Object.assign(source.traffic, { entityRevision: 2 });
+  source.traffic.activeVehicles = [
+    ...source.traffic.activeVehicles,
+    { ...source.traffic.activeVehicles[0]!, id: 'vehicle:2', tripId: 'trip:2', departureTick: 31 },
+  ];
+  const second = new Map(projector.projectPartitions(source).map((partition) => [partition.id, partition]));
+
+  assert.strictEqual(second.get('lots')?.projection, first.get('lots')?.projection);
+  assert.strictEqual(second.get('buildings')?.projection, first.get('buildings')?.projection);
+  assert.notStrictEqual(second.get('traffic')?.projection, first.get('traffic')?.projection);
+  assert.notEqual(second.get('traffic')?.revisionKey, first.get('traffic')?.revisionKey);
+});
+
+test('building revision invalidates every partition whose exact reference output depends on building incarnation evidence', () => {
+  const source = revisionedSource();
+  const projector = new LegacyV7EntityProjector();
+  const first = new Map(projector.projectPartitions(source).map((partition) => [partition.id, partition]));
+
+  Object.assign(source.buildings, { entityRevision: 2 });
+  source.buildings.list = () => [{ id: 'building:lot:1,1', lotId: 'lot:1,1', x: 1, y: 1, zone: 'commercial', definitionId: 'commercial-low', status: 'occupied', constructionStartedTick: 50, completionTick: 60 }];
+  const second = new Map(projector.projectPartitions(source).map((partition) => [partition.id, partition]));
+
+  for (const id of ['buildings', 'firms', 'traffic', 'incidents']) {
+    assert.notEqual(second.get(id)?.revisionKey, first.get(id)?.revisionKey, `${id} must depend on building revision`);
+  }
+  assert.ok(second.get('traffic')?.projection.unresolved.some((reference) => reference.relation === 'traffic-origin-building'));
+  assert.ok(second.get('incidents')?.projection.unresolved.some((reference) => reference.relation === 'incident-building'));
+  assert.strictEqual(second.get('lots')?.projection, first.get('lots')?.projection);
+});
+
+test('full V7 projection is the deterministic composition of its partitions', () => {
+  const source = revisionedSource();
+  const projector = new LegacyV7EntityProjector();
+  const partitions = projector.projectPartitions(source);
+  assert.deepEqual(projector.project(source), composePartitions(partitions));
 });
