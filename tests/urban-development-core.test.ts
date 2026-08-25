@@ -48,6 +48,7 @@ test('semantic Core development installs the exact winning quality, parking, and
     const state = core.urbanFabric.get(commitment.buildingId);
     assert.ok(building, `missing awarded building ${commitment.buildingId}`);
     assert.ok(state, `missing semantic state ${commitment.buildingId}`);
+    assert.ok(commitment.useMixKey.startsWith(commitment.definitionId));
     assert.equal(state.qualityTier, commitment.qualityTier);
     assert.equal(state.parking.profile, commitment.parkingProfile);
     assert.equal(state.parking.spaces, commitment.parkingSpaces);
