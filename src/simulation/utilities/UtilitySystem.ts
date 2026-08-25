@@ -62,10 +62,15 @@ export class UtilitySystem {
   private readonly roads: RoadSystem;
   private readonly facilities: UtilityFacility[] = [];
   private nextId = 1;
+  private _entityRevision = 0;
 
   constructor(terrain: TerrainGrid, roads: RoadSystem) {
     this.terrain = terrain;
     this.roads = roads;
+  }
+
+  get entityRevision(): number {
+    return this._entityRevision;
   }
 
   placeFacility(type: UtilityFacilityType, x: number, y: number, treasury: TreasurySystem): { ok: boolean; cost: number; reason?: string } {
@@ -77,6 +82,7 @@ export class UtilitySystem {
     if (components.adjacentComponent(x, y) === undefined) return { ok: false, cost: definition.constructionCost, reason: 'road access required' };
     if (!treasury.tryDebit(definition.constructionCost, `Build ${type}`)) return { ok: false, cost: definition.constructionCost, reason: 'insufficient funds' };
     this.facilities.push({ id: `utility:${this.nextId++}`, type, x, y });
+    this._entityRevision++;
     return { ok: true, cost: definition.constructionCost };
   }
 
@@ -96,6 +102,7 @@ export class UtilitySystem {
     this.facilities.length = 0;
     this.facilities.push(...facilities.map((facility) => ({ ...facility })));
     this.nextId = Math.max(1, Math.floor(nextId));
+    this._entityRevision++;
   }
 
   evaluate(buildings: readonly Building[]): UtilitySnapshot {
