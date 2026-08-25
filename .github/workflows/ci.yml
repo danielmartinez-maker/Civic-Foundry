@@ -17,4 +17,4 @@ jobs:
         with:
           node-version: '22'
       - name: Profile optimized entity synchronization methods
-        run: node --experimental-strip-types --test tests/phase0b-method-profile.test.ts
+        run: node --experimental-strip-types --test tests/phase0b-method-profile.test.ts tests/phase0b-partition-churn-profile.test.ts
