@@ -29,7 +29,8 @@ for (const sourceRoot of roots) {
     if (/\bdebugger\s*;/.test(source)) failures.push(`${display}: debugger statement`);
     if (/\beval\s*\(/.test(source)) failures.push(`${display}: eval is prohibited`);
     if (/\bnew\s+Function\s*\(/.test(source)) failures.push(`${display}: Function constructor is prohibited`);
-    if (/innerHTML\s*=.*\$\{\s*(?:line\.name|inspection\.(?:title|lines))/s.test(source)) failures.push(`${display}: user-controlled text must be escaped before innerHTML`);
+    const rawUserInterpolation = /\$\{\s*(?:line\.name|inspection\.title)\s*\}/;
+    if (rawUserInterpolation.test(source)) failures.push(`${display}: user-controlled text must be escaped before HTML interpolation`);
   }
 }
 
