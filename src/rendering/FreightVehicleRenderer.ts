@@ -16,7 +16,9 @@ export function locateFreightVehicle(vehicle: FreightVehicle, graph: Transportat
 
 export class FreightVehicleRenderer {
   private readonly painter = new SpritePainter();
-  constructor(private readonly assets: AssetRegistry) {}
+  private readonly assets: AssetRegistry;
+
+  constructor(assets: AssetRegistry) { this.assets = assets; }
 
   draw(ctx: CanvasRenderingContext2D, graph: TransportationGraph, vehicles: FreightVehicleSystem, travelTicksByEdge: ReadonlyMap<string, number>, camera: IsometricCamera, worldSize: WorldSize): void {
     const sourceScale = 0.5 * camera.zoom;
