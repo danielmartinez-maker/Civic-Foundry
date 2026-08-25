@@ -140,13 +140,13 @@ export class ServiceVehicleSystem {
     intersections: IntersectionSystem,
     pathfinding: PathfindingSystem,
     edgeCost: (edge: TransportationEdge) => number,
-    _tick: number,
+    tick: number,
   ): ServiceVehicleEvent[] {
     const events: ServiceVehicleEvent[] = [];
 
     for (const vehicle of this.vehicles.values()) {
       if (vehicle.queuedNodeId) vehicle.accumulatedDelayTicks++;
-      if ((vehicle.state === 'outbound' || vehicle.state === 'returning') && !this.ensureValidRoute(vehicle, graph, pathfinding, edgeCost)) {
+      if ((vehicle.state === 'outbound' || vehicle.state === 'returning') && !this.ensureValidRoute(vehicle, graph, pathfinding, edgeCost, tick)) {
         if (vehicle.currentJobId) events.push({ type: 'failed', vehicleId: vehicle.id, jobId: vehicle.currentJobId });
         intersections.removeVehicle(vehicle.id);
         this.resetIdle(vehicle);
@@ -154,13 +154,14 @@ export class ServiceVehicleSystem {
     }
 
     for (const nodeId of Object.keys(intersections.snapshot()).sort()) {
-      for (const vehicleId of intersections.stepNode(graph, nodeId)) {
+      for (const vehicleId of intersections.stepNode(graph, nodeId, tick)) {
         const vehicle = this.vehicles.get(vehicleId);
         if (!vehicle || !vehicle.queuedNodeId) continue;
         vehicle.currentEdgeIndex++;
         vehicle.edgeProgressTicks = 0;
         vehicle.currentNodeId = vehicle.queuedNodeId;
         delete vehicle.queuedNodeId;
+        intersections.removeVehicle(vehicleId);
       }
     }
 
@@ -204,7 +205,7 @@ export class ServiceVehicleSystem {
         intersections.enqueue(edge.to, edge.id, {
           vehicleId: vehicle.id,
           travelerWeight: vehicle.vehicleType === 'garbage_truck' ? 2 : 1,
-          queuedTick: _tick,
+          queuedTick: tick,
           priority: isEmergency(vehicle.vehicleType) ? 'emergency' : 'normal',
         });
       } else {
@@ -227,7 +228,13 @@ export class ServiceVehicleSystem {
     return result;
   }
 
-  private ensureValidRoute(vehicle: MutableVehicle, graph: TransportationGraph, pathfinding: PathfindingSystem, edgeCost: (edge: TransportationEdge) => number): boolean {
+  private ensureValidRoute(
+    vehicle: MutableVehicle,
+    graph: TransportationGraph,
+    pathfinding: PathfindingSystem,
+    edgeCost: (edge: TransportationEdge) => number,
+    tick: number,
+  ): boolean {
     const route = vehicle.state === 'outbound' ? vehicle.edgeIds : vehicle.returnEdgeIds;
     if (route.slice(vehicle.currentEdgeIndex).every((edgeId) => graph.getEdge(edgeId))) return true;
     const start = vehicle.currentNodeId;
@@ -235,7 +242,7 @@ export class ServiceVehicleSystem {
     if (!start || !end || !graph.getNode(start) || !graph.getNode(end)) return false;
     const reroute = pathfinding.findRoute(graph, start, end, {
       edgeCost: (edge) => this.edgeTravelTicks(vehicle, edge, edgeCost),
-      costKey: `service-reroute:${vehicle.vehicleType}`,
+      costKey: `service-reroute:${vehicle.vehicleType}:${Math.floor(tick / 10)}`,
     });
     if (!reroute || reroute.edgeIds.length === 0) return false;
     if (vehicle.state === 'outbound') vehicle.edgeIds = [...reroute.edgeIds];
