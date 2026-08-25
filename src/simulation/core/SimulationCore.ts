@@ -51,6 +51,7 @@ import { HousingTenureSystem, type HousingTenureSnapshot } from '../housing/Hous
 import { HousingRelocationSystem, type HousingRelocationSnapshot, type HousingRelocationState } from '../housing/HousingRelocationSystem.ts';
 import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';
 import { UrbanFabricDomain } from '../urban/UrbanFabricDomain.ts';
+import { UrbanConditionSystem } from '../urban/UrbanConditionSystem.ts';
 import { buildUrbanBuildingView, compatibilityUrbanStateForBuilding, legacyUrbanStateForBuilding, urbanBusinessSiteFromView, type UrbanBuildingView } from '../urban/UrbanBuildingView.ts';
 import { enumerateUrbanCandidates, urbanComponentsForDefinition } from '../urban/UrbanDevelopmentCandidate.ts';
 
@@ -91,6 +92,7 @@ export class SimulationCore {
   readonly lots: LotSystem;
   readonly buildings: BuildingSystem;
   readonly urbanFabric: UrbanFabricDomain;
+  readonly urbanCondition: UrbanConditionSystem;
   readonly population: PopulationSystem;
   readonly employment: EmploymentSystem;
   readonly taxes: TaxSystem;
@@ -207,6 +209,7 @@ export class SimulationCore {
     this.lots = new LotSystem();
     this.buildings = new BuildingSystem();
     this.urbanFabric = new UrbanFabricDomain();
+    this.urbanCondition = new UrbanConditionSystem(this.urbanFabric);
     this.population = new PopulationSystem();
     this.employment = new EmploymentSystem();
     this.taxes = new TaxSystem();
@@ -461,6 +464,7 @@ export class SimulationCore {
     this.trafficSnapshot = this.trafficAnalytics.evaluate(this.traffic.edgeMetrics, this.traffic.recentOutcomes, this.traffic.activeVehicles.length);
     this.buildings.tick(this.clock.tick);
     this.syncUrbanFabricCompatibility();
+    if (this.urbanDevelopmentMode === 'semantic') this.updateUrbanCondition();
     this.developerMarket.advance(this.clock.tick);
 
     if (this.clock.tick % 10 === 0) {
@@ -951,6 +955,50 @@ export class SimulationCore {
     });
   }
 
+  private updateUrbanCondition(): void {
+    const housingByBuilding = this.housingRelocation.snapshot().byBuilding;
+    const markets = this.landHousingMarket.snapshot().zones;
+    const hasServices = this.services.listFacilities().length > 0;
+    this.urbanCondition.updateThroughTick(this.clock.tick, {
+      buildingContext: (buildingId) => {
+        const building = this.buildings.getById(buildingId);
+        const state = this.urbanFabric.get(buildingId);
+        if (!building || !state) return undefined;
+        const view = buildUrbanBuildingView(building, state);
+        const assignedResidents = housingByBuilding[buildingId]?.assignedResidents ?? 0;
+        const firm = this.economyDomain.getFirmAtBuilding(buildingId);
+        const activeFirm = firm !== undefined;
+        const filledJobs = firm?.filledJobs ?? 0;
+        const totalCapacity = view.residentialCapacity + view.jobCapacity;
+        const occupancyUtilization = totalCapacity <= 0 ? 0 : clamp01((assignedResidents + filledJobs) / totalCapacity);
+        const utility = this.utilitySnapshot.perBuilding[buildingId];
+        const utilityRatio = utility ? Math.min(utility.power, utility.water) : 0;
+        const serviceQuality = this.neighborhoodSnapshot.perBuilding[buildingId]?.combinedServiceQuality ?? (hasServices ? 0 : 0.7);
+        const neighborhoodQuality = clamp01(serviceQuality * 0.7 + this.mobilitySnapshot.personAccessibility * 0.3);
+        const marketRentStrength = clamp01(state.useComponents.reduce((sum, component) => {
+          const rentIndex = markets[component.use].rentIndex;
+          const normalizedRent = clamp01((rentIndex - 0.65) / 0.95);
+          return sum + normalizedRent * (component.areaShareBps / 10_000);
+        }, 0));
+        const firmDistress = firm
+          ? clamp01(Math.max(firm.status === 'distressed' ? 0.5 : 0, 1 - firm.cashHealth))
+          : 0;
+        return {
+          buildingId,
+          buildingOccupied: building.status === 'occupied',
+          occupancyUtilization,
+          utilityRatio,
+          serviceQuality,
+          neighborhoodQuality,
+          marketRentStrength,
+          firmDistress,
+          assignedResidents,
+          activeFirm,
+        };
+      },
+    });
+  }
+
   private syncUrbanFabricCompatibility(): void {
     const buildings = this.buildings.list().sort((a, b) => a.id.localeCompare(b.id));
     const liveIds = new Set(buildings.map((building) => building.id));
@@ -963,7 +1011,7 @@ export class SimulationCore {
         this.urbanFabric.install(compatibilityUrbanStateForBuilding(building, this.clock.tick));
         continue;
       }
-      if (building.status === 'occupied' && state.lifecycleState === 'construction') {
+      if (this.urbanDevelopmentMode === 'legacy' && building.status === 'occupied' && state.lifecycleState === 'construction') {
         this.urbanFabric.replace({ ...state, lifecycleState: 'stabilized' });
       }
     }
