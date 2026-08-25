@@ -23,6 +23,10 @@ export class TerrainGrid {
     this.cells = cells.map((cell) => Object.freeze({ ...cell }));
   }
 
+  static fromCells(width: number, height: number, cells: readonly TerrainCell[]): TerrainGrid {
+    return new TerrainGrid(width, height, cells.map((cell) => ({ ...cell })));
+  }
+
   static generate(width: number, height: number, seed: number): TerrainGrid {
     if (!validDimension(width) || !validDimension(height)) throw new Error('invalid terrain dimensions');
     const rng = new SeededRandom(seed ^ 0x91e10da5);
