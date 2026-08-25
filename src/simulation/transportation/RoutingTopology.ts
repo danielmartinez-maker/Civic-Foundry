@@ -1,10 +1,12 @@
-import { movementEffectivePermissions } from './TurnMovementBuilder.ts';
+import { movementEffectivePermissionsFromLaneIndex } from './TurnMovementBuilder.ts';
 import type {
   Carriageway,
   CarriagewayId,
   JunctionId,
+  Lane,
   LaneGroup,
   LaneGroupId,
+  RoadSegment,
   TransportNetworkSnapshot,
   TurnMovement,
   TurnMovementId,
@@ -58,11 +60,11 @@ function laneGroupsForMovement(
 }
 
 function traversalTicks(
-  snapshot: TransportNetworkSnapshot,
+  segmentById: ReadonlyMap<string, RoadSegment>,
   carriageway: Carriageway,
   groups: readonly LaneGroup[],
 ): number {
-  const segment = snapshot.segments.find((candidate) => candidate.id === carriageway.segmentId);
+  const segment = segmentById.get(carriageway.segmentId);
   if (!segment) throw new Error(`Carriageway ${carriageway.id} references missing segment ${carriageway.segmentId}`);
   if (groups.length === 0) throw new Error(`Carriageway ${carriageway.id} has no routable lane groups`);
 
@@ -90,7 +92,9 @@ export function buildRoutingTopology(
   snapshot: TransportNetworkSnapshot,
   laneGroups: readonly LaneGroup[],
 ): RoutingTopology {
+  const segmentById = new Map(snapshot.segments.map((segment) => [segment.id, segment]));
   const carriagewayById = new Map(snapshot.carriageways.map((carriageway) => [carriageway.id, carriageway]));
+  const laneById: ReadonlyMap<string, Lane> = new Map(snapshot.lanes.map((lane) => [lane.id, lane]));
   const groupsByCarriageway = new Map<string, LaneGroup[]>();
   for (const group of [...laneGroups].sort((a, b) => a.id.localeCompare(b.id))) {
     if (!carriagewayById.has(group.carriagewayId)) {
@@ -157,7 +161,7 @@ export function buildRoutingTopology(
         carriagewayId: carriageway.id,
         laneGroupIds,
         permissions,
-        traversalTicks: traversalTicks(snapshot, carriageway, groups),
+        traversalTicks: traversalTicks(segmentById, carriageway, groups),
         movementPenaltyTicks: 0,
       });
     }
@@ -180,7 +184,7 @@ export function buildRoutingTopology(
 
         const groups = laneGroupsForMovement(groupsByCarriageway.get(outgoing.id) ?? [], movement);
         if (groups.length === 0) continue;
-        const permissions = movementEffectivePermissions(snapshot, movement) & permissionUnion(groups);
+        const permissions = movementEffectivePermissionsFromLaneIndex(laneById, movement) & permissionUnion(groups);
         if (permissions === 0) continue;
         const laneGroupIds = groups.map((group) => group.id).sort(compareStrings);
 
@@ -195,7 +199,7 @@ export function buildRoutingTopology(
           laneGroupIds,
           movementId: movement.id,
           permissions,
-          traversalTicks: traversalTicks(snapshot, outgoing, groups),
+          traversalTicks: traversalTicks(segmentById, outgoing, groups),
           movementPenaltyTicks: movement.basePenaltyTicks,
         });
       }
