@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CadastralGraph } from '../src/world/cadastre/CadastralGraph.ts';
 import type { CadastralSnapshot } from '../src/world/cadastre/CadastralTypes.ts';
+import { DeveloperMarketSystem } from '../src/simulation/development/DeveloperMarketSystem.ts';
 import { PropertyMarketSystem } from '../src/simulation/development/PropertyMarketSystem.ts';
 import {
   SiteAssemblySystem,
@@ -9,8 +10,10 @@ import {
 } from '../src/simulation/development/SiteAssemblySystem.ts';
 import {
   RedevelopmentExecutionSystem,
+  type RedevelopmentExecutionActions,
   type RedevelopmentProjectExecution,
 } from '../src/simulation/development/RedevelopmentExecutionSystem.ts';
+import { HousingRelocationSystem } from '../src/simulation/housing/HousingRelocationSystem.ts';
 
 test('assembly is offered only when geometry uplift beats acquisition friction', () => {
   const graph = new CadastralGraph(threeParcelFixture());
@@ -98,6 +101,120 @@ test('redevelopment progresses through explicit acquisition demolition construct
   assert.equal(leaseUp.state, 'lease-up');
   const stabilized = system.tick(leaseUp, { relocatedHouseholdIds: [], leaseUpCompleted: true });
   assert.equal(stabilized.state, 'stabilized');
+});
+
+test('integrated redevelopment actions cannot demolish before canonical displacement clears', () => {
+  const calls: string[] = [];
+  let unresolved = ['displacement:building:p0:lower:renter'];
+  const actions: RedevelopmentExecutionActions = {
+    hasDeveloperCommitment: (buildingId) => {
+      calls.push(`commitment:${buildingId}`);
+      return true;
+    },
+    acquireParcels: (parcelIds) => {
+      calls.push(`acquire:${parcelIds.join('+')}`);
+      return true;
+    },
+    displaceBuildings: (buildingIds) => {
+      calls.push(`displace:${buildingIds.join('+')}`);
+      return [...unresolved];
+    },
+    unresolvedDisplacementIds: () => [...unresolved],
+    demolishBuildings: (buildingIds) => {
+      calls.push(`demolish:${buildingIds.join('+')}`);
+      return true;
+    },
+    assembleParcels: (parcelIds) => {
+      calls.push(`assemble:${parcelIds.join('+')}`);
+      return ['parcel:assembled'];
+    },
+    advanceConstruction: (parcelIds) => {
+      calls.push(`construction:${parcelIds.join('+')}`);
+      return true;
+    },
+    advanceLeaseUp: (parcelIds) => {
+      calls.push(`lease-up:${parcelIds.join('+')}`);
+      return true;
+    },
+    releaseDeveloperCommitments: (buildingIds) => {
+      calls.push(`release:${buildingIds.join('+')}`);
+    },
+  };
+
+  const system = new RedevelopmentExecutionSystem();
+  let execution = redevelopmentFixture({ parcelIds: ['p0', 'p1'] });
+  execution = system.advance(execution, actions);
+  assert.equal(execution.state, 'acquired');
+  execution = system.advance(execution, actions);
+  assert.equal(execution.state, 'relocating');
+  execution = system.advance(execution, actions);
+  assert.equal(execution.state, 'relocating');
+  assert.equal(calls.some((call) => call.startsWith('demolish:')), false);
+
+  unresolved = [];
+  execution = system.advance(execution, actions);
+  assert.equal(execution.state, 'demolition');
+  execution = system.advance(execution, actions);
+  assert.equal(execution.state, 'construction');
+  assert.deepEqual(execution.parcelIds, ['parcel:assembled']);
+  execution = system.advance(execution, actions);
+  assert.equal(execution.state, 'lease-up');
+  execution = system.advance(execution, actions);
+  assert.equal(execution.state, 'stabilized');
+  assert.deepEqual(calls, [
+    'commitment:building:p0',
+    'acquire:p0+p1',
+    'displace:building:p0',
+    'demolish:building:p0',
+    'assemble:p0+p1',
+    'construction:parcel:assembled',
+    'lease-up:parcel:assembled',
+    'release:building:p0',
+  ]);
+});
+
+test('developer market exposes active commitment as an isolated read model', () => {
+  const developerSeed = {
+    id: 'dev', availableCapital: 90, hurdleRate: 0.10, maxLeverage: 0.50,
+    financingSpread: 0.02, riskTolerance: 0.80, maxConcurrentProjects: 2,
+    minimumProjectCost: 0,
+    preferences: { residential: 0, commercial: 0, industrial: 0 },
+  } as const;
+  const market = new DeveloperMarketSystem({ developers: [developerSeed] });
+  market.restoreState({
+    developers: [{ ...developerSeed, availableCapital: 90, committedCapital: 10 }],
+    commitments: [{
+      awardId: 'award:p0', buildingId: 'building:p0', lotId: 'p0', definitionId: 'residential_cottage',
+      developerId: 'dev', equity: 10, awardTick: 0, completionTick: 10, releaseTick: 20, expectedReturn: 0.12,
+    }],
+  });
+
+  const commitment = market.commitmentForBuilding('building:p0');
+  assert.equal(commitment?.awardId, 'award:p0');
+  assert.notEqual(commitment, market.listCommitments()[0]);
+  assert.equal(market.commitmentForBuilding('building:missing'), undefined);
+});
+
+test('housing relocation derives unresolved displacement ids from canonical cohort state', () => {
+  const housing = new HousingRelocationSystem();
+  housing.restoreState({
+    allocations: [],
+    unplaced: [{
+      band: 'lower', tenurePreference: 'renter', residents: 3, displaced: true,
+      displacedFromBuildingId: 'building:p0',
+    }],
+    totals: {
+      movedResidents: 0,
+      displacedResidents: 3,
+      rehousedDisplacedResidents: 0,
+      failedSearchResidents: 0,
+    },
+  });
+
+  assert.deepEqual(housing.unresolvedDisplacementIds('building:p0'), [
+    'displacement:building:p0:lower:renter',
+  ]);
+  assert.deepEqual(housing.unresolvedDisplacementIds('building:other'), []);
 });
 
 function redevelopmentFixture(
