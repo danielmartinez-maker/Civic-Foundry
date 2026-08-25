@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { UrbanFabricDomain } from '../src/simulation/urban/UrbanFabricDomain.ts';
 import { UrbanConditionSystem, calculateMaintenanceAdequacy } from '../src/simulation/urban/UrbanConditionSystem.ts';
 import { conditionCapacityMultiplier } from '../src/simulation/urban/UrbanBuildingView.ts';
 import type { UrbanBuildingState } from '../src/simulation/urban/UrbanTypes.ts';
+import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 
 function state(overrides: Partial<UrbanBuildingState> = {}): UrbanBuildingState {
   return {
@@ -39,6 +41,36 @@ function harness(initial = state()) {
     }),
   } as const;
   return { domain, condition, context };
+}
+
+function flatTerrain(width = 8, height = 8): TerrainGrid {
+  const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({
+    elevation: 0.5,
+    water: false,
+    buildable: true,
+    biome: 'grass' as const,
+  }));
+  return new TerrainGrid(width, height, cells);
+}
+
+function coreWithOccupiedResidential(mode: 'legacy' | 'semantic'): SimulationCore {
+  const core = new SimulationCore({ terrain: flatTerrain(), seed: 19, urbanDevelopmentMode: mode });
+  core.buildings.restore([{
+    id: 'building:lot:1,1',
+    lotId: 'lot:1,1',
+    x: 1,
+    y: 1,
+    zone: 'residential',
+    definitionId: 'residential_cottage',
+    status: 'occupied',
+    constructionStartedTick: 0,
+    completionTick: 0,
+  }]);
+  core.urbanFabric.install({
+    ...state({ buildingId: 'building:lot:1,1' }),
+    parking: { profile: 'legacy-none', spaces: 0 },
+  });
+  return core;
 }
 
 test('maintenance adequacy is bounded and exposes a deterministic contribution trace', () => {
@@ -148,4 +180,23 @@ test('condemned stock retains reduced existing capacity but blocks new placement
   assert.equal(conditionCapacityMultiplier({ conditionScore: 20, lifecycleState: 'abandoned' }), 0);
   assert.equal(conditionCapacityMultiplier({ conditionScore: 40, lifecycleState: 'neglected' }), 0.85);
   assert.equal(conditionCapacityMultiplier({ conditionScore: 80, lifecycleState: 'renovating' }), 0.5);
+});
+
+test('semantic Core advances condition on cadence while legacy mode remains inert', () => {
+  const semantic = coreWithOccupiedResidential('semantic');
+  const legacy = coreWithOccupiedResidential('legacy');
+
+  semantic.step(99);
+  legacy.step(99);
+  assert.equal(semantic.urbanFabric.get('building:lot:1,1')!.lastConditionTick, 0);
+  assert.equal(legacy.urbanFabric.get('building:lot:1,1')!.lastConditionTick, 0);
+
+  semantic.step(1);
+  legacy.step(1);
+  const semanticState = semantic.urbanFabric.get('building:lot:1,1')!;
+  const legacyState = legacy.urbanFabric.get('building:lot:1,1')!;
+  assert.equal(semanticState.lastConditionTick, 100);
+  assert.ok(semanticState.conditionScore < 80);
+  assert.equal(legacyState.lastConditionTick, 0);
+  assert.equal(legacyState.conditionScore, 80);
 });
