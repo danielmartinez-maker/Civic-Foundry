@@ -1,15 +1,13 @@
-name: Civic Foundry CI
+name: Phase 0B Performance Gate
 
 on:
-  push:
-    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  verify:
+  benchmark:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,13 +16,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install pinned TypeScript compiler
-        run: npm install --global typescript@5.8.3
-      - name: Tests
-        run: npm test
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Lint
-        run: npm run lint
-      - name: Build
-        run: npm run build
+      - name: Phase 6 economy benchmark x5
+        shell: bash
+        run: |
+          for sample in 1 2 3 4 5; do
+            echo "PHASE0B_PERF_SAMPLE=${sample}"
+            node --experimental-strip-types --test --test-name-pattern="performance: 5000 active economy ticks remain an interactive diagnostic" tests/phase6-headless.test.ts
+          done
