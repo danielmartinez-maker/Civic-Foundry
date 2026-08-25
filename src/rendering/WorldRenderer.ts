@@ -18,6 +18,7 @@ import { SelectionRenderPass } from './passes/SelectionRenderPass.ts';
 export type CanvasPoint = Readonly<{ x: number; y: number }>;
 export type CellSelection = Readonly<{ x: number; y: number }> | null;
 
+// Presentation-only facade: authoritative state remains entirely inside SimulationCore.
 export class WorldRenderer {
   readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
