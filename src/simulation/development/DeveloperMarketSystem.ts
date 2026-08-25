@@ -1,9 +1,12 @@
 import { getBuildingDefinition } from '../../data/buildings.ts';
+import { PARKING_RANK, QUALITY_RANK } from '../../data/urbanFabric.ts';
 import { clamp, clamp01 } from '../core/types.ts';
+import type { BuildingQualityTier, PrivateParkingProfile } from '../urban/UrbanTypes.ts';
 import type {
   DevelopmentAward,
   DevelopmentBid,
   DevelopmentFeasibilityResult,
+  DevelopmentSemanticTuple,
   DeveloperCommitment,
   DeveloperMarketContext,
   DeveloperMarketStateSnapshot,
@@ -72,9 +75,7 @@ function validateSeed(seed: DeveloperSeed): void {
     throw new Error(`${seed.id}.maxConcurrentProjects must be a positive integer`);
   }
   if (seed.minimumProjectCost < 0) throw new Error(`${seed.id}.minimumProjectCost must be non-negative`);
-  for (const zone of ['residential', 'commercial', 'industrial'] as const) {
-    finite(`${seed.id}.preferences.${zone}`, seed.preferences[zone]);
-  }
+  for (const zone of ['residential', 'commercial', 'industrial'] as const) finite(`${seed.id}.preferences.${zone}`, seed.preferences[zone]);
 }
 
 function cloneDeveloper(state: MutableDeveloperState): DeveloperState {
@@ -92,16 +93,42 @@ function cloneDeveloper(state: MutableDeveloperState): DeveloperState {
   };
 }
 
-function cloneCommitment(value: DeveloperCommitment): DeveloperCommitment {
-  return { ...value };
+function cloneCommitment(value: DeveloperCommitment): DeveloperCommitment { return { ...value }; }
+function cloneBid(value: DevelopmentBid): DevelopmentBid { return { ...value }; }
+function cloneAward(value: DevelopmentAward): DevelopmentAward { return { ...value }; }
+
+function normalizeSemanticTuple(
+  value: Partial<DevelopmentSemanticTuple>,
+  definitionId: string,
+): DevelopmentSemanticTuple {
+  const qualityTier: BuildingQualityTier = value.qualityTier ?? 'standard';
+  const parkingProfile: PrivateParkingProfile = value.parkingProfile ?? 'legacy-none';
+  const parkingSpaces = value.parkingSpaces ?? 0;
+  const useMixKey = value.useMixKey ?? definitionId;
+  if (!(qualityTier in QUALITY_RANK)) throw new Error(`invalid quality tier: ${qualityTier}`);
+  if (!(parkingProfile in PARKING_RANK)) throw new Error(`invalid parking profile: ${parkingProfile}`);
+  if (!Number.isInteger(parkingSpaces) || parkingSpaces < 0) throw new Error('parkingSpaces must be a non-negative integer');
+  if (parkingProfile === 'legacy-none' && parkingSpaces !== 0) throw new Error('legacy-none parking must have zero spaces');
+  if (!useMixKey) throw new Error('useMixKey is required');
+  return Object.freeze({ qualityTier, parkingProfile, parkingSpaces, useMixKey });
 }
 
-function cloneBid(value: DevelopmentBid): DevelopmentBid {
-  return { ...value };
+function isLegacyTuple(tuple: DevelopmentSemanticTuple, definitionId: string): boolean {
+  return tuple.qualityTier === 'standard'
+    && tuple.parkingProfile === 'legacy-none'
+    && tuple.parkingSpaces === 0
+    && tuple.useMixKey === definitionId;
 }
 
-function cloneAward(value: DevelopmentAward): DevelopmentAward {
-  return { ...value };
+function opportunityComparator(a: DevelopmentFeasibilityResult, b: DevelopmentFeasibilityResult): number {
+  const as = normalizeSemanticTuple(a, a.definitionId);
+  const bs = normalizeSemanticTuple(b, b.definitionId);
+  return a.lotId.localeCompare(b.lotId)
+    || a.definitionId.localeCompare(b.definitionId)
+    || QUALITY_RANK[as.qualityTier] - QUALITY_RANK[bs.qualityTier]
+    || PARKING_RANK[as.parkingProfile] - PARKING_RANK[bs.parkingProfile]
+    || as.parkingSpaces - bs.parkingSpaces
+    || as.useMixKey.localeCompare(bs.useMixKey);
 }
 
 function bidComparator(a: DevelopmentBid, b: DevelopmentBid): number {
@@ -111,6 +138,10 @@ function bidComparator(a: DevelopmentBid, b: DevelopmentBid): number {
     || a.requiredEquity - b.requiredEquity
     || a.lotId.localeCompare(b.lotId)
     || a.definitionId.localeCompare(b.definitionId)
+    || QUALITY_RANK[a.qualityTier] - QUALITY_RANK[b.qualityTier]
+    || PARKING_RANK[a.parkingProfile] - PARKING_RANK[b.parkingProfile]
+    || a.parkingSpaces - b.parkingSpaces
+    || a.useMixKey.localeCompare(b.useMixKey)
     || a.developerId.localeCompare(b.developerId);
 }
 
@@ -125,11 +156,7 @@ export class DeveloperMarketSystem {
     for (const seed of seeds.slice().sort((a, b) => a.id.localeCompare(b.id))) {
       validateSeed(seed);
       if (this.developers.has(seed.id)) throw new Error(`duplicate developer id: ${seed.id}`);
-      this.developers.set(seed.id, {
-        ...seed,
-        committedCapital: 0,
-        preferences: { ...seed.preferences },
-      });
+      this.developers.set(seed.id, { ...seed, committedCapital: 0, preferences: { ...seed.preferences } });
     }
   }
 
@@ -142,11 +169,12 @@ export class DeveloperMarketSystem {
     const orderedOpportunities = opportunities
       .filter((item) => item.legal && item.feasible && !this.commitments.has(`building:${item.lotId}`))
       .slice()
-      .sort((a, b) => a.lotId.localeCompare(b.lotId) || a.definitionId.localeCompare(b.definitionId));
+      .sort(opportunityComparator);
 
     for (const opportunity of orderedOpportunities) {
       const definition = getBuildingDefinition(opportunity.definitionId);
       if (definition.zone !== opportunity.zone) continue;
+      const semantic = normalizeSemanticTuple(opportunity, opportunity.definitionId);
       for (const developer of [...this.developers.values()].sort((a, b) => a.id.localeCompare(b.id))) {
         const activeProjects = this.activeProjectCount(developer.id);
         if (activeProjects >= developer.maxConcurrentProjects) continue;
@@ -170,13 +198,17 @@ export class DeveloperMarketSystem {
         const residualValueBonus = clamp(opportunity.residualLandValue / Math.max(1, opportunity.landValue), -1, 2) * 0.01;
         const riskPenalty = Math.max(0, opportunity.riskScore - developer.riskTolerance) * 0.10;
         const rankScore = expectedReturnMargin + preferenceBonus + capitalEfficiencyBonus + residualValueBonus - riskPenalty;
+        const semanticIdentity = isLegacyTuple(semantic, opportunity.definitionId)
+          ? ''
+          : `:${semantic.qualityTier}:${semantic.parkingProfile}:${semantic.parkingSpaces}:${semantic.useMixKey}`;
 
         candidateBids.push(Object.freeze({
-          id: `bid:${context.tick}:${opportunity.lotId}:${opportunity.definitionId}:${developer.id}`,
+          id: `bid:${context.tick}:${opportunity.lotId}:${opportunity.definitionId}${semanticIdentity}:${developer.id}`,
           lotId: opportunity.lotId,
           definitionId: opportunity.definitionId,
           zone: opportunity.zone,
           developerId: developer.id,
+          ...semantic,
           expectedReturn,
           expectedReturnMargin,
           requiredEquity,
@@ -206,7 +238,10 @@ export class DeveloperMarketSystem {
       const definition = getBuildingDefinition(bid.definitionId);
       const completionTick = context.tick + definition.constructionTicks;
       const releaseTick = completionTick + 100;
-      const awardId = `development:${context.tick}:${bid.lotId}:${bid.definitionId}:${bid.developerId}`;
+      const semanticIdentity = isLegacyTuple(bid, bid.definitionId)
+        ? ''
+        : `:${bid.qualityTier}:${bid.parkingProfile}:${bid.parkingSpaces}:${bid.useMixKey}`;
+      const awardId = `development:${context.tick}:${bid.lotId}:${bid.definitionId}${semanticIdentity}:${bid.developerId}`;
       const buildingId = `building:${bid.lotId}`;
       if (this.commitments.has(buildingId)) continue;
       const award: DevelopmentAward = Object.freeze({
@@ -217,7 +252,6 @@ export class DeveloperMarketSystem {
         completionTick,
         releaseTick,
       });
-
       developer.availableCapital -= bid.requiredEquity;
       developer.committedCapital += bid.requiredEquity;
       const commitment: DeveloperCommitment = Object.freeze({
@@ -226,6 +260,10 @@ export class DeveloperMarketSystem {
         lotId: bid.lotId,
         definitionId: bid.definitionId,
         developerId: bid.developerId,
+        qualityTier: bid.qualityTier,
+        parkingProfile: bid.parkingProfile,
+        parkingSpaces: bid.parkingSpaces,
+        useMixKey: bid.useMixKey,
         equity: bid.requiredEquity,
         awardTick: context.tick,
         completionTick,
@@ -270,9 +308,7 @@ export class DeveloperMarketSystem {
   }
 
   listDevelopers(): DeveloperState[] {
-    return [...this.developers.values()]
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map(cloneDeveloper);
+    return [...this.developers.values()].sort((a, b) => a.id.localeCompare(b.id)).map(cloneDeveloper);
   }
 
   getDeveloperState(id: string): DeveloperState | undefined {
@@ -286,19 +322,11 @@ export class DeveloperMarketSystem {
       .map(cloneCommitment);
   }
 
-  lastBids(): DevelopmentBid[] {
-    return this.bids.map(cloneBid);
-  }
-
-  lastAwards(): DevelopmentAward[] {
-    return this.awards.map(cloneAward);
-  }
+  lastBids(): DevelopmentBid[] { return this.bids.map(cloneBid); }
+  lastAwards(): DevelopmentAward[] { return this.awards.map(cloneAward); }
 
   snapshotState(): DeveloperMarketStateSnapshot {
-    return {
-      developers: this.listDevelopers(),
-      commitments: this.listCommitments(),
-    };
+    return { developers: this.listDevelopers(), commitments: this.listCommitments() };
   }
 
   restoreState(snapshot: DeveloperMarketStateSnapshot): void {
@@ -324,11 +352,7 @@ export class DeveloperMarketSystem {
       finite(`${seed.id}.committedCapital`, raw.committedCapital);
       if (raw.committedCapital < 0) throw new Error(`${seed.id}.committedCapital must be non-negative`);
       if (nextDevelopers.has(seed.id)) throw new Error(`duplicate developer id: ${seed.id}`);
-      nextDevelopers.set(seed.id, {
-        ...seed,
-        committedCapital: raw.committedCapital,
-        preferences: { ...seed.preferences },
-      });
+      nextDevelopers.set(seed.id, { ...seed, committedCapital: raw.committedCapital, preferences: { ...seed.preferences } });
     }
 
     const nextCommitments = new Map<string, DeveloperCommitment>();
@@ -353,7 +377,8 @@ export class DeveloperMarketSystem {
         throw new Error(`${raw.buildingId} has invalid development commitment timing`);
       }
       getBuildingDefinition(raw.definitionId);
-      const commitment = Object.freeze({ ...raw });
+      const semantic = normalizeSemanticTuple(raw, raw.definitionId);
+      const commitment: DeveloperCommitment = Object.freeze({ ...raw, ...semantic });
       nextCommitments.set(raw.buildingId, commitment);
       awardIds.add(raw.awardId);
       equityByDeveloper.set(raw.developerId, (equityByDeveloper.get(raw.developerId) ?? 0) + raw.equity);
