@@ -277,11 +277,9 @@ export class EntityRegistry implements KnownEntityView {
       throw new Error('stale prepared entity projection');
     }
 
-    this.activeByLegacyKey = new Map(
-      sortedEntries(prepared.activeByLegacyKey).map(([key, record]) => [key, cloneRecord(record, true)]),
-    );
+    this.activeByLegacyKey = new Map(sortedEntries(prepared.activeByLegacyKey));
     for (const [key, record] of sortedEntries(prepared.knownUpdatesByHandleKey)) {
-      this.knownByHandleKey.set(key, cloneRecord(record));
+      this.knownByHandleKey.set(key, record);
     }
     for (const [key, generation] of sortedEntries(prepared.highestGenerationUpdatesByLegacyKey)) {
       this.highestGenerationByLegacyKey.set(key, generation);
