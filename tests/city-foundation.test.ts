@@ -5,10 +5,13 @@ import { TreasurySystem } from '../src/simulation/treasury/TreasurySystem.ts';
 import { RoadSystem } from '../src/world/roads/RoadSystem.ts';
 import { ZoningSystem } from '../src/simulation/zoning/ZoningSystem.ts';
 import { LotSystem, type Lot } from '../src/world/lots/LotSystem.ts';
+import { ParcelGenerationSystem } from '../src/world/cadastre/ParcelGenerationSystem.ts';
+import { CadastralGraph } from '../src/world/cadastre/CadastralGraph.ts';
 import { BuildingSystem } from '../src/simulation/buildings/BuildingSystem.ts';
 import { PopulationSystem } from '../src/simulation/population/PopulationSystem.ts';
 import { getBuildingDefinition } from '../src/data/buildings.ts';
 import type { DevelopmentAward } from '../src/simulation/development/DevelopmentTypes.ts';
+import type { ZoneType } from '../src/simulation/core/types.ts';
 
 function flatTerrain(width = 12, height = 8): TerrainGrid {
   const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({
@@ -64,7 +67,7 @@ test('road placement validates terrain, charges exact cost, and increments revis
   assert.equal(treasury.balance, 880);
 });
 
-test('zoning only paints buildable non-road cells and lots require road frontage', () => {
+test('zoning only paints buildable non-road cells and cadastral compatibility lots require road frontage', () => {
   const terrain = flatTerrain();
   const treasury = new TreasurySystem(1000);
   const roads = new RoadSystem(terrain);
@@ -73,10 +76,12 @@ test('zoning only paints buildable non-road cells and lots require road frontage
   assert.equal(zoning.paint([{ x: 2, y: 2 }, { x: 3, y: 2 }], 'residential').painted, 2);
   assert.equal(zoning.paint([{ x: 2, y: 3 }], 'commercial').painted, 0);
   assert.equal(zoning.paint([{ x: 8, y: 1 }], 'industrial').painted, 1);
+
+  const graph = new CadastralGraph(new ParcelGenerationSystem().rebuild(terrain, roads, zoning));
   const lots = new LotSystem();
-  lots.rebuild(roads, zoning);
-  assert.equal(lots.list().length, 2);
-  assert.deepEqual(lots.list().map((lot) => lot.zone), ['residential', 'residential']);
+  lots.rebuildFromCadastre(graph, (parcel) => parcel.zoningDistrictId as ZoneType);
+  assert.equal(lots.list().length, 1, 'two compatible frontage cells should become one cadastral parcel');
+  assert.deepEqual(lots.list().map((lot) => lot.zone), ['residential']);
 });
 
 test('buildings move from construction to occupied and expose real capacities', () => {
