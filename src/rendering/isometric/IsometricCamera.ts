@@ -50,6 +50,18 @@ export class IsometricCamera {
     this.quarterTurnValue = (((this.quarterTurnValue + direction) % 4 + 4) % 4) as QuarterTurn;
   }
 
+  rotateAroundCanvasPoint(direction: -1 | 1, size: WorldSize, anchor: Point): void {
+    if (!Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) {
+      this.rotate(direction);
+      return;
+    }
+    const worldAnchor = this.canvasToWorldPoint(anchor.x, anchor.y, size);
+    this.rotate(direction);
+    const after = this.worldToCanvas(worldAnchor.x, worldAnchor.y, size);
+    this.panX += anchor.x - after.x;
+    this.panY += anchor.y - after.y;
+  }
+
   worldToCanvas(x: number, y: number, size: WorldSize): Point {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return { x: Number.NaN, y: Number.NaN };
     const rotated = rotateWorldPoint(x, y, size, this.quarterTurnValue);
@@ -94,6 +106,14 @@ export class IsometricCamera {
       { x: center.x, y: center.y + halfH },
       { x: center.x - halfW, y: center.y },
     ]);
+  }
+
+  private canvasToWorldPoint(canvasX: number, canvasY: number, size: WorldSize): Point {
+    const offset = this.logicalMapOffset(size);
+    const logicalX = (canvasX - this.panX) / this.zoomValue - offset.x;
+    const logicalY = (canvasY - this.panY) / this.zoomValue - offset.y;
+    const rotated = inverseProjectPoint(logicalX, logicalY, this.metrics);
+    return inverseRotateWorldPoint(rotated.x, rotated.y, size, this.quarterTurnValue);
   }
 
   private logicalMapOffset(size: WorldSize): Point {
