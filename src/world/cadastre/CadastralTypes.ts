@@ -75,6 +75,14 @@ export type CadastralSnapshot = Readonly<{
   lineage: readonly ParcelLineageEvent[];
 }>;
 
+export type CadastralMutationResult = Readonly<{
+  committed: boolean;
+  resultingParcelIds: readonly string[];
+  retiredParcelIds: readonly string[];
+  parcelReferenceRewrites: Readonly<Record<string, string>>;
+  rejectionReasons: readonly string[];
+}>;
+
 export type CadastralValidationErrorCode =
   | 'duplicate-id'
   | 'missing-node'
