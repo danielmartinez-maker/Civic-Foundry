@@ -53,6 +53,7 @@ type PartitionProjectionCommitCache = Readonly<{
   graph: EntityReferenceGraph;
   manifestSignature: string;
   revisionByPartitionId: ReadonlyMap<string, string>;
+  partitionById: ReadonlyMap<string, EntityProjectionPartition>;
   unresolvedByPartitionId: ReadonlyMap<string, readonly UnresolvedEntityReference[]>;
   registryRevision: number;
   graphRevision: number;
@@ -291,6 +292,91 @@ function validatePartitionLifecycle(
   }
 }
 
+function changedHandleKindsFor(
+  registry: EntityRegistry,
+  preparedRegistryPartitions: readonly PreparedEntityPartitionProjection[],
+): ReadonlySet<EntityKind> {
+  const changedKinds = new Set<EntityKind>();
+  for (const prepared of preparedRegistryPartitions) {
+    for (const record of prepared.activeUpdatesByLegacyKey.values()) {
+      const current = registry.resolve(record.handle.kind, record.handle.legacyId);
+      if (!current || canonicalHandleKey(current) !== canonicalHandleKey(record.handle)) {
+        changedKinds.add(record.handle.kind);
+      }
+    }
+    if (prepared.removedLegacyKeys.length > 0) {
+      for (const kind of prepared.ownedKinds) changedKinds.add(kind);
+    }
+  }
+  return changedKinds;
+}
+
+function requiresFullReferenceResolution(
+  partition: EntityProjectionPartition,
+  changedHandleKinds: ReadonlySet<EntityKind>,
+): boolean {
+  return partition.projection.references.some((intent) => changedHandleKinds.has(intent.target.kind))
+    || partition.projection.unresolved.some((reference) => changedHandleKinds.has(reference.target.kind));
+}
+
+function previousEntitiesByLegacyKey(
+  partition: EntityProjectionPartition | undefined,
+): ReadonlyMap<string, ProjectedEntity> {
+  const result = new Map<string, ProjectedEntity>();
+  for (const entity of partition?.projection.entities ?? []) result.set(canonicalLegacyKey(entity), entity);
+  return result;
+}
+
+function removedSourceHandleKeys(
+  registry: EntityRegistry,
+  prepared: PreparedEntityPartitionProjection,
+  previousPartition: EntityProjectionPartition | undefined,
+): readonly string[] {
+  const removed = new Set<string>();
+  const previousEntities = previousEntitiesByLegacyKey(previousPartition);
+
+  for (const legacyKey of prepared.removedLegacyKeys) {
+    const previous = previousEntities.get(legacyKey);
+    if (!previous) continue;
+    const current = registry.resolve(previous.kind, previous.legacyId);
+    if (current) removed.add(canonicalHandleKey(current));
+  }
+
+  for (const record of prepared.activeUpdatesByLegacyKey.values()) {
+    const current = registry.resolve(record.handle.kind, record.handle.legacyId);
+    if (current && canonicalHandleKey(current) !== canonicalHandleKey(record.handle)) {
+      removed.add(canonicalHandleKey(current));
+    }
+  }
+
+  return Object.freeze([...removed].sort(ordinalCompare));
+}
+
+function deltaProjectionFor(
+  partition: EntityProjectionPartition,
+  prepared: PreparedEntityPartitionProjection,
+): Readonly<{
+  projection: EntityProjectionData;
+  reconciledLegacyKeys: ReadonlySet<string>;
+}> {
+  const changedSourceLegacyKeys = new Set<string>(prepared.activeUpdatesByLegacyKey.keys());
+  const reconciledLegacyKeys = new Set<string>(changedSourceLegacyKeys);
+  for (const key of prepared.removedLegacyKeys) reconciledLegacyKeys.add(key);
+
+  return Object.freeze({
+    projection: Object.freeze({
+      entities: Object.freeze([]),
+      references: Object.freeze(
+        partition.projection.references.filter((intent) => changedSourceLegacyKeys.has(canonicalLegacyKey(intent.source))),
+      ),
+      unresolved: Object.freeze(
+        partition.projection.unresolved.filter((reference) => changedSourceLegacyKeys.has(canonicalLegacyKey(reference.source))),
+      ),
+    }),
+    reconciledLegacyKeys,
+  });
+}
+
 export function commitEntityProjection(
   registry: EntityRegistry,
   graph: EntityReferenceGraph,
@@ -355,15 +441,43 @@ export function commitEntityProjectionPartitions(
   const preparedRegistryPartitions: PreparedEntityPartitionProjection[] = changedPartitions.map((partition) =>
     registry.preparePartitionProjection(partition.ownedKinds, partition.projection.entities));
   const view = preparedEntityPartitionView(registry, preparedRegistryPartitions);
+  const changedHandleKinds = changedHandleKindsFor(registry, preparedRegistryPartitions);
 
   const preparedGraphPartitions: PreparedReferencePartition[] = [];
   const unresolvedByPartitionId = copyUnresolvedByPartition(cacheUsable ? cached.unresolvedByPartitionId : undefined);
-  for (const partition of changedPartitions) {
-    const resolved = resolveReferences(partition.projection, view);
-    preparedGraphPartitions.push(graph.preparePartition(partition.ownedKinds, resolved.resolved, view));
+  for (let index = 0; index < changedPartitions.length; index++) {
+    const partition = changedPartitions[index]!;
+    const preparedRegistry = preparedRegistryPartitions[index]!;
+
+    if (!cacheUsable || requiresFullReferenceResolution(partition, changedHandleKinds)) {
+      const resolved = resolveReferences(partition.projection, view);
+      preparedGraphPartitions.push(graph.preparePartition(partition.ownedKinds, resolved.resolved, view));
+      unresolvedByPartitionId.set(
+        partition.id,
+        Object.freeze(resolved.unresolved.map(cloneUnresolved).sort(compareUnresolved)),
+      );
+      continue;
+    }
+
+    const delta = deltaProjectionFor(partition, preparedRegistry);
+    const resolved = resolveReferences(delta.projection, view);
+    const previousPartition = cached.partitionById.get(partition.id);
+    preparedGraphPartitions.push(graph.prepareSourceDelta(
+      partition.ownedKinds,
+      resolved.resolved,
+      removedSourceHandleKeys(registry, preparedRegistry, previousPartition),
+      view,
+    ));
+
+    const previousUnresolved = unresolvedByPartitionId.get(partition.id) ?? [];
     unresolvedByPartitionId.set(
       partition.id,
-      Object.freeze(resolved.unresolved.map(cloneUnresolved).sort(compareUnresolved)),
+      Object.freeze([
+        ...previousUnresolved.filter(
+          (reference) => !delta.reconciledLegacyKeys.has(canonicalLegacyKey(reference.source)),
+        ),
+        ...resolved.unresolved,
+      ].map(cloneUnresolved).sort(compareUnresolved)),
     );
   }
 
@@ -384,12 +498,17 @@ export function commitEntityProjectionPartitions(
     unresolved,
   });
   const revisionByPartitionId = new Map<string, string>();
-  for (const partition of normalized) revisionByPartitionId.set(partition.id, partition.revisionKey);
+  const partitionById = new Map<string, EntityProjectionPartition>();
+  for (const partition of normalized) {
+    revisionByPartitionId.set(partition.id, partition.revisionKey);
+    partitionById.set(partition.id, partition);
+  }
 
   partitionProjectionCommitCache.set(registry, Object.freeze({
     graph,
     manifestSignature,
     revisionByPartitionId,
+    partitionById,
     unresolvedByPartitionId,
     registryRevision: registry.commitRevision,
     graphRevision: graph.commitRevision,
