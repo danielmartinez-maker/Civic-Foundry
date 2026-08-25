@@ -1,13 +1,17 @@
 import {
   canonicalLegacyKey,
   ordinalCompare,
+  type EntityKind,
   type ProjectedEntity,
   type ProjectedReferenceIntent,
   type UnresolvedEntityReference,
 } from './EntityTypes.ts';
 import {
   EntityRegistry,
+  preparedEntityPartitionView,
   preparedEntityView,
+  type KnownEntityView,
+  type PreparedEntityPartitionProjection,
 } from './EntityRegistry.ts';
 import {
   EntityReferenceGraph,
@@ -18,6 +22,13 @@ export type EntityProjectionData = Readonly<{
   entities: readonly ProjectedEntity[];
   references: readonly ProjectedReferenceIntent[];
   unresolved: readonly UnresolvedEntityReference[];
+}>;
+
+export type EntityProjectionPartition = Readonly<{
+  id: string;
+  ownedKinds: readonly EntityKind[];
+  revisionKey: string;
+  projection: EntityProjectionData;
 }>;
 
 export type EntityProjectionCommitResult = Readonly<{
@@ -114,22 +125,10 @@ function requireNonEmptyRelation(relation: string): void {
   if (relation.trim().length === 0) throw new Error('entity reference relation must not be empty');
 }
 
-export function commitEntityProjection(
-  registry: EntityRegistry,
-  graph: EntityReferenceGraph,
+function resolveReferences(
   projection: EntityProjectionData,
-): EntityProjectionCommitResult {
-  const cached = projectionCommitCache.get(registry);
-  if (cached
-    && cached.graph === graph
-    && cached.projection === projection
-    && cached.registryRevision === registry.commitRevision
-    && cached.graphRevision === graph.commitRevision) {
-    return cached.result;
-  }
-
-  const preparedRegistry = registry.prepareProjection(projection.entities);
-  const view = preparedEntityView(preparedRegistry);
+  view: KnownEntityView,
+): Readonly<{ resolved: readonly EntityReference[]; unresolved: readonly UnresolvedEntityReference[] }> {
   const resolved: EntityReference[] = [];
   const unresolved: UnresolvedEntityReference[] = projection.unresolved.map(cloneUnresolved);
 
@@ -179,16 +178,90 @@ export function commitEntityProjection(
     resolved.push(Object.freeze({ source, target, semantics: 'weak', relation: intent.relation }));
   }
 
-  const preparedGraph = graph.prepare(resolved, view);
-  const sortedUnresolved = Object.freeze(unresolved.map(cloneUnresolved).sort(compareUnresolved));
+  return Object.freeze({
+    resolved: Object.freeze(resolved),
+    unresolved: Object.freeze(unresolved.map(cloneUnresolved).sort(compareUnresolved)),
+  });
+}
+
+function validatePartitions(partitions: readonly EntityProjectionPartition[]): readonly EntityProjectionPartition[] {
+  const normalized = [...partitions].sort((a, b) => ordinalCompare(a.id, b.id));
+  const ids = new Set<string>();
+  const kindOwner = new Map<EntityKind, string>();
+
+  for (const partition of normalized) {
+    if (partition.id.trim().length === 0) throw new Error('entity projection partition id must not be empty');
+    if (ids.has(partition.id)) throw new Error(`duplicate entity projection partition id: ${partition.id}`);
+    ids.add(partition.id);
+    if (partition.ownedKinds.length === 0) {
+      throw new Error(`entity projection partition ${partition.id} must own at least one entity kind`);
+    }
+
+    const ownedKinds = new Set<EntityKind>();
+    for (const kind of partition.ownedKinds) {
+      if (ownedKinds.has(kind)) throw new Error(`duplicate owned entity kind ${kind} in partition ${partition.id}`);
+      ownedKinds.add(kind);
+      const existingOwner = kindOwner.get(kind);
+      if (existingOwner) throw new Error(`entity kind ${kind} is owned by both ${existingOwner} and ${partition.id}`);
+      kindOwner.set(kind, partition.id);
+    }
+
+    for (const entity of partition.projection.entities) {
+      if (!ownedKinds.has(entity.kind)) {
+        throw new Error(`partition ${partition.id} projected unowned entity kind ${entity.kind}`);
+      }
+    }
+    for (const reference of partition.projection.references) {
+      if (!ownedKinds.has(reference.source.kind)) {
+        throw new Error(`partition ${partition.id} projected reference from unowned source kind ${reference.source.kind}`);
+      }
+    }
+    for (const reference of partition.projection.unresolved) {
+      if (!ownedKinds.has(reference.source.kind)) {
+        throw new Error(`partition ${partition.id} projected unresolved reference from unowned source kind ${reference.source.kind}`);
+      }
+    }
+  }
+
+  return Object.freeze(normalized);
+}
+
+function composeProjection(partitions: readonly EntityProjectionPartition[]): EntityProjectionData {
+  return Object.freeze({
+    entities: Object.freeze(partitions.flatMap((partition) => partition.projection.entities.map(cloneEntity))),
+    references: Object.freeze(partitions.flatMap((partition) => partition.projection.references.map(cloneIntent))),
+    unresolved: Object.freeze(
+      partitions.flatMap((partition) => partition.projection.unresolved.map(cloneUnresolved)).sort(compareUnresolved),
+    ),
+  });
+}
+
+export function commitEntityProjection(
+  registry: EntityRegistry,
+  graph: EntityReferenceGraph,
+  projection: EntityProjectionData,
+): EntityProjectionCommitResult {
+  const cached = projectionCommitCache.get(registry);
+  if (cached
+    && cached.graph === graph
+    && cached.projection === projection
+    && cached.registryRevision === registry.commitRevision
+    && cached.graphRevision === graph.commitRevision) {
+    return cached.result;
+  }
+
+  const preparedRegistry = registry.prepareProjection(projection.entities);
+  const view = preparedEntityView(preparedRegistry);
+  const resolved = resolveReferences(projection, view);
+  const preparedGraph = graph.prepare(resolved.resolved, view);
 
   registry.commitPrepared(preparedRegistry);
   graph.commitPrepared(preparedGraph);
 
   const result = Object.freeze({
-    activeEntities: registry.listActive().length,
+    activeEntities: registry.activeCount,
     references: graph.list().length,
-    unresolved: sortedUnresolved,
+    unresolved: resolved.unresolved,
   });
   projectionCommitCache.set(registry, Object.freeze({
     graph,
@@ -198,4 +271,27 @@ export function commitEntityProjection(
     result,
   }));
   return result;
+}
+
+export function commitEntityProjectionPartitions(
+  registry: EntityRegistry,
+  graph: EntityReferenceGraph,
+  partitions: readonly EntityProjectionPartition[],
+): EntityProjectionCommitResult {
+  const normalized = validatePartitions(partitions);
+  const preparedPartitions: PreparedEntityPartitionProjection[] = normalized.map((partition) =>
+    registry.preparePartitionProjection(partition.ownedKinds, partition.projection.entities));
+  const view = preparedEntityPartitionView(registry, preparedPartitions);
+  const combined = composeProjection(normalized);
+  const resolved = resolveReferences(combined, view);
+  const preparedGraph = graph.prepare(resolved.resolved, view);
+
+  registry.commitPreparedPartitions(preparedPartitions);
+  graph.commitPrepared(preparedGraph);
+
+  return Object.freeze({
+    activeEntities: registry.activeCount,
+    references: graph.list().length,
+    unresolved: resolved.unresolved,
+  });
 }
