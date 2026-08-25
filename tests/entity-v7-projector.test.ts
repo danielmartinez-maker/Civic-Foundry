@@ -74,3 +74,36 @@ test('V7 projection ordering is deterministic even when every source list is rev
   b.incidents.listIncidents = () => reverse(a.incidents.listIncidents());
   assert.deepEqual(projector.project(a), projector.project(b));
 });
+
+test('a transient revision rebuild does not re-list unchanged durable projection sources', () => {
+  const source = fixtureSource();
+  Object.assign(source.lots, { entityRevision: 1 });
+  Object.assign(source.buildings, { entityRevision: 1 });
+  Object.assign(source.economyDomain.firms, { entityRevision: 1 });
+  Object.assign(source.economyDomain.freightVehicles, { entityRevision: 1 });
+  Object.assign(source.utilities, { entityRevision: 1 });
+  Object.assign(source.services, { entityRevision: 1 });
+  Object.assign(source.transit, { revision: 1 });
+  Object.assign(source.traffic, { entityRevision: 1 });
+  Object.assign(source.serviceVehicles, { entityRevision: 1 });
+  Object.assign(source.incidents, { entityRevision: 1 });
+
+  let lotLists = 0;
+  let buildingLists = 0;
+  const originalLots = source.lots.list;
+  const originalBuildings = source.buildings.list;
+  source.lots.list = () => { lotLists++; return originalLots(); };
+  source.buildings.list = () => { buildingLists++; return originalBuildings(); };
+
+  const projector = new LegacyV7EntityProjector();
+  projector.project(source);
+  Object.assign(source.traffic, { entityRevision: 2 });
+  source.traffic.activeVehicles = [
+    ...source.traffic.activeVehicles,
+    { ...source.traffic.activeVehicles[0]!, id: 'vehicle:2', tripId: 'trip:2', departureTick: 31 },
+  ];
+  projector.project(source);
+
+  assert.equal(lotLists, 1, 'traffic churn must not force durable lot reprojection');
+  assert.equal(buildingLists, 1, 'traffic churn must not force durable building reprojection');
+});
