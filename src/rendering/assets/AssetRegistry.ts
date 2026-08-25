@@ -3,6 +3,7 @@ import type { AssetManifest, AssetManifestEntry, AssetOrientation, AssetQuery, A
 import { resolveVariantEntry } from './VariantSelector.ts';
 
 export class AssetRegistry {
+  private readonly manifest: AssetManifest;
   private readonly entryById = new Map<string, AssetManifestEntry>();
   private readonly entriesByVariant = new Map<string, AssetManifestEntry[]>();
   private readonly atlasUrls = new Map<string, string>();
@@ -13,7 +14,8 @@ export class AssetRegistry {
   private readonly queryCache = new Map<string, readonly AssetManifestEntry[]>();
   private readyValue = false;
 
-  constructor(private readonly manifest: AssetManifest) {
+  constructor(manifest: AssetManifest) {
+    this.manifest = manifest;
     if (manifest.schemaVersion !== 1) throw new Error(`unsupported asset manifest schema: ${String(manifest.schemaVersion)}`);
     const errors = validateAssetManifest(manifest);
     for (const error of errors) {
