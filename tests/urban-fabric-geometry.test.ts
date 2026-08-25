@@ -47,6 +47,16 @@ test('boolean operations conserve expected rectangular area', () => {
   assert.equal(difference.reduce((sum, ring) => sum + polygonArea(ring), 0), 200);
 });
 
+test('boolean output is canonical across equivalent vertex orderings', () => {
+  const shifted = [
+    { x: 20, y: 20 },
+    { x: 0, y: 20 },
+    { x: 0, y: 0 },
+    { x: 20, y: 0 },
+  ] as const;
+  assert.deepEqual(polygonUnion(square), polygonUnion(shifted));
+});
+
 test('point inclusion treats parcel boundaries as inside', () => {
   assert.equal(pointInPolygon({ x: 10, y: 10 }, square), true);
   assert.equal(pointInPolygon({ x: 0, y: 8 }, square), true);

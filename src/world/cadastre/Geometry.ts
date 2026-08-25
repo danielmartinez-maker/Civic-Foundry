@@ -15,9 +15,9 @@ export type WorldPoint = Readonly<{ x: number; y: number }>;
 export type PolygonRing = readonly WorldPoint[];
 export type MultiPolygon = readonly PolygonRing[];
 
-type ClipperPoint = Readonly<{ x: number; y: number }>;
-type ClipperPath = readonly ClipperPoint[];
-type ClipperPaths = readonly ClipperPath[];
+type ClipperPoint = { x: number; y: number };
+type ClipperPath = ClipperPoint[];
+type ClipperPaths = ClipperPath[];
 
 export function normalizePoint(point: WorldPoint): WorldPoint {
   assertFinitePoint(point);
@@ -142,10 +142,10 @@ function toClipperPaths(value: PolygonRing | MultiPolygon): ClipperPaths {
 
 function fromClipperPaths(paths: readonly (readonly { x: number; y: number }[])[]): MultiPolygon {
   const rings = paths
-    .map((path) => normalizeRing(path.map((point) => ({
+    .map((path) => canonicalizeRing(normalizeRing(path.map((point) => ({
       x: point.x / GEOMETRY_SCALE,
       y: point.y / GEOMETRY_SCALE,
-    }))))
+    })))))
     .filter((ring) => polygonArea(ring) > 0);
 
   rings.sort((left, right) => {
@@ -176,10 +176,34 @@ function compareRings(left: PolygonRing, right: PolygonRing): number {
   return 0;
 }
 
+function canonicalizeRing(ring: PolygonRing): PolygonRing {
+  const normalized = [...normalizeRing(ring)];
+  if (signedDoubleArea(normalized) < 0) normalized.reverse();
+
+  let startIndex = 0;
+  for (let index = 1; index < normalized.length; index += 1) {
+    const point = normalized[index]!;
+    const best = normalized[startIndex]!;
+    if (point.x < best.x || (point.x === best.x && point.y < best.y)) startIndex = index;
+  }
+  return Object.freeze([
+    ...normalized.slice(startIndex),
+    ...normalized.slice(0, startIndex),
+  ]);
+}
+
 function canonicalStart(ring: PolygonRing): WorldPoint {
-  return ring.reduce((best, point) => (
-    point.x < best.x || (point.x === best.x && point.y < best.y) ? point : best
-  ), ring[0]!);
+  return ring[0]!;
+}
+
+function signedDoubleArea(ring: PolygonRing): number {
+  let total = 0;
+  for (let index = 0; index < ring.length; index += 1) {
+    const current = ring[index]!;
+    const next = ring[(index + 1) % ring.length]!;
+    total += current.x * next.y - next.x * current.y;
+  }
+  return total;
 }
 
 function pointOnSegment(point: WorldPoint, start: WorldPoint, end: WorldPoint): boolean {
