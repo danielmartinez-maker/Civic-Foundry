@@ -91,10 +91,10 @@ export class LandHousingUiController {
     if (this.mode === 'none') return;
 
     const snapshot = mapLandHousingOverlay(this.app.core, this.mode);
+    const tileWidth = this.app.renderer.tileWidth;
     for (const item of snapshot.cells) {
-      const point = this.app.renderer.worldToCanvas(item.x, item.y, this.app.core);
-      const size = this.app.renderer.cellSize;
-      const inset = Math.max(1, size * 0.05);
+      const center = this.app.renderer.worldToCanvas(item.x, item.y, this.app.core);
+      const polygon = this.app.renderer.tilePolygon(item.x, item.y, this.app.core);
       const normalized = Math.max(0, Math.min(1, item.value));
       const hue = this.mode === 'affordability'
         ? Math.round(normalized * 120)
@@ -103,19 +103,27 @@ export class LandHousingUiController {
           : this.mode === 'tenure'
             ? Math.round(215 + normalized * 65)
             : Math.round(45 - normalized * 45);
+      const insetPolygon = polygon.map((point) => ({
+        x: center.x + (point.x - center.x) * 0.92,
+        y: center.y + (point.y - center.y) * 0.92,
+      }));
 
       this.overlayContext.save();
       this.overlayContext.fillStyle = `hsla(${hue}, 82%, 52%, ${0.20 + normalized * 0.42})`;
-      this.overlayContext.fillRect(point.x + inset, point.y + inset, size - inset * 2, size - inset * 2);
-      if (size >= 20) {
+      this.overlayContext.beginPath();
+      this.overlayContext.moveTo(insetPolygon[0]!.x, insetPolygon[0]!.y);
+      for (let i = 1; i < insetPolygon.length; i += 1) this.overlayContext.lineTo(insetPolygon[i]!.x, insetPolygon[i]!.y);
+      this.overlayContext.closePath();
+      this.overlayContext.fill();
+      if (tileWidth >= 40) {
         this.overlayContext.fillStyle = '#ffffff';
         this.overlayContext.strokeStyle = 'rgba(0,0,0,.72)';
         this.overlayContext.lineWidth = 2;
-        this.overlayContext.font = `700 ${Math.max(8, size * 0.27)}px system-ui`;
+        this.overlayContext.font = `700 ${Math.max(8, tileWidth * 0.14)}px system-ui`;
         this.overlayContext.textAlign = 'center';
         this.overlayContext.textBaseline = 'middle';
-        this.overlayContext.strokeText(item.label, point.x + size / 2, point.y + size / 2);
-        this.overlayContext.fillText(item.label, point.x + size / 2, point.y + size / 2);
+        this.overlayContext.strokeText(item.label, center.x, center.y);
+        this.overlayContext.fillText(item.label, center.x, center.y);
       }
       this.overlayContext.restore();
     }
