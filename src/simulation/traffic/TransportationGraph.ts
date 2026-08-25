@@ -21,6 +21,12 @@ export type TransportationEdge = Readonly<{
   intersectionServiceRate: number;
 }>;
 
+export type TransportationGraphProjection = Readonly<{
+  nodes: readonly TransportationNode[];
+  edges: readonly TransportationEdge[];
+  sourceRoadRevision: number;
+}>;
+
 const CARDINAL = [[0,-1],[1,0],[0,1],[-1,0]] as const;
 const nodeId = (x: number, y: number): string => `n:${x},${y}`;
 
@@ -32,6 +38,7 @@ export class TransportationGraph {
   private nodeById = new Map<string, TransportationNode>();
   private edgeById = new Map<string, TransportationEdge>();
   private outgoing = new Map<string, TransportationEdge[]>();
+  private projectionFingerprint = '';
 
   rebuildIfNeeded(roads: RoadSystem): boolean {
     if (roads.revision === this.sourceRoadRevision) return false;
@@ -59,8 +66,19 @@ export class TransportationGraph {
         });
       }
     }
-    nodes.sort((a, b) => a.y - b.y || a.x - b.x);
-    edges.sort((a, b) => a.id.localeCompare(b.id));
+    return this.loadProjection({ nodes, edges, sourceRoadRevision: roads.revision });
+  }
+
+  loadProjection(projection: TransportationGraphProjection): boolean {
+    const nodes = projection.nodes
+      .map((node) => ({ ...node }))
+      .sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
+    const edges = projection.edges
+      .map((edge) => ({ ...edge }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const fingerprint = JSON.stringify([projection.sourceRoadRevision, nodes, edges]);
+    if (fingerprint === this.projectionFingerprint) return false;
+
     this.nodes = nodes;
     this.edges = edges;
     this.nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -71,7 +89,9 @@ export class TransportationGraph {
       list.push(edge);
       this.outgoing.set(edge.from, list);
     }
-    this.sourceRoadRevision = roads.revision;
+    for (const list of this.outgoing.values()) list.sort((a, b) => a.id.localeCompare(b.id));
+    this.sourceRoadRevision = projection.sourceRoadRevision;
+    this.projectionFingerprint = fingerprint;
     this.revision++;
     return true;
   }
