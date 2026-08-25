@@ -2,6 +2,8 @@ import { BUILDING_DEFINITION_BY_ID, type BuildingDefinition } from './buildings.
 import type { BuildingTypology } from '../simulation/buildings/BuildingTypes.ts';
 import type { UseType } from '../simulation/zoning/ZoningTypes.ts';
 
+export type { BuildingTypology } from '../simulation/buildings/BuildingTypes.ts';
+
 const DEFAULT_JOBS_PER_1000_M2: Readonly<Partial<Record<UseType, number>>> = Object.freeze({
   retail: 28,
   office: 45,
@@ -92,7 +94,6 @@ function mixedTypology(
     ...seed,
     id,
     name,
-    legacyDefinitionId: undefined,
     primaryUse: 'residential',
     allowedUses: Object.freeze(['residential', 'retail', 'office'] as const),
     defaultUseMix: Object.freeze({ residential: 0.65, retail: 0.20, office: 0.15 }),
