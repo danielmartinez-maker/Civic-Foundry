@@ -240,6 +240,48 @@ export class EntityReferenceGraph {
     this.revision++;
   }
 
+  assertPartitionIndexIntegrity(): void {
+    const indexed = new Set<string>();
+    const kinds = [...this.sourceKeysByKind.keys()].sort(ordinalCompare);
+    for (const kind of kinds) {
+      const sourceKeys = [...(this.sourceKeysByKind.get(kind) ?? [])].sort(ordinalCompare);
+      for (const sourceKey of sourceKeys) {
+        if (indexed.has(sourceKey)) {
+          throw new Error(`reference source-kind index duplicates source ${kind}: ${sourceKey}`);
+        }
+        indexed.add(sourceKey);
+        const bucket = this.referencesBySourceKey.get(sourceKey);
+        if (!bucket || bucket.length === 0) {
+          throw new Error(`reference source-kind index ${kind} references missing source bucket: ${sourceKey}`);
+        }
+        for (const reference of bucket) {
+          if (reference.source.kind !== kind || canonicalHandleKey(reference.source) !== sourceKey) {
+            throw new Error(`reference source-kind index ${kind} disagrees with source bucket: ${sourceKey}`);
+          }
+        }
+      }
+    }
+
+    let countedReferences = 0;
+    const buckets = [...this.referencesBySourceKey.entries()].sort(([a], [b]) => ordinalCompare(a, b));
+    for (const [sourceKey, bucket] of buckets) {
+      if (bucket.length === 0) throw new Error(`reference source bucket is empty: ${sourceKey}`);
+      const kind = bucket[0]!.source.kind;
+      if (!this.sourceKeysByKind.get(kind)?.has(sourceKey)) {
+        throw new Error(`reference source-kind index missing source ${kind}: ${sourceKey}`);
+      }
+      for (const reference of bucket) {
+        if (canonicalHandleKey(reference.source) !== sourceKey) {
+          throw new Error(`reference source bucket contains mismatched source: ${sourceKey}`);
+        }
+      }
+      countedReferences += bucket.length;
+    }
+    if (countedReferences !== this.referenceCount) {
+      throw new Error(`reference source-kind index count mismatch: expected ${this.referenceCount}, found ${countedReferences}`);
+    }
+  }
+
   outgoing(source: EntityHandle): readonly EntityReference[] {
     const sourceKey = canonicalHandleKey(source);
     return Object.freeze((this.referencesBySourceKey.get(sourceKey) ?? []).map(cloneReference));
