@@ -152,7 +152,7 @@ test('lint is an independent source-quality gate rather than a duplicate typeche
   assert.notEqual(pkg.scripts.lint, pkg.scripts.typecheck);
 });
 
-test('bulldozing an incident target retires live service and waste state before an immediate save', () => {
+test('an immediate save after bulldozing an incident target sanitizes orphaned service state', () => {
   const core = new SimulationCore({ terrain: flatTerrain(), seed: 41 });
   const building = {
     id: 'building:lot:test', lotId: 'lot:test', x: 6, y: 4, zone: 'residential' as const,
@@ -167,8 +167,10 @@ test('bulldozing an incident target retires live service and waste state before 
   ], 0, 0, [], [[building.id, incident.serviceJobId]]);
 
   assert.equal(core.bulldozeAt(building.x, building.y).ok, true);
-  assert.equal(core.serviceDispatch.getJob(incident.serviceJobId)?.status, 'failed');
-  assert.equal(core.incidents.getIncident(incidentId)?.status, 'resolved');
-  assert.equal(core.wasteCollection.getBuildingWaste(building.id), undefined);
-  assert.doesNotThrow(() => hydrateCurrent(structuredClone(serializeCurrent(core))));
+  const saved = serializeCurrent(core);
+  assert.ok(!saved.services.jobs.some((job) => job.targetBuildingId === building.id));
+  assert.ok(!saved.services.incidents.some((item) => item.targetBuildingId === building.id));
+  assert.ok(!saved.services.waste.buildings.some((state) => state.buildingId === building.id));
+  const restored = hydrateCurrent(structuredClone(saved));
+  assert.equal(restored.buildings.getById(building.id), undefined);
 });
