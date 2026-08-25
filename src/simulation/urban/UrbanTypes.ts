@@ -43,6 +43,19 @@ export type UrbanFabricStateSnapshot = Readonly<{
   buildings: readonly UrbanBuildingState[];
 }>;
 
+export type RenovationCommitment = Readonly<{
+  buildingId: string;
+  developerId: string;
+  startTick: number;
+  completionTick: number;
+  cost: number;
+  targetCondition: 90;
+}>;
+
+export type RenovationStateSnapshot = Readonly<{
+  commitments: readonly RenovationCommitment[];
+}>;
+
 export type UrbanFabricValidationOptions = Readonly<{
   requireAllLiveBuildings?: boolean;
 }>;
