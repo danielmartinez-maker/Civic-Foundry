@@ -59,7 +59,7 @@ def main() -> None:
 
         assert page.locator("h1").inner_text() == "CIVIC FOUNDRY"
         assert "PHASE VI" in page.locator(".eyebrow").inner_text()
-        assert page.locator('[data-testid="save"]').inner_text() == "Save V6"
+        assert page.locator('[data-testid="save"]').inner_text() == "Save V7"
         assert page.locator('[data-testid="economy-panel"]').is_visible()
 
         setup = page.evaluate("""
@@ -108,8 +108,8 @@ def main() -> None:
         assert "Freight routes" in legend
 
         page.locator('[data-testid="save"]').click()
-        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Saved V6')")
-        saved_raw = page.evaluate("() => localStorage.getItem('civic-foundry-save-v6')")
+        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Saved V7')")
+        saved_raw = page.evaluate("() => localStorage.getItem('civic-foundry-save-v7')")
         assert saved_raw
         saved_obj = json.loads(saved_raw)
         assert saved_obj["saveVersion"] == 7
@@ -131,12 +131,12 @@ def main() -> None:
         assert mutated["roads"] < setup["roads"]
 
         page.locator('[data-testid="load"]').click()
-        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Loaded V6')")
+        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Loaded V7')")
         restored = page.evaluate("""
         async () => {
           const { serializeCore } = await import('http://civic.test/src/save/save.js');
           const app=window.__civicApp;
-          const raw=localStorage.getItem('civic-foundry-save-v6');
+          const raw=localStorage.getItem('civic-foundry-save-v7');
           const snapshot=app.core.economyDomain.snapshot(app.core.clock.tick);
           return {exact:JSON.stringify(serializeCore(app.core))===raw,roads:app.core.roads.list().length,activeFirms:snapshot.activeFirms,freight:app.core.economyDomain.freightVehicles.activeCount(),saveVersion:serializeCore(app.core).saveVersion};
         }
