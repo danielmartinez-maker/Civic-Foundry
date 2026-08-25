@@ -124,6 +124,7 @@ export class TrafficSystem {
 
   step(graph: TransportationGraph, intersections: IntersectionSystem, tick: number, extraEdgeLoads: Readonly<Record<string, number>> = {}): void {
     this.invalidateMissingRoutes(graph, intersections, tick);
+    this.recoverOrphanedQueues(intersections, tick);
 
     for (const vehicle of this.vehicles.values()) {
       if (vehicle.status === 'queued') vehicle.accumulatedDelayTicks++;
@@ -258,6 +259,16 @@ export class TrafficSystem {
       const congestion = clamp01(1 - averageSpeedCellsPerSecond / edge.freeFlowSpeedCellsPerSecond);
       return { edgeId: edge.id, weightedVehicles, utilization, congestion, averageSpeedCellsPerSecond, travelTimeTicks };
     });
+  }
+
+  private recoverOrphanedQueues(intersections: IntersectionSystem, tick: number): void {
+    const represented = new Set<string>();
+    for (const approaches of Object.values(intersections.snapshot())) {
+      for (const approach of approaches) for (const entry of approach.entries) represented.add(entry.vehicleId);
+    }
+    for (const vehicle of [...this.vehicles.values()]) {
+      if (vehicle.status === 'queued' && !represented.has(vehicle.id)) this.fail(vehicle, intersections, tick);
+    }
   }
 
   private invalidateMissingRoutes(graph: TransportationGraph, intersections: IntersectionSystem, tick: number): void {
