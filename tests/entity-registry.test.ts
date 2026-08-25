@@ -119,3 +119,18 @@ test('steady-state projection does not full-scan accumulated historical records'
   assert.equal(registry.require('building', 'building:lot:1,1').generation, 100);
   assert.equal(registry.listHistorical('building').length, 99);
 });
+
+test('unchanged active entities do not enter staged known-record updates', () => {
+  const registry = new EntityRegistry();
+  registry.commitPrepared(registry.prepareProjection([
+    { ...building('start:10'), metadata: { status: 'occupied', zone: 'residential' } },
+  ]));
+
+  const prepared = registry.prepareProjection([
+    { ...building('start:10'), metadata: { zone: 'residential', status: 'occupied' } },
+  ]);
+
+  assert.equal(prepared.knownUpdatesByHandleKey.size, 0,
+    'unchanged immutable entity records should be reused rather than staged for replacement');
+  assert.equal(prepared.highestGenerationUpdatesByLegacyKey.size, 0);
+});
