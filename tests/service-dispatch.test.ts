@@ -88,6 +88,7 @@ test('intersection service releases emergency vehicles before older normal traff
   f.intersections.enqueue(node.id, incoming.id, { vehicleId: 'emergency-new', travelerWeight: 1, queuedTick: 2, priority: 'emergency' });
   const released = f.intersections.stepNode(f.graph, node.id);
   assert.deepEqual(released, ['emergency-new']);
+  f.intersections.removeVehicle('emergency-new');
   f.intersections.removeVehicle('normal-old');
   f.intersections.enqueue(node.id, incoming.id, { vehicleId: 'garbage-old', travelerWeight: 1, queuedTick: 3, priority: 'normal' });
   f.intersections.enqueue(node.id, incoming.id, { vehicleId: 'commuter-new', travelerWeight: 1, queuedTick: 4, priority: 'normal' });
