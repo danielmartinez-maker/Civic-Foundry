@@ -370,6 +370,14 @@ export class HousingRelocationSystem {
     return residents;
   }
 
+  unresolvedDisplacementIds(buildingId: string): readonly string[] {
+    if (typeof buildingId !== 'string' || buildingId.trim().length === 0) throw new Error('buildingId must be non-empty');
+    const ids = this.unplaced
+      .filter((item) => item.displaced && item.displacedFromBuildingId === buildingId && item.residents > EPSILON)
+      .map((item) => `displacement:${buildingId}:${item.band}:${item.tenurePreference}`);
+    return Object.freeze([...new Set(ids)].sort((a, b) => a.localeCompare(b)));
+  }
+
   refreshSnapshot(population: number, options: readonly HousingTenureOption[]): HousingRelocationSnapshot {
     finiteNonNegative('population', population);
     const validOptions = validateOptions(options);
