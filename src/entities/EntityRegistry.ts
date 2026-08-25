@@ -49,6 +49,17 @@ function cloneMetadata(metadata: EntityMetadata | undefined): EntityMetadata {
   return Object.freeze(next);
 }
 
+function metadataMatches(current: EntityMetadata, incoming: EntityMetadata | undefined): boolean {
+  const incomingKeys = Object.keys(incoming ?? {}).sort(ordinalCompare);
+  const currentKeys = Object.keys(current);
+  if (incomingKeys.length !== currentKeys.length) return false;
+  for (let i = 0; i < currentKeys.length; i++) {
+    const key = currentKeys[i]!;
+    if (incomingKeys[i] !== key || current[key] !== incoming?.[key]) return false;
+  }
+  return true;
+}
+
 function cloneHandle<K extends EntityKind = EntityKind>(handle: EntityHandle<K>): EntityHandle<K> {
   return Object.freeze({ ...handle });
 }
@@ -210,19 +221,19 @@ export class EntityRegistry implements KnownEntityView {
 
   prepareProjection(entities: readonly ProjectedEntity[]): PreparedEntityProjection {
     const normalized = entities.map((entity) => {
-      canonicalLegacyKey(entity);
+      const legacyKey = canonicalLegacyKey(entity);
       requireToken(entity.incarnationToken);
-      return Object.freeze({ ...entity, metadata: cloneMetadata(entity.metadata) });
-    }).sort((a, b) => ordinalCompare(canonicalLegacyKey(a), canonicalLegacyKey(b)));
+      return { entity, legacyKey } as const;
+    }).sort((a, b) => ordinalCompare(a.legacyKey, b.legacyKey));
 
     for (let i = 1; i < normalized.length; i++) {
-      if (canonicalLegacyKey(normalized[i - 1]!) === canonicalLegacyKey(normalized[i]!)) {
-        throw new Error(`duplicate projected entity identity: ${canonicalLegacyKey(normalized[i]!)}`);
+      if (normalized[i - 1]!.legacyKey === normalized[i]!.legacyKey) {
+        throw new Error(`duplicate projected entity identity: ${normalized[i]!.legacyKey}`);
       }
     }
 
     const normalizedByLegacyKey = new Map<string, ProjectedEntity>();
-    for (const entity of normalized) normalizedByLegacyKey.set(canonicalLegacyKey(entity), entity);
+    for (const item of normalized) normalizedByLegacyKey.set(item.legacyKey, item.entity);
 
     const nextActive = new Map<string, EntityRecord>();
     const knownUpdates = new Map<string, EntityRecord>();
@@ -236,19 +247,20 @@ export class EntityRegistry implements KnownEntityView {
       }
     }
 
-    for (const entity of normalized) {
-      const legacyKey = canonicalLegacyKey(entity);
+    for (const { entity, legacyKey } of normalized) {
       const current = this.activeByLegacyKey.get(legacyKey);
       let record: EntityRecord;
       if (current && current.incarnationToken === entity.incarnationToken) {
-        record = recordFrom(entity, current.handle.generation);
+        record = metadataMatches(current.metadata, entity.metadata)
+          ? current
+          : recordFrom(entity, current.handle.generation);
       } else {
         const generation = (this.highestGenerationByLegacyKey.get(legacyKey) ?? 0) + 1;
         record = recordFrom(entity, generation);
         highestUpdates.set(legacyKey, generation);
       }
       nextActive.set(legacyKey, record);
-      knownUpdates.set(canonicalHandleKey(record.handle), record);
+      if (record !== current) knownUpdates.set(canonicalHandleKey(record.handle), record);
     }
 
     return Object.freeze({
