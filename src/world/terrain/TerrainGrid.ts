@@ -7,19 +7,24 @@ export type TerrainCell = Readonly<{
   biome: 'grass' | 'forest' | 'rock' | 'water';
 }>;
 
+function validDimension(value: number): boolean {
+  return Number.isFinite(value) && Number.isInteger(value) && value > 0;
+}
+
 export class TerrainGrid {
   readonly width: number;
   readonly height: number;
   private readonly cells: TerrainCell[];
 
   constructor(width: number, height: number, cells: TerrainCell[]) {
-    if (width <= 0 || height <= 0 || cells.length !== width * height) throw new Error('invalid terrain dimensions');
+    if (!validDimension(width) || !validDimension(height) || cells.length !== width * height) throw new Error('invalid terrain dimensions');
     this.width = width;
     this.height = height;
     this.cells = cells.map((cell) => Object.freeze({ ...cell }));
   }
 
   static generate(width: number, height: number, seed: number): TerrainGrid {
+    if (!validDimension(width) || !validDimension(height)) throw new Error('invalid terrain dimensions');
     const rng = new SeededRandom(seed ^ 0x91e10da5);
     const cells: TerrainCell[] = [];
     const cx = (width - 1) / 2;

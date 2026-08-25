@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "tsc -p tsconfig.json --noEmit",
+    "lint": "node scripts/lint.mjs",
     "build": "rm -rf dist && tsc -p tsconfig.json && cp index.html dist/index.html && cp src/styles.css dist/styles.css",
     "dev": "python -m http.server 5173 -d dist",
     "test:smoke": "python tests/smoke/phase6_smoke.py",

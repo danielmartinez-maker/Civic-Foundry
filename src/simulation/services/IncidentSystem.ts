@@ -77,8 +77,12 @@ export class IncidentSystem {
     const buildingById = new Map(buildings.map((building) => [building.id, building]));
     for (const incident of [...this.incidents.values()].filter((item) => item.status === 'active').sort((a, b) => a.id.localeCompare(b.id))) {
       const linked = jobById.get(incident.serviceJobId);
+      if (!buildingById.has(incident.targetBuildingId) || !linked || linked.status === 'failed') {
+        this.resolve(incident, linked, tick, false);
+        continue;
+      }
       if (incident.kind === 'fire') {
-        const responderActive = linked?.status === 'servicing' || linked?.status === 'returning' || linked?.status === 'completed';
+        const responderActive = linked.status === 'servicing' || linked.status === 'returning' || linked.status === 'completed';
         if (responderActive) incident.intensity = Math.max(0, incident.intensity - 0.05 * (0.5 + incident.severity));
         else incident.intensity = Math.min(1.5, incident.intensity + 0.015 * (0.5 + incident.severity));
         incident.damage = Math.min(1.5, incident.damage + incident.intensity * 0.0015);
@@ -98,7 +102,7 @@ export class IncidentSystem {
 
         if (responderActive && incident.intensity <= 0.01) this.resolve(incident, linked, tick, true);
         else if (incident.damage >= 1) this.resolve(incident, linked, tick, false);
-      } else if (linked?.status === 'completed') {
+      } else if (linked.status === 'completed') {
         this.resolve(incident, linked, tick, true);
       }
     }

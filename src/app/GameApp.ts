@@ -12,9 +12,11 @@ import { inspectCell, inspectTransitLine, inspectTransitVehicle, type Inspection
 import { ToolController, type ToolId } from '../ui/ToolController.ts';
 import { collectTransitPanelState, TransitPanelController } from '../ui/TransitPanel.ts';
 import { EconomyPanel } from '../ui/EconomyPanel.ts';
+import { escapeHtml } from '../ui/escapeHtml.ts';
 import { mapEconomyOverlay, type EconomyOverlayMode } from '../rendering/EconomyOverlayLayer.ts';
 
-const STORAGE_KEY = 'civic-foundry-save-v6';
+const STORAGE_KEY = 'civic-foundry-save-v7';
+const LEGACY_STORAGE_KEY = 'civic-foundry-save-v6';
 const TOOLS: readonly [ToolId, string, string][] = [
   ['inspect', 'Inspect', 'I'], ['road-local', 'Local', 'R'], ['road-collector', 'Collector', 'C'], ['road-arterial', 'Arterial', 'A'],
   ['zone-residential', 'Residential', '1'], ['zone-commercial', 'Commercial', '2'], ['zone-industrial', 'Industrial', '3'],
@@ -75,7 +77,7 @@ export class GameApp {
     const serviceBudgetRows = (['fire', 'police', 'healthcare', 'education', 'garbage'] as ServiceDepartment[]).map((department) => `<label class="tax-row"><span>${department[0]!.toUpperCase()}${department.slice(1, 4)}</span><input data-service-budget="${department}" data-testid="budget-${department}" type="number" min="50" max="150" step="5" value="100"><b>%</b></label>`).join('');
     return `<div class="game-shell">
       <header class="topbar"><div><div class="eyebrow">PHASE VI · FIRMS, PRODUCTION & FREIGHT</div><h1>CIVIC FOUNDRY</h1></div>
-        <div class="top-actions"><button data-action="save" data-testid="save">Save V6</button><button data-action="load" data-testid="load">Load</button></div></header>
+        <div class="top-actions"><button data-action="save" data-testid="save">Save V7</button><button data-action="load" data-testid="load">Load</button></div></header>
       <section id="hud" class="hud"></section>
       <main class="workspace">
         <aside class="toolbox"><h2>Build</h2>${toolButtons}
@@ -188,15 +190,13 @@ export class GameApp {
     this.root.querySelector('[data-action="apply-transit-config"]')?.addEventListener('click', () => {
       const lineId = this.selectedTransitLineId();
       if (!lineId) { this.flash('Create or select a transit line first.', 'error'); return; }
-      const panel = new TransitPanelController(this.core);
-      const commands = [
-        panel.setHeadway(lineId, Number(this.required<HTMLInputElement>('[data-transit-headway]').value)),
-        panel.setFare(lineId, Number(this.required<HTMLInputElement>('[data-transit-fare]').value)),
-        panel.setFleetLimit(lineId, Number(this.required<HTMLInputElement>('[data-transit-fleet]').value)),
-        panel.setEnabled(lineId, this.required<HTMLInputElement>('[data-transit-enabled]').checked),
-      ];
-      const failed = commands.find((result) => !result.ok);
-      this.applyTransitCommand(failed ?? { ok: true }, 'Transit service settings applied.');
+      const result = new TransitPanelController(this.core).applyLineConfig(lineId, {
+        headwayTicks: Number(this.required<HTMLInputElement>('[data-transit-headway]').value),
+        fare: Number(this.required<HTMLInputElement>('[data-transit-fare]').value),
+        fleetLimit: Number(this.required<HTMLInputElement>('[data-transit-fleet]').value),
+        enabled: this.required<HTMLInputElement>('[data-transit-enabled]').checked,
+      });
+      this.applyTransitCommand(result, 'Transit service settings applied.');
     });
     this.root.querySelector('[data-action="inspect-transit-line"]')?.addEventListener('click', () => {
       const lineId = this.selectedTransitLineId();
@@ -224,7 +224,7 @@ export class GameApp {
     const lines = this.core.transit.listLines();
     const stops = this.core.transit.listStops();
     const lineSelect = this.required<HTMLSelectElement>('[data-transit-line]');
-    lineSelect.innerHTML = lines.length > 0 ? lines.map((line) => `<option value="${line.id}">${line.name} · ${line.mode}</option>`).join('') : '<option value="">No lines</option>';
+    lineSelect.innerHTML = lines.length > 0 ? lines.map((line) => `<option value="${line.id}">${escapeHtml(line.name)} · ${line.mode}</option>`).join('') : '<option value="">No lines</option>';
     if (currentLineId && lines.some((line) => line.id === currentLineId)) lineSelect.value = currentLineId;
     const stopOptions = stops.length > 0 ? stops.map((stop) => `<option value="${stop.id}">${stop.id} · ${stop.type} (${stop.x},${stop.y})</option>`).join('') : '<option value="">No stops</option>';
     for (const selector of ['[data-transit-origin]', '[data-transit-destination]', '[data-transit-append-stop]']) this.required<HTMLSelectElement>(selector).innerHTML = stopOptions;
@@ -259,7 +259,7 @@ export class GameApp {
     const lineId = this.selectedTransitLineId();
     const line = state.lines.find((candidate) => candidate.id === lineId);
     const summary = this.required<HTMLElement>('[data-transit-summary]');
-    summary.innerHTML = line ? `<strong>${line.name}</strong><span>${line.mode} · ${line.stopIds.length} stops · ${line.activeVehicles}/${line.fleetLimit} vehicles</span><span>Ridership ${line.ridership.toFixed(0)} · reliability ${Math.round(line.reliability * 100)}% · recovery ${Math.round(line.costRecovery * 100)}%</span><span>City transit share ${Math.round(state.modeShare * 100)}% · access ${Math.round(state.personAccessibility * 100)}% · wait ${state.meanWaitTicks.toFixed(1)} ticks</span>` : `No transit lines · ${state.stops.length} stops placed.`;
+    summary.innerHTML = line ? `<strong>${escapeHtml(line.name)}</strong><span>${line.mode} · ${line.stopIds.length} stops · ${line.activeVehicles}/${line.fleetLimit} vehicles</span><span>Ridership ${line.ridership.toFixed(0)} · reliability ${Math.round(line.reliability * 100)}% · recovery ${Math.round(line.costRecovery * 100)}%</span><span>City transit share ${Math.round(state.modeShare * 100)}% · access ${Math.round(state.personAccessibility * 100)}% · wait ${state.meanWaitTicks.toFixed(1)} ticks</span>` : `No transit lines · ${state.stops.length} stops placed.`;
     const vehicleSelect = this.required<HTMLSelectElement>('[data-transit-vehicle]');
     const priorVehicle = vehicleSelect.value;
     const vehicles = this.core.mobility.vehicles.listVehicles();
@@ -273,7 +273,7 @@ export class GameApp {
   }
 
   private renderInspection(inspection: Inspection): void {
-    this.inspector.innerHTML = `<h3>${inspection.title}</h3>${inspection.lines.map((line) => `<p>${line}</p>`).join('')}`;
+    this.inspector.innerHTML = `<h3>${escapeHtml(inspection.title)}</h3>${inspection.lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('')}`;
   }
 
   private bindCanvas(canvas: HTMLCanvasElement): void {
@@ -440,19 +440,30 @@ export class GameApp {
     const json = JSON.stringify(serializeCore(this.core));
     this.fallbackSave = json;
     try { localStorage.setItem(STORAGE_KEY, json); } catch { /* fallback retained */ }
-    this.flash(`Saved V6 at tick ${this.core.clock.tick}.`, 'ok');
+    this.flash(`Saved V7 at tick ${this.core.clock.tick}.`, 'ok');
   }
 
   private load(): void {
     try {
       let json = this.fallbackSave;
-      try { json = localStorage.getItem(STORAGE_KEY) ?? json; } catch { /* use fallback */ }
+      let loadedLegacy = false;
+      try {
+        const current = localStorage.getItem(STORAGE_KEY);
+        const legacy = current === null ? localStorage.getItem(LEGACY_STORAGE_KEY) : null;
+        if (current !== null) json = current;
+        else if (legacy !== null) { json = legacy; loadedLegacy = true; }
+      } catch { /* use fallback */ }
       if (!json) throw new Error('No save exists');
       this.core = hydrateCore(JSON.parse(json));
+      if (loadedLegacy) {
+        const migrated = JSON.stringify(serializeCore(this.core));
+        this.fallbackSave = migrated;
+        try { localStorage.setItem(STORAGE_KEY, migrated); } catch { /* fallback retained */ }
+      }
       this.syncInputsFromCore();
       this.renderTransitPanel();
       this.renderEconomyPanel();
-      this.flash(`Loaded V6 at tick ${this.core.clock.tick}.`, 'ok');
+      this.flash(`Loaded V7 at tick ${this.core.clock.tick}.`, 'ok');
       this.renderInspector();
     } catch (error) {
       this.flash(error instanceof Error ? error.message : 'Load failed', 'error');

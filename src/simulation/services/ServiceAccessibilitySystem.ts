@@ -2,7 +2,7 @@ import { SERVICE_DEFINITIONS, type ServiceDepartment } from '../../data/services
 import type { Building } from '../buildings/BuildingSystem.ts';
 import type { ServiceFacilitySystem } from './ServiceFacilitySystem.ts';
 import type { TransportationEdge, TransportationGraph } from '../traffic/TransportationGraph.ts';
-import type { PathfindingSystem } from '../traffic/PathfindingSystem.ts';
+import type { PathfindingSystem, RouteResult } from '../traffic/PathfindingSystem.ts';
 
 export type ServiceAccessResult = Readonly<{
   department: ServiceDepartment;
@@ -17,6 +17,7 @@ export type ServiceAccessResult = Readonly<{
 }>;
 
 export type ServiceAccessibilityOptions = Readonly<{
+  /** Absolute committed workload units at each facility, not a normalized ratio. */
   utilizationByFacility?: Readonly<Record<string, number>>;
   predictedIntersectionDelayTicks?: (edgeIds: readonly string[]) => number;
   costKey?: string;
@@ -44,25 +45,23 @@ export class ServiceAccessibilitySystem {
     edgeCost: (edge: TransportationEdge) => number,
     options: ServiceAccessibilityOptions = {},
   ): ServiceAccessResult {
-    const targetNode = this.accessNode(graph, building.x, building.y);
-    if (!targetNode) return this.unreachable(department);
+    const targetNodes = this.accessNodes(graph, building.x, building.y);
+    if (targetNodes.length === 0) return this.unreachable(department);
     const candidates = facilities.listFacilities().filter((facility) => facility.department === department);
     let best: ServiceAccessResult | null = null;
     for (const facility of candidates) {
-      const facilityNode = this.accessNode(graph, facility.x, facility.y);
-      if (!facilityNode) continue;
-      const route = pathfinding.findRoute(graph, facilityNode, targetNode, {
-        edgeCost,
-        costKey: options.costKey ?? `service:${department}`,
-      });
+      const facilityNodes = this.accessNodes(graph, facility.x, facility.y);
+      if (facilityNodes.length === 0) continue;
+      const route = this.bestRoute(graph, pathfinding, facilityNodes, targetNodes, edgeCost, options.costKey);
       if (!route) continue;
       const definition = SERVICE_DEFINITIONS[facility.type];
       const intersectionDelay = Math.max(0, options.predictedIntersectionDelayTicks?.(route.edgeIds) ?? 0);
       const turnaround = department === 'education' ? 0 : definition.dispatchTurnaroundTicks / facilities.fundingEffectiveness(department);
       const candidateCostTicks = route.totalCost + intersectionDelay + turnaround;
       const accessibility = clamp01(1 - route.totalCost / MAX_USEFUL_TRAVEL[department]);
-      const utilization = clamp01(options.utilizationByFacility?.[facility.id] ?? 0);
-      const availableCapacity = facilities.effectiveCapacity(facility.id) * (1 - utilization);
+      const effectiveCapacity = facilities.effectiveCapacity(facility.id);
+      const committed = Math.max(0, Number.isFinite(options.utilizationByFacility?.[facility.id]) ? options.utilizationByFacility?.[facility.id] ?? 0 : 0);
+      const availableCapacity = Math.max(0, effectiveCapacity - committed);
       const capacityFactor = localDemand <= 0 ? 1 : clamp01(availableCapacity / localDemand);
       const result: ServiceAccessResult = Object.freeze({
         department,
@@ -83,12 +82,34 @@ export class ServiceAccessibilitySystem {
     return best ?? this.unreachable(department);
   }
 
-  private accessNode(graph: TransportationGraph, x: number, y: number): string | undefined {
-    const candidates = CARDINAL
-      .map(([dx, dy]) => graph.findNodeAt(x + dx, y + dy))
-      .filter((node): node is NonNullable<typeof node> => node !== undefined)
-      .sort((a, b) => a.id.localeCompare(b.id));
-    return candidates[0]?.id;
+  private accessNodes(graph: TransportationGraph, x: number, y: number): string[] {
+    return CARDINAL
+      .map(([dx, dy]) => graph.findNodeAt(x + dx, y + dy)?.id)
+      .filter((id): id is string => id !== undefined)
+      .sort();
+  }
+
+  private bestRoute(
+    graph: TransportationGraph,
+    pathfinding: PathfindingSystem,
+    starts: readonly string[],
+    ends: readonly string[],
+    edgeCost: (edge: TransportationEdge) => number,
+    costKey?: string,
+  ): RouteResult | null {
+    let best: RouteResult | null = null;
+    for (const start of starts) {
+      for (const end of ends) {
+        const route = pathfinding.findRoute(graph, start, end, {
+          edgeCost,
+          ...(costKey !== undefined ? { costKey } : {}),
+        });
+        if (!route) continue;
+        if (!best || route.totalCost < best.totalCost - 1e-9
+          || (Math.abs(route.totalCost - best.totalCost) <= 1e-9 && route.edgeIds.join('|').localeCompare(best.edgeIds.join('|')) < 0)) best = route;
+      }
+    }
+    return best;
   }
 
   private unreachable(department: ServiceDepartment): ServiceAccessResult {

@@ -16,7 +16,6 @@ export class FreightVehicleSystem{
   hasDispatchCapacity():boolean{return this.activeCount()<this.dispatchCapacity;}
   dispatch(shipment:FreightShipment,route:RouteResult,tick:number):FreightVehicle{
     if(!this.hasDispatchCapacity())throw new Error('freight dispatch capacity exhausted');
-    if(route.edgeIds.length===0)throw new Error('freight route must contain at least one edge');
     const id=`freight-vehicle:${this.nextVehicleId++}`; const v:MutableFreightVehicle={id,shipment:{...shipment},routeEdgeIds:[...route.edgeIds],currentEdgeIndex:0,edgeProgressTicks:0,departureTick:tick,expectedArrivalTick:tick+route.totalCost,delayTicks:0,status:'moving'};this.vehicles.set(id,v);return this.copy(v);
   }
   activeCount():number{return this.vehicles.size;}
@@ -26,6 +25,7 @@ export class FreightVehicleSystem{
   step(graph:TransportationGraph,roadTravelTime:(edge:TransportationEdge)=>number,tick:number):FreightVehicleEvent[]{
     const events:FreightVehicleEvent[]=[];
     for(const v of [...this.vehicles.values()].sort((a,b)=>a.id.localeCompare(b.id))){
+      if(v.routeEdgeIds.length===0){events.push({type:'delivered',vehicleId:v.id,shipment:{...v.shipment},delayTicks:0});this.vehicles.delete(v.id);continue;}
       const edgeId=v.routeEdgeIds[v.currentEdgeIndex]; const edge=edgeId?graph.getEdge(edgeId):undefined;
       if(!edge){const prior=v.currentEdgeIndex>0?graph.getEdge(v.routeEdgeIds[v.currentEdgeIndex-1]!):undefined;const event:FreightVehicleEvent=prior?{type:'needs-replan',vehicleId:v.id,shipment:{...v.shipment},delayTicks:v.delayTicks,currentNodeId:prior.to}:{type:'failed',vehicleId:v.id,shipment:{...v.shipment},delayTicks:v.delayTicks};events.push(event);this.vehicles.delete(v.id);continue;}
       const travel=Math.max(edge.freeFlowTicks,roadTravelTime(edge)); v.edgeProgressTicks++; v.delayTicks+=Math.max(0,travel-edge.freeFlowTicks)/Math.max(1,travel);

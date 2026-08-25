@@ -1,7 +1,8 @@
-import type { TransitMode } from '../data/transit.ts';
+import { TRANSIT_LIMITS, type TransitMode } from '../data/transit.ts';
 import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
 
 export type TransitCommandResult = Readonly<{ ok: boolean; reason?: string }>;
+export type TransitLineConfigPatch = Readonly<{ headwayTicks: number; fare: number; fleetLimit: number; enabled: boolean }>;
 
 export type TransitPanelLineState = Readonly<{
   id: string;
@@ -95,6 +96,28 @@ export class TransitPanelController {
     const next = line.stopIds.filter((id) => id !== stopId);
     if (next.length < 2) return { ok: false, reason: 'line requires at least two stops' };
     return this.setLineStops(lineId, next);
+  }
+
+  applyLineConfig(lineId: string, patch: TransitLineConfigPatch): TransitCommandResult {
+    const line = this.core.transit.getLine(lineId);
+    if (!line) return { ok: false, reason: 'unknown line' };
+    if (!Number.isFinite(patch.headwayTicks)) return { ok: false, reason: 'headway must be finite' };
+    if (!Number.isFinite(patch.fare)) return { ok: false, reason: 'fare must be finite' };
+    if (!Number.isFinite(patch.fleetLimit) || patch.fleetLimit < 0) return { ok: false, reason: 'fleet limit must be a non-negative finite number' };
+    if (patch.enabled && line.stopIds.length < 2) return { ok: false, reason: 'line requires at least two compatible stops' };
+
+    const headway = Math.round(Math.max(TRANSIT_LIMITS.minHeadwayTicks, Math.min(TRANSIT_LIMITS.maxHeadwayTicks, patch.headwayTicks)));
+    const fare = Math.round(Math.max(TRANSIT_LIMITS.minFare, Math.min(TRANSIT_LIMITS.maxFare, patch.fare)) * 100) / 100;
+    const fleetLimit = Math.max(0, Math.floor(patch.fleetLimit));
+    try {
+      this.core.transit.setHeadway(lineId, headway);
+      this.core.transit.setFare(lineId, fare);
+      this.core.mobility.operations.setFleetLimit(lineId, fleetLimit);
+      this.core.transit.setEnabled(lineId, patch.enabled);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, reason: error instanceof Error ? error.message : 'transit configuration failed' };
+    }
   }
 
   setHeadway(lineId: string, ticks: number): TransitCommandResult {

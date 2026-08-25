@@ -19,6 +19,7 @@ const CARDINAL = [[0,-1],[1,0],[0,1],[-1,0]] as const;
 export type RoadComponentIndex = Readonly<{
   byRoadKey: Map<string, number>;
   adjacentComponent(x: number, y: number): number | undefined;
+  adjacentComponents(x: number, y: number): readonly number[];
 }>;
 
 export function buildRoadComponentIndex(roads: RoadSystem): RoadComponentIndex {
@@ -45,36 +46,38 @@ export function buildRoadComponentIndex(roads: RoadSystem): RoadComponentIndex {
       }
     }
   }
+  const adjacentComponents = (x: number, y: number): number[] => [...new Set(CARDINAL
+    .map(([dx, dy]) => byRoadKey.get(cellKey(x + dx, y + dy)))
+    .filter((component): component is number => component !== undefined))].sort((a, b) => a - b);
   return {
     byRoadKey,
     adjacentComponent(x: number, y: number): number | undefined {
-      for (const [dx, dy] of CARDINAL) {
-        const component = byRoadKey.get(cellKey(x + dx, y + dy));
-        if (component !== undefined) return component;
-      }
-      return undefined;
+      return adjacentComponents(x, y)[0];
     },
+    adjacentComponents,
   };
 }
 
 export class UtilitySystem {
   private readonly terrain: TerrainGrid;
   private readonly roads: RoadSystem;
+  private readonly externallyOccupied: (x: number, y: number) => boolean;
   private readonly facilities: UtilityFacility[] = [];
   private nextId = 1;
 
-  constructor(terrain: TerrainGrid, roads: RoadSystem) {
+  constructor(terrain: TerrainGrid, roads: RoadSystem, externallyOccupied: (x: number, y: number) => boolean = () => false) {
     this.terrain = terrain;
     this.roads = roads;
+    this.externallyOccupied = externallyOccupied;
   }
 
   placeFacility(type: UtilityFacilityType, x: number, y: number, treasury: TreasurySystem): { ok: boolean; cost: number; reason?: string } {
     const definition = UTILITY_DEFINITIONS[type];
     if (!this.terrain.isBuildable(x, y)) return { ok: false, cost: definition.constructionCost, reason: 'unbuildable terrain' };
     if (this.roads.has(x, y)) return { ok: false, cost: definition.constructionCost, reason: 'road occupies cell' };
-    if (this.facilities.some((facility) => facility.x === x && facility.y === y)) return { ok: false, cost: definition.constructionCost, reason: 'facility occupies cell' };
+    if (this.externallyOccupied(x, y) || this.facilities.some((facility) => facility.x === x && facility.y === y)) return { ok: false, cost: definition.constructionCost, reason: 'cell occupied' };
     const components = buildRoadComponentIndex(this.roads);
-    if (components.adjacentComponent(x, y) === undefined) return { ok: false, cost: definition.constructionCost, reason: 'road access required' };
+    if (components.adjacentComponents(x, y).length === 0) return { ok: false, cost: definition.constructionCost, reason: 'road access required' };
     if (!treasury.tryDebit(definition.constructionCost, `Build ${type}`)) return { ok: false, cost: definition.constructionCost, reason: 'insufficient funds' };
     this.facilities.push({ id: `utility:${this.nextId++}`, type, x, y });
     return { ok: true, cost: definition.constructionCost };
@@ -109,35 +112,40 @@ export class UtilitySystem {
       if (facility.type === 'water') componentWater.set(component, (componentWater.get(component) ?? 0) + UTILITY_DEFINITIONS.water.capacity);
     }
 
-    const demandByComponent = new Map<number, { power: number; water: number }>();
+    const occupied = buildings.filter((building) => building.status === 'occupied');
+    const powerAssignment = new Map<string, number>();
+    const waterAssignment = new Map<string, number>();
+    const powerDemandByComponent = new Map<number, number>();
+    const waterDemandByComponent = new Map<number, number>();
     let totalPowerDemand = 0;
     let totalWaterDemand = 0;
-    for (const building of buildings) {
-      if (building.status !== 'occupied') continue;
+    for (const building of occupied) {
       const definition = definitionForBuilding(building);
       totalPowerDemand += definition.powerDemand;
       totalWaterDemand += definition.waterDemand;
-      const component = components.adjacentComponent(building.x, building.y);
-      if (component === undefined) continue;
-      const demand = demandByComponent.get(component) ?? { power: 0, water: 0 };
-      demand.power += definition.powerDemand;
-      demand.water += definition.waterDemand;
-      demandByComponent.set(component, demand);
+      const candidates = components.adjacentComponents(building.x, building.y);
+      const powerComponent = this.bestComponent(candidates, componentPower);
+      const waterComponent = this.bestComponent(candidates, componentWater);
+      if (powerComponent !== undefined) {
+        powerAssignment.set(building.id, powerComponent);
+        powerDemandByComponent.set(powerComponent, (powerDemandByComponent.get(powerComponent) ?? 0) + definition.powerDemand);
+      }
+      if (waterComponent !== undefined) {
+        waterAssignment.set(building.id, waterComponent);
+        waterDemandByComponent.set(waterComponent, (waterDemandByComponent.get(waterComponent) ?? 0) + definition.waterDemand);
+      }
     }
 
     const perBuilding: Record<string, { power: number; water: number }> = {};
     let servedPower = 0;
     let servedWater = 0;
-    for (const building of buildings) {
-      if (building.status !== 'occupied') continue;
-      const component = components.adjacentComponent(building.x, building.y);
-      if (component === undefined) {
-        perBuilding[building.id] = { power: 0, water: 0 };
-        continue;
-      }
-      const componentDemand = demandByComponent.get(component) ?? { power: 0, water: 0 };
-      const powerRatio = componentDemand.power === 0 ? 1 : Math.min(1, (componentPower.get(component) ?? 0) / componentDemand.power);
-      const waterRatio = componentDemand.water === 0 ? 1 : Math.min(1, (componentWater.get(component) ?? 0) / componentDemand.water);
+    for (const building of occupied) {
+      const powerComponent = powerAssignment.get(building.id);
+      const waterComponent = waterAssignment.get(building.id);
+      const powerDemand = powerComponent === undefined ? 0 : powerDemandByComponent.get(powerComponent) ?? 0;
+      const waterDemand = waterComponent === undefined ? 0 : waterDemandByComponent.get(waterComponent) ?? 0;
+      const powerRatio = powerComponent === undefined ? 0 : powerDemand === 0 ? 1 : Math.min(1, (componentPower.get(powerComponent) ?? 0) / powerDemand);
+      const waterRatio = waterComponent === undefined ? 0 : waterDemand === 0 ? 1 : Math.min(1, (componentWater.get(waterComponent) ?? 0) / waterDemand);
       perBuilding[building.id] = { power: powerRatio, water: waterRatio };
       const definition = definitionForBuilding(building);
       servedPower += definition.powerDemand * powerRatio;
@@ -163,5 +171,9 @@ export class UtilitySystem {
       },
       perBuilding,
     };
+  }
+
+  private bestComponent(candidates: readonly number[], capacity: ReadonlyMap<number, number>): number | undefined {
+    return [...candidates].sort((a, b) => (capacity.get(b) ?? 0) - (capacity.get(a) ?? 0) || a - b)[0];
   }
 }

@@ -71,6 +71,7 @@ type LocalParcelContext = Readonly<{
 }>;
 
 const DEPARTMENTS: readonly ServiceDepartment[] = ['fire', 'police', 'healthcare', 'education', 'garbage'];
+const CARDINAL = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
 const INTENSITY_RANK: Readonly<Record<BuildingIntensity, number>> = Object.freeze({ low: 0, medium: 1, high: 2 });
 
 export class SimulationCore {
@@ -250,18 +251,24 @@ export class SimulationCore {
   }
 
   buildRoad(cells: readonly CellCoord[], type: RoadType): RoadPlacementResult {
+    const occupied = cells.find((cell) => this.isNonRoadOccupied(cell.x, cell.y));
+    if (occupied) return { ok: false, cost: 0, reason: 'cell occupied' };
     const result = this.roads.placePath(cells, type, this.treasury);
     if (result.ok) this.lots.rebuild(this.roads, this.zoning);
     return result;
   }
 
   paintZone(cells: readonly CellCoord[], zone: ZoneType): { painted: number } {
-    const result = this.zoning.paint(cells, zone);
+    const available = cells.filter((cell) => !this.isNonRoadOccupied(cell.x, cell.y));
+    const result = this.zoning.paint(available, zone);
     if (result.painted > 0) this.lots.rebuild(this.roads, this.zoning);
     return result;
   }
 
   placeUtility(type: UtilityFacilityType, x: number, y: number): { ok: boolean; cost: number; reason?: string } {
+    if (this.buildings.getAt(x, y) || this.services.getAt(x, y) || this.transit.getStopAt(x, y)) {
+      return { ok: false, cost: 0, reason: 'cell occupied' };
+    }
     return this.utilities.placeFacility(type, x, y, this.treasury);
   }
 
@@ -321,6 +328,9 @@ export class SimulationCore {
   }
 
   bulldozeAt(x: number, y: number): { ok: boolean; kind?: 'road' | 'building' | 'zone'; reason?: string } {
+    if (this.roads.has(x, y) && this.roadRemovalWouldStrandOccupant(x, y)) {
+      return { ok: false, reason: 'road is required frontage' };
+    }
     const road = this.roads.remove(x, y);
     if (road) {
       this.lots.rebuild(this.roads, this.zoning);
@@ -852,6 +862,29 @@ export class SimulationCore {
 
   private currentDevelopmentInterestRate(): number {
     return clamp(0.045 + Math.max(0, this.economySnapshot.unpaidOperatingCost) / 1_000_000, 0.03, 0.12);
+  }
+
+  private isNonRoadOccupied(x: number, y: number): boolean {
+    return this.buildings.getAt(x, y) !== undefined
+      || this.utilities.listFacilities().some((facility) => facility.x === x && facility.y === y)
+      || this.services.getAt(x, y) !== undefined
+      || this.transit.getStopAt(x, y) !== undefined;
+  }
+
+  private roadRemovalWouldStrandOccupant(x: number, y: number): boolean {
+    const occupants = [
+      ...this.buildings.list().map((item) => ({ x: item.x, y: item.y })),
+      ...this.utilities.listFacilities().map((item) => ({ x: item.x, y: item.y })),
+      ...this.services.listFacilities().map((item) => ({ x: item.x, y: item.y })),
+      ...this.transit.listStops().map((item) => ({ x: item.x, y: item.y })),
+    ];
+    for (const occupant of occupants) {
+      const adjacent = CARDINAL.map(([dx, dy]) => ({ x: occupant.x + dx, y: occupant.y + dy }));
+      if (!adjacent.some((cell) => cell.x === x && cell.y === y)) continue;
+      const hasAlternative = adjacent.some((cell) => (cell.x !== x || cell.y !== y) && this.roads.has(cell.x, cell.y));
+      if (!hasAlternative) return true;
+    }
+    return false;
   }
 
   private mergeEdgeLoads(...sources: Readonly<Record<string, number>>[]): Record<string, number> {

@@ -1,6 +1,6 @@
-import { BUILDING_DEFINITIONS } from '../../data/buildings.ts';
 import type { ServiceDepartment } from '../../data/services.ts';
 import type { Building } from '../buildings/BuildingSystem.ts';
+import { definitionForBuilding } from '../buildings/BuildingSystem.ts';
 
 export type ServiceAccessInputs = Partial<Record<ServiceDepartment, number>>;
 export type UnresolvedServiceInputs = Partial<Record<'fire' | 'police' | 'healthcare', number>>;
@@ -38,12 +38,12 @@ export class ServiceDemandSystem {
     const residential = occupied.filter((building) => building.zone === 'residential');
     const eligibleStudents = Math.max(0, Math.round(input.population * this.schoolAgeShare));
     const studentAllocation = this.allocateStudents(residential, eligibleStudents);
-    const residentialCapacity = residential.reduce((sum, building) => sum + BUILDING_DEFINITIONS[building.zone].residentCapacity, 0);
+    const residentialCapacity = residential.reduce((sum, building) => sum + definitionForBuilding(building).residentCapacity, 0);
     const unemploymentPressure = input.workforce <= 0 ? 0 : clamp01(input.unemployed / input.workforce);
     const perBuilding: Record<string, BuildingServiceDemand> = {};
 
     for (const building of occupied) {
-      const definition = BUILDING_DEFINITIONS[building.zone];
+      const definition = definitionForBuilding(building);
       const populationShare = building.zone === 'residential' && residentialCapacity > 0
         ? Math.max(0, input.population) * definition.residentCapacity / residentialCapacity
         : 0;
@@ -83,11 +83,11 @@ export class ServiceDemandSystem {
   private allocateStudents(residential: readonly Building[], total: number): Map<string, number> {
     const result = new Map<string, number>();
     if (residential.length === 0 || total <= 0) return result;
-    const capacity = residential.reduce((sum, building) => sum + BUILDING_DEFINITIONS[building.zone].residentCapacity, 0);
+    const capacity = residential.reduce((sum, building) => sum + definitionForBuilding(building).residentCapacity, 0);
     let assigned = 0;
     const remainders: Array<{ id: string; remainder: number }> = [];
     for (const building of residential) {
-      const raw = total * BUILDING_DEFINITIONS[building.zone].residentCapacity / Math.max(1, capacity);
+      const raw = total * definitionForBuilding(building).residentCapacity / Math.max(1, capacity);
       const base = Math.floor(raw);
       result.set(building.id, base);
       assigned += base;

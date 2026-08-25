@@ -58,7 +58,6 @@ export type TripOutcome = Readonly<{
   actualTravelTicks: number;
 }>;
 
-
 export type TrafficStateSnapshot = Readonly<{
   vehicles: readonly TrafficVehicle[];
   outcomes: readonly TripOutcome[];
@@ -91,7 +90,19 @@ export class TrafficSystem {
   }
 
   submitTrip(trip: TripRequest, route: RouteResult, tick: number, freeFlowTicks = route.totalCost): string | null {
-    if (route.edgeIds.length === 0 || trip.travelerWeight <= 0) return null;
+    if (trip.travelerWeight <= 0) return null;
+    if (route.edgeIds.length === 0) {
+      this.completedTrips++;
+      this.recordOutcome({
+        tripId: trip.id,
+        purpose: trip.purpose,
+        travelerWeight: trip.travelerWeight,
+        success: true,
+        freeFlowTicks: Math.max(0, freeFlowTicks),
+        actualTravelTicks: 0,
+      });
+      return null;
+    }
     const id = `vehicle:${this.nextVehicleId++}`;
     this.vehicles.set(id, {
       id,
@@ -113,6 +124,7 @@ export class TrafficSystem {
 
   step(graph: TransportationGraph, intersections: IntersectionSystem, tick: number, extraEdgeLoads: Readonly<Record<string, number>> = {}): void {
     this.invalidateMissingRoutes(graph, intersections, tick);
+    this.recoverOrphanedQueues(intersections, tick);
 
     for (const vehicle of this.vehicles.values()) {
       if (vehicle.status === 'queued') vehicle.accumulatedDelayTicks++;
@@ -120,7 +132,7 @@ export class TrafficSystem {
 
     const queuedNodes = Object.keys(intersections.snapshot()).sort();
     for (const nodeId of queuedNodes) {
-      const released = intersections.stepNode(graph, nodeId);
+      const released = intersections.stepNode(graph, nodeId, tick);
       for (const vehicleId of released) {
         const vehicle = this.vehicles.get(vehicleId);
         if (!vehicle || vehicle.status !== 'queued') continue;
@@ -128,6 +140,7 @@ export class TrafficSystem {
         vehicle.edgeProgressTicks = 0;
         vehicle.status = 'moving';
         delete vehicle.queuedNodeId;
+        intersections.removeVehicle(vehicleId);
       }
     }
 
@@ -184,7 +197,6 @@ export class TrafficSystem {
   getEdgeTravelTime(edge: TransportationEdge): number {
     return this.edgeMetrics.find((metric) => metric.edgeId === edge.id)?.travelTimeTicks ?? edge.freeFlowTicks;
   }
-
 
   snapshotState(): TrafficStateSnapshot {
     return {
@@ -247,6 +259,16 @@ export class TrafficSystem {
       const congestion = clamp01(1 - averageSpeedCellsPerSecond / edge.freeFlowSpeedCellsPerSecond);
       return { edgeId: edge.id, weightedVehicles, utilization, congestion, averageSpeedCellsPerSecond, travelTimeTicks };
     });
+  }
+
+  private recoverOrphanedQueues(intersections: IntersectionSystem, tick: number): void {
+    const represented = new Set<string>();
+    for (const approaches of Object.values(intersections.snapshot())) {
+      for (const approach of approaches) for (const entry of approach.entries) represented.add(entry.vehicleId);
+    }
+    for (const vehicle of [...this.vehicles.values()]) {
+      if (vehicle.status === 'queued' && !represented.has(vehicle.id)) this.fail(vehicle, intersections, tick);
+    }
   }
 
   private invalidateMissingRoutes(graph: TransportationGraph, intersections: IntersectionSystem, tick: number): void {
