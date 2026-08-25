@@ -18,6 +18,14 @@ export type EntityDiagnosticsSnapshot = Readonly<{
   unresolved: readonly UnresolvedEntityReference[];
 }>;
 
+type IntegrityCache = Readonly<{
+  graph: EntityReferenceGraph;
+  registryRevision: number;
+  graphRevision: number;
+}>;
+
+const integrityCache = new WeakMap<EntityRegistry, IntegrityCache>();
+
 function cloneUnresolved(reference: UnresolvedEntityReference): UnresolvedEntityReference {
   return Object.freeze({
     source: Object.freeze({ ...reference.source }),
@@ -64,6 +72,14 @@ export function buildEntityDiagnostics(
 }
 
 export function assertEntityIntegrity(registry: EntityRegistry, graph: EntityReferenceGraph): void {
+  const cached = integrityCache.get(registry);
+  if (cached
+    && cached.graph === graph
+    && cached.registryRevision === registry.commitRevision
+    && cached.graphRevision === graph.commitRevision) {
+    return;
+  }
+
   const active = registry.listActive();
   const activeLegacyKeys = new Set<string>();
 
@@ -93,4 +109,10 @@ export function assertEntityIntegrity(registry: EntityRegistry, graph: EntityRef
       throw new Error('external entity reference must not be stored in the entity reference graph');
     }
   }
+
+  integrityCache.set(registry, Object.freeze({
+    graph,
+    registryRevision: registry.commitRevision,
+    graphRevision: graph.commitRevision,
+  }));
 }
