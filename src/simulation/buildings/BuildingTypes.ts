@@ -62,11 +62,22 @@ export type BuildingProjectPhase =
   | 'fit-out'
   | 'lease-up';
 
+export type BuildingProjectKind = 'new-build' | 'renovation' | 'adaptive-reuse' | 'demolition';
+export type BuildingRenovationScope = 'light' | 'major' | 'gut';
+
 export type BuildingProjectState = Readonly<{
   phase: BuildingProjectPhase;
   startedTick?: number;
   completionTick?: number;
   progress: number;
+  kind?: BuildingProjectKind;
+  renovationScope?: BuildingRenovationScope;
+  targetCondition?: number;
+  targetStructuralCondition?: number;
+  targetSystemsCondition?: number;
+  targetExteriorCondition?: number;
+  targetEffectiveAge?: number;
+  destinationUse?: UseType;
 }>;
 
 export type BuildingV2 = Readonly<{
