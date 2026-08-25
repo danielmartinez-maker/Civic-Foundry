@@ -52,6 +52,8 @@ import { HousingRelocationSystem, type HousingRelocationSnapshot, type HousingRe
 import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';
 import { UrbanFabricDomain } from '../urban/UrbanFabricDomain.ts';
 import { UrbanConditionSystem } from '../urban/UrbanConditionSystem.ts';
+import { RenovationSystem } from '../urban/RenovationSystem.ts';
+import type { RenovationCommitment } from '../urban/UrbanTypes.ts';
 import { buildUrbanBuildingView, compatibilityUrbanStateForBuilding, legacyUrbanStateForBuilding, urbanBusinessSiteFromView, type UrbanBuildingView } from '../urban/UrbanBuildingView.ts';
 import { enumerateUrbanCandidates, urbanComponentsForDefinition } from '../urban/UrbanDevelopmentCandidate.ts';
 
@@ -93,6 +95,7 @@ export class SimulationCore {
   readonly buildings: BuildingSystem;
   readonly urbanFabric: UrbanFabricDomain;
   readonly urbanCondition: UrbanConditionSystem;
+  readonly renovation: RenovationSystem;
   readonly population: PopulationSystem;
   readonly employment: EmploymentSystem;
   readonly taxes: TaxSystem;
@@ -210,6 +213,7 @@ export class SimulationCore {
     this.buildings = new BuildingSystem();
     this.urbanFabric = new UrbanFabricDomain();
     this.urbanCondition = new UrbanConditionSystem(this.urbanFabric);
+    this.renovation = new RenovationSystem(this.urbanFabric);
     this.population = new PopulationSystem();
     this.employment = new EmploymentSystem();
     this.taxes = new TaxSystem();
@@ -362,6 +366,25 @@ export class SimulationCore {
     return this.housingRelocation.snapshotState();
   }
 
+  startRenovation(buildingId: string, developerId: string): RenovationCommitment {
+    if (this.urbanDevelopmentMode !== 'semantic') throw new Error('renovation requires semantic urban development mode');
+    const building = this.buildings.getById(buildingId);
+    if (!building || building.status !== 'occupied') throw new Error(`renovation requires an occupied building: ${buildingId}`);
+    if (!this.urbanFabric.get(buildingId)) throw new Error(`renovation semantic state not found: ${buildingId}`);
+    if (!this.developerMarket.getDeveloperState(developerId)) throw new Error(`unknown renovation developer: ${developerId}`);
+    if (this.developerMarket.listCommitments().some((commitment) => commitment.buildingId === buildingId)) {
+      throw new Error(`redevelopment commitment conflicts with renovation: ${buildingId}`);
+    }
+    const commitment = this.renovation.start({
+      buildingId,
+      developerId,
+      startTick: this.clock.tick,
+      definition: definitionForBuilding(building),
+    });
+    this.reconcileUrbanLifecycleCapacity();
+    return commitment;
+  }
+
   bulldozeAt(x: number, y: number): { ok: boolean; kind?: 'road' | 'building' | 'zone'; reason?: string } {
     if (this.roads.has(x, y) && this.roadRemovalWouldStrandOccupant(x, y)) {
       return { ok: false, reason: 'road is required frontage' };
@@ -379,6 +402,7 @@ export class SimulationCore {
     const building = this.buildings.removeAt(x, y);
     if (building) {
       this.economyDomain.removeBuilding(building.id, this.clock.tick);
+      this.renovation.cancel(building.id);
       this.urbanFabric.remove(building.id);
       this.developerMarket.cancelProject(building.id, 0.50);
       if (hadHousing) {
@@ -464,7 +488,12 @@ export class SimulationCore {
     this.trafficSnapshot = this.trafficAnalytics.evaluate(this.traffic.edgeMetrics, this.traffic.recentOutcomes, this.traffic.activeVehicles.length);
     this.buildings.tick(this.clock.tick);
     this.syncUrbanFabricCompatibility();
-    if (this.urbanDevelopmentMode === 'semantic') this.updateUrbanCondition();
+    if (this.urbanDevelopmentMode === 'semantic') {
+      const activeRenovations = this.renovation.snapshotState().commitments.length;
+      this.renovation.tick(this.clock.tick);
+      if (this.renovation.snapshotState().commitments.length < activeRenovations) this.reconcileUrbanLifecycleCapacity();
+      this.updateUrbanCondition();
+    }
     this.developerMarket.advance(this.clock.tick);
 
     if (this.clock.tick % 10 === 0) {
@@ -657,6 +686,7 @@ export class SimulationCore {
           if (existing?.zone === 'residential') this.housingRelocation.displaceBuilding(existing.id);
           const { removed } = this.buildings.replaceDevelopment(this.clock.tick, lot, award);
           this.economyDomain.removeBuilding(removed.id, this.clock.tick);
+          this.renovation.cancel(removed.id);
           this.urbanFabric.remove(removed.id);
           if (this.urbanDevelopmentMode === 'semantic') this.installUrbanAwardState(award);
           if (removed.zone === 'residential') {
@@ -924,7 +954,7 @@ export class SimulationCore {
         displacedLowerIncomeResidents,
         lowerIncomeAffordableSlack: this.lowerIncomeAffordableSlackExcluding(building.id),
         replacementEvaluation,
-        activeCommitment: committedBuildingIds.has(building.id),
+        activeCommitment: committedBuildingIds.has(building.id) || this.renovation.hasActive(building.id),
       });
     }
 
@@ -953,6 +983,28 @@ export class SimulationCore {
       serviceQuality,
       utilityRatio: Math.min(this.utilitySnapshot.power.serviceRatio, this.utilitySnapshot.water.serviceRatio),
     });
+  }
+
+  private reconcileUrbanLifecycleCapacity(): void {
+    this.refreshLandHousingMarket();
+    this.refreshHousingTenure();
+    this.housingRelocation.reconcile({
+      population: this.population.population,
+      options: this.housingTenureSnapshot.options,
+      allowVoluntaryMoves: false,
+    });
+    this.refreshHousingChoice();
+    const businessSites = this.urbanBuildingViews()
+      .map(urbanBusinessSiteFromView)
+      .filter((site) => site.totalJobCapacity > 0);
+    this.employmentSnapshot = this.economyDomain.reconcileBusinessSites(
+      businessSites,
+      this.clock.tick,
+      this.population.population,
+    );
+    this.refreshLandHousingMarket();
+    this.refreshRedevelopmentPressure();
+    this.refreshRedevelopmentExecution();
   }
 
   private updateUrbanCondition(): void {
