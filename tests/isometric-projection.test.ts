@@ -43,6 +43,17 @@ test('camera projected centers pick the same authoritative cell across rotations
   }
 });
 
+test('viewport-focused rotation keeps the focus world point at the same canvas position', () => {
+  const camera = new IsometricCamera();
+  const focusWorld = { x: 10, y: 15 };
+  const focusCanvas = camera.worldToCanvas(focusWorld.x, focusWorld.y, size);
+  camera.rotateAroundCanvasPoint(1, size, focusCanvas);
+  const after = camera.worldToCanvas(focusWorld.x, focusWorld.y, size);
+  assert.ok(Math.abs(after.x - focusCanvas.x) < 1e-9);
+  assert.ok(Math.abs(after.y - focusCanvas.y) < 1e-9);
+  assert.deepEqual(camera.canvasToCell(after.x, after.y, size), focusWorld);
+});
+
 test('camera rejects points outside the projected map', () => {
   const camera = new IsometricCamera();
   assert.equal(camera.canvasToCell(-1000, -1000, size), null);
