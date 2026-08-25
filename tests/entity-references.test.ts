@@ -166,7 +166,9 @@ test('partitioned graph update replaces only edges owned by the changed source k
   const prepared = graph.preparePartition(['traffic-vehicle'], [trafficDestinationEdge], registry);
   graph.commitPreparedPartition(prepared);
 
-  assert.deepEqual(graph.list(), [firmEdge, trafficDestinationEdge]);
+  const oracle = new EntityReferenceGraph();
+  oracle.commitPrepared(oracle.prepare([firmEdge, trafficDestinationEdge], registry));
+  assert.deepEqual(graph.snapshot(), oracle.snapshot());
   assert.equal(graph.list().some((edge) => edge.relation === trafficOriginEdge.relation), false);
 });
 
