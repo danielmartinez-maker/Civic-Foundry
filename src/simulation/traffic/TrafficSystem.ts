@@ -133,7 +133,6 @@ export class TrafficSystem {
         vehicle.edgeProgressTicks = 0;
         vehicle.status = 'moving';
         delete vehicle.queuedNodeId;
-        this._entityRevision++;
       }
     }
 
@@ -180,7 +179,6 @@ export class TrafficSystem {
           travelerWeight: vehicle.travelerWeight,
           queuedTick: tick,
         });
-        this._entityRevision++;
       } else {
         vehicle.currentEdgeIndex++;
         vehicle.edgeProgressTicks = 0;
