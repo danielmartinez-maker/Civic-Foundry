@@ -88,3 +88,34 @@ test('registry returns isolated snapshots and handle arrays', () => {
   assert.equal(Object.isFrozen(snapshot.active), true);
   assert.equal(Object.isFrozen(snapshot.known), true);
 });
+
+class IterationCountingMap<K, V> extends Map<K, V> {
+  iterations = 0;
+
+  override [Symbol.iterator]() {
+    this.iterations += 1;
+    return super[Symbol.iterator]();
+  }
+
+  override values() {
+    this.iterations += 1;
+    return super.values();
+  }
+}
+
+test('steady-state projection does not full-scan accumulated historical records', () => {
+  const registry = new EntityRegistry();
+  for (let generation = 1; generation <= 100; generation++) {
+    registry.commitPrepared(registry.prepareProjection([building(`start:${generation}`)]));
+  }
+
+  const internals = registry as unknown as { knownByHandleKey: Map<string, unknown> };
+  const counted = new IterationCountingMap(internals.knownByHandleKey);
+  internals.knownByHandleKey = counted;
+
+  registry.commitPrepared(registry.prepareProjection([building('start:100')]));
+
+  assert.equal(counted.iterations, 0, 'steady-state staging must not iterate the full historical map');
+  assert.equal(registry.require('building', 'building:lot:1,1').generation, 100);
+  assert.equal(registry.listHistorical('building').length, 99);
+});
