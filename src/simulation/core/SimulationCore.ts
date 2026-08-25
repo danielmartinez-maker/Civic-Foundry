@@ -1,5 +1,6 @@
 import { SimulationCore as LegacySimulationCore } from './LegacySimulationCore.ts';
 import { RandomStreamRegistry } from '../kernel/RandomStreamRegistry.ts';
+import { DevelopmentFeasibilitySystem } from '../development/DevelopmentFeasibilitySystem.ts';
 import { WorldFoundation } from '../../world/foundation/WorldFoundation.ts';
 import type { WorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
 import { resolveWorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
@@ -36,6 +37,25 @@ export function withSimulationCoreHydrationOverride<T>(override: HydrationOverri
 
 function activeHydrationOverride(): HydrationOverride | undefined {
   return hydrationOverrides[hydrationOverrides.length - 1];
+}
+
+function clampConstructionCostIndex(value: number): number {
+  return Math.max(0.85, Math.min(1.50, value));
+}
+
+function installTerrainDevelopmentCosts(
+  system: DevelopmentFeasibilitySystem,
+  preparationMultiplierAt: (x: number, y: number) => number,
+): void {
+  const evaluateLot = system.evaluateLot.bind(system);
+  system.evaluateLot = (lot, definitions, context) => {
+    const multiplier = preparationMultiplierAt(lot.x, lot.y);
+    if (!Number.isFinite(multiplier) || multiplier <= 0) throw new Error(`invalid development terrain cost multiplier at ${lot.x},${lot.y}`);
+    return evaluateLot(lot, definitions, {
+      ...context,
+      constructionCostIndex: clampConstructionCostIndex(context.constructionCostIndex * multiplier),
+    });
+  };
 }
 
 export class SimulationCore extends LegacySimulationCore {
@@ -77,6 +97,12 @@ export class SimulationCore extends LegacySimulationCore {
 
     super({ seed, terrain: world.legacyTerrain(), ...(options.startingFunds !== undefined ? { startingFunds: options.startingFunds } : {}) });
     this.world = world;
+    const preparationMultiplierAt = (x: number, y: number): number => this.world.preparationMultiplierAt(x, y);
+    this.roads.setCostMultiplierProvider(preparationMultiplierAt);
+    installTerrainDevelopmentCosts(this.developmentFeasibility, preparationMultiplierAt);
+    const redevelopmentFeasibility = (this as unknown as { redevelopmentFeasibility: DevelopmentFeasibilitySystem }).redevelopmentFeasibility;
+    installTerrainDevelopmentCosts(redevelopmentFeasibility, preparationMultiplierAt);
+
     if (generationRegistry) this.kernel.random.restore(generationRegistry.snapshot());
     this.kernel.snapshots.register('world', () => this.world.diagnosticSnapshot());
     this.kernel.invariants.register({

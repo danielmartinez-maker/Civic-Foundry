@@ -7,13 +7,23 @@ import { ROAD_DEFINITIONS, type RoadType } from '../../data/roads.ts';
 export type RoadCell = Readonly<CellCoord & { type: RoadType }>;
 export type RoadPlacementResult = Readonly<{ ok: boolean; cost: number; reason?: string }>;
 
+function roundCurrency(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 export class RoadSystem {
   private readonly terrain: TerrainGrid;
   private readonly cells = new Map<string, RoadCell>();
+  private costMultiplierAt: (x: number, y: number) => number;
   revision = 0;
 
-  constructor(terrain: TerrainGrid) {
+  constructor(terrain: TerrainGrid, costMultiplierAt: (x: number, y: number) => number = () => 1) {
     this.terrain = terrain;
+    this.costMultiplierAt = costMultiplierAt;
+  }
+
+  setCostMultiplierProvider(provider: (x: number, y: number) => number): void {
+    this.costMultiplierAt = provider;
   }
 
   has(x: number, y: number): boolean {
@@ -37,7 +47,13 @@ export class RoadSystem {
     }
     if (newCoords.length === 0) return { ok: false, cost: 0, reason: 'road already exists' };
     const definition = ROAD_DEFINITIONS[type];
-    const cost = definition.constructionCostPerCell * newCoords.length;
+    let rawCost = 0;
+    for (const coord of newCoords) {
+      const multiplier = this.costMultiplierAt(coord.x, coord.y);
+      if (!Number.isFinite(multiplier) || multiplier <= 0) throw new Error(`invalid road terrain cost multiplier at ${coord.x},${coord.y}`);
+      rawCost += definition.constructionCostPerCell * multiplier;
+    }
+    const cost = roundCurrency(rawCost);
     if (!treasury.tryDebit(cost, `Build ${type} road`)) return { ok: false, cost, reason: 'insufficient funds' };
     for (const coord of newCoords) this.cells.set(cellKey(coord.x, coord.y), { x: coord.x, y: coord.y, type });
     this.revision++;
