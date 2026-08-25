@@ -5,15 +5,11 @@ export type IntersectionQueueEntry = Readonly<{
   travelerWeight: number;
   queuedTick: number;
   priority?: 'normal' | 'emergency';
+  /** Snapshot-only marker for a traveler that cleared capacity but has not yet been acknowledged by its owning system. */
+  released?: boolean;
 }>;
 
-export type IntersectionApproachSnapshot = Readonly<{
-  incomingEdgeId: string;
-  entries: readonly IntersectionQueueEntry[];
-  releasedVehicleIds?: readonly string[];
-}>;
-
-export type IntersectionSnapshot = Readonly<Record<string, readonly IntersectionApproachSnapshot[]>>;
+export type IntersectionSnapshot = Readonly<Record<string, readonly Readonly<{ incomingEdgeId: string; entries: readonly IntersectionQueueEntry[] }>[]>>;
 
 type MutableIntersectionQueueEntry = {
   vehicleId: string;
@@ -35,6 +31,7 @@ export class IntersectionSystem {
   private readonly lastSteppedTick = new Map<string, number>();
 
   enqueue(nodeId: string, incomingEdgeId: string, entry: IntersectionQueueEntry): void {
+    if (entry.released) throw new Error('released intersection entries are snapshot-only');
     if (entry.travelerWeight <= 0 || !Number.isFinite(entry.travelerWeight)) throw new Error('invalid traveler weight');
     const approaches = this.queues.get(nodeId) ?? [];
     let approach = approaches.find((candidate) => candidate.incomingEdgeId === incomingEdgeId);
@@ -99,16 +96,14 @@ export class IntersectionSystem {
   }
 
   queueLength(nodeId?: string): number {
-    if (nodeId !== undefined) {
-      return (this.queues.get(nodeId) ?? []).reduce((sum, approach) => sum + approach.entries.length, 0);
-    }
+    if (nodeId !== undefined) return (this.queues.get(nodeId) ?? []).reduce((sum, approach) => sum + approach.entries.length, 0);
     let total = 0;
     for (const approaches of this.queues.values()) total += approaches.reduce((sum, approach) => sum + approach.entries.length, 0);
     return total;
   }
 
   snapshot(): IntersectionSnapshot {
-    const result: Record<string, IntersectionApproachSnapshot[]> = {};
+    const result: Record<string, Array<{ incomingEdgeId: string; entries: IntersectionQueueEntry[] }>> = {};
     const nodeIds = new Set([...this.queues.keys(), ...this.pendingReleased.keys()]);
     for (const nodeId of [...nodeIds].sort()) {
       const approaches = this.queues.get(nodeId) ?? [];
@@ -116,15 +111,12 @@ export class IntersectionSystem {
       const edgeIds = new Set([...approaches.map((approach) => approach.incomingEdgeId), ...pending.values()]);
       result[nodeId] = [...edgeIds].sort().map((incomingEdgeId) => {
         const approach = approaches.find((candidate) => candidate.incomingEdgeId === incomingEdgeId);
-        const releasedVehicleIds = [...pending.entries()]
-          .filter(([, edgeId]) => edgeId === incomingEdgeId)
-          .map(([vehicleId]) => vehicleId)
-          .sort();
-        const snapshot: IntersectionApproachSnapshot = {
-          incomingEdgeId,
-          entries: (approach?.entries ?? []).map((entry) => ({ ...entry })),
-        };
-        return releasedVehicleIds.length > 0 ? { ...snapshot, releasedVehicleIds } : snapshot;
+        const entries: IntersectionQueueEntry[] = (approach?.entries ?? []).map((entry) => ({ ...entry }));
+        for (const [vehicleId, edgeId] of [...pending.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+          if (edgeId !== incomingEdgeId) continue;
+          entries.push({ vehicleId, travelerWeight: 0, queuedTick: 0, priority: 'normal', released: true });
+        }
+        return { incomingEdgeId, entries };
       });
     }
     return result;
@@ -136,17 +128,21 @@ export class IntersectionSystem {
     this.lastSteppedTick.clear();
     for (const nodeId of Object.keys(snapshot).sort()) {
       const approaches = snapshot[nodeId] ?? [];
-      const queued = approaches
-        .filter((approach) => approach.entries.length > 0)
-        .map((approach) => ({ incomingEdgeId: approach.incomingEdgeId, entries: approach.entries.map((entry) => ({ ...entry, priority: entry.priority ?? 'normal' })) }));
-      if (queued.length > 0) this.queues.set(nodeId, queued);
+      const queued: ApproachQueue[] = [];
       const released = new Map<string, string>();
       for (const approach of approaches) {
-        for (const vehicleId of approach.releasedVehicleIds ?? []) {
-          if (released.has(vehicleId)) throw new Error('duplicate released intersection vehicle');
-          released.set(vehicleId, approach.incomingEdgeId);
+        const entries: MutableIntersectionQueueEntry[] = [];
+        for (const entry of approach.entries) {
+          if (entry.released) {
+            if (released.has(entry.vehicleId)) throw new Error('duplicate released intersection vehicle');
+            released.set(entry.vehicleId, approach.incomingEdgeId);
+            continue;
+          }
+          entries.push({ ...entry, priority: entry.priority ?? 'normal' });
         }
+        if (entries.length > 0) queued.push({ incomingEdgeId: approach.incomingEdgeId, entries });
       }
+      if (queued.length > 0) this.queues.set(nodeId, queued);
       if (released.size > 0) this.pendingReleased.set(nodeId, released);
     }
   }
