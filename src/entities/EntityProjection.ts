@@ -60,6 +60,11 @@ type PartitionProjectionCommitCache = Readonly<{
   result: EntityProjectionCommitResult;
 }>;
 
+type PartitionManifest = Readonly<{
+  normalized: readonly EntityProjectionPartition[];
+  signature: string;
+}>;
+
 const projectionCommitCache = new WeakMap<EntityRegistry, ProjectionCommitCache>();
 const partitionProjectionCommitCache = new WeakMap<EntityRegistry, PartitionProjectionCommitCache>();
 
@@ -204,7 +209,14 @@ function resolveReferences(
   });
 }
 
-function validatePartitions(partitions: readonly EntityProjectionPartition[]): readonly EntityProjectionPartition[] {
+function partitionManifestSignature(partitions: readonly EntityProjectionPartition[]): string {
+  return partitions.map((partition) => {
+    const kinds = [...partition.ownedKinds].sort(ordinalCompare).map(encodePart).join('');
+    return `${encodePart(partition.id)}|${encodePart(kinds)}`;
+  }).join('|');
+}
+
+function normalizePartitionManifest(partitions: readonly EntityProjectionPartition[]): PartitionManifest {
   const normalized = [...partitions].sort((a, b) => ordinalCompare(a.id, b.id));
   const ids = new Set<string>();
   const kindOwner = new Map<EntityKind, string>();
@@ -225,32 +237,29 @@ function validatePartitions(partitions: readonly EntityProjectionPartition[]): r
       if (existingOwner) throw new Error(`entity kind ${kind} is owned by both ${existingOwner} and ${partition.id}`);
       kindOwner.set(kind, partition.id);
     }
-
-    for (const entity of partition.projection.entities) {
-      if (!ownedKinds.has(entity.kind)) {
-        throw new Error(`partition ${partition.id} projected unowned entity kind ${entity.kind}`);
-      }
-    }
-    for (const reference of partition.projection.references) {
-      if (!ownedKinds.has(reference.source.kind)) {
-        throw new Error(`partition ${partition.id} projected reference from unowned source kind ${reference.source.kind}`);
-      }
-    }
-    for (const reference of partition.projection.unresolved) {
-      if (!ownedKinds.has(reference.source.kind)) {
-        throw new Error(`partition ${partition.id} projected unresolved reference from unowned source kind ${reference.source.kind}`);
-      }
-    }
   }
 
-  return Object.freeze(normalized);
+  const frozen = Object.freeze(normalized);
+  return Object.freeze({ normalized: frozen, signature: partitionManifestSignature(frozen) });
 }
 
-function partitionManifestSignature(partitions: readonly EntityProjectionPartition[]): string {
-  return partitions.map((partition) => {
-    const kinds = [...partition.ownedKinds].sort(ordinalCompare).map(encodePart).join('');
-    return `${encodePart(partition.id)}|${encodePart(kinds)}`;
-  }).join('|');
+function validatePartitionContents(partition: EntityProjectionPartition): void {
+  const ownedKinds = new Set<EntityKind>(partition.ownedKinds);
+  for (const entity of partition.projection.entities) {
+    if (!ownedKinds.has(entity.kind)) {
+      throw new Error(`partition ${partition.id} projected unowned entity kind ${entity.kind}`);
+    }
+  }
+  for (const reference of partition.projection.references) {
+    if (!ownedKinds.has(reference.source.kind)) {
+      throw new Error(`partition ${partition.id} projected reference from unowned source kind ${reference.source.kind}`);
+    }
+  }
+  for (const reference of partition.projection.unresolved) {
+    if (!ownedKinds.has(reference.source.kind)) {
+      throw new Error(`partition ${partition.id} projected unresolved reference from unowned source kind ${reference.source.kind}`);
+    }
+  }
 }
 
 function copyUnresolvedByPartition(
@@ -419,8 +428,9 @@ export function commitEntityProjectionPartitions(
   graph: EntityReferenceGraph,
   partitions: readonly EntityProjectionPartition[],
 ): EntityProjectionCommitResult {
-  const normalized = validatePartitions(partitions);
-  const manifestSignature = partitionManifestSignature(normalized);
+  const manifest = normalizePartitionManifest(partitions);
+  const normalized = manifest.normalized;
+  const manifestSignature = manifest.signature;
   const cached = partitionProjectionCommitCache.get(registry);
   const revisionsMatch = cached !== undefined
     && cached.graph === graph
@@ -433,10 +443,14 @@ export function commitEntityProjectionPartitions(
 
   const cacheUsable = revisionsMatch && cached.manifestSignature === manifestSignature;
   const changedPartitions = cacheUsable
-    ? normalized.filter((partition) => cached.revisionByPartitionId.get(partition.id) !== partition.revisionKey)
+    ? normalized.filter((partition) => {
+      const previous = cached.partitionById.get(partition.id);
+      return previous !== partition || cached.revisionByPartitionId.get(partition.id) !== partition.revisionKey;
+    })
     : normalized;
 
   if (cacheUsable && changedPartitions.length === 0) return cached.result;
+  for (const partition of changedPartitions) validatePartitionContents(partition);
 
   const preparedRegistryPartitions: PreparedEntityPartitionProjection[] = changedPartitions.map((partition) =>
     registry.preparePartitionProjection(partition.ownedKinds, partition.projection.entities));
