@@ -9,6 +9,7 @@ import type {
   DevelopmentSemanticTuple,
   DeveloperCommitment,
   DeveloperMarketContext,
+  DeveloperMarketStateCommitment,
   DeveloperMarketStateSnapshot,
   DeveloperSeed,
   DeveloperState,
@@ -94,6 +95,22 @@ function cloneDeveloper(state: MutableDeveloperState): DeveloperState {
 }
 
 function cloneCommitment(value: DeveloperCommitment): DeveloperCommitment { return { ...value }; }
+
+function legacyCommitmentSnapshot(value: DeveloperCommitment): DeveloperMarketStateCommitment {
+  return {
+    awardId: value.awardId,
+    buildingId: value.buildingId,
+    lotId: value.lotId,
+    definitionId: value.definitionId,
+    developerId: value.developerId,
+    equity: value.equity,
+    awardTick: value.awardTick,
+    completionTick: value.completionTick,
+    releaseTick: value.releaseTick,
+    expectedReturn: value.expectedReturn,
+  };
+}
+
 function cloneBid(value: DevelopmentBid): DevelopmentBid { return { ...value }; }
 function cloneAward(value: DevelopmentAward): DevelopmentAward { return { ...value }; }
 
@@ -326,7 +343,10 @@ export class DeveloperMarketSystem {
   lastAwards(): DevelopmentAward[] { return this.awards.map(cloneAward); }
 
   snapshotState(): DeveloperMarketStateSnapshot {
-    return { developers: this.listDevelopers(), commitments: this.listCommitments() };
+    return {
+      developers: this.listDevelopers(),
+      commitments: this.listCommitments().map(legacyCommitmentSnapshot),
+    };
   }
 
   restoreState(snapshot: DeveloperMarketStateSnapshot): void {
@@ -377,7 +397,7 @@ export class DeveloperMarketSystem {
         throw new Error(`${raw.buildingId} has invalid development commitment timing`);
       }
       getBuildingDefinition(raw.definitionId);
-      const semantic = normalizeSemanticTuple(raw, raw.definitionId);
+      const semantic = normalizeSemanticTuple({}, raw.definitionId);
       const commitment: DeveloperCommitment = Object.freeze({ ...raw, ...semantic });
       nextCommitments.set(raw.buildingId, commitment);
       awardIds.add(raw.awardId);
