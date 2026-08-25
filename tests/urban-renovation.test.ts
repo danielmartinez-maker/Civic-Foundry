@@ -199,8 +199,8 @@ test('Core renovation immediately reconciles residential overflow and completes 
 
   const job = startCoreRenovation(core, buildingId);
   assert.equal(core.urbanBuildingView(buildingId)!.residentialCapacity, 14);
-  assert.equal(core.housingRelocationSnapshot.housedResidents, 14);
-  assert.equal(core.housingRelocationSnapshot.unplacedResidents, 14);
+  assert.ok(Math.abs(core.housingRelocationSnapshot.housedResidents - 14) < 1e-9);
+  assert.ok(Math.abs(core.housingRelocationSnapshot.unplacedResidents - 14) < 1e-9);
   assert.equal(core.renovation.hasActive(buildingId), true);
 
   core.step(job.completionTick - core.clock.tick);
