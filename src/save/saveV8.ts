@@ -7,8 +7,6 @@ import type {
 } from '../simulation/development/DevelopmentTypes.ts';
 import { urbanBusinessSiteFromView } from '../simulation/urban/UrbanBuildingView.ts';
 import type {
-  BuildingQualityTier,
-  PrivateParkingProfile,
   RenovationStateSnapshot,
   UrbanFabricStateSnapshot,
 } from '../simulation/urban/UrbanTypes.ts';
@@ -23,7 +21,6 @@ export type SaveV8 = Omit<SaveV7, 'saveVersion' | 'gameVersion' | 'developmentMa
 }>;
 
 type MutableCoreMode = { urbanDevelopmentMode: 'legacy' | 'semantic' };
-type DeveloperMarketCommitmentInternals = { commitments: Map<string, DeveloperCommitment> };
 
 export function serializeCoreV8(core: SimulationCore): SaveV8 {
   const v7 = serializeCoreV7(core);
@@ -58,7 +55,7 @@ export function hydrateCoreV8(input: unknown): SimulationCore {
   const core = hydrateCoreV7(v7);
   setSemanticMode(core);
 
-  const liveBuildingIds = core.buildings.list().map((building) => building.id);
+  const liveBuildingIds = new Set(core.buildings.list().map((building) => building.id));
   core.urbanFabric.restoreState(save.urbanFabricState, liveBuildingIds, { requireAllLiveBuildings: true });
   installSemanticDeveloperCommitments(core, save.developmentMarket);
   validateCrossDomainState(core, save);
@@ -245,5 +242,3 @@ function requireRecord(value: unknown, name: string): Record<string, unknown> {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-
-void (null as BuildingQualityTier | PrivateParkingProfile | null);
