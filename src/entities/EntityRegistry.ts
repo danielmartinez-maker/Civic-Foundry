@@ -29,6 +29,15 @@ export type PreparedEntityProjection = Readonly<{
   baseRevision: number;
 }>;
 
+export type PreparedEntityPartitionProjection = Readonly<{
+  ownedKinds: readonly EntityKind[];
+  activeUpdatesByLegacyKey: ReadonlyMap<string, EntityRecord>;
+  removedLegacyKeys: readonly string[];
+  knownUpdatesByHandleKey: ReadonlyMap<string, EntityRecord>;
+  highestGenerationUpdatesByLegacyKey: ReadonlyMap<string, number>;
+  baseRevision: number;
+}>;
+
 export type KnownEntityView = Readonly<{
   resolve<K extends EntityKind>(kind: K, legacyId: string): EntityHandle<K> | undefined;
   resolveKnownByToken(kind: EntityKind, legacyId: string, incarnationToken: string): EntityHandle | undefined;
@@ -149,6 +158,15 @@ function resolvePreparedKnownToken(
   return cloneHandle(matches.values().next().value!.handle);
 }
 
+function normalizeKinds(ownedKinds: readonly EntityKind[]): readonly EntityKind[] {
+  if (ownedKinds.length === 0) throw new Error('entity partition must own at least one entity kind');
+  const normalized = [...ownedKinds].sort(ordinalCompare);
+  for (let i = 1; i < normalized.length; i++) {
+    if (normalized[i - 1] === normalized[i]) throw new Error(`duplicate entity partition kind: ${normalized[i]}`);
+  }
+  return Object.freeze(normalized);
+}
+
 export function preparedEntityView(prepared: PreparedEntityProjection): KnownEntityView {
   return Object.freeze({
     resolve<K extends EntityKind>(kind: K, legacyId: string): EntityHandle<K> | undefined {
@@ -167,10 +185,72 @@ export function preparedEntityView(prepared: PreparedEntityProjection): KnownEnt
   });
 }
 
+export function preparedEntityPartitionView(
+  registry: EntityRegistry,
+  preparedPartitions: readonly PreparedEntityPartitionProjection[],
+): KnownEntityView {
+  const activeUpdates = new Map<string, EntityRecord>();
+  const removed = new Set<string>();
+  const knownUpdates = new Map<string, EntityRecord>();
+
+  for (const prepared of preparedPartitions) {
+    for (const key of prepared.removedLegacyKeys) {
+      removed.add(key);
+      activeUpdates.delete(key);
+    }
+    for (const [key, record] of prepared.activeUpdatesByLegacyKey) {
+      activeUpdates.set(key, record);
+      removed.delete(key);
+    }
+    for (const [key, record] of prepared.knownUpdatesByHandleKey) knownUpdates.set(key, record);
+  }
+
+  return Object.freeze({
+    resolve<K extends EntityKind>(kind: K, legacyId: string): EntityHandle<K> | undefined {
+      const legacyKey = canonicalLegacyKey({ kind, legacyId });
+      const staged = activeUpdates.get(legacyKey);
+      if (staged) return cloneHandle(staged.handle) as EntityHandle<K>;
+      if (removed.has(legacyKey)) return undefined;
+      return registry.resolve(kind, legacyId);
+    },
+    resolveKnownByToken(kind: EntityKind, legacyId: string, incarnationToken: string): EntityHandle | undefined {
+      requireToken(incarnationToken);
+      const matches = new Map<string, EntityHandle>();
+      const committed = registry.resolveKnownByToken(kind, legacyId, incarnationToken);
+      if (committed) matches.set(canonicalHandleKey(committed), committed);
+      for (const record of knownUpdates.values()) {
+        if (record.handle.kind === kind
+          && record.handle.legacyId === legacyId
+          && record.incarnationToken === incarnationToken) {
+          matches.set(canonicalHandleKey(record.handle), record.handle);
+        }
+      }
+      for (const record of activeUpdates.values()) {
+        if (record.handle.kind === kind
+          && record.handle.legacyId === legacyId
+          && record.incarnationToken === incarnationToken) {
+          matches.set(canonicalHandleKey(record.handle), record.handle);
+        }
+      }
+      if (matches.size !== 1) return undefined;
+      return cloneHandle(matches.values().next().value!);
+    },
+    isActive(handle: EntityHandle): boolean {
+      const current = this.resolve(handle.kind, handle.legacyId);
+      return current !== undefined && canonicalHandleKey(current) === canonicalHandleKey(handle);
+    },
+    isKnown(handle: EntityHandle): boolean {
+      const handleKey = canonicalHandleKey(handle);
+      return knownUpdates.has(handleKey) || activeUpdates.has(canonicalLegacyKey(handle)) || registry.isKnown(handle);
+    },
+  });
+}
+
 export class EntityRegistry implements KnownEntityView {
   private activeByLegacyKey = new Map<string, EntityRecord>();
   private knownByHandleKey = new Map<string, EntityRecord>();
   private highestGenerationByLegacyKey = new Map<string, number>();
+  private activeLegacyKeysByKind = new Map<EntityKind, Set<string>>();
   private revision = 0;
 
   get commitRevision(): number {
@@ -204,8 +284,12 @@ export class EntityRegistry implements KnownEntityView {
   }
 
   listActive(kind?: EntityKind): readonly EntityHandle[] {
-    const handles = [...this.activeByLegacyKey.values()]
-      .filter((record) => kind === undefined || record.handle.kind === kind)
+    const records = kind === undefined
+      ? [...this.activeByLegacyKey.values()]
+      : [...(this.activeLegacyKeysByKind.get(kind) ?? [])]
+        .map((key) => this.activeByLegacyKey.get(key))
+        .filter((record): record is EntityRecord => record !== undefined);
+    const handles = records
       .map((record) => cloneHandle(record.handle))
       .sort((a, b) => ordinalCompare(canonicalHandleKey(a), canonicalHandleKey(b)));
     return Object.freeze(handles);
@@ -272,17 +356,132 @@ export class EntityRegistry implements KnownEntityView {
     });
   }
 
+  preparePartitionProjection(
+    ownedKinds: readonly EntityKind[],
+    entities: readonly ProjectedEntity[],
+  ): PreparedEntityPartitionProjection {
+    const normalizedKinds = normalizeKinds(ownedKinds);
+    const kindSet = new Set<EntityKind>(normalizedKinds);
+    const normalized = entities.map((entity) => {
+      if (!kindSet.has(entity.kind)) {
+        throw new Error(`projected entity kind ${entity.kind} is outside partition ownership`);
+      }
+      const legacyKey = canonicalLegacyKey(entity);
+      requireToken(entity.incarnationToken);
+      return { entity, legacyKey } as const;
+    }).sort((a, b) => ordinalCompare(a.legacyKey, b.legacyKey));
+
+    for (let i = 1; i < normalized.length; i++) {
+      if (normalized[i - 1]!.legacyKey === normalized[i]!.legacyKey) {
+        throw new Error(`duplicate projected entity identity: ${normalized[i]!.legacyKey}`);
+      }
+    }
+
+    const incomingByLegacyKey = new Map<string, ProjectedEntity>();
+    for (const item of normalized) incomingByLegacyKey.set(item.legacyKey, item.entity);
+
+    const currentKeys: string[] = [];
+    for (const kind of normalizedKinds) {
+      for (const key of this.activeLegacyKeysByKind.get(kind) ?? []) currentKeys.push(key);
+    }
+    currentKeys.sort(ordinalCompare);
+
+    const activeUpdates = new Map<string, EntityRecord>();
+    const removedLegacyKeys: string[] = [];
+    const knownUpdates = new Map<string, EntityRecord>();
+    const highestUpdates = new Map<string, number>();
+
+    for (const legacyKey of currentKeys) {
+      const current = this.activeByLegacyKey.get(legacyKey);
+      if (!current) throw new Error(`entity kind index references missing active entity: ${legacyKey}`);
+      const incoming = incomingByLegacyKey.get(legacyKey);
+      if (!incoming || incoming.incarnationToken !== current.incarnationToken) {
+        const historical = cloneRecord(current, false);
+        knownUpdates.set(canonicalHandleKey(historical.handle), historical);
+        removedLegacyKeys.push(legacyKey);
+      }
+    }
+
+    for (const { entity, legacyKey } of normalized) {
+      const current = this.activeByLegacyKey.get(legacyKey);
+      let record: EntityRecord;
+      if (current && current.incarnationToken === entity.incarnationToken) {
+        record = metadataMatches(current.metadata, entity.metadata)
+          ? current
+          : recordFrom(entity, current.handle.generation);
+      } else {
+        const generation = (this.highestGenerationByLegacyKey.get(legacyKey) ?? 0) + 1;
+        record = recordFrom(entity, generation);
+        highestUpdates.set(legacyKey, generation);
+      }
+      activeUpdates.set(legacyKey, record);
+      if (record !== current) knownUpdates.set(canonicalHandleKey(record.handle), record);
+    }
+
+    return Object.freeze({
+      ownedKinds: normalizedKinds,
+      activeUpdatesByLegacyKey: activeUpdates,
+      removedLegacyKeys: Object.freeze(removedLegacyKeys.sort(ordinalCompare)),
+      knownUpdatesByHandleKey: knownUpdates,
+      highestGenerationUpdatesByLegacyKey: highestUpdates,
+      baseRevision: this.revision,
+    });
+  }
+
   commitPrepared(prepared: PreparedEntityProjection): void {
     if (prepared.baseRevision !== this.revision || prepared.baseKnownByHandleKey !== this.knownByHandleKey) {
       throw new Error('stale prepared entity projection');
     }
 
     this.activeByLegacyKey = new Map(sortedEntries(prepared.activeByLegacyKey));
+    this.activeLegacyKeysByKind = new Map();
+    for (const [key, record] of this.activeByLegacyKey) {
+      let keys = this.activeLegacyKeysByKind.get(record.handle.kind);
+      if (!keys) {
+        keys = new Set<string>();
+        this.activeLegacyKeysByKind.set(record.handle.kind, keys);
+      }
+      keys.add(key);
+    }
     for (const [key, record] of sortedEntries(prepared.knownUpdatesByHandleKey)) {
       this.knownByHandleKey.set(key, record);
     }
     for (const [key, generation] of sortedEntries(prepared.highestGenerationUpdatesByLegacyKey)) {
       this.highestGenerationByLegacyKey.set(key, generation);
+    }
+    this.revision += 1;
+  }
+
+  commitPreparedPartitions(preparedPartitions: readonly PreparedEntityPartitionProjection[]): void {
+    for (const prepared of preparedPartitions) {
+      if (prepared.baseRevision !== this.revision) throw new Error('stale prepared entity partition projection');
+    }
+
+    for (const prepared of preparedPartitions) {
+      for (const legacyKey of prepared.removedLegacyKeys) {
+        const current = this.activeByLegacyKey.get(legacyKey);
+        if (current) {
+          this.activeByLegacyKey.delete(legacyKey);
+          this.activeLegacyKeysByKind.get(current.handle.kind)?.delete(legacyKey);
+        }
+      }
+      for (const [legacyKey, record] of prepared.activeUpdatesByLegacyKey) {
+        const prior = this.activeByLegacyKey.get(legacyKey);
+        if (prior && prior.handle.kind !== record.handle.kind) {
+          this.activeLegacyKeysByKind.get(prior.handle.kind)?.delete(legacyKey);
+        }
+        this.activeByLegacyKey.set(legacyKey, record);
+        let keys = this.activeLegacyKeysByKind.get(record.handle.kind);
+        if (!keys) {
+          keys = new Set<string>();
+          this.activeLegacyKeysByKind.set(record.handle.kind, keys);
+        }
+        keys.add(legacyKey);
+      }
+      for (const [key, record] of prepared.knownUpdatesByHandleKey) this.knownByHandleKey.set(key, record);
+      for (const [key, generation] of prepared.highestGenerationUpdatesByLegacyKey) {
+        this.highestGenerationByLegacyKey.set(key, generation);
+      }
     }
     this.revision += 1;
   }
