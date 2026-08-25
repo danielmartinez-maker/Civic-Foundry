@@ -125,6 +125,7 @@ test('intersection queues are FIFO and bounded by deterministic service capacity
   const released = intersections.stepNode(graph, node.id);
   assert.deepEqual(released, ['v1']);
   assert.equal(intersections.queueLength(node.id), 2);
+  intersections.removeVehicle('v1');
   intersections.removeVehicle('v2');
   assert.equal(intersections.queueLength(node.id), 1);
   assert.deepEqual(intersections.stepNode(graph, node.id), ['v3']);
