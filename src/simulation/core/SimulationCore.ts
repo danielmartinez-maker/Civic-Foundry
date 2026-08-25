@@ -52,6 +52,7 @@ import { HousingRelocationSystem, type HousingRelocationSnapshot, type HousingRe
 import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';
 import { PersonBootstrapSystem } from '../people/PersonBootstrapSystem.ts';
 import { PersonEntityBridge } from '../people/PersonEntityBridge.ts';
+import { parsePersonSavePayload, serializePeople, type PersonSavePayload } from '../people/PersonPersistence.ts';
 import { PersonPopulationProjection } from '../people/PersonPopulationProjection.ts';
 import { buildPersonSnapshot, type PersonSnapshot } from '../people/PersonSnapshot.ts';
 import { PersonStore } from '../people/PersonStore.ts';
@@ -421,8 +422,36 @@ export class SimulationCore {
     this.personhoodAuthorityEnabled = true;
   }
 
+  isPersonhoodAuthorityEnabled(): boolean {
+    return this.personhoodAuthorityEnabled;
+  }
+
   getPersonSnapshot(): PersonSnapshot {
     return buildPersonSnapshot(this.personStore);
+  }
+
+  getPersonSavePayload(): PersonSavePayload {
+    if (!this.personhoodAuthorityEnabled) throw new Error('personhood authority is not enabled');
+    return serializePeople(this.personStore);
+  }
+
+  restorePersonhoodAuthority(input: unknown): void {
+    if (this.personhoodAuthorityEnabled) throw new Error('personhood authority is already enabled');
+
+    const payload = parsePersonSavePayload(input);
+    const expectedPopulation = this.population.population;
+    const personPopulation = payload.people.reduce(
+      (count, person) => count + (person.alive && person.resident ? 1 : 0),
+      0,
+    );
+    if (personPopulation !== expectedPopulation) {
+      throw new Error(`person population mismatch: expected ${expectedPopulation}, received ${personPopulation}`);
+    }
+
+    this.personEntityBridge.createPeople(payload.people);
+    this.kernel.registerPersonDiagnostics(this.personStore, this.entityRegistry);
+    this.population.attachPersonProjection(this.personPopulationProjection);
+    this.personhoodAuthorityEnabled = true;
   }
 
   rebuildEntityProjection(): void {
