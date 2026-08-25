@@ -76,6 +76,18 @@ export type RedevelopmentProjectTickInput = Readonly<{
   leaseUpCompleted?: boolean;
 }>;
 
+export type RedevelopmentExecutionActions = Readonly<{
+  hasDeveloperCommitment: (buildingId: string) => boolean;
+  acquireParcels: (parcelIds: readonly string[]) => boolean;
+  displaceBuildings: (buildingIds: readonly string[]) => readonly string[];
+  unresolvedDisplacementIds: (buildingIds: readonly string[]) => readonly string[];
+  demolishBuildings: (buildingIds: readonly string[]) => boolean;
+  assembleParcels: (parcelIds: readonly string[]) => readonly string[];
+  advanceConstruction: (parcelIds: readonly string[]) => boolean;
+  advanceLeaseUp: (parcelIds: readonly string[]) => boolean;
+  releaseDeveloperCommitments: (buildingIds: readonly string[]) => void;
+}>;
+
 function requireFiniteNonNegative(name: string, value: number): void {
   if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be finite and non-negative`);
 }
@@ -288,13 +300,64 @@ export class RedevelopmentExecutionSystem {
     }
 
     if (nextState === execution.state) return execution;
-    return Object.freeze({
-      ...execution,
-      parcelIds: Object.freeze([...execution.parcelIds]),
-      buildingIds: Object.freeze([...execution.buildingIds]),
-      displacedHouseholdIds: Object.freeze([...execution.displacedHouseholdIds]),
-      state: nextState,
-    });
+    return transitionExecution(execution, nextState);
+  }
+
+  advance(
+    execution: RedevelopmentProjectExecution,
+    actions: RedevelopmentExecutionActions,
+  ): RedevelopmentProjectExecution {
+    validateProjectExecution(execution);
+    const parcelIds = canonicalActionIds('parcelIds', execution.parcelIds);
+    const buildingIds = canonicalActionIds('buildingIds', execution.buildingIds);
+
+    switch (execution.state) {
+      case 'under-contract': {
+        for (const buildingId of buildingIds) {
+          if (!actions.hasDeveloperCommitment(buildingId)) return execution;
+        }
+        if (!actions.acquireParcels(parcelIds)) return execution;
+        return transitionExecution(execution, 'acquired', { parcelIds, buildingIds });
+      }
+      case 'acquired': {
+        const displacedHouseholdIds = canonicalActionIds(
+          'displacedHouseholdIds',
+          actions.displaceBuildings(buildingIds),
+        );
+        return transitionExecution(execution, 'relocating', { parcelIds, buildingIds, displacedHouseholdIds });
+      }
+      case 'relocating': {
+        const unresolved = canonicalActionIds(
+          'unresolvedDisplacementIds',
+          actions.unresolvedDisplacementIds(buildingIds),
+        );
+        if (unresolved.length > 0) return execution;
+        return transitionExecution(execution, 'demolition', { parcelIds, buildingIds });
+      }
+      case 'demolition': {
+        if (!actions.demolishBuildings(buildingIds)) return execution;
+        let constructionParcelIds = parcelIds;
+        if (parcelIds.length > 1) {
+          constructionParcelIds = canonicalActionIds('assembledParcelIds', actions.assembleParcels(parcelIds));
+          if (constructionParcelIds.length === 0) {
+            throw new Error('parcel assembly must return at least one resulting parcel');
+          }
+        }
+        return transitionExecution(execution, 'construction', {
+          parcelIds: constructionParcelIds,
+          buildingIds,
+        });
+      }
+      case 'construction':
+        if (!actions.advanceConstruction(parcelIds)) return execution;
+        return transitionExecution(execution, 'lease-up', { parcelIds, buildingIds });
+      case 'lease-up':
+        if (!actions.advanceLeaseUp(parcelIds)) return execution;
+        actions.releaseDeveloperCommitments(buildingIds);
+        return transitionExecution(execution, 'stabilized', { parcelIds, buildingIds });
+      case 'stabilized':
+        return execution;
+    }
   }
 
   snapshot(): RedevelopmentExecutionSnapshot {
@@ -305,6 +368,32 @@ export class RedevelopmentExecutionSystem {
       remainingEffectiveAffordableCapacity: this.state.remainingEffectiveAffordableCapacity,
     });
   }
+}
+
+type RedevelopmentExecutionOverrides = Readonly<{
+  parcelIds?: readonly string[];
+  buildingIds?: readonly string[];
+  displacedHouseholdIds?: readonly string[];
+}>;
+
+function transitionExecution(
+  execution: RedevelopmentProjectExecution,
+  state: RedevelopmentExecutionState,
+  overrides: RedevelopmentExecutionOverrides = {},
+): RedevelopmentProjectExecution {
+  return Object.freeze({
+    ...execution,
+    parcelIds: Object.freeze([...(overrides.parcelIds ?? execution.parcelIds)]),
+    buildingIds: Object.freeze([...(overrides.buildingIds ?? execution.buildingIds)]),
+    displacedHouseholdIds: Object.freeze([...(overrides.displacedHouseholdIds ?? execution.displacedHouseholdIds)]),
+    state,
+  });
+}
+
+function canonicalActionIds(name: string, values: readonly string[]): readonly string[] {
+  if (!Array.isArray(values)) throw new Error(`${name} must be an array`);
+  validateUniqueEntityIds(name, values);
+  return Object.freeze([...values].sort((a, b) => a.localeCompare(b)));
 }
 
 function validateProjectExecution(execution: RedevelopmentProjectExecution): void {
