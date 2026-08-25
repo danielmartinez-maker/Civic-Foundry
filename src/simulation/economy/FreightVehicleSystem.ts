@@ -10,14 +10,15 @@ export type FreightVehicleEvent=Readonly<{type:'delivered'|'failed'|'needs-repla
 export type FreightVehicleStateSnapshot=Readonly<{nextVehicleId:number;dispatchCapacity:number;vehicles:readonly FreightVehicle[]}>;
 
 export class FreightVehicleSystem{
-  private vehicles=new Map<string,MutableFreightVehicle>(); private nextVehicleId=1; private dispatchCapacity=100;
+  private vehicles=new Map<string,MutableFreightVehicle>(); private nextVehicleId=1; private dispatchCapacity=100; private _entityRevision=0;
+  get entityRevision():number{return this._entityRevision;}
   setDispatchCapacity(count:number):void{this.dispatchCapacity=Math.max(0,Math.floor(Number.isFinite(count)?count:0));}
   getDispatchCapacity():number{return this.dispatchCapacity;}
   hasDispatchCapacity():boolean{return this.activeCount()<this.dispatchCapacity;}
   dispatch(shipment:FreightShipment,route:RouteResult,tick:number):FreightVehicle{
     if(!this.hasDispatchCapacity())throw new Error('freight dispatch capacity exhausted');
     if(route.edgeIds.length===0)throw new Error('freight route must contain at least one edge');
-    const id=`freight-vehicle:${this.nextVehicleId++}`; const v:MutableFreightVehicle={id,shipment:{...shipment},routeEdgeIds:[...route.edgeIds],currentEdgeIndex:0,edgeProgressTicks:0,departureTick:tick,expectedArrivalTick:tick+route.totalCost,delayTicks:0,status:'moving'};this.vehicles.set(id,v);return this.copy(v);
+    const id=`freight-vehicle:${this.nextVehicleId++}`; const v:MutableFreightVehicle={id,shipment:{...shipment},routeEdgeIds:[...route.edgeIds],currentEdgeIndex:0,edgeProgressTicks:0,departureTick:tick,expectedArrivalTick:tick+route.totalCost,delayTicks:0,status:'moving'};this.vehicles.set(id,v);this._entityRevision++;return this.copy(v);
   }
   activeCount():number{return this.vehicles.size;}
   listVehicles():FreightVehicle[]{return[...this.vehicles.values()].map(v=>this.copy(v)).sort((a,b)=>a.id.localeCompare(b.id));}
@@ -27,15 +28,15 @@ export class FreightVehicleSystem{
     const events:FreightVehicleEvent[]=[];
     for(const v of [...this.vehicles.values()].sort((a,b)=>a.id.localeCompare(b.id))){
       const edgeId=v.routeEdgeIds[v.currentEdgeIndex]; const edge=edgeId?graph.getEdge(edgeId):undefined;
-      if(!edge){const prior=v.currentEdgeIndex>0?graph.getEdge(v.routeEdgeIds[v.currentEdgeIndex-1]!):undefined;const event:FreightVehicleEvent=prior?{type:'needs-replan',vehicleId:v.id,shipment:{...v.shipment},delayTicks:v.delayTicks,currentNodeId:prior.to}:{type:'failed',vehicleId:v.id,shipment:{...v.shipment},delayTicks:v.delayTicks};events.push(event);this.vehicles.delete(v.id);continue;}
+      if(!edge){const prior=v.currentEdgeIndex>0?graph.getEdge(v.routeEdgeIds[v.currentEdgeIndex-1]!):undefined;const event:FreightVehicleEvent=prior?{type:'needs-replan',vehicleId:v.id,shipment:{...v.shipment},delayTicks:v.delayTicks,currentNodeId:prior.to}:{type:'failed',vehicleId:v.id,shipment:{...v.shipment},delayTicks:v.delayTicks};events.push(event);this.vehicles.delete(v.id);this._entityRevision++;continue;}
       const travel=Math.max(edge.freeFlowTicks,roadTravelTime(edge)); v.edgeProgressTicks++; v.delayTicks+=Math.max(0,travel-edge.freeFlowTicks)/Math.max(1,travel);
       if(v.edgeProgressTicks+1e-9<travel)continue; v.edgeProgressTicks=0; v.currentEdgeIndex++;
-      if(v.currentEdgeIndex>=v.routeEdgeIds.length){events.push({type:'delivered',vehicleId:v.id,shipment:{...v.shipment},delayTicks:Math.max(0,tick-v.expectedArrivalTick)});this.vehicles.delete(v.id);}
+      if(v.currentEdgeIndex>=v.routeEdgeIds.length){events.push({type:'delivered',vehicleId:v.id,shipment:{...v.shipment},delayTicks:Math.max(0,tick-v.expectedArrivalTick)});this.vehicles.delete(v.id);this._entityRevision++;}
     }
     return events;
   }
   snapshotState():FreightVehicleStateSnapshot{return{nextVehicleId:this.nextVehicleId,dispatchCapacity:this.dispatchCapacity,vehicles:this.listVehicles()};}
-  restoreState(state:FreightVehicleStateSnapshot):void{if(!Number.isInteger(state.nextVehicleId)||state.nextVehicleId<1)throw new Error('invalid freight vehicle id state');if(!Number.isInteger(state.dispatchCapacity)||state.dispatchCapacity<0)throw new Error('invalid freight dispatch capacity');this.vehicles.clear();for(const v of state.vehicles)this.vehicles.set(v.id,{...v,shipment:{...v.shipment},routeEdgeIds:[...v.routeEdgeIds]});this.nextVehicleId=state.nextVehicleId;this.dispatchCapacity=state.dispatchCapacity;}
-  removeForShipment(shipmentId:string):void{for(const [id,v] of this.vehicles)if(v.shipment.id===shipmentId)this.vehicles.delete(id);}
+  restoreState(state:FreightVehicleStateSnapshot):void{if(!Number.isInteger(state.nextVehicleId)||state.nextVehicleId<1)throw new Error('invalid freight vehicle id state');if(!Number.isInteger(state.dispatchCapacity)||state.dispatchCapacity<0)throw new Error('invalid freight dispatch capacity');this.vehicles.clear();for(const v of state.vehicles)this.vehicles.set(v.id,{...v,shipment:{...v.shipment},routeEdgeIds:[...v.routeEdgeIds]});this.nextVehicleId=state.nextVehicleId;this.dispatchCapacity=state.dispatchCapacity;this._entityRevision++;}
+  removeForShipment(shipmentId:string):void{for(const [id,v] of this.vehicles)if(v.shipment.id===shipmentId){this.vehicles.delete(id);this._entityRevision++;}}
   private copy(v:MutableFreightVehicle):FreightVehicle{return{...v,shipment:{...v.shipment},routeEdgeIds:[...v.routeEdgeIds]};}
 }
