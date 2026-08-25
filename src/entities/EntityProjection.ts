@@ -16,6 +16,7 @@ import {
 import {
   EntityReferenceGraph,
   type EntityReference,
+  type PreparedReferencePartition,
 } from './EntityReferenceGraph.ts';
 
 export type EntityProjectionData = Readonly<{
@@ -226,16 +227,6 @@ function validatePartitions(partitions: readonly EntityProjectionPartition[]): r
   return Object.freeze(normalized);
 }
 
-function composeProjection(partitions: readonly EntityProjectionPartition[]): EntityProjectionData {
-  return Object.freeze({
-    entities: Object.freeze(partitions.flatMap((partition) => partition.projection.entities.map(cloneEntity))),
-    references: Object.freeze(partitions.flatMap((partition) => partition.projection.references.map(cloneIntent))),
-    unresolved: Object.freeze(
-      partitions.flatMap((partition) => partition.projection.unresolved.map(cloneUnresolved)).sort(compareUnresolved),
-    ),
-  });
-}
-
 export function commitEntityProjection(
   registry: EntityRegistry,
   graph: EntityReferenceGraph,
@@ -260,7 +251,7 @@ export function commitEntityProjection(
 
   const result = Object.freeze({
     activeEntities: registry.activeCount,
-    references: graph.list().length,
+    references: graph.count,
     unresolved: resolved.unresolved,
   });
   projectionCommitCache.set(registry, Object.freeze({
@@ -279,19 +270,24 @@ export function commitEntityProjectionPartitions(
   partitions: readonly EntityProjectionPartition[],
 ): EntityProjectionCommitResult {
   const normalized = validatePartitions(partitions);
-  const preparedPartitions: PreparedEntityPartitionProjection[] = normalized.map((partition) =>
+  const preparedRegistryPartitions: PreparedEntityPartitionProjection[] = normalized.map((partition) =>
     registry.preparePartitionProjection(partition.ownedKinds, partition.projection.entities));
-  const view = preparedEntityPartitionView(registry, preparedPartitions);
-  const combined = composeProjection(normalized);
-  const resolved = resolveReferences(combined, view);
-  const preparedGraph = graph.prepare(resolved.resolved, view);
+  const view = preparedEntityPartitionView(registry, preparedRegistryPartitions);
 
-  registry.commitPreparedPartitions(preparedPartitions);
-  graph.commitPrepared(preparedGraph);
+  const preparedGraphPartitions: PreparedReferencePartition[] = [];
+  const unresolved: UnresolvedEntityReference[] = [];
+  for (const partition of normalized) {
+    const resolved = resolveReferences(partition.projection, view);
+    preparedGraphPartitions.push(graph.preparePartition(partition.ownedKinds, resolved.resolved, view));
+    unresolved.push(...resolved.unresolved.map(cloneUnresolved));
+  }
+
+  registry.commitPreparedPartitions(preparedRegistryPartitions);
+  graph.commitPreparedPartitions(preparedGraphPartitions);
 
   return Object.freeze({
     activeEntities: registry.activeCount,
-    references: graph.list().length,
-    unresolved: resolved.unresolved,
+    references: graph.count,
+    unresolved: Object.freeze(unresolved.sort(compareUnresolved)),
   });
 }
