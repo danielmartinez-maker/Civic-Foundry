@@ -44,7 +44,7 @@ export class RenovationSystem {
     }
     if (state.conditionScore >= 90) throw new Error('renovation requires condition below target');
 
-    const qualityMultiplier = QUALITY_PROFILES[state.qualityTier].constructionCostMultiplier;
+    const qualityMultiplier = QUALITY_PROFILES[state.qualityTier].hardConstructionCost;
     const cost = roundMoney(input.definition.baseConstructionCost * 0.22 * qualityMultiplier);
     const duration = Math.max(50, Math.ceil((55 + input.definition.complexityFactor * 55) * qualityMultiplier));
     return Object.freeze({
