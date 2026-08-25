@@ -23,10 +23,13 @@ function projectPerson(person: PersonRecord): ProjectedEntity {
 }
 
 export class PersonEntityBridge {
-  constructor(
-    private readonly store: PersonStore,
-    private readonly registry: EntityRegistry,
-  ) {}
+  private readonly store: PersonStore;
+  private readonly registry: EntityRegistry;
+
+  constructor(store: PersonStore, registry: EntityRegistry) {
+    this.store = store;
+    this.registry = registry;
+  }
 
   createPerson(input: PersonCreateInput): PersonRecord {
     const normalized = normalizePersonCreateInput(input);
