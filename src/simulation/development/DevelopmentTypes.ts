@@ -136,7 +136,30 @@ export type DeveloperCommitment = DevelopmentSemanticTuple & Readonly<{
   expectedReturn: number;
 }>;
 
+/**
+ * The V7 persistence envelope predates B1 semantic development fields.
+ * Keep this shape byte-compatible until Save V8 becomes authoritative.
+ */
+export type DeveloperMarketStateCommitment = Readonly<{
+  awardId: string;
+  buildingId: string;
+  lotId: string;
+  definitionId: string;
+  developerId: string;
+  equity: number;
+  awardTick: number;
+  completionTick: number;
+  releaseTick: number;
+  expectedReturn: number;
+}>;
+
 export type DeveloperMarketStateSnapshot = Readonly<{
+  developers: readonly DeveloperState[];
+  commitments: readonly DeveloperMarketStateCommitment[];
+}>;
+
+/** B1/V8 persistence retains the semantic tuple on active commitments. */
+export type SemanticDeveloperMarketStateSnapshot = Readonly<{
   developers: readonly DeveloperState[];
   commitments: readonly DeveloperCommitment[];
 }>;
