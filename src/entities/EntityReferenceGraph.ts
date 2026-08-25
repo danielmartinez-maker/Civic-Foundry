@@ -2,6 +2,7 @@ import {
   canonicalHandleKey,
   ordinalCompare,
   type EntityHandle,
+  type EntityKind,
   type EntityReferenceSemantics,
 } from './EntityTypes.ts';
 import type { KnownEntityView } from './EntityRegistry.ts';
@@ -15,6 +16,13 @@ export type EntityReference = Readonly<{
 
 export type PreparedReferenceGraph = Readonly<{
   references: readonly EntityReference[];
+}>;
+
+export type PreparedReferencePartition = Readonly<{
+  ownedSourceKinds: readonly EntityKind[];
+  replacementsBySourceKey: ReadonlyMap<string, readonly EntityReference[]>;
+  removedSourceKeys: readonly string[];
+  baseRevision: number;
 }>;
 
 export type EntityReferenceGraphSnapshot = Readonly<{
@@ -59,64 +67,201 @@ function compareReference(a: EntityReference, b: EntityReference): number {
     || ordinalCompare(canonicalHandleKey(a.target), canonicalHandleKey(b.target));
 }
 
+function normalizeKinds(ownedKinds: readonly EntityKind[]): readonly EntityKind[] {
+  if (ownedKinds.length === 0) throw new Error('reference partition must own at least one source kind');
+  const normalized = [...ownedKinds].sort(ordinalCompare);
+  for (let i = 1; i < normalized.length; i++) {
+    if (normalized[i - 1] === normalized[i]) {
+      throw new Error(`duplicate reference partition source kind: ${normalized[i]}`);
+    }
+  }
+  return Object.freeze(normalized);
+}
+
+function normalizeAndValidateReferences(
+  references: readonly EntityReference[],
+  view: KnownEntityView,
+  ownedKinds?: ReadonlySet<EntityKind>,
+): readonly EntityReference[] {
+  const normalized = references.map((reference) => {
+    requireRelation(reference.relation);
+    if (ownedKinds && !ownedKinds.has(reference.source.kind)) {
+      throw new Error(`entity reference source kind ${reference.source.kind} is outside partition ownership`);
+    }
+    if (!view.isActive(reference.source)) {
+      throw new Error(`entity reference source is not active: ${canonicalHandleKey(reference.source)}`);
+    }
+    if (reference.semantics === 'strong' || reference.semantics === 'owned') {
+      if (!view.isActive(reference.target)) {
+        throw new Error(`${reference.semantics} entity reference target is not active: ${canonicalHandleKey(reference.target)}`);
+      }
+    } else if (reference.semantics === 'weak') {
+      if (!view.isKnown(reference.target)) {
+        throw new Error(`weak entity reference target is not known: ${canonicalHandleKey(reference.target)}`);
+      }
+    } else {
+      throw new Error('external entity references are diagnostic intents and cannot enter the entity reference graph');
+    }
+    return cloneReference(reference);
+  }).sort(compareReference);
+
+  for (let i = 1; i < normalized.length; i++) {
+    if (canonicalReferenceKey(normalized[i - 1]!) === canonicalReferenceKey(normalized[i]!)) {
+      throw new Error(`duplicate entity reference: ${canonicalReferenceKey(normalized[i]!)}`);
+    }
+  }
+  return Object.freeze(normalized);
+}
+
+function groupBySource(references: readonly EntityReference[]): Map<string, readonly EntityReference[]> {
+  const grouped = new Map<string, EntityReference[]>();
+  for (const reference of references) {
+    const sourceKey = canonicalHandleKey(reference.source);
+    let bucket = grouped.get(sourceKey);
+    if (!bucket) {
+      bucket = [];
+      grouped.set(sourceKey, bucket);
+    }
+    bucket.push(reference);
+  }
+  return new Map([...grouped.entries()]
+    .sort(([a], [b]) => ordinalCompare(a, b))
+    .map(([key, bucket]) => [key, Object.freeze(bucket.map(cloneReference).sort(compareReference))]));
+}
+
 export class EntityReferenceGraph {
-  private references: EntityReference[] = [];
+  private referencesBySourceKey = new Map<string, readonly EntityReference[]>();
+  private sourceKeysByKind = new Map<EntityKind, Set<string>>();
+  private referenceCount = 0;
+  private flattenedCache: readonly EntityReference[] | undefined;
   private revision = 0;
 
   get commitRevision(): number {
     return this.revision;
   }
 
+  get count(): number {
+    return this.referenceCount;
+  }
+
   prepare(references: readonly EntityReference[], view: KnownEntityView): PreparedReferenceGraph {
-    const normalized = references.map((reference) => {
-      requireRelation(reference.relation);
-      if (!view.isActive(reference.source)) {
-        throw new Error(`entity reference source is not active: ${canonicalHandleKey(reference.source)}`);
-      }
-      if (reference.semantics === 'strong' || reference.semantics === 'owned') {
-        if (!view.isActive(reference.target)) {
-          throw new Error(`${reference.semantics} entity reference target is not active: ${canonicalHandleKey(reference.target)}`);
-        }
-      } else if (reference.semantics === 'weak') {
-        if (!view.isKnown(reference.target)) {
-          throw new Error(`weak entity reference target is not known: ${canonicalHandleKey(reference.target)}`);
-        }
-      } else {
-        throw new Error('external entity references are diagnostic intents and cannot enter the entity reference graph');
-      }
-      return cloneReference(reference);
-    }).sort(compareReference);
+    return Object.freeze({ references: normalizeAndValidateReferences(references, view) });
+  }
 
-    for (let i = 1; i < normalized.length; i++) {
-      if (canonicalReferenceKey(normalized[i - 1]!) === canonicalReferenceKey(normalized[i]!)) {
-        throw new Error(`duplicate entity reference: ${canonicalReferenceKey(normalized[i]!)}`);
-      }
+  preparePartition(
+    ownedSourceKinds: readonly EntityKind[],
+    references: readonly EntityReference[],
+    view: KnownEntityView,
+  ): PreparedReferencePartition {
+    const normalizedKinds = normalizeKinds(ownedSourceKinds);
+    const kindSet = new Set<EntityKind>(normalizedKinds);
+    const normalizedReferences = normalizeAndValidateReferences(references, view, kindSet);
+    const replacementsBySourceKey = groupBySource(normalizedReferences);
+
+    const existingSourceKeys: string[] = [];
+    for (const kind of normalizedKinds) {
+      for (const sourceKey of this.sourceKeysByKind.get(kind) ?? []) existingSourceKeys.push(sourceKey);
     }
+    existingSourceKeys.sort(ordinalCompare);
+    const removedSourceKeys = existingSourceKeys.filter((sourceKey) => !replacementsBySourceKey.has(sourceKey));
 
-    return Object.freeze({ references: Object.freeze(normalized) });
+    return Object.freeze({
+      ownedSourceKinds: normalizedKinds,
+      replacementsBySourceKey,
+      removedSourceKeys: Object.freeze(removedSourceKeys),
+      baseRevision: this.revision,
+    });
   }
 
   commitPrepared(prepared: PreparedReferenceGraph): void {
-    this.references = prepared.references.map(cloneReference).sort(compareReference);
+    const nextBySource = groupBySource(prepared.references);
+    const nextKindIndex = new Map<EntityKind, Set<string>>();
+    for (const [sourceKey, bucket] of nextBySource) {
+      const kind = bucket[0]?.source.kind;
+      if (!kind) continue;
+      let sourceKeys = nextKindIndex.get(kind);
+      if (!sourceKeys) {
+        sourceKeys = new Set<string>();
+        nextKindIndex.set(kind, sourceKeys);
+      }
+      sourceKeys.add(sourceKey);
+    }
+    this.referencesBySourceKey = nextBySource;
+    this.sourceKeysByKind = nextKindIndex;
+    this.referenceCount = prepared.references.length;
+    this.flattenedCache = undefined;
+    this.revision++;
+  }
+
+  commitPreparedPartition(prepared: PreparedReferencePartition): void {
+    this.commitPreparedPartitions([prepared]);
+  }
+
+  commitPreparedPartitions(preparedPartitions: readonly PreparedReferencePartition[]): void {
+    for (const prepared of preparedPartitions) {
+      if (prepared.baseRevision !== this.revision) throw new Error('stale prepared reference partition');
+    }
+
+    for (const prepared of preparedPartitions) {
+      for (const sourceKey of prepared.removedSourceKeys) {
+        const existing = this.referencesBySourceKey.get(sourceKey);
+        if (!existing) continue;
+        this.referencesBySourceKey.delete(sourceKey);
+        this.referenceCount -= existing.length;
+        const kind = existing[0]?.source.kind;
+        if (kind) this.sourceKeysByKind.get(kind)?.delete(sourceKey);
+      }
+
+      for (const [sourceKey, bucket] of prepared.replacementsBySourceKey) {
+        const existing = this.referencesBySourceKey.get(sourceKey);
+        if (existing) {
+          this.referenceCount -= existing.length;
+          const existingKind = existing[0]?.source.kind;
+          if (existingKind && existingKind !== bucket[0]?.source.kind) {
+            this.sourceKeysByKind.get(existingKind)?.delete(sourceKey);
+          }
+        }
+        const frozenBucket = Object.freeze(bucket.map(cloneReference).sort(compareReference));
+        this.referencesBySourceKey.set(sourceKey, frozenBucket);
+        this.referenceCount += frozenBucket.length;
+        const kind = frozenBucket[0]?.source.kind;
+        if (kind) {
+          let sourceKeys = this.sourceKeysByKind.get(kind);
+          if (!sourceKeys) {
+            sourceKeys = new Set<string>();
+            this.sourceKeysByKind.set(kind, sourceKeys);
+          }
+          sourceKeys.add(sourceKey);
+        }
+      }
+    }
+
+    this.flattenedCache = undefined;
     this.revision++;
   }
 
   outgoing(source: EntityHandle): readonly EntityReference[] {
     const sourceKey = canonicalHandleKey(source);
-    return Object.freeze(this.references
-      .filter((reference) => canonicalHandleKey(reference.source) === sourceKey)
-      .map(cloneReference));
+    return Object.freeze((this.referencesBySourceKey.get(sourceKey) ?? []).map(cloneReference));
   }
 
   incoming(target: EntityHandle): readonly EntityReference[] {
     const targetKey = canonicalHandleKey(target);
-    return Object.freeze(this.references
+    return Object.freeze(this.list()
       .filter((reference) => canonicalHandleKey(reference.target) === targetKey)
       .map(cloneReference));
   }
 
   list(): readonly EntityReference[] {
-    return Object.freeze(this.references.map(cloneReference));
+    if (!this.flattenedCache) {
+      this.flattenedCache = Object.freeze(
+        [...this.referencesBySourceKey.values()]
+          .flatMap((bucket) => bucket)
+          .map(cloneReference)
+          .sort(compareReference),
+      );
+    }
+    return Object.freeze(this.flattenedCache.map(cloneReference));
   }
 
   snapshot(): EntityReferenceGraphSnapshot {
