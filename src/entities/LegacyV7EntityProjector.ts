@@ -11,22 +11,25 @@ import type { ServiceIncident } from '../simulation/services/IncidentSystem.ts';
 import { ordinalCompare, type LegacyEntityKey } from './EntityTypes.ts';
 import { EntityProjectionBuilder, type EntityProjectionData } from './EntityProjection.ts';
 
+type Revisioned = Readonly<{ entityRevision?: number }>;
+
 export type LegacyV7EntitySource = {
-  lots: { list: () => Lot[] };
-  buildings: { list: () => Building[] };
+  lots: Revisioned & { list: () => Lot[] };
+  buildings: Revisioned & { list: () => Building[] };
   economyDomain: {
-    firms: { list: () => Firm[] };
-    freightVehicles: { listVehicles: () => FreightVehicle[] };
+    firms: Revisioned & { list: () => Firm[] };
+    freightVehicles: Revisioned & { listVehicles: () => FreightVehicle[] };
   };
-  utilities: { listFacilities: () => UtilityFacility[] };
-  services: { listFacilities: () => ServiceFacility[] };
+  utilities: Revisioned & { listFacilities: () => UtilityFacility[] };
+  services: Revisioned & { listFacilities: () => ServiceFacility[] };
   transit: {
+    revision?: number;
     listStops: () => TransitStop[];
     listLines: () => TransitLine[];
   };
-  traffic: { activeVehicles: TrafficVehicle[] };
-  serviceVehicles: { listVehicles: () => ServiceVehicle[] };
-  incidents: { listIncidents: () => ServiceIncident[] };
+  traffic: Revisioned & { activeVehicles: TrafficVehicle[] };
+  serviceVehicles: Revisioned & { listVehicles: () => ServiceVehicle[] };
+  incidents: Revisioned & { listIncidents: () => ServiceIncident[] };
 };
 
 function sortedById<T extends Readonly<{ id: string }>>(items: readonly T[]): T[] {
@@ -39,6 +42,23 @@ function key(kind: LegacyEntityKey['kind'], legacyId: string): LegacyEntityKey {
 
 function buildingToken(building: Building): string {
   return `${building.constructionStartedTick}|${building.completionTick}|${building.definitionId}|${building.developerId ?? ''}`;
+}
+
+function revisionKey(source: LegacyV7EntitySource): string | undefined {
+  const revisions = [
+    source.lots.entityRevision,
+    source.buildings.entityRevision,
+    source.economyDomain.firms.entityRevision,
+    source.economyDomain.freightVehicles.entityRevision,
+    source.utilities.entityRevision,
+    source.services.entityRevision,
+    source.transit.revision,
+    source.traffic.entityRevision,
+    source.serviceVehicles.entityRevision,
+    source.incidents.entityRevision,
+  ];
+  if (revisions.some((revision) => revision === undefined)) return undefined;
+  return revisions.join('|');
 }
 
 function addBuildingWeakReference(
@@ -67,7 +87,17 @@ function addBuildingWeakReference(
 }
 
 export class LegacyV7EntityProjector {
+  private lastRevisionKey: string | undefined;
+  private lastProjection: EntityProjectionData | undefined;
+
   project(source: LegacyV7EntitySource): EntityProjectionData {
+    const currentRevisionKey = revisionKey(source);
+    if (currentRevisionKey !== undefined
+      && currentRevisionKey === this.lastRevisionKey
+      && this.lastProjection !== undefined) {
+      return this.lastProjection;
+    }
+
     const builder = new EntityProjectionBuilder();
     const lots = sortedById(source.lots.list());
     const buildings = sortedById(source.buildings.list());
@@ -278,6 +308,14 @@ export class LegacyV7EntityProjector {
       );
     }
 
-    return builder.build();
+    const projection = builder.build();
+    if (currentRevisionKey !== undefined) {
+      this.lastRevisionKey = currentRevisionKey;
+      this.lastProjection = projection;
+    } else {
+      this.lastRevisionKey = undefined;
+      this.lastProjection = undefined;
+    }
+    return projection;
   }
 }
