@@ -96,6 +96,83 @@ test('assembly rejects non-adjacent parcels atomically', () => {
   assert.deepEqual(graph.snapshot(), before);
 });
 
+test('easement creation persists legal geometry without retiring the parcel', () => {
+  const graph = new CadastralGraph(graph40x20Fixture());
+  const mutation = new CadastralMutationSystem(graph);
+  const result = mutation.createEasement(['p0'], 'utility', [
+    { x: 8, y: 0 },
+    { x: 8, y: 20 },
+  ]);
+
+  assert.equal(result.committed, true);
+  assert.deepEqual(result.retiredParcelIds, []);
+  assert.equal(graph.getParcel('p0')?.areaM2, 800);
+  const easement = graph.listEasements()[0]!;
+  assert.equal(easement.kind, 'utility');
+  assert.deepEqual(easement.parcelIds, ['p0']);
+  assert.deepEqual(easement.geometry, [{ x: 8, y: 0 }, { x: 8, y: 20 }]);
+});
+
+test('easement removal is deterministic and invalid easement geometry is atomic', () => {
+  const graph = new CadastralGraph(graph40x20Fixture());
+  const mutation = new CadastralMutationSystem(graph);
+  assert.equal(mutation.createEasement(['p0'], 'access', [
+    { x: 2, y: 0 },
+    { x: 2, y: 20 },
+  ]).committed, true);
+  const easementId = graph.listEasements()[0]!.id;
+  assert.equal(mutation.removeEasement(easementId).committed, true);
+  assert.deepEqual(graph.listEasements(), []);
+
+  const before = graph.snapshot();
+  const invalid = mutation.createEasement(['p0'], 'utility', [
+    { x: 50, y: 0 },
+    { x: 50, y: 20 },
+  ]);
+  assert.equal(invalid.committed, false);
+  assert.deepEqual(graph.snapshot(), before);
+});
+
+test('right-of-way dedication retires the source, conserves residual area, and creates an access boundary', () => {
+  const graph = new CadastralGraph(graph40x20Fixture());
+  const result = new CadastralMutationSystem(graph).dedicateRightOfWay('p0', [
+    { x: 0, y: 0 },
+    { x: 40, y: 0 },
+    { x: 40, y: 4 },
+    { x: 0, y: 4 },
+  ]);
+
+  assert.equal(result.committed, true);
+  assert.deepEqual(result.retiredParcelIds, ['p0']);
+  assert.equal(graph.getParcel('p0'), undefined);
+  const residualId = result.resultingParcelIds[0]!;
+  const residual = graph.getParcel(residualId)!;
+  assert.equal(residual.areaM2, 640);
+  assert.deepEqual(residual.historicalParentIds, ['p0']);
+  const rightOfWayEdges = residual.boundaryEdgeIds
+    .map((edgeId) => graph.getEdge(edgeId)!)
+    .filter((edge) => edge.kind === 'right-of-way');
+  assert.equal(rightOfWayEdges.length, 1);
+  assert.ok(residual.accessEdgeIds.includes(rightOfWayEdges[0]!.id));
+  assert.ok(graph.listLineage().some((event) => event.kind === 'right-of-way'
+    && event.sourceParcelIds.includes('p0')
+    && event.resultingParcelIds.includes(residualId)));
+});
+
+test('right-of-way dedication outside the parcel fails atomically', () => {
+  const graph = new CadastralGraph(graph40x20Fixture());
+  const before = graph.snapshot();
+  const result = new CadastralMutationSystem(graph).dedicateRightOfWay('p0', [
+    { x: 50, y: 0 },
+    { x: 60, y: 0 },
+    { x: 60, y: 4 },
+    { x: 50, y: 4 },
+  ]);
+
+  assert.equal(result.committed, false);
+  assert.deepEqual(graph.snapshot(), before);
+});
+
 function graph40x20Fixture(): CadastralSnapshot {
   return {
     nodes: [
