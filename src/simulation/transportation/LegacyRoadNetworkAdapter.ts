@@ -1,5 +1,6 @@
 import { ROAD_DEFINITIONS, type RoadType } from '../../data/roads.ts';
 import type { RoadCell, RoadSystem } from '../../world/roads/RoadSystem.ts';
+import { buildTurnMovements } from './TurnMovementBuilder.ts';
 import {
   ALL_VEHICLE_PERMISSIONS,
   LEGACY_LANE_COUNT,
@@ -9,11 +10,17 @@ import {
   type Lane,
   type RoadClass,
   type RoadSegment,
+  type TransportNetworkAuthority,
   type TransportPhysicalNetwork,
 } from './TransportNetworkTypes.ts';
 
 export type LegacyProjection = Readonly<{
   physical: TransportPhysicalNetwork;
+  sourceRoadRevision: number;
+}>;
+
+export type LegacyAuthorityProjection = Readonly<{
+  authority: TransportNetworkAuthority;
   sourceRoadRevision: number;
 }>;
 
@@ -103,6 +110,7 @@ function createDirectionalCarriageway(
 export class LegacyRoadNetworkAdapter {
   private cachedRevision = -1;
   private cachedProjection: LegacyProjection | undefined;
+  private cachedAuthorityProjection: LegacyAuthorityProjection | undefined;
   private builds = 0;
   private roadCellsVisited = 0;
   private adjacencyChecks = 0;
@@ -203,6 +211,23 @@ export class LegacyRoadNetworkAdapter {
 
     this.cachedRevision = roads.revision;
     this.cachedProjection = projection;
+    this.cachedAuthorityProjection = undefined;
     return projection;
+  }
+
+  projectAuthorityIfNeeded(roads: RoadSystem): LegacyAuthorityProjection {
+    const projection = this.projectIfNeeded(roads);
+    if (this.cachedAuthorityProjection && this.cachedAuthorityProjection.sourceRoadRevision === projection.sourceRoadRevision) {
+      return this.cachedAuthorityProjection;
+    }
+    const authorityProjection: LegacyAuthorityProjection = {
+      authority: {
+        ...projection.physical,
+        movements: buildTurnMovements(projection.physical),
+      },
+      sourceRoadRevision: projection.sourceRoadRevision,
+    };
+    this.cachedAuthorityProjection = authorityProjection;
+    return authorityProjection;
   }
 }
