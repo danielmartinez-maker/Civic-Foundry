@@ -1,8 +1,11 @@
 import {
   normalizePoint,
   normalizeRing,
+  pointInPolygon,
   polygonArea,
   polygonCentroid,
+  polygonDifference,
+  polygonIntersection,
   polygonUnion,
   type PolygonRing,
   type WorldPoint,
@@ -13,6 +16,8 @@ import { validateCadastralSnapshot } from './CadastralValidator.ts';
 import type {
   CadastralMutationResult,
   CadastralSnapshot,
+  Easement,
+  EasementKind,
   Parcel,
   ParcelEdge,
   ParcelEdgeKind,
@@ -24,6 +29,9 @@ const GEOMETRY_EPSILON = 1e-7;
 const AREA_TOLERANCE_M2 = 0.01;
 const MIN_SPLIT_AREA_M2 = 1;
 const MIN_CUT_LENGTH_M = 0.1;
+const MIN_RIGHT_OF_WAY_AREA_M2 = 1;
+const EASEMENT_SAMPLE_STEPS = 8;
+const EASEMENT_KINDS: readonly EasementKind[] = Object.freeze(['access', 'utility', 'drainage', 'pedestrian']);
 
 export type CadastralMutationGuard = Readonly<{
   canSplitParcel?: (parcelId: string, cutLine: readonly WorldPoint[]) => boolean;
@@ -38,6 +46,10 @@ type SegmentUse = Readonly<{
   parcelId: string;
   from: WorldPoint;
   to: WorldPoint;
+}>;
+
+type RebuildOptions = Readonly<{
+  rightOfWayBoundaries?: readonly PolygonRing[];
 }>;
 
 export class CadastralMutationSystem {
@@ -175,6 +187,115 @@ export class CadastralMutationSystem {
       return rejected(error instanceof Error ? error.message : 'assembly-failed');
     }
   }
+
+  createEasement(
+    parcelIds: readonly string[],
+    kind: EasementKind,
+    geometry: readonly WorldPoint[],
+  ): CadastralMutationResult {
+    const before = this.graph.snapshot();
+    try {
+      const targetIds = canonicalIds(parcelIds);
+      if (targetIds.length === 0) return rejected('easement-requires-parcel');
+      if (!EASEMENT_KINDS.includes(kind)) return rejected('unknown-easement-kind');
+      if (geometry.length < 2) return rejected('easement-requires-two-points');
+      if (targetIds.some((id) => !this.graph.getParcel(id))) return rejected('easement-references-unknown-parcel');
+
+      const normalizedGeometry = Object.freeze(geometry.map((point) => normalizePoint(point)));
+      if (distinctPointCount(normalizedGeometry) < 2) return rejected('easement-geometry-collapses');
+      const targetPolygons = targetIds.map((id) => this.graph.parcelPolygon(id));
+      if (!polylineWithinPolygons(normalizedGeometry, targetPolygons)) return rejected('easement-outside-parcel');
+
+      const easement: Easement = Object.freeze({
+        id: nextEasementId(before, kind, targetIds),
+        parcelIds: Object.freeze(targetIds),
+        kind,
+        geometry: normalizedGeometry,
+      });
+      const candidate: CadastralSnapshot = Object.freeze({
+        ...before,
+        easements: Object.freeze([...before.easements, easement]),
+      });
+      const validation = validateCadastralSnapshot(candidate);
+      if (!validation.valid) return rejected(...validation.errors.map((error) => `${error.code}:${error.message}`));
+
+      this.graph.replaceSnapshot(candidate);
+      return committed([], [], {});
+    } catch (error) {
+      return rejected(error instanceof Error ? error.message : 'easement-create-failed');
+    }
+  }
+
+  removeEasement(easementId: string): CadastralMutationResult {
+    const before = this.graph.snapshot();
+    const existing = this.graph.getEasement(easementId);
+    if (!existing) return rejected(`unknown-easement:${easementId}`);
+    const candidate: CadastralSnapshot = Object.freeze({
+      ...before,
+      easements: Object.freeze(before.easements.filter((easement) => easement.id !== easementId)),
+    });
+    const validation = validateCadastralSnapshot(candidate);
+    if (!validation.valid) return rejected(...validation.errors.map((error) => `${error.code}:${error.message}`));
+    this.graph.replaceSnapshot(candidate);
+    return committed([], [], {});
+  }
+
+  dedicateRightOfWay(parcelId: string, geometry: PolygonRing): CadastralMutationResult {
+    const before = this.graph.snapshot();
+    try {
+      const source = this.graph.getParcel(parcelId);
+      if (!source) return rejected(`unknown-parcel:${parcelId}`);
+      if (before.easements.some((easement) => easement.parcelIds.includes(parcelId))) return rejected('parcel-has-easement');
+
+      const sourcePolygon = this.graph.parcelPolygon(parcelId);
+      const dedication = normalizeRing(geometry);
+      const dedicatedArea = polygonArea(dedication);
+      if (dedicatedArea < MIN_RIGHT_OF_WAY_AREA_M2) return rejected('right-of-way-too-small');
+      const containedArea = polygonIntersection(sourcePolygon, dedication)
+        .reduce((sum, ring) => sum + polygonArea(ring), 0);
+      if (Math.abs(containedArea - dedicatedArea) > AREA_TOLERANCE_M2) return rejected('right-of-way-outside-parcel');
+
+      const residuals = polygonDifference(sourcePolygon, dedication);
+      if (residuals.length !== 1) return rejected('right-of-way-must-leave-one-residual-parcel');
+      const residualPolygon = residuals[0]!;
+      const residualArea = polygonArea(residualPolygon);
+      if (residualArea < MIN_SPLIT_AREA_M2) return rejected('right-of-way-consumes-parcel');
+      if (Math.abs(source.areaM2 - residualArea - dedicatedArea) > AREA_TOLERANCE_M2) {
+        return rejected('right-of-way-area-not-conserved');
+      }
+
+      const sequence = mutationSequence(before);
+      const residualId = `parcel:${source.id}:row:${sequence}`;
+      if (before.parcels.some((parcel) => parcel.id === residualId)) return rejected('generated-parcel-id-collision');
+      const parents = lineageParents([source.id], source.historicalParentIds);
+      const specs = currentGeometrySpecs(this.graph, before, new Set([source.id]));
+      specs.push(Object.freeze({
+        parcel: Object.freeze({
+          id: residualId,
+          blockId: source.blockId,
+          zoningDistrictId: source.zoningDistrictId,
+          ...(source.ownerId === undefined ? {} : { ownerId: source.ownerId }),
+          historicalParentIds: parents,
+        }),
+        polygon: residualPolygon,
+      }));
+
+      const lineageEvent = createParcelLineageEvent(before, 'right-of-way', [source.id], [residualId]);
+      const candidate = rebuildSnapshot(
+        before,
+        specs,
+        Object.freeze([...before.lineage, lineageEvent]),
+        Object.freeze({ rightOfWayBoundaries: Object.freeze([dedication]) }),
+      );
+      const validation = validateCadastralSnapshot(candidate);
+      if (!validation.valid) return rejected(...validation.errors.map((error) => `${error.code}:${error.message}`));
+
+      this.graph.replaceSnapshot(candidate);
+      return committed([residualId], [source.id], { [source.id]: residualId });
+    } catch (error) {
+      return rejected(error instanceof Error ? error.message : 'right-of-way-failed');
+    }
+  }
 }
 
 function currentGeometrySpecs(
@@ -200,6 +321,7 @@ function rebuildSnapshot(
   before: CadastralSnapshot,
   rawSpecs: readonly ParcelGeometrySpec[],
   lineage: CadastralSnapshot['lineage'],
+  options: RebuildOptions = Object.freeze({}),
 ): CadastralSnapshot {
   const oldNodesByPoint = new Map(before.nodes.map((node) => [pointKey(node.point), node]));
   const oldEdges = before.edges;
@@ -267,7 +389,13 @@ function rebuildSnapshot(
 
     const shared = uses.length === 2;
     const inherited = shared ? undefined : findContainingOldEdge(first.from, first.to, oldEdges, oldNodes);
-    const kind: ParcelEdgeKind = shared ? 'property-boundary' : (inherited?.kind ?? 'property-boundary');
+    const dedicatedBoundary = !shared && (options.rightOfWayBoundaries ?? [])
+      .some((boundary) => segmentOnBoundary(first.from, first.to, boundary));
+    const kind: ParcelEdgeKind = shared
+      ? 'property-boundary'
+      : dedicatedBoundary
+        ? 'right-of-way'
+        : (inherited?.kind ?? 'property-boundary');
     const edge = Object.freeze({
       id,
       fromNodeId: fromNode.id,
@@ -282,10 +410,13 @@ function rebuildSnapshot(
 
   const parcels: Parcel[] = specs.map((spec) => {
     const keys = segmentKeysByParcel.get(spec.parcel.id)!;
-    const boundaryEdgeIds = keys.map((key) => edgeBySegment.get(key)!.id);
-    const frontageEdgeIds = keys
-      .map((key) => edgeBySegment.get(key)!)
+    const boundaryEdges = keys.map((key) => edgeBySegment.get(key)!);
+    const boundaryEdgeIds = boundaryEdges.map((edge) => edge.id);
+    const frontageEdgeIds = boundaryEdges
       .filter((edge) => edge.kind === 'street-frontage')
+      .map((edge) => edge.id);
+    const accessEdgeIds = boundaryEdges
+      .filter((edge) => edge.kind === 'street-frontage' || edge.kind === 'right-of-way')
       .map((edge) => edge.id);
     return Object.freeze({
       ...spec.parcel,
@@ -293,7 +424,7 @@ function rebuildSnapshot(
       areaM2: polygonArea(spec.polygon),
       centroid: polygonCentroid(spec.polygon),
       frontageEdgeIds: Object.freeze(frontageEdgeIds),
-      accessEdgeIds: Object.freeze([...frontageEdgeIds]),
+      accessEdgeIds: Object.freeze(accessEdgeIds),
     });
   });
 
@@ -412,6 +543,28 @@ function selectionIsConnected(graph: CadastralGraph, ids: readonly string[]): bo
   return visited.size === selected.size;
 }
 
+function polylineWithinPolygons(polyline: readonly WorldPoint[], polygons: readonly PolygonRing[]): boolean {
+  for (let segmentIndex = 0; segmentIndex < polyline.length - 1; segmentIndex += 1) {
+    const start = polyline[segmentIndex]!;
+    const end = polyline[segmentIndex + 1]!;
+    for (let step = 0; step <= EASEMENT_SAMPLE_STEPS; step += 1) {
+      const t = step / EASEMENT_SAMPLE_STEPS;
+      const point = normalizePoint({
+        x: start.x + (end.x - start.x) * t,
+        y: start.y + (end.y - start.y) * t,
+      });
+      if (!polygons.some((polygon) => pointInPolygon(point, polygon))) return false;
+    }
+  }
+  return true;
+}
+
+function segmentOnBoundary(from: WorldPoint, to: WorldPoint, ring: PolygonRing): boolean {
+  return pointOnBoundary(from, ring)
+    && pointOnBoundary(to, ring)
+    && pointOnBoundary(normalizePoint({ x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }), ring);
+}
+
 function pointOnBoundary(point: WorldPoint, ring: PolygonRing): boolean {
   const normalized = normalizeRing(ring);
   for (let index = 0; index < normalized.length; index += 1) {
@@ -464,6 +617,15 @@ function distance(left: WorldPoint, right: WorldPoint): number {
 
 function mutationSequence(snapshot: CadastralSnapshot): number {
   return snapshot.lineage.reduce((maximum, event) => Math.max(maximum, event.tick), 0) + 1;
+}
+
+function nextEasementId(snapshot: CadastralSnapshot, kind: EasementKind, parcelIds: readonly string[]): string {
+  const used = new Set(snapshot.easements.map((easement) => easement.id));
+  return uniqueId(`easement:${kind}:${parcelIds.join('+')}`, used);
+}
+
+function distinctPointCount(points: readonly WorldPoint[]): number {
+  return new Set(points.map(pointKey)).size;
 }
 
 function canonicalIds(ids: readonly string[]): string[] {
