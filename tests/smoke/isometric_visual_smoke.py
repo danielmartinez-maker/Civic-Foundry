@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import mimetypes
 import pathlib
+from io import BytesIO
 from urllib.parse import urlparse
 
+from PIL import Image
 from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -25,24 +27,27 @@ def route_asset(route, request):
     route.fulfill(status=200, body=path.read_bytes(), headers={"Content-Type": content_type})
 
 
-def assert_canvas_has_variance(page, scene: str) -> None:
-    sample = page.evaluate("""
-    () => {
-      const c=document.querySelector('#world');
-      const ctx=c.getContext('2d');
-      const data=ctx.getImageData(0,0,c.width,c.height).data;
-      const stride=Math.max(4,Math.floor(data.length/12000/4)*4);
-      let min=255,max=0,count=0;
-      for(let i=0;i<data.length;i+=stride){
-        const lum=(data[i]+data[i+1]+data[i+2])/3;
-        if(data[i+3]===0) continue;
-        min=Math.min(min,lum); max=Math.max(max,lum); count++;
-      }
-      return {range:max-min,count};
-    }
-    """)
-    assert sample["count"] > 100, (scene, sample)
-    assert sample["range"] > 30, (scene, sample)
+def assert_screenshot_has_variance(png: bytes, scene: str) -> None:
+    assert len(png) > 10_000, (scene, "screenshot unexpectedly small", len(png))
+    with Image.open(BytesIO(png)) as source:
+        image = source.convert("RGBA")
+        width, height = image.size
+        assert width > 100 and height > 100, (scene, image.size)
+        step_x = max(1, width // 80)
+        step_y = max(1, height // 50)
+        luminance: list[float] = []
+        colors: set[tuple[int, int, int]] = set()
+        for y in range(step_y // 2, height, step_y):
+            for x in range(step_x // 2, width, step_x):
+                r, g, b, a = image.getpixel((x, y))
+                if a == 0:
+                    continue
+                luminance.append((r + g + b) / 3)
+                colors.add((r, g, b))
+
+    assert len(luminance) > 100, (scene, "too few visible samples", len(luminance))
+    assert max(luminance) - min(luminance) > 30, (scene, "insufficient luminance range", min(luminance), max(luminance))
+    assert len(colors) > 20, (scene, "insufficient color variation", len(colors))
 
 
 def center_on(page, x: int, y: int) -> None:
@@ -61,8 +66,9 @@ def center_on(page, x: int, y: int) -> None:
 
 def capture(page, name: str, x: int, y: int) -> None:
     center_on(page, x, y)
-    assert_canvas_has_variance(page, name)
-    page.locator("#world").screenshot(path=str(OUTPUT / name))
+    png = page.locator("#world").screenshot(type="png")
+    assert_screenshot_has_variance(png, name)
+    (OUTPUT / name).write_bytes(png)
 
 
 def main() -> None:
