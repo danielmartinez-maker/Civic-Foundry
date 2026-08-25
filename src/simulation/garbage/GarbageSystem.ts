@@ -11,6 +11,10 @@ export class GarbageSystem {
 
   evaluate(buildings: readonly Building[], roads: RoadSystem, facilities: readonly UtilityFacility[]): GarbageSnapshot {
     const occupied = buildings.filter((building) => building.status === 'occupied').slice().sort((a, b) => a.id.localeCompare(b.id));
+    const occupiedIds = new Set(occupied.map((building) => building.id));
+    for (const id of [...this.backlogByBuilding.keys()]) if (!occupiedIds.has(id)) this.backlogByBuilding.delete(id);
+    const openingBacklog = [...this.backlogByBuilding.values()].reduce((a, b) => a + b, 0);
+
     let generated = 0;
     for (const building of occupied) {
       const amount = definitionForBuilding(building).garbageGeneration;
@@ -40,8 +44,8 @@ export class GarbageSystem {
     }
 
     const backlog = [...this.backlogByBuilding.values()].reduce((a, b) => a + b, 0);
-    const demandThisCycle = generated + Math.max(0, backlog - generated);
-    const serviceRatio = demandThisCycle === 0 ? 1 : Math.min(1, processed / Math.max(1, generated));
+    const workload = openingBacklog + generated;
+    const serviceRatio = workload === 0 ? 1 : Math.min(1, processed / Math.max(1, workload));
     return { generated, processed, backlog, serviceRatio };
   }
 
@@ -49,7 +53,8 @@ export class GarbageSystem {
     const safeGenerated = Math.max(0, Number.isFinite(generated) ? generated : 0);
     const safeProcessed = Math.max(0, Number.isFinite(processed) ? processed : 0);
     const safeBacklog = Math.max(0, Number.isFinite(backlog) ? backlog : 0);
-    const serviceRatio = safeBacklog <= 0 ? 1 : Math.min(1, safeProcessed / Math.max(1, safeProcessed + safeBacklog));
+    const currentWorkload = safeGenerated + safeBacklog;
+    const serviceRatio = currentWorkload <= 0 ? 1 : Math.min(1, safeGenerated / currentWorkload);
     return { generated: safeGenerated, processed: safeProcessed, backlog: safeBacklog, serviceRatio };
   }
 
