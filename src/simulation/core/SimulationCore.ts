@@ -1,11 +1,16 @@
 import { SimulationCore as LegacySimulationCore } from './LegacySimulationCore.ts';
+import type { CellCoord, ZoneType } from './types.ts';
 import { RandomStreamRegistry } from '../kernel/RandomStreamRegistry.ts';
 import { DevelopmentFeasibilitySystem } from '../development/DevelopmentFeasibilitySystem.ts';
 import { WorldFoundation } from '../../world/foundation/WorldFoundation.ts';
+import { CadastralGraph } from '../../world/cadastre/CadastralGraph.ts';
+import { ParcelGenerationSystem } from '../../world/cadastre/ParcelGenerationSystem.ts';
+import type { Parcel } from '../../world/cadastre/CadastralTypes.ts';
 import type { WorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
 import { resolveWorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
 import type { ScenarioWorldDefinition } from '../../world/generation/ScenarioWorldDefinition.ts';
 import type { TerrainGrid } from '../../world/terrain/TerrainGrid.ts';
+import type { RoadType } from '../../data/roads.ts';
 import type { DesignStormEvent, FloodResult } from '../../world/hydrology/HydrologyTypes.ts';
 import type { FloodEventResolvedPayload, FloodEventStartedPayload, WorldGeneratedPayload, WorldMigratedTo1RPayload } from '../../world/foundation/WorldFoundationTypes.ts';
 
@@ -60,8 +65,15 @@ function installTerrainDevelopmentCosts(
   };
 }
 
+function legacyZoneForParcel(parcel: Parcel): ZoneType | undefined {
+  const zone = parcel.zoningDistrictId;
+  return zone === 'residential' || zone === 'commercial' || zone === 'industrial' ? zone : undefined;
+}
+
 export class SimulationCore extends LegacySimulationCore {
   readonly world: WorldFoundation;
+  readonly cadastre: CadastralGraph;
+  readonly parcelGeneration: ParcelGenerationSystem;
 
   constructor(options: SimulationCoreOptions = {}) {
     const hydration = activeHydrationOverride();
@@ -100,6 +112,10 @@ export class SimulationCore extends LegacySimulationCore {
 
     super({ seed, terrain: world.legacyTerrain(), ...(options.startingFunds !== undefined ? { startingFunds: options.startingFunds } : {}) });
     this.world = world;
+    this.parcelGeneration = new ParcelGenerationSystem();
+    this.cadastre = new CadastralGraph();
+    this.rebuildCadastreFromLegacyGrid();
+
     const preparationMultiplierAt = (x: number, y: number): number => this.world.preparationMultiplierAt(x, y);
     this.roads.setCostMultiplierProvider(preparationMultiplierAt);
     installTerrainDevelopmentCosts(this.developmentFeasibility, preparationMultiplierAt);
@@ -129,6 +145,24 @@ export class SimulationCore extends LegacySimulationCore {
     }
   }
 
+  override buildRoad(cells: readonly CellCoord[], type: RoadType) {
+    const result = super.buildRoad(cells, type);
+    if (result.ok) this.rebuildCadastreFromLegacyGrid();
+    return result;
+  }
+
+  override paintZone(cells: readonly CellCoord[], zone: ZoneType): { painted: number } {
+    const result = super.paintZone(cells, zone);
+    if (result.painted > 0) this.rebuildCadastreFromLegacyGrid();
+    return result;
+  }
+
+  override bulldozeAt(x: number, y: number): { ok: boolean; kind?: 'road' | 'building' | 'zone'; reason?: string } {
+    const result = super.bulldozeAt(x, y);
+    if (result.ok && (result.kind === 'road' || result.kind === 'zone')) this.rebuildCadastreFromLegacyGrid();
+    return result;
+  }
+
   runDesignStorm(event: DesignStormEvent): FloodResult {
     const started: FloodEventStartedPayload = { eventId: event.id, rainfallMm: event.rainfallMm, durationHours: event.durationHours };
     this.kernel.events.append(this.clock.tick, { type: 'FloodEventStarted', source: 'world', payload: started });
@@ -146,5 +180,10 @@ export class SimulationCore extends LegacySimulationCore {
     if (!Number.isInteger(fromSaveVersion) || fromSaveVersion < 0) throw new Error('migration source save version must be a non-negative integer');
     const payload: WorldMigratedTo1RPayload = { fromSaveVersion, mode: 'legacy-flat' };
     this.kernel.events.append(this.clock.tick, { type: 'WorldMigratedTo1R', source: 'world', payload });
+  }
+
+  private rebuildCadastreFromLegacyGrid(): void {
+    this.cadastre.replaceSnapshot(this.parcelGeneration.rebuild(this.terrain, this.roads, this.zoning));
+    this.lots.rebuildFromCadastre(this.cadastre, legacyZoneForParcel);
   }
 }
