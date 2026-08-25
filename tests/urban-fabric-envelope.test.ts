@@ -32,6 +32,41 @@ function graph20x20Fixture(): CadastralGraph {
   return new CadastralGraph(snapshot);
 }
 
+function skewedParcelFixture(): CadastralGraph {
+  const boundary = [
+    { x: 0, y: 0 },
+    { x: 20, y: 0 },
+    { x: 100, y: 1 },
+    { x: 20, y: 20 },
+    { x: 0, y: 20 },
+  ] as const;
+  return new CadastralGraph({
+    nodes: boundary.map((point, index) => ({ id: `s${index}`, point })),
+    edges: boundary.map((_, index) => ({
+      id: `se${index}`,
+      fromNodeId: `s${index}`,
+      toNodeId: `s${(index + 1) % boundary.length}`,
+      leftParcelId: 'skew',
+      kind: index === 0 ? 'street-frontage' as const : 'property-boundary' as const,
+      ...(index === 0 ? { roadRef: 'road:front' } : {}),
+    })),
+    blocks: [{ id: 'sb0', boundary, parcelIds: ['skew'], roadEdgeIds: ['se0'] }],
+    parcels: [{
+      id: 'skew',
+      blockId: 'sb0',
+      boundaryEdgeIds: ['se0', 'se1', 'se2', 'se3', 'se4'],
+      areaM2: 1200,
+      centroid: { x: 34.44444444444444, y: 8 },
+      frontageEdgeIds: ['se0'],
+      accessEdgeIds: ['se0'],
+      zoningDistrictId: 'MU4',
+      historicalParentIds: [],
+    }],
+    easements: [],
+    lineage: [],
+  });
+}
+
 test('setbacks coverage height and FAR constrain a parcel envelope', () => {
   const system = new BuildableEnvelopeSystem();
   const envelope = system.evaluate('p0', graph20x20Fixture(), {
@@ -50,6 +85,22 @@ test('setbacks coverage height and FAR constrain a parcel envelope', () => {
   assert.equal(envelope.maxHeightMeters, 18);
   assert.equal(envelope.maxStories, 5);
   assert.equal(envelope.effectiveFAR, 2);
+});
+
+test('rear setback uses perpendicular distance from the longest frontage', () => {
+  const envelope = new BuildableEnvelopeSystem().evaluate('skew', skewedParcelFixture(), {
+    ...ZONING_DISTRICTS.MU4,
+    maxFAR: 20,
+    maxHeightMeters: 200,
+    maxCoverageRatio: 1,
+    frontSetbackMeters: 0,
+    rearSetbackMeters: 5,
+    sideSetbackMeters: 0,
+    minParcelAreaM2: 0,
+    minFrontageMeters: 0,
+  }, []);
+  assert.ok(envelope.buildableFootprint.length >= 3);
+  assert.ok(Math.max(...envelope.buildableFootprint.map((point) => point.y)) <= 15.01);
 });
 
 test('overlays compose height FAR setbacks and use rules deterministically', () => {
