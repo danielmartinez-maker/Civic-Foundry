@@ -1,4 +1,5 @@
-import { getBuildingDefinition } from '../../data/buildings.ts';
+import { BUILDING_DEFINITION_BY_ID, getBuildingDefinition } from '../../data/buildings.ts';
+import { BUILDING_TYPOLOGY_BY_ID } from '../../data/buildingTypologies.ts';
 import { clamp, clamp01 } from '../core/types.ts';
 import type {
   DevelopmentAward,
@@ -9,6 +10,7 @@ import type {
   DeveloperMarketStateSnapshot,
   DeveloperSeed,
   DeveloperState,
+  PhysicalDevelopmentFeasibilityResult,
 } from './DevelopmentTypes.ts';
 
 export const DEFAULT_DEVELOPER_SEEDS: readonly DeveloperSeed[] = Object.freeze([
@@ -114,6 +116,30 @@ function bidComparator(a: DevelopmentBid, b: DevelopmentBid): number {
     || a.developerId.localeCompare(b.developerId);
 }
 
+function physicalConstructionTicks(opportunity: DevelopmentFeasibilityResult): number | undefined {
+  const physical = opportunity as Partial<PhysicalDevelopmentFeasibilityResult>;
+  const hasPhysicalState = physical.siteId !== undefined
+    || physical.candidateId !== undefined
+    || physical.typologyId !== undefined
+    || physical.constructionTicks !== undefined;
+  if (!hasPhysicalState) return undefined;
+  if (physical.siteId !== opportunity.lotId) {
+    throw new Error(`physical site id does not match compatibility lot id: ${physical.siteId ?? 'missing'}`);
+  }
+  if (!physical.typologyId || !BUILDING_TYPOLOGY_BY_ID[physical.typologyId]) {
+    throw new Error(`unknown physical building typology: ${physical.typologyId ?? 'missing'}`);
+  }
+  if (!Number.isInteger(physical.constructionTicks) || (physical.constructionTicks ?? 0) <= 0) {
+    throw new Error('physical constructionTicks must be a positive integer');
+  }
+  return physical.constructionTicks;
+}
+
+function validateCommitmentDefinition(definitionId: string): void {
+  if (BUILDING_DEFINITION_BY_ID[definitionId] || BUILDING_TYPOLOGY_BY_ID[definitionId]) return;
+  throw new Error(`unknown development definition: ${definitionId}`);
+}
+
 export class DeveloperMarketSystem {
   private readonly developers = new Map<string, MutableDeveloperState>();
   private readonly commitments = new Map<string, DeveloperCommitment>();
@@ -139,14 +165,25 @@ export class DeveloperMarketSystem {
     if (context.marketInterestRate < 0) throw new Error('marketInterestRate must be non-negative');
 
     const candidateBids: DevelopmentBid[] = [];
+    const constructionTicksByBidId = new Map<string, number>();
     const orderedOpportunities = opportunities
       .filter((item) => item.legal && item.feasible && !this.commitments.has(`building:${item.lotId}`))
       .slice()
       .sort((a, b) => a.lotId.localeCompare(b.lotId) || a.definitionId.localeCompare(b.definitionId));
 
     for (const opportunity of orderedOpportunities) {
-      const definition = getBuildingDefinition(opportunity.definitionId);
-      if (definition.zone !== opportunity.zone) continue;
+      const physicalTicks = physicalConstructionTicks(opportunity);
+      let constructionTicks: number;
+      if (physicalTicks !== undefined) {
+        const legacyDefinition = BUILDING_DEFINITION_BY_ID[opportunity.definitionId];
+        if (legacyDefinition && legacyDefinition.zone !== opportunity.zone) continue;
+        constructionTicks = physicalTicks;
+      } else {
+        const definition = getBuildingDefinition(opportunity.definitionId);
+        if (definition.zone !== opportunity.zone) continue;
+        constructionTicks = definition.constructionTicks;
+      }
+
       for (const developer of [...this.developers.values()].sort((a, b) => a.id.localeCompare(b.id))) {
         const activeProjects = this.activeProjectCount(developer.id);
         if (activeProjects >= developer.maxConcurrentProjects) continue;
@@ -157,7 +194,7 @@ export class DeveloperMarketSystem {
         const debt = opportunity.preFinanceDevelopmentCost * leverage;
         const requiredEquity = opportunity.preFinanceDevelopmentCost - debt;
         if (requiredEquity > developer.availableCapital) continue;
-        const durationYears = definition.constructionTicks / 250;
+        const durationYears = constructionTicks / 250;
         const financingCost = debt * (context.marketInterestRate + developer.financingSpread) * durationYears;
         const totalDevelopmentCost = opportunity.preFinanceDevelopmentCost + financingCost;
         const expectedReturn = totalDevelopmentCost > 0
@@ -170,9 +207,10 @@ export class DeveloperMarketSystem {
         const residualValueBonus = clamp(opportunity.residualLandValue / Math.max(1, opportunity.landValue), -1, 2) * 0.01;
         const riskPenalty = Math.max(0, opportunity.riskScore - developer.riskTolerance) * 0.10;
         const rankScore = expectedReturnMargin + preferenceBonus + capitalEfficiencyBonus + residualValueBonus - riskPenalty;
+        const bidId = `bid:${context.tick}:${opportunity.lotId}:${opportunity.definitionId}:${developer.id}`;
 
         candidateBids.push(Object.freeze({
-          id: `bid:${context.tick}:${opportunity.lotId}:${opportunity.definitionId}:${developer.id}`,
+          id: bidId,
           lotId: opportunity.lotId,
           definitionId: opportunity.definitionId,
           zone: opportunity.zone,
@@ -189,6 +227,7 @@ export class DeveloperMarketSystem {
           rankScore,
           residualLandValue: opportunity.residualLandValue,
         }));
+        constructionTicksByBidId.set(bidId, constructionTicks);
       }
     }
 
@@ -203,8 +242,9 @@ export class DeveloperMarketSystem {
       if (this.activeProjectCount(developer.id) >= developer.maxConcurrentProjects) continue;
       if (bid.requiredEquity > developer.availableCapital) continue;
 
-      const definition = getBuildingDefinition(bid.definitionId);
-      const completionTick = context.tick + definition.constructionTicks;
+      const constructionTicks = constructionTicksByBidId.get(bid.id);
+      if (!constructionTicks) throw new Error(`missing construction duration for bid: ${bid.id}`);
+      const completionTick = context.tick + constructionTicks;
       const releaseTick = completionTick + 100;
       const awardId = `development:${context.tick}:${bid.lotId}:${bid.definitionId}:${bid.developerId}`;
       const buildingId = `building:${bid.lotId}`;
@@ -352,7 +392,7 @@ export class DeveloperMarketSystem {
       if (raw.completionTick < raw.awardTick || raw.releaseTick < raw.completionTick) {
         throw new Error(`${raw.buildingId} has invalid development commitment timing`);
       }
-      getBuildingDefinition(raw.definitionId);
+      validateCommitmentDefinition(raw.definitionId);
       const commitment = Object.freeze({ ...raw });
       nextCommitments.set(raw.buildingId, commitment);
       awardIds.add(raw.awardId);
