@@ -6,7 +6,7 @@ import type {
 } from '../traffic/TransportationGraph.ts';
 import type { LegacyAuthorityProjection } from './LegacyRoadNetworkAdapter.ts';
 import { buildLaneGroups } from './LaneGroupBuilder.ts';
-import type { Carriageway, RoadClass, TransportNetworkAuthority } from './TransportNetworkTypes.ts';
+import type { RoadClass } from './TransportNetworkTypes.ts';
 
 function asLegacyRoadType(roadClass: RoadClass): RoadType {
   if (roadClass === 'local' || roadClass === 'collector' || roadClass === 'arterial') return roadClass;
@@ -17,39 +17,24 @@ function legacyNodeId(x: number, y: number): string {
   return `n:${x},${y}`;
 }
 
-function roadTypeAtJunction(
-  junctionId: string,
-  authority: TransportNetworkAuthority,
-  carriagewaysByFrom: ReadonlyMap<string, readonly Carriageway[]>,
-): RoadType {
-  const outgoing = carriagewaysByFrom.get(junctionId) ?? [];
-  if (outgoing.length === 0) {
-    throw new Error(`Legacy junction ${junctionId} has no outgoing carriageway from which to recover its V7 road type`);
-  }
-  const classes = [...new Set(outgoing.map((carriageway) => asLegacyRoadType(carriageway.operatingClass)))];
-  if (classes.length !== 1) {
-    throw new Error(`Legacy junction ${junctionId} has inconsistent source road classes: ${classes.join(', ')}`);
-  }
-  return classes[0]!;
-}
-
 export class LegacyTransportationGraphAdapter {
   project(source: LegacyAuthorityProjection): TransportationGraphProjection {
     const authority = source.authority;
     const junctionById = new Map(authority.junctions.map((junction) => [junction.id, junction]));
-    const carriagewaysByFrom = new Map<string, Carriageway[]>();
-    for (const carriageway of authority.carriageways) {
-      const list = carriagewaysByFrom.get(carriageway.fromJunctionId) ?? [];
-      list.push(carriageway);
-      carriagewaysByFrom.set(carriageway.fromJunctionId, list);
-    }
+    const roadTypeByJunctionId = new Map(source.sourceRoadTypes.map((item) => [item.junctionId, item.roadType]));
 
-    const nodes: TransportationNode[] = authority.junctions.map((junction) => ({
-      id: legacyNodeId(junction.x, junction.y),
-      x: junction.x,
-      y: junction.y,
-      roadType: roadTypeAtJunction(junction.id, authority, carriagewaysByFrom),
-    }));
+    const nodes: TransportationNode[] = authority.junctions.map((junction) => {
+      const roadType = roadTypeByJunctionId.get(junction.id);
+      if (!roadType) {
+        throw new Error(`Legacy junction ${junction.id} is missing its source V7 road type`);
+      }
+      return {
+        id: legacyNodeId(junction.x, junction.y),
+        x: junction.x,
+        y: junction.y,
+        roadType,
+      };
+    });
 
     const laneGroups = buildLaneGroups(authority);
     const capacityByCarriageway = new Map<string, number>();
