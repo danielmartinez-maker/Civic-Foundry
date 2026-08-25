@@ -1,178 +1,191 @@
 # Civic Foundry — Development Log
 
+This log records durable phase-level checkpoints. Detailed task-by-task implementation history remains available in Git commits, design specifications, implementation plans, and CI runs.
+
 ## 2026-08-21 — Phase 1–3 fresh reimplementation
 
-The earlier temporary execution workspace reached a verified Phase 3 checkpoint (`f0bb3d6`) but expired before source upload. Current Phase 1–3 code is therefore a fresh implementation from preserved specifications, not recovered historical source.
+The earlier temporary execution workspace reached a verified Phase 3 checkpoint but expired before source upload. Phase 1–3 were therefore reimplemented from preserved specifications and reverified in `danielmartinez-maker/Civic-Foundry`, establishing GitHub as the durable canonical source of truth.
 
-The rebuild introduced the durability rule that `danielmartinez-maker/Civic-Foundry` is the canonical source of truth. The audited Phase 3 rebuild checkpoint is `5c351d3ae57d6505aa8a439c8c3a7a5ceeeb5516`.
+The rebuilt baseline restored:
+
+- deterministic terrain, treasury, zoning, road-frontage lots, buildings, population, employment, taxes, utilities, garbage, and demand;
+- explicit road hierarchy, derived transportation graph, deterministic A* routing, weighted trip generation, moving traffic, intersection queues, congestion, and accessibility;
+- deterministic save/load and headless parity fixtures.
 
 ## 2026-08-21 — Phase 4 Public Services
 
-Implemented the approved public-services vertical slice:
+Implemented the public-services vertical slice:
 
-- fire stations, police stations, clinics, elementary schools, landfills and recycling centers
-- 50–150% department budgets with staffing/capacity/fleet and fiscal-payment effects
-- road-network service accessibility instead of circular coverage
-- explicit dispatch jobs and physical fire engines, patrol cars, ambulances and garbage trucks
-- emergency intersection priority and congestion-sensitive response
-- seeded fire/police/medical incidents, fire intensity/damage and cardinal spread
-- detailed building waste, routed pickup/cargo/processing and compatibility garbage snapshot
-- reachable school seats, overcrowding and education service quality
-- weighted per-building neighborhood service quality feeding R/C demand and migration
-- V4 persistence/migration with deterministic active-service continuation
-- Phase IV HUD, service inspection, build tools, budgets, overlays, vehicles and alerts
+- fire, police, clinics, schools, landfill/recycling infrastructure;
+- department funding, staffing, capacity, fleets, and operating cost;
+- road-network accessibility rather than circular coverage;
+- explicit routed emergency/service/garbage vehicles;
+- incidents, fire growth/spread, routed waste, education, and neighborhood service quality;
+- V4 persistence/migration and browser smoke coverage.
 
-### Bugs found by acceptance testing
-
-1. **Routed garbage migration deadlock:** the old Phase 2 instantaneous garbage hard-stop prevented initial residents before the first truck could finish a route. Fixed by retaining power/water as instantaneous essential gates while routing garbage consequences through service quality, demand, health and cleanliness.
-2. **Waste cadence inflation:** the inherited per-building waste rate was accidentally applied every 10 service ticks instead of the original 50-tick economy cadence, generating 5× intended waste. Locked to the inherited 50-tick balance with a regression test.
-3. **V4 deterministic continuation:** detailed waste initially omitted the building→active collection-job reservation map, allowing duplicate jobs after load. That reservation state is now persisted and validated.
-
-### Acceptance evidence
-
-An otherwise-equivalent local-vs-arterial service scenario produced 94 vs 46 tick fire arrival, ~0.49 vs ~0.71 service quality, 186 vs 354 processed waste, and 446 vs 284 garbage backlog. Residential and commercial demand were both stronger in the arterial city.
-
-The real Chromium smoke verifies service construction, active service vehicles, numeric service overlay, department-budget changes, Save V4, destructive road/funding edits and exact restoration.
-
-### Tooling
-
-TypeScript ES modules, Node built-in tests, global `tsc`, browser Canvas 2D, Python Playwright and system Chromium. No external npm runtime dependencies are required.
+Acceptance work corrected a routed-garbage migration deadlock, restored the inherited waste-generation cadence, and persisted active waste reservations needed for deterministic continuation.
 
 ## 2026-08-21 — Phase 5 Transit Revolution
 
-Implemented the approved first Metropolitan Era vertical slice:
+Implemented bus, BRT, tram, and metro topology with:
 
-- bus, BRT, tram and metro topology with deterministic stops, lines, ordered routes, headways, fares and enablement
-- a derived multimodal graph and deterministic generalized-cost journey planner with revision-keyed caching
-- weighted person-trip cohorts and deterministic car/transit/unmet mode choice
-- FIFO passenger queues, transfers, partial boarding and capacity-constrained left-behind passengers
-- explicit transit vehicles with dispatch, dwell, capacity and line operations counters
-- road-sensitive buses/trams, reduced-congestion BRT and road-insulated metro timing
-- transit operating cost/fare revenue plus person accessibility integrated into the existing city loop
-- Phase V transit tools, line configuration, HUD metrics, inspection, route/metric overlays and transit vehicle rendering
-- Save V5 with authoritative transit/mobility continuation and legacy V4 migration
+- deterministic stops/lines/routes;
+- multimodal generalized-cost journey planning and route caching;
+- weighted person-trip cohorts and mode choice;
+- passenger queues, transfers, partial boarding, and explicit transit vehicles;
+- road-sensitive surface transit, congestion-reduced BRT, and road-insulated metro;
+- headways, fleet limits, operating cost, fares, accessibility, crowding, wait, and reliability;
+- V5 authoritative continuation and V4 migration.
 
-### Bugs found by acceptance testing
-
-1. **Legacy save continuation drift:** Phase 5 mobility state affected future demand while the default serializer was still V4. The public save API now emits V5; explicit V4 serialization remains migration-only.
-2. **Capacity feedback gap:** fleet shortages correctly produced larger queues but did not change experienced wait or subsequent mode choice. Derived queue pressure now feeds both metrics deterministically from waiting weight and active capacity.
-3. **Browser smoke origin restriction:** this execution environment blocks navigable HTTP origins, so the smoke uses the same compiled ES modules through Playwright request routing and installs a minimal in-page Storage-compatible shim. It still exercises the real `GameApp` save/load path and verifies exact V5 restoration.
-
-### Acceptance evidence
-
-The deterministic corridor scenarios show frequent zero-fare BRT eliminating the tested weighted car demand and improving person accessibility, while deliberately poor transit retains car mode choice. Reducing active fleet capacity raises waiting weight and experienced wait and lowers transit attractiveness.
-
-The 10,000-request journey benchmark exceeds the 95% stable-topology cache target; the latest representative run recorded 9,998 cache hits (99.98%). A separate 5,000-tick active-transit diagnostic verifies finite vehicle, queue, accessibility and performance outputs.
-
-The Phase V Chromium smoke creates and edits a BRT line through the browser UI, dispatches vehicles, boards/completes weighted passengers, renders a numeric ridership overlay, changes headway/fare, saves V5, destructively removes transit/road topology, reloads and confirms exact serialized restoration.
+Acceptance work fixed legacy save-continuation drift, added capacity feedback into experienced wait/mode choice, and retained the compiled-browser smoke harness through Playwright request routing.
 
 ## 2026-08-22 — Phase 6 Firms, Production & Freight
 
-Implemented the second Metropolitan Era slice:
+Implemented the establishment/freight economy:
 
-- deterministic commercial/industrial establishments, homogeneous labor allocation and firm-derived employment;
-- compact conservation-safe production chain and inventory/cargo ownership;
-- stable boundary freight gateways, local/import supplier matching, imports/exports and explicit weighted trucks;
-- freight congestion and accessibility feeding logistics cost, shortages, production, firm health and employment;
-- sustained formation/distress/recovery/closure using accrued operating evidence rather than random bankruptcy;
-- authoritative freight dispatch capacity with waiting-order age and shortage consequences;
-- Economy/Freight panel, firm diagnostics, nine overlays and explicit freight vehicle rendering;
-- Save V6 with active-freight deterministic continuation and honest V5 migration.
+- deterministic firms and labor allocation;
+- conservation-safe inventories and a compact production chain;
+- stable external freight gateways;
+- generalized-cost supplier matching;
+- imports/exports and explicit weighted freight trucks;
+- freight congestion/logistics costs feeding shortages, production, firm health, and employment;
+- sustained firm formation, distress, recovery, and closure;
+- authoritative dispatch capacity and queue aging;
+- V6 continuation and V5 migration;
+- economy/freight UI diagnostics and browser smoke coverage.
 
-### Bugs found by acceptance testing
+Acceptance work corrected gateway fixtures, made freight dispatch capacity causal, prevented late cargo delivery to demolished firms, rebuilt derived freight access after hydration, and retained revision-stable path caching for acceptable long-horizon performance.
 
-1. **Historical Phase 3 gateway fixture:** the old local-vs-arterial benchmark road stopped short of the map boundary. Under Phase 6 that correctly created no external trade gateway, so all firms remained forming and commute averages collapsed to zero. The historical fixture now reaches the boundary; production code was not weakened. The benchmark again measures a large local-road versus arterial commute gap.
-2. **Freight dispatch capacity gap:** the first economic implementation could dispatch every waiting order, so fleet capacity could not create queue delay or shortages. `FreightVehicleSystem` now owns persisted dispatch capacity; waiting orders age when capacity is exhausted and stockouts emerge causally.
-3. **Bulldozed-firm late delivery:** building removal closed the firm and deleted inventory records but initially left already-dispatched inbound trucks alive. A late arrival could recreate inventory for the closed firm. Building removal now uses the same order/cargo/vehicle cleanup path as lifecycle closure.
-4. **V6 continuation derived context:** authoritative economy state restored correctly, but future freight matching diverged until the derived building-to-road firm access cache was rebuilt after hydration. V6 now reconstructs that cache instead of persisting it.
-5. **Full-suite runtime risk:** freight supplier routing initially risked repeated pathfinding on congestion changes. Stable OD routes now reuse the free-flow route cache while current edge travel times are summed over that cached path for generalized logistics cost. The Phase 3 long-horizon file returns to a few seconds locally rather than minutes.
+## 2026-08-22 — Phase 7 Land, Housing & Development
+
+Phase 7 progressively added the property/development layer above the existing cell-lot model:
+
+- derived R/C/I property markets with rent, vacancy, land value, and parcel-local signals;
+- explicit developer pro-forma underwriting using market rent/vacancy, taxes, construction cost, financing, NOI, value, return, and residual land value;
+- deterministic competing developers with differentiated hurdles, financing, capital, preferences, bids, awards, commitments, and capital recycling;
+- aggregate housing affordability/choice followed by persistent renter/owner tenure and relocation state;
+- redevelopment pressure plus safeguarded occupied-residential execution;
+- development-policy controls for density bonus, affordability, fees, permitting, redevelopment affordability, and lower-income relocation protection;
+- V7 persistence for authoritative developer/housing state and deterministic migration from V6;
+- land/housing panels, overlays, building diagnostics, and compiled Phase 7 browser smoke.
+
+Acceptance work found and fixed duplicate developer commitments, relocation-floor edge cases, stale derived diagnostics, and save-continuation requirements without introducing a second hidden property market or household simulation.
+
+## 2026-08-24 — Civic Foundry 2.0 Phase 0A Kernel
+
+Inserted the deterministic simulation kernel beneath the existing V7 city model without rewriting gameplay ownership.
+
+The kernel provides:
+
+- one shared authoritative simulation clock;
+- deterministic system scheduling and dependency validation;
+- queued command sequencing;
+- diagnostic domain-event journaling;
+- isolated named RNG streams;
+- cadence-aware invariants;
+- ordered diagnostic snapshot providers;
+- fail-stop behavior on fatal tick errors.
+
+The existing V7 city loop remains the compatibility system while later 2.0 tranches progressively replace subsystems behind parity gates.
+
+## 2026-08-24 — Isometric Presentation Pass A
+
+Reworked the visual layer into a deterministic 2:1 isometric presentation system while keeping simulation authority independent from rendering.
+
+The pass established:
+
+- 64×32 tile projection and quarter-turn camera rotation;
+- deterministic sprite identity and road autotiling;
+- generated/validated atlas contracts;
+- explicit object/vehicle/overlay/selection render order;
+- viewport culling and coordinate-correct interaction;
+- compiled functional and visual Chromium smoke coverage.
+
+## 2026-08-25 — Phase 1R World Foundation 2.0
+
+Implemented the first major Civic Foundry 2.0 replacement tranche beneath the V7 gameplay compatibility layer.
+
+### Architecture delivered
+
+- added an authoritative `WorldFoundation` composed of physical terrain, engineering soils, hydrology, geography hierarchy, spatial index, world generation, scenario overrides, flood state, and the legacy terrain adapter;
+- added canonical polygon/segment geometry suitable for later irregular parcel and transportation work;
+- added stable geography hierarchy `Region → Municipality → District → Neighborhood → Block` with deterministic irregular boundaries and validated references/containment;
+- replaced simplistic generated terrain with physical elevation, slope/aspect, soil/bearing, soil depth, bedrock, groundwater, vegetation, contamination, and surface-water fields;
+- locked eight soil classes and six world-form presets;
+- isolated world-generation randomness into named deterministic streams;
+- added priority-flood terrain conditioning and fixed-precedence D8 routing;
+- derived watersheds, accumulation, drainage channels, and flood susceptibility;
+- added deterministic design-storm flooding with explicit rainfall/infiltration/storage/outlet water accounting;
+- added scenario-authored generation/physical overrides while keeping generated contamination zero by default;
+- added spatial indexing for geography/channel lookup;
+- retained `core.terrain` as a compatibility projection so existing roads, zoning, lots, buildings, and rendering continue functioning without a simultaneous 2R/3R rewrite.
+
+### Economic integration
+
+Generated 1R terrain now affects real municipal/developer economics rather than remaining decorative:
+
+- road construction cost uses per-cell terrain preparation multipliers;
+- development feasibility multiplies the existing service/utility construction-cost index by local terrain preparation before the existing clamp;
+- legacy/direct worlds return exactly `1.0`, preserving historical road and development costs.
+
+### Save V8 and migration
+
+Introduced default **Save V8**:
+
+- `saveVersion: 8`;
+- `gameVersion: '0.8.0-world-foundation'`;
+- complete inherited V7 gameplay state plus authoritative `WorldFoundationSnapshot`;
+- latest design-storm result persists exactly;
+- restored V8 worlds are injected before terrain-dependent legacy domains are constructed;
+- world/compatibility terrain divergence and corrupt geography are rejected;
+- V3–V7 current-load migration creates a deterministic neutral `legacy-flat` world without fabricating prior 1R/flood history.
+
+### Diagnostics and presentation boundary
+
+Added typed diagnostic events:
+
+- `WorldGenerated`;
+- `WorldMigratedTo1R`;
+- `FloodEventStarted`;
+- `FloodEventResolved`.
+
+`SimulationCore.runDesignStorm()` is the authoritative storm entry point. Direct `TerrainGrid` construction emits no fabricated lifecycle event and V8 restoration emits no fake generation/migration event.
+
+A presentation contract test locks `WorldRenderer` and `GroundRenderPass` to read-only use of the compatibility terrain. Rendering cannot run storms or mutate world/save authority.
 
 ### Acceptance evidence
 
-All 12 Phase 6 causal acceptance chains pass. Representative diagnostics recorded roughly 0.7–0.8 seconds for 5,000 active-economy ticks, ~6 ms for 10,000 small indexed supplier matches, and 99/100 cache hits for repeated stable freight OD planning. Timings remain diagnostic-only.
+The final pre-documentation Phase 1R acceptance head passed **483/483 Node tests**, strict typecheck, lint, asset validation, production build, Phase 6 browser smoke, Phase 7 browser smoke, Isometric Pass A functional smoke, and the eight-scene isometric visual smoke.
 
-The Phase VI Chromium smoke formed 17 establishments with 17 active freight agents in the test city, verified the economy panel/firm inspector/freight overlay, saved V6, destructively removed a firm and boundary road, then restored the serialized authoritative state exactly.
+Spatial acceptance on the latest GitHub Actions run:
 
-## 2026-08-22 — Phase 7 Land & Housing Market Signals
+- 96×64 `rolling_uplands` world;
+- 10,000 deterministic query points;
+- block + neighborhood + district membership for each point = 30,000 indexed kind lookups;
+- indexed phase completed in approximately **35.72 ms** against the **2,500 ms** acceptance budget;
+- the first 500 points were cross-checked against direct hierarchy lookup.
 
-Continued the Land, Housing & Development phase on top of the V7 developer-market baseline:
+All six 96×64 presets generated finite valid worlds. Observed diagnostic generation times ranged from approximately **87.75 ms** to **160.17 ms** on that CI runner; no cross-hardware generation-time threshold is asserted.
 
-- added `LandHousingMarketSystem`, a deterministic derived property-market layer for residential, commercial and industrial zones;
-- residential market pressure now responds directly to housing utilization (`population / residentialCapacity`) as well as demand, accessibility, services and utilities;
-- commercial and industrial pressure respond to their own demand plus relevant person/freight access and employment/utilities;
-- added bounded zone rent, vacancy and land-value indexes plus parcel-local adjustments for access, services, neighborhood quality, utilities and frontage;
-- moved achievable rent, explicit vacancy and land-value formation out of `DevelopmentFeasibilitySystem` and into the market layer;
-- retained project-specific zoning/access/utility/service gates, construction cost, financing, NOI, cap-rate, return and residual-land-value underwriting;
-- exposed `SimulationCore.landHousingMarketSnapshot` for diagnostics and future UI/overlay work;
-- kept Save V7 unchanged because the market contains no authoritative history and is recomputed from existing simulation state.
+The 5,000-tick static-world gate proved ordinary simulation stepping leaves the authoritative generated world unchanged.
 
-### TDD and bugs found during integration
+The locked 48×32 `river_valley` headless fixture (`seed: 20260825`) then executed the complete acceptance chain:
 
-1. **Duplicated price formation:** the developer pro-forma slice still synthesized rent, vacancy and land value internally from generic demand/access multipliers. The new market subsystem makes those signals explicit and inspectable, and underwriting now consumes them rather than creating a second market model.
-2. **Core integration contract:** the first repository-level RED run executed 223 tests; 185 passed and 38 failed with `marketPressure must be finite`. The new market/underwriting unit tests were already green, isolating the defect to `SimulationCore` not yet supplying the new parcel signals. Core wiring removed the cascade.
-3. **Derived-cache save drift risk:** a market snapshot refreshed only every 50 ticks could diverge after loading a save mid-window because that derived snapshot is intentionally not persisted. The final architecture refreshes the tiny derived market immediately before each 10-tick development evaluation and after the 50-tick city loop, preserving schema-free deterministic decisions.
+`generate → real road/zoning/utilities → 250 ticks → 80 mm / 2 h storm → Save V8 → hydrate → 300-tick matched continuation`
 
-### Acceptance evidence
+Its verified diagnostic output included:
 
-Unit tests verify housing-scarcity directionality, commercial-demand monotonicity, industrial freight weighting, parcel service/utility penalties, determinism and invalid-input rejection. Underwriting tests verify that higher market rent raises NOI/return, higher vacancy suppresses income/return and higher land value raises cost/suppresses return.
+- 60 flooded cells;
+- water-balance error approximately `-5.24e-10`;
+- exact Save V8 round-trip;
+- identical continuation through tick 550.
 
-The integration CI cycle passed the complete repository tests, typecheck, lint and production build after core wiring.
+### Compatibility boundary
 
-## 2026-08-22 — Phase 7 Aggregate Housing Choice & Redevelopment Pressure
+Phase 1R intentionally does not claim later tranche ownership:
 
-Extended the property-market slice into affordability and occupied-residential redevelopment diagnostics while deliberately remaining aggregate and save-neutral:
+- true legal parcels, FAR/setbacks/height/coverage, mixed-use geometry, deterioration/renovation, and parcel split/assembly remain 2R work;
+- the final lane/signal/turn/parking/crash transportation replacement remains a separate 3R responsibility;
+- existing V7 lot and rendering semantics remain available through the Phase 1R compatibility facade until those downstream systems pass their own review and acceptance gates.
 
-- added `HousingChoiceSystem` with deterministic lower/middle/upper income-band shares, rent-burden thresholds and quality-sensitive weighted housing allocation;
-- each occupied residential building becomes a housing option using its real building capacity/base rent plus current parcel market rent, person access, services, neighborhood quality and utilities;
-- separated raw physical housing capacity from `effectiveAffordableCapacity`, the income-share-weighted economically usable portion of existing stock;
-- fed effective affordable capacity through the existing residential-demand housing-pressure channel, causing expensive stock to increase development demand without creating a parallel demand model;
-- added citywide affordability, rent burden, cost-burdened resident, unplaced resident and per-building occupancy diagnostics;
-- kept raw physical residential capacity as `PopulationSystem`'s hard cap while applying affordability only as a bounded 0.85–1.0 modifier to migration attractiveness;
-- added `RedevelopmentPressureSystem`, ranking occupied residential parcels by the economics of feasible higher-intensity replacements after current-use opportunity cost, demolition cost and resident displacement burden;
-- used a dedicated redevelopment feasibility evaluator so occupied-parcel diagnostics cannot overwrite normal developer-market feasibility diagnostics;
-- exposed `SimulationCore.housingChoiceSnapshot` and `SimulationCore.redevelopmentPressureSnapshot` as read-only derived diagnostics;
-- kept Save V7 unchanged and added no automatic demolition, relocation, tenure or individual-household state.
-
-### TDD and integration evidence
-
-1. **Housing choice RED:** the first housing-choice CI run left all 223 existing tests green and failed only because `HousingChoiceSystem.ts` did not exist. The implemented system then passed the full test/typecheck/lint/build gate.
-2. **Affordability integration RED:** 231/232 tests passed before core wiring; the only failure was the missing `housingChoiceSnapshot`. The independent causal test already showed that identical physical stock with higher rents produces lower effective affordable capacity and therefore higher residential demand.
-3. **Redevelopment engine RED:** 232 existing tests passed and only the intentionally missing `RedevelopmentPressureSystem.ts` failed. Unit tests then covered feasible/infeasible replacements, displacement burden, deterministic ranking and validation.
-4. **Redevelopment core RED:** 238/240 tests passed; both failures were exactly the absent core redevelopment snapshot. After wiring, the full 240-test suite, typecheck, lint and build passed.
-
-### Causal boundaries
-
-Housing allocation is an aggregate market-clearing approximation rather than a hidden demographic simulation. Fixed income bands are game-economy cohorts, fractional weighted residents are allowed, and no resident object, lease, mortgage, move queue or eviction history is fabricated. Redevelopment pressure is a derived diagnostic: it cannot itself demolish a building, displace residents, alter zoning or create a developer award.
-
-## 2026-08-22 — Phase 7 Safeguarded Residential Redevelopment Execution
-
-Converted redevelopment pressure into an actual residential development path without introducing individual household agents or a second capital market:
-
-- added `BuildingSystem.replaceDevelopment()` with strict occupied-residential, award-identity and higher-intensity validation;
-- preserves deterministic `building:<lotId>` identity while replacing the old occupied use with the awarded definition in normal construction state;
-- added `RedevelopmentExecutionSystem`, a pure deterministic planner between pressure diagnostics and developer allocation;
-- requires redevelopment pressure ≥ 0.25 and blocks all demolition while the current housing allocation already has unplaced residents;
-- requires post-demolition raw residential capacity to remain at least current population;
-- requires post-demolition effective affordable capacity to remain at least 85% of current population;
-- reserves both relocation constraints cumulatively in stable pressure order so several same-cycle candidates cannot collectively over-demolish the housing stock;
-- adds demolition and aggregate displacement friction to the developer-underwritten pre-finance cost and recomputes feasibility/return economics;
-- combines admitted occupied-parcel replacements with vacant-lot opportunities in one `DeveloperMarketSystem.allocate()` call, preserving the same developer capital, leverage, risk, hurdle and concurrent-project constraints;
-- blocks redevelopment while the deterministic building identity still has an active developer commitment, with `SimulationCore` exposing `active-commitment` as the planner diagnostic;
-- independently prevents duplicate building commitments inside `DeveloperMarketSystem.allocate()`, so even a caller that bypasses planner diagnostics cannot overwrite an unreleased commitment or orphan a prior developer's committed capital;
-- on award, removes the old building from the economy-domain building lifecycle, starts higher-intensity construction in place and retains the normal developer capital commitment;
-- does not directly mutate population on demolition; the existing 50-tick population loop remains authoritative, with relocation safeguards ensuring enough occupied stock remains;
-- keeps Save V7 unchanged because the executed state is already represented by the existing construction-stage building and developer commitment while pressure/execution snapshots remain derived.
-
-### TDD and integration evidence
-
-1. **Building replacement RED:** 240 existing tests passed and the 3 new replacement tests failed only because `replaceDevelopment()` did not exist. After implementation, 243/243 tests plus typecheck, lint and build passed.
-2. **Execution planner RED:** all 243 existing/replacement tests passed and CI failed only because `RedevelopmentExecutionSystem.ts` was intentionally absent. The planner then passed its physical-capacity, unplaced-resident, cumulative-slack, friction-economics and mismatch/threshold tests.
-3. **Core execution RED:** before core wiring, 249/250 tests passed; the only failure was the eligible occupied parcel receiving no redevelopment award.
-4. **Integration observation fix:** after core wiring the redevelopment itself succeeded, but one assertion still inspected `DeveloperMarketSystem.lastAwards()` after a later 10-tick auction had intentionally overwritten that ephemeral diagnostic. The test was corrected to inspect the authoritative active developer commitment instead of weakening production behavior.
-5. **Capital-ledger review bug:** manual review found that deterministic building IDs outlive construction while developer commitments release later. A redeveloped/occupied building could therefore be reconsidered while its prior commitment was still active, allowing a second award for the same `building:<lotId>` to overwrite the commitment map entry and leave the first developer's committed capital orphaned. A developer-market regression was written first and failed exactly on the duplicate award; allocation now filters and rechecks active building commitments before awards.
-6. **Core diagnostic RED:** after the authoritative market backstop was green, a new core regression seeded a live building commitment and required redevelopment diagnostics to report `active-commitment`. The first run produced 253 tests with 252 passing; the only failure reported `physical-capacity` because `SimulationCore` had not passed live commitment state to the planner. Core now derives committed building IDs from `DeveloperMarketSystem.listCommitments()` and passes the boolean into redevelopment execution inputs.
-7. **Final code gate before documentation:** GitHub Actions run #144 passed **253/253 tests**, Typecheck, Lint and Build on the commitment-wired head.
-
-### Causal boundaries
-
-This remains an aggregate relocation safeguard, not a household-moving simulation. No leases, tenure, mortgages, owner identities, household search duration, temporary housing, eviction or homelessness queues are fabricated. Commercial/industrial redevelopment and policy/UI controls remain deferred. The older conflicting Phase 7 household branch was not merged wholesale because it predates and overlaps the now-canonical property-market/developer architecture; its cohort/tenure concepts remain design input for later work rather than a regression source.
+Draft PR #79 carries the Phase 1R work for review; it is not merged automatically.

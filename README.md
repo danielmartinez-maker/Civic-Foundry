@@ -1,81 +1,92 @@
 # Civic Foundry
 
-Civic Foundry is an original browser-based city-management and urban-development simulator built as deterministic vertical slices.
+Civic Foundry is an original browser-based city-management, urban-development, transportation, economic-simulation, and municipal-management game built around deterministic simulation and inspectable causal systems.
 
-## Canonical baseline
+## Canonical runtime
 
-**V7 (`0.7.0-metropolitan`) remains the canonical gameplay/save baseline while Civic Foundry 2.0 is introduced progressively.** Civic Foundry 2.0 **Phase 0A — Kernel Skeleton & Deterministic Scheduling** now places a deterministic simulation kernel beneath V7 without changing the V7 save schema, gameplay formulas, random-number consumption, public mutation APIs, or authoritative domain ownership. Older V5/V6 serializers and hydrators remain supported for compatibility and migration testing.
+**Civic Foundry 2.0 Phase 1R — World Foundation 2.0 is now the current world/persistence layer.** The default save envelope is **Save V8** with `saveVersion: 8` and `gameVersion: '0.8.0-world-foundation'`.
 
-The current runtime path is:
+The existing V7 city, mobility, services, economy, land, housing, and development systems remain the gameplay compatibility baseline beneath the new world foundation. Phase 1R deliberately replaces the physical-world substrate without pretending that later 2R parcel geometry or 3R transportation ownership is already complete.
 
-`GameApp → SimulationCore facade → SimulationKernel → legacy-v7-city compatibility system → unchanged V7 domain orchestration`
+Current runtime path:
 
-`SimulationKernel` owns the outer fixed-step/clock boundary and provides deterministic system scheduling, sequenced commands, a domain-event journal, isolated named RNG streams, cadence-aware invariants, and diagnostic snapshot providers. In Phase 0A those new facilities are infrastructure only: the single production kernel system is `legacy-v7-city`, existing gameplay mutations remain direct `SimulationCore` APIs, no gameplay domain consumes kernel RNG streams or authoritative kernel events, and kernel diagnostic state is not persisted.
+`GameApp → SimulationCore facade → WorldFoundation + SimulationKernel → legacy-v7-city compatibility orchestration → existing gameplay domains`
 
-The V7 baseline contains the reverified rebuild through **Phase 6 — Firms, Production & Freight** plus the complete **Phase 7 — Land, Housing & Development** domain: deterministic developer pro-formas and competition, derived property markets, affordability, renter/owner tenure economics, persistent aggregate housing relocation, safeguarded redevelopment, player-facing land/housing intelligence and housing/development policy controls.
+`SimulationCore.world` is the authoritative Phase 1R world. `SimulationCore.terrain` remains the compatibility projection consumed by existing V7 roads, zoning, lots, buildings, and rendering until their reviewed replacement tranches take ownership.
 
-Implemented in the V7 gameplay baseline:
+## Phase 1R — World Foundation 2.0
 
-- deterministic terrain, simulation clock, treasury, construction costs and save/load
-- local, collector and arterial roads with intersections and graph revisions
-- R/C/I zoning, road-frontage lots, construction, population, employment and taxes
-- road-connected power/water plus recurring city finance
-- deterministic transportation graph, A* routing and revision-aware route cache
-- weighted commute/shopping traffic, moving vehicles, queues and real congestion
-- fire, police, healthcare, education, routed garbage collection and public-service budgets
-- explicit fire engines, patrol cars, ambulances and garbage trucks using the road graph
-- seeded fire/police/medical incidents, network-based service accessibility, school capacity and detailed building waste
-- bus, BRT, tram and metro transit topology with ordered stops, headways, fares, enablement and fleet limits
-- deterministic multimodal journey planning and weighted car/transit mode choice
-- FIFO passenger queues, partial boarding, transfers, capacity constraints and left-behind passengers
-- explicit transit vehicles, scheduled dispatch, dwell, road-sensitive surface service and insulated metro timing
-- transit operating cost, fare revenue, reliability, crowding, mode share and person accessibility feeding city outcomes
-- Phase V transit build/configuration tools, HUD metrics, inspectors, vehicles and numeric overlays
-- establishment-based commercial/industrial firms with deterministic formation, labor allocation, operating health, distress and closure
-- conservation-safe inventories and the explicit `industrial_inputs → manufactured_goods → consumer_goods` production chain
-- boundary-derived freight gateways, imports/exports, generalized-cost supplier matching, queued freight orders and explicit weighted trucks
-- freight congestion/logistics feedback into shortages, output, firm economics, employment and city demand
-- Phase VI economy/freight HUD metrics, firm inspection, nine diagnostic overlays and authoritative freight-agent rendering
-- multiple deterministic building variants by zone and intensity
-- explicit derived residential/commercial/industrial property markets with bounded pressure, rent, vacancy and land-value indexes
-- parcel market signals that combine zone conditions with local person/freight access, services, neighborhood quality, utilities and frontage
-- deterministic aggregate lower/middle/upper income-band housing choice across occupied residential buildings
-- physical housing capacity separated from effective affordable capacity, with affordability, housing burden, cost-burdened residents and unplaced-resident diagnostics
-- effective affordable capacity feeding the existing residential-demand channel while affordability applies only a bounded migration-attractiveness modifier and raw physical capacity remains the population hard cap
-- deterministic renter/owner capacity splits by residential intensity, with asking rent, implied purchase price, financing-sensitive owner monthly cost and explicit rental/ownership vacancy
-- persistent aggregate housing cohorts by income band and tenure, with deterministic search, tenure preference, affordability/quality scoring, bounded voluntary turnover, severe-burden search, forced displacement, rehousing and explicit failed-search state
-- resident-conservation and tenure-capacity invariants: housed plus unplaced population is conserved, renter plus owner occupancy equals housed population, and cohort allocations cannot exceed the current tenure option capacity
-- occupied residential redevelopment-pressure diagnostics comparing current-use value with feasible higher-intensity replacements, demolition cost and resident displacement burden
-- safeguarded residential redevelopment execution when pressure clears 0.25, no residents are already unplaced, no prior developer commitment remains active on the deterministic building identity, and post-demolition physical and effective-affordable capacity remain above relocation floors
-- targeted lower-income redevelopment protection that requires sufficient affordable relocation slack for the protected share of actual lower-income occupants before demolition can be admitted
-- cumulative relocation-slack reservation so several same-cycle redevelopment awards cannot collectively demolish more housing than the city can absorb
-- occupied-parcel demolition and displacement costs folded into developer underwriting before redevelopment competes with vacant-lot projects in the same deterministic capital market
-- in-place higher-intensity rebuilding that preserves deterministic building identity, enters normal construction state and retains authoritative developer capital commitments
-- defense-in-depth capital-ledger protection: redevelopment diagnostics report `active-commitment`, while `DeveloperMarketSystem` independently refuses any award that would overwrite an existing `building:<lotId>` commitment
-- player-facing Land & Housing intelligence panel with R/C/I pressure, rent, vacancy and land-value indexes plus affordability, tenure, financing, movement/displacement, lower-income relocation slack and redevelopment diagnostics
-- deterministic housing-affordability, residential-occupancy, owner/renter-tenure, relocation-pressure and redevelopment-pressure overlays with numeric legends
-- residential building inspection sourced from authoritative Phase 7 snapshots, including occupancy, affordability, tenure mix, rental/ownership occupancy, asking rent, owner cost, movement/displacement and redevelopment status
-- player-controlled residential density bonus, affordable-housing share, development fee, permitting-cost incentive, redevelopment-affordability floor and lower-income relocation-protection floor
-- policy effects feed existing deterministic channels rather than bypassing them: density changes intensity eligibility, affordability requirements blend residential rents/project income, fees and incentives change pro-formas, and redevelopment protections change relocation admission
-- parcel underwriting using market rent/vacancy/land value, taxes, service/utility/accessibility, construction cost, financing, stabilized value, return and residual land value
-- deterministic competing developers with distinct hurdle rates, leverage, capital, risk tolerances and zone preferences
-- explicit development awards, owner/finance metadata, capital commitments, cancellation recovery and post-stabilization capital recycling
-- infrastructure, market economics, relocation safeguards and developer-hurdle gating that prevents automatic uneconomic or housing-destructive development
-- Save V7 with exact developer-capital/commitment, development-policy and persistent housing-relocation continuation plus Save V6 economy/freight continuation
+Implemented and verified:
 
-Phase 0A additionally includes an immutable seven-scenario pre-kernel parity fixture. Current V7 cadence boundaries, city development, services/incidents, transit, economy/freight, housing/development, and save → hydrate → continue must serialize to the same canonical digests after kernel-shell changes.
+- deterministic geometry primitives, polygon/segment math, canonical tolerances, and spatial indexing;
+- stable geography hierarchy: `Region → Municipality → District → Neighborhood → Block`;
+- irregular deterministic administrative boundaries with validated parent/containment relationships;
+- physical `TerrainField` with elevation, slope, aspect, soils, soil depth, bearing capacity, bedrock depth, groundwater depth, vegetation, contamination, and surface water;
+- eight locked engineering soil classes: `rock`, `gravel`, `sand`, `loam`, `clay`, `alluvium`, `peat`, and `fill_disturbed`;
+- six deterministic world presets: `plain`, `river_valley`, `basin`, `rolling_uplands`, `ridge_edge`, and `coastal_lowland`;
+- namespaced deterministic RNG streams so topography, soils, groundwater, and vegetation do not perturb one another accidentally;
+- priority-flood terrain conditioning plus deterministic D8 drainage with fixed clockwise tie breaking;
+- watershed assignment, flow accumulation, generated drainage channels, flood susceptibility, and spatial channel queries;
+- deterministic design-storm flooding with infiltration, storage, outlet export, nonnegative flood depth, and explicit water-balance accounting;
+- scenario-authored generation and physical overrides without hidden generated contamination;
+- terrain preparation multipliers that feed existing road construction and development underwriting for generated 1R worlds;
+- exact neutral terrain economics (`1.0`) for direct/legacy worlds;
+- `LegacyTerrainAdapter` preserving existing `TerrainGrid` behavior for V7 systems and Canvas rendering;
+- typed diagnostic events: `WorldGenerated`, `WorldMigratedTo1R`, `FloodEventStarted`, and `FloodEventResolved`;
+- `SimulationCore.runDesignStorm()` as the authoritative storm entry point;
+- Save V8 persistence for the complete authoritative `WorldFoundation`, including the latest flood result;
+- deterministic V3–V7 current-load migration into a neutral `legacy-flat` world without fabricating gameplay history;
+- corruption rejection for invalid world terrain, compatibility divergence, and geography hierarchy references;
+- static-world protection: ordinary simulation ticking does not mutate authoritative terrain, hydrology, geography, or prior flood state.
+
+## Existing gameplay compatibility baseline
+
+The preserved gameplay layer includes:
+
+- treasury, road construction, R/C/I zoning, road-frontage lots, buildings, population, employment, taxation, utilities, and recurring municipal finance;
+- deterministic road graphs, pathfinding, weighted trips, moving vehicles, intersections, queues, congestion, and accessibility;
+- fire, police, healthcare, education, waste collection, routed service vehicles, incidents, budgets, and neighborhood quality;
+- bus, BRT, tram, and metro topology, multimodal journey planning, passenger queues, transit vehicles, operations, fares, crowding, reliability, and accessibility;
+- establishment-based firms, labor allocation, inventories, production, imports/exports, freight orders, explicit freight trucks, formation, distress, recovery, and closure;
+- derived R/C/I property markets, housing affordability, renter/owner tenure economics, persistent aggregate housing relocation, redevelopment safeguards, development policy, parcel underwriting, and competing developer capital allocation;
+- deterministic isometric Canvas presentation with authoritative overlays and explicit vehicle rendering.
+
+These domains continue through the Phase 0A deterministic kernel compatibility system while later 2.0 tranches progressively replace ownership behind parity gates.
+
+## Compatibility boundaries
+
+Phase 1R does **not** claim ownership of later systems simply because they can consume world data:
+
+- legal parcels, FAR, setbacks, height/coverage zoning, parcel splitting/assembly, mixed use, deterioration, renovation, and redevelopment geometry belong to **2R — Urban Fabric 2.0**;
+- lane-level road authority, signals, turn movements, explicit parking, crashes, and the final transportation replacement belong to **3R — Transportation Engine 2.0**;
+- current V7 `LotSystem` remains cell/frontage based;
+- current rendering remains presentation-only and derives map size/ground art from `core.terrain`;
+- presentation code cannot run storms, mutate world authority, or manufacture save state.
+
+This boundary is intentional: Phase 1R supplies a richer authoritative substrate while preserving the existing playable city until each downstream replacement passes its own determinism, persistence, performance, and compatibility gates.
+
+## Persistence
+
+Current default save envelope:
+
+- `saveVersion: 8`
+- `gameVersion: '0.8.0-world-foundation'`
+- complete V7 gameplay state;
+- authoritative `world: WorldFoundationSnapshot`.
+
+V8 hydration restores the world **before** terrain-dependent legacy systems are constructed. The inherited V7 compatibility terrain is validated against `world.legacyTerrain()` before a live core is returned.
+
+Explicit older serializers/hydrators remain available for migration and parity tests. Loading V3–V7 through the current API constructs a deterministic neutral `legacy-flat` world so historical cities keep their prior terrain/buildability/cost semantics. Existing gameplay history is not invented during migration.
 
 ## Toolchain
 
-The project intentionally uses an offline-capable dependency-light stack:
+The project remains dependency-light and browser-native:
 
-- TypeScript 5.x ES modules
-- Node 22 built-in test runner with TypeScript strip-types
-- browser-native Canvas 2D
-- global `tsc`
-- Python Playwright + Chromium for browser smoke testing
-
-No runtime npm dependency is required.
+- TypeScript 5.x ES modules;
+- Node 22 built-in test runner with TypeScript strip-types;
+- browser-native Canvas 2D;
+- Python Playwright + Chromium for compiled browser smoke tests;
+- procedural isometric atlas generation/validation.
 
 ## Commands
 
@@ -83,50 +94,30 @@ No runtime npm dependency is required.
 npm test
 npm run typecheck
 npm run lint
+npm run assets:check
 npm run build
 npm run test:smoke
 npm run test:smoke:phase7
+npm run test:smoke:isometric
 npm run dev
 ```
 
-`npm run build` produces `dist/`. `npm run dev` serves the compiled build on port 5173 when local navigation is permitted.
+`npm run build` produces `dist/`. `npm run dev` serves the compiled build on port 5173 where local navigation is permitted.
 
-## Architecture rule
+## Phase 1R acceptance evidence
 
-`SimulationCore` remains the public gameplay facade and composes focused authoritative V7 systems. `SimulationKernel` owns the outer deterministic tick boundary and currently schedules exactly one production system, `legacy-v7-city`, which executes the unchanged V7 per-tick orchestration. Future Civic Foundry 2.0 tranches may extract domains into separately registered kernel systems only after their ownership, dependencies, persistence and parity rules are reviewed.
+The verified Phase 1R acceptance head passed **483/483 Node tests**, strict TypeScript typecheck, lint, asset validation, production build, Phase 6 browser smoke, Phase 7 browser smoke, Isometric Pass A functional smoke, and eight-scene isometric visual smoke.
 
-Inside V7, `MobilityScheduler` owns multimodal update order, `EconomyScheduler` owns Phase 6 firms/inventories/production/freight/trade/business lifecycle state, and the Phase 7 development/housing domain owns property-market signals, tenure economics, persistent aggregate housing occupancy/relocation, development policy, redevelopment diagnostics/planning, parcel feasibility and deterministic developer allocation.
+The 96×64 `rolling_uplands` spatial benchmark resolved **10,000 deterministic query points across block, neighborhood, and district membership (30,000 indexed kind lookups) in ~35.72 ms** on the GitHub Actions runner, against a 2,500 ms acceptance budget. All six 96×64 presets generated finite valid worlds; observed generation diagnostics ranged from ~87.75 ms to ~160.17 ms on that runner and are diagnostic rather than cross-hardware guarantees.
 
-Within Phase 7, `HousingTenureSystem` derives current renter/owner options and their economics from the residential stock and financing environment. `HousingRelocationSystem` owns the persistent aggregate cohort ledger and movement/displacement history. `HousingChoiceSystem` remains the derived affordability/reporting layer over those authoritative allocations. Rendering/UI reads snapshots and submits typed mutations through public APIs; it does not manufacture simulation outcomes.
-
-Road traffic, transit attractiveness, service access, demand, finance, property-market conditions, affordability, tenure, relocation, development policy and development economics are coupled through measured travel/capacity/accessibility results. A transit line only helps when its geometry, frequency, capacity, fare and destination access make it competitive; residential demand distinguishes physical stock from economically usable stock; a parcel only develops when infrastructure, market conditions, project economics, policy and a developer's capital/hurdle constraints permit it; an occupied residential parcel only redevelops when aggregate and lower-income relocation capacity satisfies current policy floors and its deterministic building identity has no live developer commitment.
-
-The Land & Housing UI consumes the existing property-market, tenure, housing-choice, relocation, redevelopment and policy snapshots. Its overlay controller uses a pointer-transparent canvas aligned through the public world renderer coordinates and is mutually exclusive with traffic, service, transit and economy overlays. Policy controls mutate only the authoritative `DevelopmentPolicySystem` through `SimulationCore.setDevelopmentPolicy()`.
-
-## Persistence
-
-Current default save envelope: `saveVersion: 7`, game version `0.7.0-metropolitan`. V7 retains the complete V6 authoritative economy/transit/city state and adds the developer market state, development-policy state and persistent aggregate `housingState` required for exact continuation.
-
-Phase 0A does **not** introduce Save V8. `SimulationKernel`, its scheduler metadata, pending commands, diagnostic event journal, named RNG streams, invariant registrations and snapshot providers are excluded because none is an authoritative V7 gameplay input in this tranche. Hydration reconstructs a fresh kernel around the same restored `SimulationClock`; existing V7 RNG/domain state continues exactly.
-
-Both Phase 7 extension fields are backward-compatible within V7. Older V7 saves without development policy load the default policy. Older V7 saves without `housingState` initialize deterministic housing occupancy from current city/population state with zero fabricated movement history. Loading V6 into the V7 runtime likewise starts the default developer roster with no fabricated commitments, the default development policy and no fabricated housing movement history.
-
-Property-market snapshots, tenure-option economics, affordability/reporting snapshots, redevelopment-pressure/execution planning, overlays and render state are derived and rebuilt from authoritative state rather than persisted. The aggregate occupancy/relocation cohort ledger and its cumulative movement/displacement totals are authoritative and persisted. A redevelopment that actually executes is represented by the existing authoritative construction building plus developer commitment; displaced housing cohorts remain represented in `housingState` until rehoused or otherwise reconciled by the housing system.
-
-Explicit V5 and V6 serializers/hydrators remain available for compatibility, migration tests and historical fixtures.
+The final 48×32 `river_valley` headless acceptance scenario built real road/zoning/utility state, advanced the live simulation, ran an 80 mm / 2 h design storm, flooded 60 cells with water-balance error about `-5.24e-10`, round-tripped Save V8 exactly, and produced identical continuation through tick 550.
 
 ## Roadmap
 
-0. Civic Foundry 2.0 Phase 0A — Kernel Skeleton & Deterministic Scheduling ✅ — compatibility shell only; no gameplay-domain migration yet
-1. Phase 1 — Playable Foundation ✅
-2. Phase 2 — Core City Loop ✅
-3. Phase 3 — Traffic ✅
-4. Phase 4 — Public Services ✅
-5. Phase 5 — Transit Revolution ✅
-6. Phase 6 — Firms, Production & Freight ✅
-7. Phase 7 — Land, Housing & Development ✅ — developer competition, property markets, affordability, renter/owner tenure, persistent aggregate cohort search/relocation/displacement, redevelopment safeguards, anti-displacement policy, Land/Housing intelligence and policy controls
-8. Civic Foundry 2.0 Phase 1R onward — progressive reviewed replacement of the V7 foundation and later 2.0 systems per `docs/superpowers/specs/2026-08-24-civic-foundry-2.0-master-design.md`
+0. Civic Foundry 2.0 Phase 0A — Kernel Skeleton & Deterministic Scheduling ✅
+1. **1R — World Foundation 2.0 ✅** — geography hierarchy, irregular geometry, terrain/soils, hydrology/flooding, deterministic world generation, spatial index, world-aware costs, Save V8, compatibility facade
+2. **2R — Urban Fabric 2.0** — true parcels, FAR/setbacks/height/coverage, mixed use, deterioration, renovation, redevelopment, parcel splitting/assembly
+3. **3R — Transportation Engine 2.0** — lane/turn/signal/parking/crash authority and dynamic routing replacement
+4. Later Civic Foundry 2.0 systems continue under the progressive replacement architecture in `docs/superpowers/specs/2026-08-24-civic-foundry-2.0-master-design.md`.
 
-Individual household/person simulation remains deferred until its reviewed Civic Foundry 2.0 demographic tranche; Phase 0A deliberately changes scheduling infrastructure only.
-
-See `docs/` and `docs/superpowers/` for architecture, balancing, testing, save-format, design and implementation-plan details.
+See `docs/` and `docs/superpowers/` for architecture, testing, design specifications, and implementation plans.
