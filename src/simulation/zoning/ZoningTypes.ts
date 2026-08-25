@@ -68,6 +68,7 @@ export type ZoningConstraintCode =
   | 'side-setback'
   | 'minimum-area'
   | 'minimum-frontage'
+  | 'disconnected-envelope'
   | 'overlay';
 
 export type ZoningConstraint = Readonly<{
