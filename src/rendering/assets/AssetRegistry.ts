@@ -76,7 +76,10 @@ export class AssetRegistry {
     if (this.invalidAssetIds.has(assetId)) return this.fallback(assetId, 'manifest entry invalid');
     if (this.failedAtlases.has(entry.atlasId)) return this.fallback(assetId, `atlas unavailable: ${entry.atlasId}`);
     const image = this.images.get(entry.atlasId);
-    if (!image) return this.fallback(assetId, `atlas not ready: ${entry.atlasId}`);
+    if (!image) {
+      if (!this.readyValue) return { kind: 'fallback', assetId, reason: `atlas loading: ${entry.atlasId}` };
+      return this.fallback(assetId, `atlas not ready: ${entry.atlasId}`);
+    }
     return { kind: 'sprite', entry, image };
   }
 
