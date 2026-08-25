@@ -1,4 +1,4 @@
-export type SceneLayer = 'terrain' | 'roads' | 'low-props' | 'objects' | 'vehicles' | 'construction';
+export type SceneLayer = 'terrain' | 'roads' | 'low-props' | 'objects' | 'vehicles' | 'construction' | 'overlays' | 'selection';
 
 const LAYER_RANK: Readonly<Record<SceneLayer, number>> = Object.freeze({
   terrain: 0,
@@ -7,6 +7,8 @@ const LAYER_RANK: Readonly<Record<SceneLayer, number>> = Object.freeze({
   objects: 3,
   vehicles: 4,
   construction: 5,
+  overlays: 6,
+  selection: 7,
 });
 
 export type DepthKey = Readonly<{
