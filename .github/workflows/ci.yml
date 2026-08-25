@@ -18,12 +18,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Alternate anchor and source-delta Phase 0B on one runner
+      - name: Alternate anchor and optimized Phase 0B on one runner
         shell: bash
         run: |
           set -euo pipefail
           ANCHOR=b063ef10211ea35780c13a08b7f33eec6bc3b1c4
-          POST=329d5f870680efde2a74bcae45305e04c5c570bc
+          POST=db84fa7925244cecd33028fb026881bac24683e2
           git fetch --no-tags origin phase0b-perf-base-anchor civic-2.0-phase-0b-inline
           run_bench() {
             label="$1"
