@@ -10,8 +10,9 @@ export type TransitLineOperationsSnapshot = Readonly<{
   boardings: number; completedPassengerWeight: number; fareRevenue: number; delayTicks: number; vehicleTicks: number;
   operatingCost: number; costRecovery: number; reliability: number;
 }>;
-type LineState={fleetLimit:number;nextDispatchTick:number;wasEnabled:boolean;dispatchedRuns:number;missedRuns:number;failedRuns:number;boardings:number;completedPassengerWeight:number;fareRevenue:number;delayTicks:number;vehicleTicks:number;operatingCost:number};
-export type TransitOperationsStateSnapshot = Readonly<{ lines: readonly Readonly<{ lineId:string; fleetLimit:number; nextDispatchTick:number; wasEnabled?:boolean; dispatchedRuns:number; missedRuns:number; failedRuns:number; boardings:number; completedPassengerWeight:number; fareRevenue:number; delayTicks:number; vehicleTicks:number; operatingCost:number }>[] }>;
+type PersistedLineState={fleetLimit:number;nextDispatchTick:number;dispatchedRuns:number;missedRuns:number;failedRuns:number;boardings:number;completedPassengerWeight:number;fareRevenue:number;delayTicks:number;vehicleTicks:number;operatingCost:number};
+type LineState=PersistedLineState&{wasEnabled:boolean};
+export type TransitOperationsStateSnapshot = Readonly<{ lines: readonly Readonly<{ lineId:string } & PersistedLineState>[] }>;
 const COST_PER_TICK:Readonly<Record<TransitMode,number>>=Object.freeze({bus:0.06,brt:0.09,tram:0.12,metro:0.25});
 
 export class TransitOperationsSystem {
@@ -39,8 +40,20 @@ export class TransitOperationsSystem {
   snapshotLine(lineId:string):TransitLineOperationsSnapshot { const s=this.ensure(lineId); const active=0; const costRecovery=s.operatingCost<=0?(s.fareRevenue>0?1:0):s.fareRevenue/s.operatingCost; const reliability=s.vehicleTicks<=0?1:Math.max(0,Math.min(1,1-s.delayTicks/Math.max(1,s.vehicleTicks))); return {lineId,fleetLimit:s.fleetLimit,activeVehicles:active,dispatchedRuns:s.dispatchedRuns,missedRuns:s.missedRuns,failedRuns:s.failedRuns,boardings:s.boardings,completedPassengerWeight:s.completedPassengerWeight,fareRevenue:s.fareRevenue,delayTicks:s.delayTicks,vehicleTicks:s.vehicleTicks,operatingCost:s.operatingCost,costRecovery,reliability}; }
   snapshotLineWithVehicles(lineId:string,vehicles:TransitVehicleSystem):TransitLineOperationsSnapshot { return {...this.snapshotLine(lineId),activeVehicles:vehicles.activeCount(lineId)}; }
   listLineIds(): string[] { return [...this.state.keys()].sort(); }
-  snapshotState(): TransitOperationsStateSnapshot { return Object.freeze({ lines: Object.freeze([...this.state.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([lineId,state])=>Object.freeze({lineId,...state}))) }); }
-  restoreState(snapshot: TransitOperationsStateSnapshot): void { this.state.clear(); for(const line of snapshot.lines){ if(!line.lineId || !Number.isFinite(line.operatingCost) || line.operatingCost<0) throw new Error('invalid transit operations state'); const {lineId,wasEnabled,...state}=line; this.state.set(lineId,{...state,wasEnabled:wasEnabled ?? true}); } }
+  snapshotState(): TransitOperationsStateSnapshot {
+    return Object.freeze({ lines: Object.freeze([...this.state.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([lineId,state])=>{
+      const {wasEnabled: _wasEnabled, ...persisted}=state;
+      return Object.freeze({lineId,...persisted});
+    })) });
+  }
+  restoreState(snapshot: TransitOperationsStateSnapshot): void {
+    this.state.clear();
+    for(const line of snapshot.lines){
+      if(!line.lineId || !Number.isFinite(line.operatingCost) || line.operatingCost<0) throw new Error('invalid transit operations state');
+      const {lineId,...state}=line;
+      this.state.set(lineId,{...state,wasEnabled:true});
+    }
+  }
   private apply(events:readonly TransitVehicleEvent[]):void { for(const e of events){const s=this.ensure(e.lineId);if(e.type==='boarded'){s.boardings+=e.weight??0;s.fareRevenue+=e.fareRevenue??0;}else if(e.type==='passenger_completed')s.completedPassengerWeight+=e.weight??0;else if(e.type==='run_failed'){s.failedRuns++;}} }
   private ensure(id:string):LineState { let s=this.state.get(id); if(!s){s={fleetLimit:2,nextDispatchTick:0,wasEnabled:false,dispatchedRuns:0,missedRuns:0,failedRuns:0,boardings:0,completedPassengerWeight:0,fareRevenue:0,delayTicks:0,vehicleTicks:0,operatingCost:0};this.state.set(id,s);} return s; }
 }
