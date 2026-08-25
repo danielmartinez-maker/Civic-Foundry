@@ -305,7 +305,7 @@ export class DeveloperMarketSystem {
     if (!developer) throw new Error(`unknown developer for commitment: ${commitment.developerId}`);
     developer.availableCapital += commitment.equity * recoveryRatio;
     developer.committedCapital = Math.max(0, developer.committedCapital - commitment.equity);
-    this.commitments.delete(buildingId);
+    this.commitments.delete(commitment.buildingId);
     return true;
   }
 
@@ -318,6 +318,12 @@ export class DeveloperMarketSystem {
   getDeveloperState(id: string): DeveloperState | undefined {
     const state = this.developers.get(id);
     return state ? cloneDeveloper(state) : undefined;
+  }
+
+  commitmentForBuilding(buildingId: string): DeveloperCommitment | undefined {
+    if (typeof buildingId !== 'string' || buildingId.trim().length === 0) throw new Error('buildingId must be non-empty');
+    const commitment = this.commitments.get(buildingId);
+    return commitment ? cloneCommitment(commitment) : undefined;
   }
 
   listCommitments(): DeveloperCommitment[] {
