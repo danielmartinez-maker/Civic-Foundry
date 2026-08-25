@@ -50,7 +50,7 @@ test('legacy city stepping remains valid after personhood authority cutover', ()
   const core = legacyCoreWithPopulation(10);
   core.enablePersonhoodAuthority();
 
-  core.step(1);
+  core.step(50);
 
   assert.equal(core.population.population, 10);
   assert.equal(core.getPersonSnapshot().population, 10);
