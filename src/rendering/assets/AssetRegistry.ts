@@ -1,11 +1,5 @@
 import { validateAssetManifest } from './AssetManifestValidation.ts';
-import type {
-  AssetManifest,
-  AssetManifestEntry,
-  AssetOrientation,
-  AssetQuery,
-  AssetResolution,
-} from './AssetTypes.ts';
+import type { AssetManifest, AssetManifestEntry, AssetOrientation, AssetQuery, AssetResolution } from './AssetTypes.ts';
 import { resolveVariantEntry } from './VariantSelector.ts';
 
 export class AssetRegistry {
@@ -16,6 +10,7 @@ export class AssetRegistry {
   private readonly failedAtlases = new Set<string>();
   private readonly diagnosticSet = new Set<string>();
   private readonly invalidAssetIds = new Set<string>();
+  private readonly queryCache = new Map<string, readonly AssetManifestEntry[]>();
   private readyValue = false;
 
   constructor(private readonly manifest: AssetManifest) {
@@ -45,18 +40,22 @@ export class AssetRegistry {
     await Promise.all([...this.atlasUrls].map(([atlasId, url]) => new Promise<void>((resolve) => {
       const image = new Image();
       image.onload = () => { this.images.set(atlasId, image); resolve(); };
-      image.onerror = () => {
-        this.failedAtlases.add(atlasId);
-        this.diagnosticSet.add(`atlas failed to load: ${atlasId} (${url})`);
-        resolve();
-      };
+      image.onerror = () => { this.failedAtlases.add(atlasId); this.diagnosticSet.add(`atlas failed to load: ${atlasId} (${url})`); resolve(); };
       image.src = url;
     })));
     this.readyValue = true;
   }
 
   query(query: AssetQuery): readonly AssetManifestEntry[] {
-    return this.manifest.entries.filter((entry) => {
+    const key = JSON.stringify({
+      category: query.category ?? null, subcategory: query.subcategory ?? null,
+      zone: query.zone ?? null, intensity: query.intensity ?? null,
+      constructionStage: query.constructionStage ?? null, variantKey: query.variantKey ?? null,
+      orientation: query.orientation ?? null, tags: query.tags ? [...query.tags].sort() : null,
+    });
+    const cached = this.queryCache.get(key);
+    if (cached) return cached;
+    const result = Object.freeze(this.manifest.entries.filter((entry) => {
       if (query.category !== undefined && entry.category !== query.category) return false;
       if (query.subcategory !== undefined && entry.subcategory !== query.subcategory) return false;
       if (query.zone !== undefined && entry.zone !== query.zone) return false;
@@ -66,7 +65,9 @@ export class AssetRegistry {
       if (query.orientation !== undefined && entry.orientation !== query.orientation) return false;
       if (query.tags && !query.tags.every((tag) => entry.tags?.includes(tag))) return false;
       return true;
-    });
+    }));
+    this.queryCache.set(key, result);
+    return result;
   }
 
   resolveAssetId(assetId: string): AssetResolution {
@@ -86,9 +87,7 @@ export class AssetRegistry {
     return this.resolveAssetId(entry.assetId);
   }
 
-  diagnostics(): readonly string[] {
-    return Object.freeze([...this.diagnosticSet].sort());
-  }
+  diagnostics(): readonly string[] { return Object.freeze([...this.diagnosticSet].sort()); }
 
   private fallback(assetId: string, reason: string): AssetResolution {
     this.diagnosticSet.add(`${assetId}: ${reason}`);
