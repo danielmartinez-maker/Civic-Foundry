@@ -11,11 +11,13 @@ test('objects sort by isometric depth then elevation then stable id', () => {
   assert.deepEqual(keys.map((key) => key.stableId), ['z', 'a', 'b']);
 });
 
-test('scene layer order is deterministic before depth', () => {
+test('world compositor keeps analytical overlays above moving vehicles and selection above overlays', () => {
   const keys = [
+    makeDepthKey('selection', 0, 0, 0, 'selection'),
+    makeDepthKey('overlays', 0, 0, 0, 'overlay'),
     makeDepthKey('vehicles', 0, 0, 0, 'vehicle'),
     makeDepthKey('terrain', 20, 20, 0, 'terrain'),
     makeDepthKey('roads', 10, 10, 0, 'road'),
   ].sort(compareDepthKeys);
-  assert.deepEqual(keys.map((key) => key.stableId), ['terrain', 'road', 'vehicle']);
+  assert.deepEqual(keys.map((key) => key.stableId), ['terrain', 'road', 'vehicle', 'overlay', 'selection']);
 });
