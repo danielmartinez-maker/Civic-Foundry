@@ -80,6 +80,9 @@ export function assertEntityIntegrity(registry: EntityRegistry, graph: EntityRef
     return;
   }
 
+  registry.assertPartitionIndexIntegrity();
+  graph.assertPartitionIndexIntegrity();
+
   const active = registry.listActive();
   const activeLegacyKeys = new Set<string>();
 
