@@ -62,6 +62,34 @@ test('same weighted traffic produces more congestion on local roads than arteria
   assert.ok(loaded('local') > loaded('arterial'));
 });
 
+test('traffic entity revision ignores queued or moving motion-state transitions', () => {
+  const terrain = flatTerrain();
+  const treasury = new TreasurySystem(100_000);
+  const roads = new RoadSystem(terrain);
+  roads.placePath([{ x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 }, { x: 6, y: 6 }], 'local', treasury);
+  roads.placePath([{ x: 4, y: 5 }, { x: 4, y: 6 }, { x: 4, y: 7 }], 'local', treasury);
+  const graph = new TransportationGraph();
+  graph.rebuildIfNeeded(roads);
+  const pathfinding = new PathfindingSystem();
+  const intersections = new IntersectionSystem();
+  const traffic = new TrafficSystem();
+  const route = pathfinding.findRoute(graph, graph.findNodeAt(2, 6)!.id, graph.findNodeAt(6, 6)!.id)!;
+  const vehicleId = traffic.submitTrip(trip('revision-status', 1), route, 0)!;
+  const revisionAfterSubmit = traffic.entityRevision;
+
+  for (let tick = 1; tick <= 100; tick++) {
+    traffic.step(graph, intersections, tick);
+    if (traffic.getVehicle(vehicleId)?.status === 'queued') break;
+  }
+
+  assert.equal(traffic.getVehicle(vehicleId)?.status, 'queued');
+  assert.equal(
+    traffic.entityRevision,
+    revisionAfterSubmit,
+    'motion-state changes do not alter projected entity identity or references',
+  );
+});
+
 test('road demolition invalidates a queued vehicle and removes its intersection queue entry', () => {
   const terrain = flatTerrain();
   const treasury = new TreasurySystem(100_000);
@@ -112,7 +140,7 @@ test('accessibility penalizes objectively longer successful trips even without r
   ], 0);
   const fast = analytics.evaluate([], [
     { tripId: 'c-fast', purpose: 'commute', travelerWeight: 10, success: true, freeFlowTicks: 60, actualTravelTicks: 60 },
-    { tripId: 's-fast', purpose: 'shopping', travelerWeight: 5, success: true, freeFlowTicks: 45, actualTravelTicks: 45 },
+    { tripId: 's-fast', purpose: 'shopping', travelerWeight: 5, success: true, freeFlowTicks: 10, actualTravelTicks: 45 },
   ], 0);
   assert.ok(fast.jobAccessibility > slow.jobAccessibility);
   assert.ok(fast.commercialAccessibility > slow.commercialAccessibility);
