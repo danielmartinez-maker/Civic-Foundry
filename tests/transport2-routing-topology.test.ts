@@ -123,3 +123,29 @@ test('legacy traversal ticks reproduce current one-cell free-flow timing', () =>
   assert.ok(arc);
   assert.ok(Math.abs(arc.traversalTicks - (10 / 1.5)) < 1e-9);
 });
+
+test('routing topology indexes segment and lane authority once instead of rescanning per arc', () => {
+  const base = snapshot();
+  const groups = buildLaneGroups(base);
+  const segments = [...base.segments];
+  const lanes = [...base.lanes];
+  let segmentFindCalls = 0;
+  let laneMapCalls = 0;
+  const nativeSegmentFind = segments.find.bind(segments);
+  const nativeLaneMap = lanes.map.bind(lanes);
+
+  segments.find = ((...args: Parameters<typeof segments.find>) => {
+    segmentFindCalls += 1;
+    return nativeSegmentFind(...args);
+  }) as typeof segments.find;
+  lanes.map = ((...args: Parameters<typeof lanes.map>) => {
+    laneMapCalls += 1;
+    return nativeLaneMap(...args);
+  }) as typeof lanes.map;
+
+  const instrumented: TransportNetworkSnapshot = { ...base, segments, lanes };
+  const topology = buildRoutingTopology(instrumented, groups);
+  assert.ok(topology.arcs.length > 1);
+  assert.equal(segmentFindCalls, 0, 'segment lookup must use one prebuilt index, not Array.find per arc');
+  assert.equal(laneMapCalls, 1, 'lane authority must be indexed once, not remapped for every movement');
+});
