@@ -38,19 +38,15 @@ test('entity registry synchronization runs after legacy V7 gameplay each tick', 
   );
 });
 
-test('unchanged entity sync keeps its kernel slot but skips the full compatibility projector', () => {
+test('unchanged entity sync keeps its kernel slot without recommitting derived identity state', () => {
   const core = new SimulationCore({ terrain: flat(), seed: 306 });
-  const internals = core as unknown as { entityProjector: { project: (source: SimulationCore) => unknown } };
-  const originalProject = internals.entityProjector.project.bind(internals.entityProjector);
-  let projectCalls = 0;
-  internals.entityProjector.project = (source: SimulationCore) => {
-    projectCalls++;
-    return originalProject(source);
-  };
+  const registryRevision = core.entityRegistry.commitRevision;
+  const graphRevision = core.entityReferences.commitRevision;
 
   core.step(1);
 
-  assert.equal(projectCalls, 0, 'unchanged tick should take the revision-gated entity sync fast path');
+  assert.equal(core.entityRegistry.commitRevision, registryRevision);
+  assert.equal(core.entityReferences.commitRevision, graphRevision);
   assert.deepEqual(
     core.kernel.scheduler.dueSystems(1).map((system) => system.id),
     ['legacy-v7-city', 'entity-registry-sync'],
