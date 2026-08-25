@@ -17,6 +17,7 @@ import { SelectionRenderPass } from './passes/SelectionRenderPass.ts';
 
 export type CanvasPoint = Readonly<{ x: number; y: number }>;
 export type CellSelection = Readonly<{ x: number; y: number }> | null;
+type RendererWorldSize = Readonly<{ width: number; height: number }>;
 
 // Presentation-only facade: authoritative state remains entirely inside SimulationCore.
 export class WorldRenderer {
@@ -33,6 +34,7 @@ export class WorldRenderer {
   private readonly transitVehicles = new TransitVehicleRenderer(this.assets);
   private readonly freightVehicles = new FreightVehicleRenderer(this.assets);
   private dpr = 1;
+  private lastWorldSize: RendererWorldSize | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -61,7 +63,15 @@ export class WorldRenderer {
 
   pan(dx: number, dy: number): void { this.camera.pan(dx, dy); }
   zoomBy(factor: number, anchorX: number, anchorY: number): void { this.camera.zoomBy(factor, anchorX, anchorY); }
-  rotate(direction: -1 | 1): void { this.camera.rotate(direction); }
+  rotate(direction: -1 | 1): void {
+    const size = this.lastWorldSize;
+    const rect = this.canvas.getBoundingClientRect();
+    if (size && rect.width > 0 && rect.height > 0) {
+      this.camera.rotateAroundCanvasPoint(direction, size, { x: rect.width / 2, y: rect.height / 2 });
+      return;
+    }
+    this.camera.rotate(direction);
+  }
 
   worldToCanvas(x: number, y: number, core: SimulationCore): CanvasPoint {
     return this.camera.worldToCanvas(x, y, this.worldSize(core));
@@ -110,7 +120,9 @@ export class WorldRenderer {
     this.selection.draw(this.ctx, core, this.camera, selected, previewPath);
   }
 
-  private worldSize(core: SimulationCore): Readonly<{ width: number; height: number }> {
-    return { width: core.terrain.width, height: core.terrain.height };
+  private worldSize(core: SimulationCore): RendererWorldSize {
+    const size = { width: core.terrain.width, height: core.terrain.height };
+    this.lastWorldSize = size;
+    return size;
   }
 }
