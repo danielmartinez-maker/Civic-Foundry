@@ -23,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           ANCHOR=b063ef10211ea35780c13a08b7f33eec6bc3b1c4
-          POST=db84fa7925244cecd33028fb026881bac24683e2
+          POST=e0fb9af9512e24106fa30be3a4b00a4ac9d82f1a
           git fetch --no-tags origin phase0b-perf-base-anchor civic-2.0-phase-0b-inline
           run_bench() {
             label="$1"
