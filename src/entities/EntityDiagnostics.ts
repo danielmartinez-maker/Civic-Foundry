@@ -71,6 +71,14 @@ export function buildEntityDiagnostics(
   });
 }
 
+export function markEntityIntegrityValidated(registry: EntityRegistry, graph: EntityReferenceGraph): void {
+  integrityCache.set(registry, Object.freeze({
+    graph,
+    registryRevision: registry.commitRevision,
+    graphRevision: graph.commitRevision,
+  }));
+}
+
 export function assertEntityIntegrity(registry: EntityRegistry, graph: EntityReferenceGraph): void {
   const cached = integrityCache.get(registry);
   if (cached
@@ -113,9 +121,5 @@ export function assertEntityIntegrity(registry: EntityRegistry, graph: EntityRef
     }
   }
 
-  integrityCache.set(registry, Object.freeze({
-    graph,
-    registryRevision: registry.commitRevision,
-    graphRevision: graph.commitRevision,
-  }));
+  markEntityIntegrityValidated(registry, graph);
 }
