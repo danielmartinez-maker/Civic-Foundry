@@ -1,3 +1,5 @@
+import type { PolygonRing } from '../../world/cadastre/Geometry.ts';
+
 export type UseType =
   | 'residential'
   | 'retail'
@@ -56,6 +58,7 @@ export type ParcelZoningAssignment = Readonly<{
 
 export type ZoningConstraintCode =
   | 'use'
+  | 'footprint'
   | 'far'
   | 'height'
   | 'stories'
@@ -72,4 +75,35 @@ export type ZoningConstraint = Readonly<{
   limit: number | string;
   actual?: number | string;
   sourceId?: string;
+}>;
+
+export type ParcelDevelopmentEnvelope = Readonly<{
+  parcelId: string;
+  districtId: string;
+  buildableFootprint: PolygonRing;
+  parcelAreaM2: number;
+  frontageMeters: number;
+  maxFootprintAreaM2: number;
+  maxGrossFloorAreaM2: number;
+  maxHeightMeters: number;
+  maxStories: number;
+  allowedFAR: number;
+  effectiveFAR: number;
+  effectiveCoverageRatio: number;
+  permittedUses: readonly UseType[];
+  limitingConstraints: readonly ZoningConstraint[];
+}>;
+
+export type ZoningCandidate = Readonly<{
+  footprint: PolygonRing;
+  realizedFAR: number;
+  coverageRatio: number;
+  heightMeters: number;
+  stories: number;
+  uses: readonly UseType[];
+}>;
+
+export type ZoningComplianceResult = Readonly<{
+  legal: boolean;
+  violations: readonly ZoningConstraint[];
 }>;
