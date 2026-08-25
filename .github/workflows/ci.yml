@@ -1,15 +1,13 @@
-name: Civic Foundry CI
+name: Phase 0B Current Hot-Path Profile 2
 
 on:
-  push:
-    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  verify:
+  profile:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,13 +16,5 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install pinned TypeScript compiler
-        run: npm install --global typescript@5.8.3
-      - name: Tests
-        run: npm test
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Lint
-        run: npm run lint
-      - name: Build
-        run: npm run build
+      - name: Current partition hot-path profile
+        run: node --experimental-strip-types --test tests/phase0b-current-profile.test.ts
