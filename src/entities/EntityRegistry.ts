@@ -447,8 +447,10 @@ export class EntityRegistry implements KnownEntityView {
         record = recordFrom(entity, generation);
         highestUpdates.set(legacyKey, generation);
       }
-      activeUpdates.set(legacyKey, record);
-      if (record !== current) knownUpdates.set(canonicalHandleKey(record.handle), record);
+      if (record !== current) {
+        activeUpdates.set(legacyKey, record);
+        knownUpdates.set(canonicalHandleKey(record.handle), record);
+      }
     }
 
     return Object.freeze({
