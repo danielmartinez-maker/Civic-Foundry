@@ -85,3 +85,29 @@ test('diagnostic output is stable regardless of unresolved input order', () => {
     buildEntityDiagnostics(registry, graph, [...unresolved].reverse()),
   );
 });
+
+class ValuesCountingMap<K, V> extends Map<K, V> {
+  valuesCalls = 0;
+
+  override values() {
+    this.valuesCalls += 1;
+    return super.values();
+  }
+}
+
+test('per-tick integrity assertion validates active state without scanning all historical records', () => {
+  const registry = new EntityRegistry();
+  const graph = new EntityReferenceGraph();
+  for (let generation = 1; generation <= 100; generation++) {
+    commitEntityProjection(registry, graph, new EntityProjectionBuilder()
+      .entity({ kind: 'building', legacyId: 'b1', incarnationToken: `generation:${generation}` })
+      .build());
+  }
+
+  const internals = registry as unknown as { knownByHandleKey: Map<string, unknown> };
+  const counted = new ValuesCountingMap(internals.knownByHandleKey);
+  internals.knownByHandleKey = counted;
+
+  assert.doesNotThrow(() => assertEntityIntegrity(registry, graph));
+  assert.equal(counted.valuesCalls, 0, 'integrity checks must not snapshot the full historical registry each tick');
+});
