@@ -106,7 +106,11 @@ function wearForBoundary(state: UrbanBuildingState, context: UrbanConditionBuild
 }
 
 export class UrbanConditionSystem {
-  constructor(private readonly domain: UrbanFabricDomain) {}
+  private readonly domain: UrbanFabricDomain;
+
+  constructor(domain: UrbanFabricDomain) {
+    this.domain = domain;
+  }
 
   updateThroughTick(targetTick: number, context: UrbanConditionUpdateContext): void {
     if (!Number.isInteger(targetTick) || targetTick < 0) throw new Error('targetTick must be a non-negative integer');
