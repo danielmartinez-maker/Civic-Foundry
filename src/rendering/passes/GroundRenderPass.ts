@@ -41,7 +41,7 @@ export class GroundRenderPass {
       if (!isProjectedDiamondVisible(center, camera.tileWidth, camera.tileHeight, viewport)) continue;
       const mask = rotateRoadMask(roadConnectivityMask(road.x, road.y, lookup), camera.quarterTurns);
       const assetId = `road_${road.type}_mask_${mask.toString().padStart(2, '0')}`;
-      this.painter.draw(ctx, this.assets.resolveAssetId(assetId), center, sourceScale, { footprintWidth: 1, footprintHeight: 1, label: road.type[0] });
+      this.painter.draw(ctx, this.assets.resolveAssetId(assetId), center, sourceScale, { footprintWidth: 1, footprintHeight: 1, label: road.type.charAt(0) });
     }
 
     if (camera.zoom >= 1.6) {
