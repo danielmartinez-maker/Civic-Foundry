@@ -67,6 +67,14 @@ function compareReference(a: EntityReference, b: EntityReference): number {
     || ordinalCompare(canonicalHandleKey(a.target), canonicalHandleKey(b.target));
 }
 
+function referencesEqual(a: readonly EntityReference[], b: readonly EntityReference[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (canonicalReferenceKey(a[i]!) !== canonicalReferenceKey(b[i]!)) return false;
+  }
+  return true;
+}
+
 function normalizeKinds(ownedKinds: readonly EntityKind[]): readonly EntityKind[] {
   if (ownedKinds.length === 0) throw new Error('reference partition must own at least one source kind');
   const normalized = [...ownedKinds].sort(ordinalCompare);
@@ -132,6 +140,7 @@ function groupBySource(references: readonly EntityReference[]): Map<string, read
 export class EntityReferenceGraph {
   private referencesBySourceKey = new Map<string, readonly EntityReference[]>();
   private sourceKeysByKind = new Map<EntityKind, Set<string>>();
+  private sourceKeysByTargetKey = new Map<string, Set<string>>();
   private referenceCount = 0;
   private flattenedCache: readonly EntityReference[] | undefined;
   private revision = 0;
@@ -142,6 +151,27 @@ export class EntityReferenceGraph {
 
   get count(): number {
     return this.referenceCount;
+  }
+
+  private removeTargetIndex(sourceKey: string, bucket: readonly EntityReference[]): void {
+    for (const reference of bucket) {
+      const targetKey = canonicalHandleKey(reference.target);
+      const sourceKeys = this.sourceKeysByTargetKey.get(targetKey);
+      sourceKeys?.delete(sourceKey);
+      if (sourceKeys?.size === 0) this.sourceKeysByTargetKey.delete(targetKey);
+    }
+  }
+
+  private addTargetIndex(sourceKey: string, bucket: readonly EntityReference[]): void {
+    for (const reference of bucket) {
+      const targetKey = canonicalHandleKey(reference.target);
+      let sourceKeys = this.sourceKeysByTargetKey.get(targetKey);
+      if (!sourceKeys) {
+        sourceKeys = new Set<string>();
+        this.sourceKeysByTargetKey.set(targetKey, sourceKeys);
+      }
+      sourceKeys.add(sourceKey);
+    }
   }
 
   prepare(references: readonly EntityReference[], view: KnownEntityView): PreparedReferenceGraph {
@@ -156,14 +186,19 @@ export class EntityReferenceGraph {
     const normalizedKinds = normalizeKinds(ownedSourceKinds);
     const kindSet = new Set<EntityKind>(normalizedKinds);
     const normalizedReferences = normalizeAndValidateReferences(references, view, kindSet);
-    const replacementsBySourceKey = groupBySource(normalizedReferences);
+    const incomingBySourceKey = groupBySource(normalizedReferences);
+    const replacementsBySourceKey = new Map<string, readonly EntityReference[]>();
+    for (const [sourceKey, bucket] of incomingBySourceKey) {
+      const current = this.referencesBySourceKey.get(sourceKey);
+      if (!current || !referencesEqual(current, bucket)) replacementsBySourceKey.set(sourceKey, bucket);
+    }
 
     const existingSourceKeys: string[] = [];
     for (const kind of normalizedKinds) {
       for (const sourceKey of this.sourceKeysByKind.get(kind) ?? []) existingSourceKeys.push(sourceKey);
     }
     existingSourceKeys.sort(ordinalCompare);
-    const removedSourceKeys = existingSourceKeys.filter((sourceKey) => !replacementsBySourceKey.has(sourceKey));
+    const removedSourceKeys = existingSourceKeys.filter((sourceKey) => !incomingBySourceKey.has(sourceKey));
 
     return Object.freeze({
       ownedSourceKinds: normalizedKinds,
@@ -176,18 +211,30 @@ export class EntityReferenceGraph {
   commitPrepared(prepared: PreparedReferenceGraph): void {
     const nextBySource = groupBySource(prepared.references);
     const nextKindIndex = new Map<EntityKind, Set<string>>();
+    const nextTargetIndex = new Map<string, Set<string>>();
     for (const [sourceKey, bucket] of nextBySource) {
       const kind = bucket[0]?.source.kind;
-      if (!kind) continue;
-      let sourceKeys = nextKindIndex.get(kind);
-      if (!sourceKeys) {
-        sourceKeys = new Set<string>();
-        nextKindIndex.set(kind, sourceKeys);
+      if (kind) {
+        let sourceKeys = nextKindIndex.get(kind);
+        if (!sourceKeys) {
+          sourceKeys = new Set<string>();
+          nextKindIndex.set(kind, sourceKeys);
+        }
+        sourceKeys.add(sourceKey);
       }
-      sourceKeys.add(sourceKey);
+      for (const reference of bucket) {
+        const targetKey = canonicalHandleKey(reference.target);
+        let sourceKeys = nextTargetIndex.get(targetKey);
+        if (!sourceKeys) {
+          sourceKeys = new Set<string>();
+          nextTargetIndex.set(targetKey, sourceKeys);
+        }
+        sourceKeys.add(sourceKey);
+      }
     }
     this.referencesBySourceKey = nextBySource;
     this.sourceKeysByKind = nextKindIndex;
+    this.sourceKeysByTargetKey = nextTargetIndex;
     this.referenceCount = prepared.references.length;
     this.flattenedCache = undefined;
     this.revision++;
@@ -206,6 +253,7 @@ export class EntityReferenceGraph {
       for (const sourceKey of prepared.removedSourceKeys) {
         const existing = this.referencesBySourceKey.get(sourceKey);
         if (!existing) continue;
+        this.removeTargetIndex(sourceKey, existing);
         this.referencesBySourceKey.delete(sourceKey);
         this.referenceCount -= existing.length;
         const kind = existing[0]?.source.kind;
@@ -215,6 +263,7 @@ export class EntityReferenceGraph {
       for (const [sourceKey, bucket] of prepared.replacementsBySourceKey) {
         const existing = this.referencesBySourceKey.get(sourceKey);
         if (existing) {
+          this.removeTargetIndex(sourceKey, existing);
           this.referenceCount -= existing.length;
           const existingKind = existing[0]?.source.kind;
           if (existingKind && existingKind !== bucket[0]?.source.kind) {
@@ -223,6 +272,7 @@ export class EntityReferenceGraph {
         }
         const frozenBucket = Object.freeze(bucket.map(cloneReference).sort(compareReference));
         this.referencesBySourceKey.set(sourceKey, frozenBucket);
+        this.addTargetIndex(sourceKey, frozenBucket);
         this.referenceCount += frozenBucket.length;
         const kind = frozenBucket[0]?.source.kind;
         if (kind) {
@@ -274,11 +324,24 @@ export class EntityReferenceGraph {
         if (canonicalHandleKey(reference.source) !== sourceKey) {
           throw new Error(`reference source bucket contains mismatched source: ${sourceKey}`);
         }
+        const targetKey = canonicalHandleKey(reference.target);
+        if (!this.sourceKeysByTargetKey.get(targetKey)?.has(sourceKey)) {
+          throw new Error(`reference target index missing source ${sourceKey} for target ${targetKey}`);
+        }
       }
       countedReferences += bucket.length;
     }
     if (countedReferences !== this.referenceCount) {
       throw new Error(`reference source-kind index count mismatch: expected ${this.referenceCount}, found ${countedReferences}`);
+    }
+
+    for (const [targetKey, sourceKeys] of [...this.sourceKeysByTargetKey.entries()].sort(([a], [b]) => ordinalCompare(a, b))) {
+      for (const sourceKey of [...sourceKeys].sort(ordinalCompare)) {
+        const bucket = this.referencesBySourceKey.get(sourceKey);
+        if (!bucket?.some((reference) => canonicalHandleKey(reference.target) === targetKey)) {
+          throw new Error(`reference target index ${targetKey} contains stale source ${sourceKey}`);
+        }
+      }
     }
   }
 
@@ -289,9 +352,11 @@ export class EntityReferenceGraph {
 
   incoming(target: EntityHandle): readonly EntityReference[] {
     const targetKey = canonicalHandleKey(target);
-    return Object.freeze(this.list()
-      .filter((reference) => canonicalHandleKey(reference.target) === targetKey)
-      .map(cloneReference));
+    const sourceKeys = [...(this.sourceKeysByTargetKey.get(targetKey) ?? [])].sort(ordinalCompare);
+    const references = sourceKeys.flatMap((sourceKey) =>
+      (this.referencesBySourceKey.get(sourceKey) ?? [])
+        .filter((reference) => canonicalHandleKey(reference.target) === targetKey));
+    return Object.freeze(references.map(cloneReference).sort(compareReference));
   }
 
   list(): readonly EntityReference[] {
