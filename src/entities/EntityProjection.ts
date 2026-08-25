@@ -46,7 +46,18 @@ type ProjectionCommitCache = Readonly<{
   result: EntityProjectionCommitResult;
 }>;
 
+type PartitionProjectionCommitCache = Readonly<{
+  graph: EntityReferenceGraph;
+  manifestSignature: string;
+  revisionByPartitionId: ReadonlyMap<string, string>;
+  unresolvedByPartitionId: ReadonlyMap<string, readonly UnresolvedEntityReference[]>;
+  registryRevision: number;
+  graphRevision: number;
+  result: EntityProjectionCommitResult;
+}>;
+
 const projectionCommitCache = new WeakMap<EntityRegistry, ProjectionCommitCache>();
+const partitionProjectionCommitCache = new WeakMap<EntityRegistry, PartitionProjectionCommitCache>();
 
 function cloneEntity(entity: ProjectedEntity): ProjectedEntity {
   const metadata = entity.metadata === undefined ? undefined : Object.freeze({ ...entity.metadata });
@@ -91,6 +102,10 @@ function compareUnresolved(a: UnresolvedEntityReference, b: UnresolvedEntityRefe
     || ordinalCompare(a.semantics, b.semantics)
     || ordinalCompare(canonicalLegacyKey(a.target), canonicalLegacyKey(b.target))
     || ordinalCompare(a.reason, b.reason);
+}
+
+function encodePart(value: string): string {
+  return `${value.length}:${value}`;
 }
 
 export class EntityProjectionBuilder {
@@ -227,6 +242,23 @@ function validatePartitions(partitions: readonly EntityProjectionPartition[]): r
   return Object.freeze(normalized);
 }
 
+function partitionManifestSignature(partitions: readonly EntityProjectionPartition[]): string {
+  return partitions.map((partition) => {
+    const kinds = [...partition.ownedKinds].sort(ordinalCompare).map(encodePart).join('');
+    return `${encodePart(partition.id)}|${encodePart(kinds)}`;
+  }).join('|');
+}
+
+function copyUnresolvedByPartition(
+  source: ReadonlyMap<string, readonly UnresolvedEntityReference[]> | undefined,
+): Map<string, readonly UnresolvedEntityReference[]> {
+  const result = new Map<string, readonly UnresolvedEntityReference[]>();
+  for (const [id, unresolved] of source ?? []) {
+    result.set(id, Object.freeze(unresolved.map(cloneUnresolved).sort(compareUnresolved)));
+  }
+  return result;
+}
+
 export function commitEntityProjection(
   registry: EntityRegistry,
   graph: EntityReferenceGraph,
@@ -270,24 +302,64 @@ export function commitEntityProjectionPartitions(
   partitions: readonly EntityProjectionPartition[],
 ): EntityProjectionCommitResult {
   const normalized = validatePartitions(partitions);
-  const preparedRegistryPartitions: PreparedEntityPartitionProjection[] = normalized.map((partition) =>
+  const manifestSignature = partitionManifestSignature(normalized);
+  const cached = partitionProjectionCommitCache.get(registry);
+  const revisionsMatch = cached !== undefined
+    && cached.graph === graph
+    && cached.registryRevision === registry.commitRevision
+    && cached.graphRevision === graph.commitRevision;
+
+  if (revisionsMatch && cached.manifestSignature !== manifestSignature) {
+    throw new Error('entity projection partition manifest changed for committed registry');
+  }
+
+  const cacheUsable = revisionsMatch && cached.manifestSignature === manifestSignature;
+  const changedPartitions = cacheUsable
+    ? normalized.filter((partition) => cached.revisionByPartitionId.get(partition.id) !== partition.revisionKey)
+    : normalized;
+
+  if (cacheUsable && changedPartitions.length === 0) return cached.result;
+
+  const preparedRegistryPartitions: PreparedEntityPartitionProjection[] = changedPartitions.map((partition) =>
     registry.preparePartitionProjection(partition.ownedKinds, partition.projection.entities));
   const view = preparedEntityPartitionView(registry, preparedRegistryPartitions);
 
   const preparedGraphPartitions: PreparedReferencePartition[] = [];
-  const unresolved: UnresolvedEntityReference[] = [];
-  for (const partition of normalized) {
+  const unresolvedByPartitionId = copyUnresolvedByPartition(cacheUsable ? cached.unresolvedByPartitionId : undefined);
+  for (const partition of changedPartitions) {
     const resolved = resolveReferences(partition.projection, view);
     preparedGraphPartitions.push(graph.preparePartition(partition.ownedKinds, resolved.resolved, view));
-    unresolved.push(...resolved.unresolved.map(cloneUnresolved));
+    unresolvedByPartitionId.set(
+      partition.id,
+      Object.freeze(resolved.unresolved.map(cloneUnresolved).sort(compareUnresolved)),
+    );
   }
 
   registry.commitPreparedPartitions(preparedRegistryPartitions);
   graph.commitPreparedPartitions(preparedGraphPartitions);
 
-  return Object.freeze({
+  const unresolved = Object.freeze(
+    normalized
+      .flatMap((partition) => unresolvedByPartitionId.get(partition.id) ?? [])
+      .map(cloneUnresolved)
+      .sort(compareUnresolved),
+  );
+  const result = Object.freeze({
     activeEntities: registry.activeCount,
     references: graph.count,
-    unresolved: Object.freeze(unresolved.sort(compareUnresolved)),
+    unresolved,
   });
+  const revisionByPartitionId = new Map<string, string>();
+  for (const partition of normalized) revisionByPartitionId.set(partition.id, partition.revisionKey);
+
+  partitionProjectionCommitCache.set(registry, Object.freeze({
+    graph,
+    manifestSignature,
+    revisionByPartitionId,
+    unresolvedByPartitionId,
+    registryRevision: registry.commitRevision,
+    graphRevision: graph.commitRevision,
+    result,
+  }));
+  return result;
 }
