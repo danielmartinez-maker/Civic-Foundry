@@ -62,14 +62,15 @@ test('V7 developer snapshots strip B1 semantic commitment fields while live comm
   assert.equal(live.parkingSpaces, 6);
   assert.equal(live.useMixKey, semanticOpportunity.useMixKey);
 
-  const persisted = market.snapshotState().commitments[0]! as unknown as Record<string, unknown>;
-  assert.equal('qualityTier' in persisted, false);
-  assert.equal('parkingProfile' in persisted, false);
-  assert.equal('parkingSpaces' in persisted, false);
-  assert.equal('useMixKey' in persisted, false);
+  const snapshot = market.snapshotState();
+  const persisted = snapshot.commitments[0]!;
+  assert.deepEqual(Object.keys(persisted).sort(), [
+    'awardId', 'awardTick', 'buildingId', 'completionTick', 'definitionId',
+    'developerId', 'equity', 'expectedReturn', 'lotId', 'releaseTick',
+  ].sort());
 
   const restored = new DeveloperMarketSystem({ developers: [developer] });
-  restored.restoreState(market.snapshotState());
+  restored.restoreState(snapshot);
   const restoredLive = restored.listCommitments()[0]!;
   assert.equal(restoredLive.qualityTier, 'standard');
   assert.equal(restoredLive.parkingProfile, 'legacy-none');
