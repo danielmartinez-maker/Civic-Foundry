@@ -9,7 +9,7 @@
     "lint": "node scripts/lint.mjs",
     "assets:check": "python tools/render_isometric_atlases.py --check",
     "assets:build": "python tools/render_isometric_atlases.py",
-    "build": "rm -rf dist && tsc -p tsconfig.json && cp index.html dist/index.html && cp src/styles.css dist/styles.css && python tools/render_isometric_atlases.py",
+    "build": "rm -rf dist && tsc -p tsconfig.json && cp index.html dist/index.html && cp src/styles.css dist/styles.css && mkdir -p dist/vendor && cp node_modules/clipper2-ts/dist/clipper2.min.mjs dist/vendor/clipper2.min.mjs && python tools/render_isometric_atlases.py",
     "dev": "python -m http.server 5173 -d dist",
     "test:smoke": "python tests/smoke/phase6_smoke.py",
     "test:smoke:phase7": "python tests/smoke/phase7_land_housing_smoke.py",
