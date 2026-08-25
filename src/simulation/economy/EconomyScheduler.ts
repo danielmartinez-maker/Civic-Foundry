@@ -1,5 +1,6 @@
 import { ARCHETYPES, ECONOMY_CADENCE, ECONOMY_PRICES, type Commodity } from '../../data/economy.ts';
 import type { Building } from '../buildings/BuildingSystem.ts';
+import type { UrbanBusinessSite } from '../urban/UrbanBuildingView.ts';
 import type { EmploymentSnapshot } from '../employment/EmploymentSystem.ts';
 import { EmploymentSystem } from '../employment/EmploymentSystem.ts';
 import type { PathfindingSystem, RouteResult } from '../traffic/PathfindingSystem.ts';
@@ -25,7 +26,7 @@ export type EconomySchedulerStateSnapshot=Readonly<{
   nextShipmentId:number;lastGraphRevision:number;financials:readonly Readonly<{firmId:string;values:FirmCycleFinancials}>[];businessFormations:number;businessClosures:number;industrialOutput:number;wholesaleThroughput:number;retailSales:number;freightDelayTotal:number;freightDeliveries:number;logisticsCostTotal:number;logisticsShipments:number;employment:EmploymentSnapshot;
 }>;
 export type EconomyTickInputs=Readonly<{
-  tick:number;buildings?:readonly Building[];population:number;graph:TransportationGraph;pathfinding:PathfindingSystem;roadTravelTime:(edge:TransportationEdge)=>number;
+  tick:number;buildings?:readonly Building[];businessSites?:readonly UrbanBusinessSite[];population:number;graph:TransportationGraph;pathfinding:PathfindingSystem;roadTravelTime:(edge:TransportationEdge)=>number;
   utilityRatio:number;serviceRatio:number;personAccessibility:number;localDemand:number;width:number;height:number;taxRate:number;
 }>;
 
@@ -35,7 +36,7 @@ const CARDINAL=[[0,-1],[1,0],[0,1],[-1,0]] as const;
 
 export class EconomyScheduler{
   readonly firms:FirmSystem; readonly labor=new LaborMarketSystem(); readonly inventories=new InventorySystem(); readonly production=new ProductionSystem(); readonly trade=new TradeSystem(); readonly freightDemand=new FreightDemandSystem(); readonly freightVehicles=new FreightVehicleSystem(); readonly lifecycle=new BusinessLifecycleSystem();
-  private readonly employmentSystem=new EmploymentSystem(); private cachedBuildings=new Map<string,Building>(); private lastGraphRevision=-1; private nextShipmentId=1;
+  private readonly employmentSystem=new EmploymentSystem(); private cachedBuildings=new Map<string,Building>(); private cachedBusinessSites=new Map<string,UrbanBusinessSite>(); private lastGraphRevision=-1; private nextShipmentId=1;
   private financials=new Map<string,MutableFinancials>();
   private industrialOutput=0; private wholesaleThroughput=0; private retailSales=0; private freightDelayTotal=0; private freightDeliveries=0; private logisticsCostTotal=0; private logisticsShipments=0; private businessFormations=0; private businessClosures=0;
   private employment:EmploymentSnapshot;
@@ -44,7 +45,7 @@ export class EconomyScheduler{
   tick(input:EconomyTickInputs):EconomyDomainSnapshot{
     if(input.graph.revision!==this.lastGraphRevision){this.trade.rebuildGateways(input.graph,input.width,input.height);this.lastGraphRevision=input.graph.revision;}
     const events=this.freightVehicles.step(input.graph,input.roadTravelTime,input.tick);this.applyFreightEvents(events);
-    if(input.tick%ECONOMY_CADENCE.lifecycle===0&&input.buildings){this.cachedBuildings=new Map(input.buildings.map(b=>[b.id,{...b}]));this.firms.syncEligibleBuildings(input.buildings,input.tick);this.runLifecycle(input);}
+    if(input.tick%ECONOMY_CADENCE.lifecycle===0&&(input.businessSites||input.buildings)){if(input.businessSites){this.cachedBusinessSites=new Map(input.businessSites.map(site=>[site.buildingId,{...site}]));this.firms.syncEligibleSites(input.businessSites,input.tick);}else if(input.buildings){this.cachedBuildings=new Map(input.buildings.map(b=>[b.id,{...b}]));this.firms.syncEligibleBuildings(input.buildings,input.tick);}this.runLifecycle(input);}
     if(input.tick%ECONOMY_CADENCE.production===0){this.allocateLabor(input);this.runProduction(input);}
     if(input.tick%ECONOMY_CADENCE.replenishment===0){this.freightDemand.createReplenishmentOrders(this.firms.list(),this.inventories,input.tick);this.createExportOrders(input);this.dispatchWaitingOrders(input);}
     return this.snapshot(input.tick);
@@ -64,6 +65,7 @@ export class EconomyScheduler{
   snapshotState():EconomySchedulerStateSnapshot{return{firms:this.firms.snapshotState(),inventories:this.inventories.snapshotState(),trade:this.trade.snapshotState(),orders:this.freightDemand.snapshotState(),freightVehicles:this.freightVehicles.snapshotState(),nextShipmentId:this.nextShipmentId,lastGraphRevision:this.lastGraphRevision,financials:[...this.financials.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([firmId,values])=>({firmId,values:{...values}})),businessFormations:this.businessFormations,businessClosures:this.businessClosures,industrialOutput:this.industrialOutput,wholesaleThroughput:this.wholesaleThroughput,retailSales:this.retailSales,freightDelayTotal:this.freightDelayTotal,freightDeliveries:this.freightDeliveries,logisticsCostTotal:this.logisticsCostTotal,logisticsShipments:this.logisticsShipments,employment:{...this.employment}};}
   restoreState(state:EconomySchedulerStateSnapshot):void{this.firms.restoreState(state.firms);this.inventories.restoreState(state.inventories);this.trade.restoreState(state.trade);this.freightDemand.restoreState(state.orders);this.freightVehicles.restoreState(state.freightVehicles);this.nextShipmentId=state.nextShipmentId;this.lastGraphRevision=state.lastGraphRevision;this.financials=new Map(state.financials.map(item=>[item.firmId,{...item.values}]));this.businessFormations=state.businessFormations;this.businessClosures=state.businessClosures;this.industrialOutput=state.industrialOutput;this.wholesaleThroughput=state.wholesaleThroughput;this.retailSales=state.retailSales;this.freightDelayTotal=state.freightDelayTotal;this.freightDeliveries=state.freightDeliveries;this.logisticsCostTotal=state.logisticsCostTotal;this.logisticsShipments=state.logisticsShipments;this.employment={...state.employment};}
   restoreDerivedContext(buildings:readonly Building[]):void{this.cachedBuildings=new Map(buildings.map(building=>[building.id,{...building}]));}
+  restoreSemanticDerivedContext(sites:readonly UrbanBusinessSite[]):void{this.cachedBusinessSites=new Map(sites.map(site=>[site.buildingId,{...site}]));}
 
   private runLifecycle(input:EconomyTickInputs):void{
     const gateways=this.trade.listGateways();
@@ -117,7 +119,7 @@ export class EconomyScheduler{
   private candidates(order:FreightOrder):FreightCandidate[]{if(order.destinationKind==='gateway'&&order.originFirmId){const inv=this.inventories.get(order.originFirmId,order.commodity);return[{kind:'firm',id:order.originFirmId,available:inv.onHand}];}const result:FreightCandidate[]=[];if(order.commodity!=='industrial_inputs'){for(const firm of this.firms.list().filter(f=>f.status==='operating'||f.status==='distressed')){if(firm.id===order.destinationId)continue;const available=this.inventories.get(firm.id,order.commodity).onHand;if(available>=order.quantity)result.push({kind:'firm',id:firm.id,available});}}for(const gateway of this.trade.listGateways())result.push({kind:'gateway',id:gateway.id,available:Infinity});return result;}
   private destinationNodes(order:FreightOrder,graph:TransportationGraph):string[]{if(order.destinationKind==='gateway'){const node=this.trade.getGateway(order.destinationId)?.nodeId;return node?[node]:[];}return this.accessNodesForFirm(this.firms.get(order.destinationId),graph);}
   private candidateNodes(id:string,kind:'firm'|'gateway',graph:TransportationGraph):string[]{if(kind==='gateway'){const node=this.trade.getGateway(id)?.nodeId;return node?[node]:[];}return this.accessNodesForFirm(this.firms.get(id),graph);}
-  private accessNodesForFirm(firm:Firm|undefined,graph:TransportationGraph):string[]{if(!firm)return[];const building=this.cachedBuildings.get(firm.buildingId);if(!building)return[];return CARDINAL.map(([dx,dy])=>graph.findNodeAt(building.x+dx,building.y+dy)?.id).filter((id):id is string=>id!==undefined).sort();}
+  private accessNodesForFirm(firm:Firm|undefined,graph:TransportationGraph):string[]{if(!firm)return[];const site=this.cachedBusinessSites.get(firm.buildingId);const building=site??this.cachedBuildings.get(firm.buildingId);if(!building)return[];return CARDINAL.map(([dx,dy])=>graph.findNodeAt(building.x+dx,building.y+dy)?.id).filter((id):id is string=>id!==undefined).sort();}
   private bestCandidateRoute(candidate:FreightCandidate,destinationNodes:readonly string[],input:EconomyTickInputs):RoutedCandidate|null{const origins=this.candidateNodes(candidate.id,candidate.kind,input.graph);let best:RoutedCandidate|null=null;for(const originNode of origins){for(const destinationNode of destinationNodes){const route=input.pathfinding.findRoute(input.graph,originNode,destinationNode,{edgeCost:input.roadTravelTime,costKey:`freight:${Math.floor(input.tick/10)}`});if(!route)continue;if(!best||route.totalCost<best.route.totalCost-1e-9||(Math.abs(route.totalCost-best.route.totalCost)<=1e-9&&`${originNode}|${destinationNode}`.localeCompare(`${best.originNode}|${best.destinationNode}`)<0))best={originNode,destinationNode,route};}}return best;}
   private routeCost(route:RouteResult,input:EconomyTickInputs):number{return route.edgeIds.reduce((s,id)=>{const edge=input.graph.getEdge(id);return s+(edge?input.roadTravelTime(edge):0);},0);}
 }
