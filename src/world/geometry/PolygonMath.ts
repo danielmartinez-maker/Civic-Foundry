@@ -1,4 +1,4 @@
-import type { BoundingBox2, Point2, Polygon2, Segment2 } from './GeometryTypes.ts';
+import type { BoundingBox2, Point2, Polygon2, Polyline2, Segment2 } from './GeometryTypes.ts';
 import { GEOMETRY_EPSILON, pointsNearlyEqual } from './GeometryTolerance.ts';
 import { pointOnSegment, segmentsIntersect } from './SegmentMath.ts';
 
@@ -134,10 +134,13 @@ function collinearOverlapLength(first: Segment2, second: Segment2): number {
   return Math.max(0, high - low);
 }
 
-export function frontageOverlapLength(polygon: Polygon2, frontage: Segment2): number {
+export function frontageOverlapLength(polygon: Polygon2, frontage: Polyline2): number {
   let total = 0;
-  for (let index = 0; index < polygon.points.length; index++) {
-    total += collinearOverlapLength({ a: polygon.points[index]!, b: polygon.points[(index + 1) % polygon.points.length]! }, frontage);
+  for (let frontageIndex = 1; frontageIndex < frontage.points.length; frontageIndex++) {
+    const segment: Segment2 = { a: frontage.points[frontageIndex - 1]!, b: frontage.points[frontageIndex]! };
+    for (let polygonIndex = 0; polygonIndex < polygon.points.length; polygonIndex++) {
+      total += collinearOverlapLength({ a: polygon.points[polygonIndex]!, b: polygon.points[(polygonIndex + 1) % polygon.points.length]! }, segment);
+    }
   }
   return total;
 }

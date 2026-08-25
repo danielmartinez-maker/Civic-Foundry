@@ -46,7 +46,8 @@ test('segment math handles crossings, endpoints, point membership, projection, a
 test('bounds intersection and frontage overlap are deterministic', () => {
   assert.equal(polygonIntersectsBounds(rectangle, { minX: 3.5, minY: 2.5, maxX: 5, maxY: 4 }), true);
   assert.equal(polygonIntersectsBounds(rectangle, { minX: 5, minY: 5, maxX: 6, maxY: 6 }), false);
-  assert.equal(frontageOverlapLength(rectangle, { a: { x: 1, y: 0 }, b: { x: 3, y: 0 } }), 2);
-  assert.equal(frontageOverlapLength(rectangle, { a: { x: -1, y: 0 }, b: { x: 1, y: 0 } }), 1);
-  assert.equal(frontageOverlapLength(rectangle, { a: { x: 1, y: 1 }, b: { x: 3, y: 1 } }), 0);
+  assert.equal(frontageOverlapLength(rectangle, { points: [{ x: 1, y: 0 }, { x: 3, y: 0 }] }), 2);
+  assert.equal(frontageOverlapLength(rectangle, { points: [{ x: -1, y: 0 }, { x: 1, y: 0 }] }), 1);
+  assert.equal(frontageOverlapLength(rectangle, { points: [{ x: 1, y: 1 }, { x: 3, y: 1 }] }), 0);
+  assert.equal(frontageOverlapLength(rectangle, { points: [{ x: -1, y: 0 }, { x: 2, y: 0 }, { x: 5, y: 0 }] }), 4);
 });
