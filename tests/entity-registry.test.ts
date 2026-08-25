@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EntityRegistry } from '../src/entities/EntityRegistry.ts';
+import { canonicalLegacyKey } from '../src/entities/EntityTypes.ts';
 
 const building = (token: string) => ({
   kind: 'building' as const,
@@ -142,7 +143,7 @@ test('commit preserves immutable record identity for unchanged active entities',
   registry.commitPrepared(registry.prepareProjection([stable, changing]));
 
   const internals = registry as unknown as { activeByLegacyKey: Map<string, unknown> };
-  const stableKey = 'building\u0000building:stable';
+  const stableKey = canonicalLegacyKey(stable);
   const stableRecordBefore = internals.activeByLegacyKey.get(stableKey);
   assert.ok(stableRecordBefore);
 
