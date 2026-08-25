@@ -18,7 +18,7 @@ import type { CellCoord, ZoneType } from './types.ts';
 import { clamp, clamp01 } from './types.ts';
 import type { RoadType } from '../../data/roads.ts';
 import type { UtilityFacilityType } from '../../data/utilities.ts';
-import { BUILDING_VARIANTS, type BuildingIntensity } from '../../data/buildings.ts';
+import { BUILDING_VARIANTS, URBAN_BUILDING_CATALOG, type BuildingIntensity } from '../../data/buildings.ts';
 import { TransportationGraph } from '../traffic/TransportationGraph.ts';
 import { PathfindingSystem } from '../traffic/PathfindingSystem.ts';
 import { TripGenerationSystem } from '../traffic/TripGenerationSystem.ts';
@@ -45,13 +45,14 @@ import { LandHousingMarketSystem, type LandHousingMarketSnapshot } from '../deve
 import { RedevelopmentPressureSystem, type RedevelopmentPressureSnapshot, type ResidentialRedevelopmentInput } from '../development/RedevelopmentPressureSystem.ts';
 import { RedevelopmentExecutionSystem, type RedevelopmentExecutionInput, type RedevelopmentExecutionSnapshot } from '../development/RedevelopmentExecutionSystem.ts';
 import { DevelopmentPolicySystem, type DevelopmentPolicyPatch, type DevelopmentPolicyState } from '../development/DevelopmentPolicySystem.ts';
-import type { DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';
+import type { DevelopmentAward, DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';
 import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/HousingChoiceSystem.ts';
 import { HousingTenureSystem, type HousingTenureSnapshot } from '../housing/HousingTenureSystem.ts';
 import { HousingRelocationSystem, type HousingRelocationSnapshot, type HousingRelocationState } from '../housing/HousingRelocationSystem.ts';
 import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';
 import { UrbanFabricDomain } from '../urban/UrbanFabricDomain.ts';
 import { buildUrbanBuildingView, compatibilityUrbanStateForBuilding, legacyUrbanStateForBuilding, urbanBusinessSiteFromView, type UrbanBuildingView } from '../urban/UrbanBuildingView.ts';
+import { enumerateUrbanCandidates, urbanComponentsForDefinition } from '../urban/UrbanDevelopmentCandidate.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -59,6 +60,7 @@ export type SimulationCoreOptions = Readonly<{
   seed?: number;
   startingFunds?: number;
   terrain?: TerrainGrid;
+  urbanDevelopmentMode?: 'legacy' | 'semantic';
 }>;
 
 type LocalParcelContext = Readonly<{
@@ -78,6 +80,7 @@ const INTENSITY_RANK: Readonly<Record<BuildingIntensity, number>> = Object.freez
 
 export class SimulationCore {
   readonly seed: number;
+  readonly urbanDevelopmentMode: 'legacy' | 'semantic';
   readonly random: SeededRandom;
   readonly clock: SimulationClock;
   readonly kernel: SimulationKernel;
@@ -193,6 +196,7 @@ export class SimulationCore {
 
   constructor(options: SimulationCoreOptions = {}) {
     this.seed = options.seed ?? 1;
+    this.urbanDevelopmentMode = options.urbanDevelopmentMode ?? 'legacy';
     this.random = new SeededRandom(this.seed);
     this.clock = new SimulationClock();
     this.kernel = new SimulationKernel({ clock: this.clock, seed: this.seed });
@@ -614,11 +618,21 @@ export class SimulationCore {
     const opportunities: DevelopmentFeasibilityResult[] = [];
     for (const lot of lots) {
       if (occupiedLots.has(lot.id) || this.demandSnapshot[lot.zone] <= 0.05) continue;
-      opportunities.push(...this.developmentFeasibility.evaluateLot(
-        lot,
-        BUILDING_VARIANTS[lot.zone],
-        this.developmentContextForLot(lot),
-      ));
+      const context = this.developmentContextForLot(lot);
+      if (this.urbanDevelopmentMode === 'semantic') {
+        const definitions = URBAN_BUILDING_CATALOG.filter((definition) => definition.zone === lot.zone);
+        opportunities.push(...this.developmentFeasibility.evaluateUrbanCandidates(
+          lot,
+          enumerateUrbanCandidates(definitions),
+          context,
+        ));
+      } else {
+        opportunities.push(...this.developmentFeasibility.evaluateLot(
+          lot,
+          BUILDING_VARIANTS[lot.zone],
+          context,
+        ));
+      }
     }
     opportunities.push(...redevelopment.opportunities);
 
@@ -640,6 +654,7 @@ export class SimulationCore {
           const { removed } = this.buildings.replaceDevelopment(this.clock.tick, lot, award);
           this.economyDomain.removeBuilding(removed.id, this.clock.tick);
           this.urbanFabric.remove(removed.id);
+          if (this.urbanDevelopmentMode === 'semantic') this.installUrbanAwardState(award);
           if (removed.zone === 'residential') {
             this.refreshLandHousingMarket();
             this.refreshHousingTenure();
@@ -648,6 +663,7 @@ export class SimulationCore {
           }
         } else {
           this.buildings.startDevelopment(this.clock.tick, lot, award);
+          if (this.urbanDevelopmentMode === 'semantic') this.installUrbanAwardState(award);
         }
       } catch (error) {
         this.housingRelocation.restoreState(housingBeforeAward);
@@ -667,6 +683,22 @@ export class SimulationCore {
       this.refreshRedevelopmentPressure();
       this.refreshRedevelopmentExecution();
     }
+  }
+
+  private installUrbanAwardState(award: DevelopmentAward): void {
+    const nextState = {
+      buildingId: award.buildingId,
+      useComponents: urbanComponentsForDefinition(award.definitionId),
+      qualityTier: award.qualityTier,
+      conditionScore: 100,
+      lifecycleState: 'construction' as const,
+      conditionEstablishedTick: this.clock.tick,
+      lastConditionTick: this.clock.tick,
+      renovationCount: 0,
+      parking: Object.freeze({ profile: award.parkingProfile, spaces: award.parkingSpaces }),
+    };
+    if (this.urbanFabric.get(award.buildingId)) this.urbanFabric.replace(nextState);
+    else this.urbanFabric.install(nextState);
   }
 
   private localParcelContextForLot(lot: Lot): LocalParcelContext {
@@ -705,13 +737,34 @@ export class SimulationCore {
 
   private developmentContextForLot(lot: Lot): DevelopmentParcelContext {
     const local = this.localParcelContextForLot(lot);
-    const marketSignal = this.landHousingMarket.parcelSignal(lot.zone, {
+    const parcelContext = {
       personAccessibility: local.personAccessibility,
       freightAccessibility: local.freightAccessibility,
       serviceQuality: local.serviceQuality,
       neighborhoodQuality: local.neighborhoodQuality,
       utilityRatio: local.utilityRatio,
       frontageAccessBonus: local.roadAccessBonus,
+    };
+    const marketSignal = this.landHousingMarket.parcelSignal(lot.zone, parcelContext);
+    const marketByUse = Object.freeze({
+      residential: Object.freeze({
+        demand: this.demandSnapshot.residential,
+        taxRate: this.taxes.getRate('residential'),
+        marketRentMultiplier: this.landHousingMarket.parcelSignal('residential', parcelContext).marketRentMultiplier,
+        marketVacancyRate: this.landHousingMarket.parcelSignal('residential', parcelContext).marketVacancyRate,
+      }),
+      commercial: Object.freeze({
+        demand: this.demandSnapshot.commercial,
+        taxRate: this.taxes.getRate('commercial'),
+        marketRentMultiplier: this.landHousingMarket.parcelSignal('commercial', parcelContext).marketRentMultiplier,
+        marketVacancyRate: this.landHousingMarket.parcelSignal('commercial', parcelContext).marketVacancyRate,
+      }),
+      industrial: Object.freeze({
+        demand: this.demandSnapshot.industrial,
+        taxRate: this.taxes.getRate('industrial'),
+        marketRentMultiplier: this.landHousingMarket.parcelSignal('industrial', parcelContext).marketRentMultiplier,
+        marketVacancyRate: this.landHousingMarket.parcelSignal('industrial', parcelContext).marketVacancyRate,
+      }),
     });
     const policy = this.developmentPolicy.snapshot();
     return {
@@ -725,6 +778,7 @@ export class SimulationCore {
       constructionCostIndex: local.constructionCostIndex,
       marketInterestRate: this.currentDevelopmentInterestRate(),
       zoningMaxIntensity: local.zoningMaxIntensity,
+      marketByUse,
       policyAffordableHousingShare: lot.zone === 'residential' ? policy.affordableHousingShare : 0,
       policyDevelopmentFeeRate: policy.developmentFeeRate,
       policyPermittingCostReduction: policy.permittingCostReduction,

@@ -1,88 +1,44 @@
 name: Civic Foundry CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch-semantic-core:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout feature branch
+      - name: Checkout
         uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
         with:
-          ref: ${{ github.head_ref }}
-      - name: Apply semantic Core patch
+          node-version: '22'
+      - name: Install pinned TypeScript compiler
+        run: npm install --global typescript@5.8.3
+      - name: Install atlas rasterizer and browser smoke runtime
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('src/simulation/core/SimulationCore.ts')
-          text = path.read_text()
-
-          def replace_once(old: str, new: str) -> None:
-              global text
-              if text.count(old) != 1:
-                  raise SystemExit(f'expected exactly one match, found {text.count(old)} for: {old[:80]!r}')
-              text = text.replace(old, new, 1)
-
-          replace_once(
-              "import { BUILDING_VARIANTS, type BuildingIntensity } from '../../data/buildings.ts';",
-              "import { BUILDING_VARIANTS, URBAN_BUILDING_CATALOG, type BuildingIntensity } from '../../data/buildings.ts';",
-          )
-          replace_once(
-              "import type { DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';",
-              "import type { DevelopmentAward, DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';",
-          )
-          replace_once(
-              "import { buildUrbanBuildingView, compatibilityUrbanStateForBuilding, legacyUrbanStateForBuilding, urbanBusinessSiteFromView, type UrbanBuildingView } from '../urban/UrbanBuildingView.ts';",
-              "import { buildUrbanBuildingView, compatibilityUrbanStateForBuilding, legacyUrbanStateForBuilding, urbanBusinessSiteFromView, type UrbanBuildingView } from '../urban/UrbanBuildingView.ts';\nimport { enumerateUrbanCandidates, urbanComponentsForDefinition } from '../urban/UrbanDevelopmentCandidate.ts';",
-          )
-          replace_once(
-              "  terrain?: TerrainGrid;\n}>;",
-              "  terrain?: TerrainGrid;\n  urbanDevelopmentMode?: 'legacy' | 'semantic';\n}>;",
-          )
-          replace_once(
-              "export class SimulationCore {\n  readonly seed: number;",
-              "export class SimulationCore {\n  readonly seed: number;\n  readonly urbanDevelopmentMode: 'legacy' | 'semantic';",
-          )
-          replace_once(
-              "  constructor(options: SimulationCoreOptions = {}) {\n    this.seed = options.seed ?? 1;",
-              "  constructor(options: SimulationCoreOptions = {}) {\n    this.seed = options.seed ?? 1;\n    this.urbanDevelopmentMode = options.urbanDevelopmentMode ?? 'legacy';",
-          )
-
-          replace_once(
-              """    for (const lot of lots) {\n      if (occupiedLots.has(lot.id) || this.demandSnapshot[lot.zone] <= 0.05) continue;\n      opportunities.push(...this.developmentFeasibility.evaluateLot(\n        lot,\n        BUILDING_VARIANTS[lot.zone],\n        this.developmentContextForLot(lot),\n      ));\n    }""",
-              """    for (const lot of lots) {\n      if (occupiedLots.has(lot.id) || this.demandSnapshot[lot.zone] <= 0.05) continue;\n      const context = this.developmentContextForLot(lot);\n      if (this.urbanDevelopmentMode === 'semantic') {\n        const definitions = URBAN_BUILDING_CATALOG.filter((definition) => definition.zone === lot.zone);\n        opportunities.push(...this.developmentFeasibility.evaluateUrbanCandidates(\n          lot,\n          enumerateUrbanCandidates(definitions),\n          context,\n        ));\n      } else {\n        opportunities.push(...this.developmentFeasibility.evaluateLot(\n          lot,\n          BUILDING_VARIANTS[lot.zone],\n          context,\n        ));\n      }\n    }""",
-          )
-
-          replace_once(
-              """          const { removed } = this.buildings.replaceDevelopment(this.clock.tick, lot, award);\n          this.economyDomain.removeBuilding(removed.id, this.clock.tick);\n          this.urbanFabric.remove(removed.id);""",
-              """          const { removed } = this.buildings.replaceDevelopment(this.clock.tick, lot, award);\n          this.economyDomain.removeBuilding(removed.id, this.clock.tick);\n          this.urbanFabric.remove(removed.id);\n          if (this.urbanDevelopmentMode === 'semantic') this.installUrbanAwardState(award);""",
-          )
-          replace_once(
-              """        } else {\n          this.buildings.startDevelopment(this.clock.tick, lot, award);\n        }""",
-              """        } else {\n          this.buildings.startDevelopment(this.clock.tick, lot, award);\n          if (this.urbanDevelopmentMode === 'semantic') this.installUrbanAwardState(award);\n        }""",
-          )
-
-          replace_once(
-              """  private localParcelContextForLot(lot: Lot): LocalParcelContext {""",
-              """  private installUrbanAwardState(award: DevelopmentAward): void {\n    const nextState = {\n      buildingId: award.buildingId,\n      useComponents: urbanComponentsForDefinition(award.definitionId),\n      qualityTier: award.qualityTier,\n      conditionScore: 100,\n      lifecycleState: 'construction' as const,\n      conditionEstablishedTick: this.clock.tick,\n      lastConditionTick: this.clock.tick,\n      renovationCount: 0,\n      parking: Object.freeze({ profile: award.parkingProfile, spaces: award.parkingSpaces }),\n    };\n    if (this.urbanFabric.get(award.buildingId)) this.urbanFabric.replace(nextState);\n    else this.urbanFabric.install(nextState);\n  }\n\n  private localParcelContextForLot(lot: Lot): LocalParcelContext {""",
-          )
-
-          old_context = """  private developmentContextForLot(lot: Lot): DevelopmentParcelContext {\n    const local = this.localParcelContextForLot(lot);\n    const marketSignal = this.landHousingMarket.parcelSignal(lot.zone, {\n      personAccessibility: local.personAccessibility,\n      freightAccessibility: local.freightAccessibility,\n      serviceQuality: local.serviceQuality,\n      neighborhoodQuality: local.neighborhoodQuality,\n      utilityRatio: local.utilityRatio,\n      frontageAccessBonus: local.roadAccessBonus,\n    });\n    const policy = this.developmentPolicy.snapshot();\n    return {\n      demand: this.demandSnapshot[lot.zone],\n      taxRate: this.taxes.getRate(lot.zone),\n      personAccessibility: local.personAccessibility,\n      freightAccessibility: local.freightAccessibility,\n      serviceQuality: local.serviceQuality,\n      neighborhoodQuality: local.neighborhoodQuality,\n      utilityRatio: local.utilityRatio,\n      constructionCostIndex: local.constructionCostIndex,\n      marketInterestRate: this.currentDevelopmentInterestRate(),\n      zoningMaxIntensity: local.zoningMaxIntensity,\n      policyAffordableHousingShare: lot.zone === 'residential' ? policy.affordableHousingShare : 0,\n      policyDevelopmentFeeRate: policy.developmentFeeRate,\n      policyPermittingCostReduction: policy.permittingCostReduction,\n      ...marketSignal,\n    };\n  }"""
-          new_context = """  private developmentContextForLot(lot: Lot): DevelopmentParcelContext {\n    const local = this.localParcelContextForLot(lot);\n    const parcelContext = {\n      personAccessibility: local.personAccessibility,\n      freightAccessibility: local.freightAccessibility,\n      serviceQuality: local.serviceQuality,\n      neighborhoodQuality: local.neighborhoodQuality,\n      utilityRatio: local.utilityRatio,\n      frontageAccessBonus: local.roadAccessBonus,\n    };\n    const marketSignal = this.landHousingMarket.parcelSignal(lot.zone, parcelContext);\n    const marketByUse = Object.freeze({\n      residential: Object.freeze({\n        demand: this.demandSnapshot.residential,\n        taxRate: this.taxes.getRate('residential'),\n        marketRentMultiplier: this.landHousingMarket.parcelSignal('residential', parcelContext).marketRentMultiplier,\n        marketVacancyRate: this.landHousingMarket.parcelSignal('residential', parcelContext).marketVacancyRate,\n      }),\n      commercial: Object.freeze({\n        demand: this.demandSnapshot.commercial,\n        taxRate: this.taxes.getRate('commercial'),\n        marketRentMultiplier: this.landHousingMarket.parcelSignal('commercial', parcelContext).marketRentMultiplier,\n        marketVacancyRate: this.landHousingMarket.parcelSignal('commercial', parcelContext).marketVacancyRate,\n      }),\n      industrial: Object.freeze({\n        demand: this.demandSnapshot.industrial,\n        taxRate: this.taxes.getRate('industrial'),\n        marketRentMultiplier: this.landHousingMarket.parcelSignal('industrial', parcelContext).marketRentMultiplier,\n        marketVacancyRate: this.landHousingMarket.parcelSignal('industrial', parcelContext).marketVacancyRate,\n      }),\n    });\n    const policy = this.developmentPolicy.snapshot();\n    return {\n      demand: this.demandSnapshot[lot.zone],\n      taxRate: this.taxes.getRate(lot.zone),\n      personAccessibility: local.personAccessibility,\n      freightAccessibility: local.freightAccessibility,\n      serviceQuality: local.serviceQuality,\n      neighborhoodQuality: local.neighborhoodQuality,\n      utilityRatio: local.utilityRatio,\n      constructionCostIndex: local.constructionCostIndex,\n      marketInterestRate: this.currentDevelopmentInterestRate(),\n      zoningMaxIntensity: local.zoningMaxIntensity,\n      marketByUse,\n      policyAffordableHousingShare: lot.zone === 'residential' ? policy.affordableHousingShare : 0,\n      policyDevelopmentFeeRate: policy.developmentFeeRate,\n      policyPermittingCostReduction: policy.permittingCostReduction,\n      ...marketSignal,\n    };\n  }"""
-          replace_once(old_context, new_context)
-
-          path.write_text(text)
-
-          Path('.github/workflows/ci.yml').write_text('''name: Civic Foundry CI\n\non:\n  push:\n    branches: [main]\n  pull_request:\n\npermissions:\n  contents: read\n\njobs:\n  verify:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n      - name: Node 22\n        uses: actions/setup-node@v4\n        with:\n          node-version: '22'\n      - name: Install pinned TypeScript compiler\n        run: npm install --global typescript@5.8.3\n      - name: Install atlas rasterizer and browser smoke runtime\n        run: |\n          python -m pip install playwright==1.55.0 Pillow==11.3.0\n          python -m playwright install --with-deps chromium\n      - name: Tests\n        run: npm test\n      - name: Typecheck\n        run: npm run typecheck\n      - name: Lint\n        run: npm run lint\n      - name: Asset source validation\n        run: npm run assets:check\n      - name: Build\n        run: npm run build\n      - name: Phase 6 browser smoke\n        run: npm run test:smoke\n      - name: Phase 7 browser smoke\n        run: npm run test:smoke:phase7\n      - name: Isometric Pass A browser smoke\n        run: npm run test:smoke:isometric\n      - name: Isometric Pass A visual smoke\n        run: python tests/smoke/isometric_visual_smoke.py\n''')
-          PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/simulation/core/SimulationCore.ts .github/workflows/ci.yml
-          git commit -m "feat: install semantic urban development awards"
-          git push origin HEAD:${{ github.head_ref }}
+          python -m pip install playwright==1.55.0 Pillow==11.3.0
+          python -m playwright install --with-deps chromium
+      - name: Tests
+        run: npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Asset source validation
+        run: npm run assets:check
+      - name: Build
+        run: npm run build
+      - name: Phase 6 browser smoke
+        run: npm run test:smoke
+      - name: Phase 7 browser smoke
+        run: npm run test:smoke:phase7
+      - name: Isometric Pass A browser smoke
+        run: npm run test:smoke:isometric
+      - name: Isometric Pass A visual smoke
+        run: python tests/smoke/isometric_visual_smoke.py
