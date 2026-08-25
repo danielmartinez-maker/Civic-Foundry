@@ -1,7 +1,6 @@
 import {
   polygonArea,
   polygonDifference,
-  polygonUnion,
   type MultiPolygon,
   type PolygonRing,
   type WorldPoint,
@@ -160,7 +159,7 @@ function insetByEdgeSetbacks(
     rules.rearSetbackMeters,
     rules.sideSetbackMeters,
   ) + 1;
-  const exclusions: PolygonRing[] = [];
+  let current: MultiPolygon = Object.freeze([ring]);
 
   for (let index = 0; index < ring.length; index += 1) {
     const start = ring[index]!;
@@ -173,12 +172,11 @@ function insetByEdgeSetbacks(
         ? rules.rearSetbackMeters
         : rules.sideSetbackMeters;
     if (setback <= 0) continue;
-    exclusions.push(inwardExclusionStrip(start, end, setback, ccw, extent));
+    current = polygonDifference(current, inwardExclusionStrip(start, end, setback, ccw, extent));
+    if (current.length === 0) break;
   }
 
-  if (exclusions.length === 0) return Object.freeze([ring]);
-  const excludedArea = polygonUnion(exclusions);
-  return polygonDifference(ring, excludedArea);
+  return current;
 }
 
 function classifyEdges(parcel: Parcel, graph: CadastralGraph): ReadonlyMap<string, EdgeRole> {
