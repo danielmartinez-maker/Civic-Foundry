@@ -62,7 +62,7 @@ test('renovation halves capacity and restores condition without changing structu
   assert.ok(job.completionTick > job.startTick);
   assert.equal(job.targetCondition, 90);
   assert.equal(domain.get(building.id)!.lifecycleState, 'renovating');
-  assert.equal(buildUrbanBuildingView(building, domain.get(building.id)!).capacityMultiplier, 0.5);
+  assert.equal(buildUrbanBuildingView(building, domain.get(building.id)!).conditionCapacityMultiplier, 0.5);
   assert.equal(renovation.hasActive(building.id), true);
   assert.throws(() => renovation.start({
     buildingId: building.id,
