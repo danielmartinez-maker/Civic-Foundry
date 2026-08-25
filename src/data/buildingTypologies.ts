@@ -2,80 +2,119 @@ import { BUILDING_DEFINITION_BY_ID, type BuildingDefinition } from './buildings.
 import type { BuildingTypology } from '../simulation/buildings/BuildingTypes.ts';
 import type { UseType } from '../simulation/zoning/ZoningTypes.ts';
 
-const DEFAULT_JOB_AREA: Readonly<Partial<Record<UseType, number>>> = Object.freeze({
-  retail: 35,
-  office: 22,
-  hospitality: 45,
-  'light-industrial': 55,
-  'heavy-industrial': 85,
-  logistics: 110,
-  civic: 40,
+const DEFAULT_JOBS_PER_1000_M2: Readonly<Partial<Record<UseType, number>>> = Object.freeze({
+  retail: 28,
+  office: 45,
+  hospitality: 22,
+  'light-industrial': 18,
+  'heavy-industrial': 12,
+  logistics: 9,
+  civic: 25,
 });
 
 function legacyTypology(
   definitionId: string,
-  permittedUses: readonly UseType[],
+  name: string,
+  primaryUse: UseType,
+  allowedUses: readonly UseType[],
+  defaultUseMix: Readonly<Partial<Record<UseType, number>>>,
   preferredStories: number,
+  minStories: number,
+  maxStories: number,
   efficiencyRatio: number,
 ): BuildingTypology {
   const definition = BUILDING_DEFINITION_BY_ID[definitionId];
   if (!definition) throw new Error(`unknown legacy definition: ${definitionId}`);
   const assumedAreaM2 = legacyReferenceArea(definition);
+  const primaryJobDensity = definition.jobCapacity > 0
+    ? definition.jobCapacity / assumedAreaM2 * 1_000
+    : 0;
+  const jobsPer1000M2ByUse = { ...DEFAULT_JOBS_PER_1000_M2 };
+  if (primaryJobDensity > 0) jobsPer1000M2ByUse[primaryUse] = primaryJobDensity;
+
   return Object.freeze({
     id: `typology:${definitionId}`,
+    name,
     legacyDefinitionId: definitionId,
-    permittedUses: Object.freeze([...permittedUses]),
+    primaryUse,
+    allowedUses: Object.freeze([...allowedUses]),
+    defaultUseMix: Object.freeze({ ...defaultUseMix }),
     preferredStories,
+    minStories,
+    maxStories,
     floorToFloorHeightMeters: preferredStories >= 8 ? 3.4 : 3.2,
     efficiencyRatio,
     costPerM2: definition.baseConstructionCost / assumedAreaM2,
-    annualMaintenancePerM2: Math.max(1, definition.baseConstructionCost * 0.018 / assumedAreaM2),
-    constructionTicks: definition.constructionTicks,
-    complexityFactor: definition.complexityFactor,
-    averageResidentialUnitM2: 82,
-    jobAreaPerEmployeeM2: DEFAULT_JOB_AREA,
-    powerDemandPerM2: definition.powerDemand / assumedAreaM2,
-    waterDemandPerM2: definition.waterDemand / assumedAreaM2,
-    garbagePerM2: definition.garbageGeneration / assumedAreaM2,
+    maintenanceCostPerM2: Math.max(1, definition.baseConstructionCost * 0.018 / assumedAreaM2),
+    constructionTicksPer1000M2: definition.constructionTicks / assumedAreaM2 * 1_000,
+    averageResidentialUnitAreaM2: 82,
+    jobsPer1000M2ByUse: Object.freeze(jobsPer1000M2ByUse),
+    powerDemandPer1000M2: definition.powerDemand / assumedAreaM2 * 1_000,
+    waterDemandPer1000M2: definition.waterDemand / assumedAreaM2 * 1_000,
+    garbagePer1000M2: definition.garbageGeneration / assumedAreaM2 * 1_000,
     taxBasePerM2: definition.taxBase / assumedAreaM2,
-    baseRentPerM2: definition.baseRent / assumedAreaM2,
+    baseRentPerM2ByUse: Object.freeze(Object.fromEntries(
+      allowedUses.map((use) => [use, definition.baseRent / assumedAreaM2]),
+    ) as Partial<Record<UseType, number>>),
     operatingExpenseRatio: definition.operatingExpenseRatio,
     baseVacancy: definition.baseVacancy,
     baseCapRate: definition.baseCapRate,
+    minimumAccess: definition.minimumAccess,
+    minimumUtilityRatio: definition.minimumUtilityRatio,
+    minimumServiceQuality: definition.minimumServiceQuality,
+    complexityFactor: definition.complexityFactor,
+    riskWeight: definition.riskWeight,
     conversionSuitability: definition.zone === 'industrial' ? 0.45 : 0.7,
   });
 }
 
 function mixedTypology(
   id: string,
+  name: string,
   seedDefinitionId: string,
   preferredStories: number,
+  maxStories: number,
   efficiencyRatio: number,
   conversionSuitability: number,
 ): BuildingTypology {
-  const seed = legacyTypology(seedDefinitionId, ['residential', 'retail', 'office'], preferredStories, efficiencyRatio);
+  const seed = legacyTypology(
+    seedDefinitionId,
+    name,
+    'residential',
+    ['residential', 'retail', 'office'],
+    { residential: 0.65, retail: 0.20, office: 0.15 },
+    preferredStories,
+    3,
+    maxStories,
+    efficiencyRatio,
+  );
   return Object.freeze({
     ...seed,
     id,
-    permittedUses: Object.freeze(['residential', 'retail', 'office'] as const),
+    name,
+    legacyDefinitionId: undefined,
+    primaryUse: 'residential',
+    allowedUses: Object.freeze(['residential', 'retail', 'office'] as const),
+    defaultUseMix: Object.freeze({ residential: 0.65, retail: 0.20, office: 0.15 }),
     preferredStories,
+    maxStories,
     efficiencyRatio,
     conversionSuitability,
   });
 }
 
 export const BUILDING_TYPOLOGIES: readonly BuildingTypology[] = Object.freeze([
-  legacyTypology('residential_cottage', ['residential'], 2, 0.86),
-  legacyTypology('residential_rowhouse', ['residential'], 3, 0.84),
-  legacyTypology('residential_apartment', ['residential'], 8, 0.80),
-  legacyTypology('commercial_shop', ['retail'], 1, 0.88),
-  legacyTypology('commercial_block', ['retail', 'office'], 4, 0.82),
-  legacyTypology('commercial_office', ['office'], 12, 0.78),
-  legacyTypology('industrial_workshop', ['light-industrial'], 1, 0.90),
-  legacyTypology('industrial_warehouse', ['logistics', 'light-industrial'], 1, 0.92),
-  legacyTypology('industrial_plant', ['heavy-industrial'], 2, 0.88),
-  mixedTypology('main_street_mixed_use', 'commercial_block', 5, 0.80, 0.82),
-  mixedTypology('podium_mixed_use', 'commercial_office', 12, 0.76, 0.68),
+  legacyTypology('residential_cottage', 'Detached Cottage', 'residential', ['residential'], { residential: 1 }, 2, 1, 2, 0.86),
+  legacyTypology('residential_rowhouse', 'Rowhouse', 'residential', ['residential'], { residential: 1 }, 3, 2, 4, 0.84),
+  legacyTypology('residential_apartment', 'Apartment Building', 'residential', ['residential'], { residential: 1 }, 8, 4, 14, 0.80),
+  legacyTypology('commercial_shop', 'Neighborhood Shop', 'retail', ['retail'], { retail: 1 }, 1, 1, 2, 0.88),
+  legacyTypology('commercial_block', 'Commercial Block', 'office', ['retail', 'office'], { retail: 0.35, office: 0.65 }, 4, 2, 8, 0.82),
+  legacyTypology('commercial_office', 'Office Tower', 'office', ['office'], { office: 1 }, 12, 6, 24, 0.78),
+  legacyTypology('industrial_workshop', 'Light Industrial Workshop', 'light-industrial', ['light-industrial'], { 'light-industrial': 1 }, 1, 1, 2, 0.90),
+  legacyTypology('industrial_warehouse', 'Warehouse', 'logistics', ['logistics', 'light-industrial'], { logistics: 0.75, 'light-industrial': 0.25 }, 1, 1, 2, 0.92),
+  legacyTypology('industrial_plant', 'Industrial Plant', 'heavy-industrial', ['heavy-industrial'], { 'heavy-industrial': 1 }, 2, 1, 4, 0.88),
+  mixedTypology('main_street_mixed_use', 'Main Street Mixed Use', 'commercial_block', 5, 8, 0.80, 0.82),
+  mixedTypology('podium_mixed_use', 'Podium Mixed Use', 'commercial_office', 12, 24, 0.76, 0.68),
 ]);
 
 export const BUILDING_TYPOLOGY_BY_ID: Readonly<Record<string, BuildingTypology>> = Object.freeze(
