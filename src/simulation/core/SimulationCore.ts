@@ -50,6 +50,11 @@ import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/Hous
 import { HousingTenureSystem, type HousingTenureSnapshot } from '../housing/HousingTenureSystem.ts';
 import { HousingRelocationSystem, type HousingRelocationSnapshot, type HousingRelocationState } from '../housing/HousingRelocationSystem.ts';
 import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';
+import { PersonBootstrapSystem } from '../people/PersonBootstrapSystem.ts';
+import { PersonEntityBridge } from '../people/PersonEntityBridge.ts';
+import { PersonPopulationProjection } from '../people/PersonPopulationProjection.ts';
+import { buildPersonSnapshot, type PersonSnapshot } from '../people/PersonSnapshot.ts';
+import { PersonStore } from '../people/PersonStore.ts';
 import { EntityRegistry } from '../../entities/EntityRegistry.ts';
 import { EntityReferenceGraph } from '../../entities/EntityReferenceGraph.ts';
 import { LegacyV7EntityProjector } from '../../entities/LegacyV7EntityProjector.ts';
@@ -129,6 +134,10 @@ export class SimulationCore {
   readonly developmentPolicy: DevelopmentPolicySystem;
   private readonly redevelopmentFeasibility: DevelopmentFeasibilitySystem;
   private readonly entityProjector: LegacyV7EntityProjector;
+  private readonly personStore: PersonStore;
+  private readonly personEntityBridge: PersonEntityBridge;
+  private readonly personPopulationProjection: PersonPopulationProjection;
+  private personhoodAuthorityEnabled = false;
   private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;
   private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);
 
@@ -193,6 +202,9 @@ export class SimulationCore {
     this.lots = new LotSystem();
     this.buildings = new BuildingSystem();
     this.population = new PopulationSystem();
+    this.personStore = new PersonStore();
+    this.personEntityBridge = new PersonEntityBridge(this.personStore, this.entityRegistry);
+    this.personPopulationProjection = new PersonPopulationProjection(this.personStore);
     this.employment = new EmploymentSystem();
     this.taxes = new TaxSystem();
     this.demand = new DemandSystem();
@@ -391,6 +403,26 @@ export class SimulationCore {
 
   step(ticks = 1): void {
     this.kernel.step(ticks);
+  }
+
+  enablePersonhoodAuthority(): void {
+    if (this.personhoodAuthorityEnabled) return;
+
+    const legacyPopulation = this.population.population;
+    const bootstrapSeed = this.kernel.random.stream('demographics/person-bootstrap').getState();
+    const people = new PersonBootstrapSystem(bootstrapSeed).bootstrapPopulation({
+      population: legacyPopulation,
+      simulationStartTick: this.clock.tick,
+    });
+
+    this.kernel.registerPersonDiagnostics(this.personStore, this.entityRegistry);
+    this.personEntityBridge.createPeople(people);
+    this.population.attachPersonProjection(this.personPopulationProjection);
+    this.personhoodAuthorityEnabled = true;
+  }
+
+  getPersonSnapshot(): PersonSnapshot {
+    return buildPersonSnapshot(this.personStore);
   }
 
   rebuildEntityProjection(): void {
@@ -599,7 +631,9 @@ export class SimulationCore {
     if (this.utilitySnapshot.power.serviceRatio < 0.5 || this.utilitySnapshot.water.serviceRatio < 0.5) attractiveness = Math.min(attractiveness, 0.2);
     const affordabilityFactor = 0.85 + 0.15 * this.housingChoiceSnapshot.affordabilityIndex;
     attractiveness = clamp01(attractiveness * affordabilityFactor);
-    this.population.update(this.buildings.residentialCapacity(), attractiveness);
+    if (!this.personhoodAuthorityEnabled) {
+      this.population.update(this.buildings.residentialCapacity(), attractiveness);
+    }
     this.refreshLandHousingMarket();
     this.refreshHousingTenure();
     this.housingRelocation.reconcile({ population: this.population.population, options: this.housingTenureSnapshot.options, allowVoluntaryMoves: true });
