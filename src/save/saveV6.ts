@@ -64,7 +64,8 @@ function validateEconomyReferences(core: SimulationCore, state: EconomyScheduler
 
   for (const firm of state.firms.firms) {
     const building = buildings.get(firm.buildingId);
-    if (!building || building.zone !== firm.zone) throw new Error('invalid economy firm building reference');
+    if (firm.status !== 'closed' && (!building || building.zone !== firm.zone)) throw new Error('invalid economy firm building reference');
+    if (building && building.zone !== firm.zone) throw new Error('invalid economy firm building reference');
   }
   const financialFirmIds = new Set<string>();
   for (const row of state.financials) {
