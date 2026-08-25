@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { BUILDING_VARIANTS } from '../src/data/buildings.ts';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { definitionForBuilding, type Building } from '../src/simulation/buildings/BuildingSystem.ts';
+import { compatibilityUrbanStateForBuilding } from '../src/simulation/urban/UrbanBuildingView.ts';
 
 test('legacy urban baseline reproduces every V7 building definition nominal metric', () => {
   const core = new SimulationCore({ width: 12, height: 4, seed: 91 });
@@ -64,4 +65,24 @@ test('legacy migration establishes explicit timestamps and lifecycle without fab
   assert.deepEqual(occupied?.useComponents, [
     { use: 'residential', areaShareBps: 10_000, residentCapacity: 10, jobCapacity: 0, taxBase: 120 },
   ]);
+});
+
+test('compatibility state safely falls back for legacy fixture definition ids', () => {
+  const fixture: Building = {
+    id: 'building:fixture', lotId: 'lot:fixture', x: 1, y: 1,
+    zone: 'residential', definitionId: 'residential_fixture', status: 'occupied',
+    constructionStartedTick: 0, completionTick: 50,
+  };
+  const definition = definitionForBuilding(fixture);
+  const state = compatibilityUrbanStateForBuilding(fixture, 75);
+  assert.deepEqual(state.useComponents, [{
+    use: 'residential', areaShareBps: 10_000,
+    residentCapacity: definition.residentCapacity,
+    jobCapacity: definition.jobCapacity,
+    taxBase: definition.taxBase,
+  }]);
+  assert.equal(state.qualityTier, 'standard');
+  assert.equal(state.conditionScore, 80);
+  assert.equal(state.lifecycleState, 'stabilized');
+  assert.deepEqual(state.parking, { profile: 'legacy-none', spaces: 0 });
 });
