@@ -28,13 +28,35 @@ export type BuildingQualityProfile = Readonly<{
   conditionResilience: number;
   accessThresholdBonus: number;
   serviceThresholdBonus: number;
+  minimumAccessBonus: number;
+  minimumServiceBonus: number;
 }>;
 
+function qualityProfile(
+  hardConstructionCost: number,
+  achievableRent: number,
+  operatingExpense: number,
+  conditionResilience: number,
+  accessThresholdBonus: number,
+  serviceThresholdBonus: number,
+): BuildingQualityProfile {
+  return Object.freeze({
+    hardConstructionCost,
+    achievableRent,
+    operatingExpense,
+    conditionResilience,
+    accessThresholdBonus,
+    serviceThresholdBonus,
+    minimumAccessBonus: accessThresholdBonus,
+    minimumServiceBonus: serviceThresholdBonus,
+  });
+}
+
 export const QUALITY_PROFILES: Readonly<Record<BuildingQualityTier, BuildingQualityProfile>> = Object.freeze({
-  economy: Object.freeze({ hardConstructionCost: 0.90, achievableRent: 0.90, operatingExpense: 0.95, conditionResilience: 0.85, accessThresholdBonus: 0, serviceThresholdBonus: 0 }),
-  standard: Object.freeze({ hardConstructionCost: 1.00, achievableRent: 1.00, operatingExpense: 1.00, conditionResilience: 1.00, accessThresholdBonus: 0, serviceThresholdBonus: 0 }),
-  premium: Object.freeze({ hardConstructionCost: 1.18, achievableRent: 1.16, operatingExpense: 1.05, conditionResilience: 1.15, accessThresholdBonus: 0.05, serviceThresholdBonus: 0.05 }),
-  luxury: Object.freeze({ hardConstructionCost: 1.40, achievableRent: 1.32, operatingExpense: 1.10, conditionResilience: 1.25, accessThresholdBonus: 0.10, serviceThresholdBonus: 0.10 }),
+  economy: qualityProfile(0.90, 0.90, 0.95, 0.85, 0, 0),
+  standard: qualityProfile(1.00, 1.00, 1.00, 1.00, 0, 0),
+  premium: qualityProfile(1.18, 1.16, 1.05, 1.15, 0.05, 0.05),
+  luxury: qualityProfile(1.40, 1.32, 1.10, 1.25, 0.10, 0.10),
 });
 
 export const QUALITY_RANK: Readonly<Record<BuildingQualityTier, number>> = Object.freeze({
@@ -44,15 +66,29 @@ export const QUALITY_RANK: Readonly<Record<BuildingQualityTier, number>> = Objec
 export type ParkingProfileDefinition = Readonly<{
   spaceMultiplier: number;
   costPerSpace: number;
+  spacesMultiplier: number;
+  constructionCostPerSpace: number;
 }>;
 
+function parkingProfile(spaceMultiplier: number, costPerSpace: number): ParkingProfileDefinition {
+  return Object.freeze({
+    spaceMultiplier,
+    costPerSpace,
+    spacesMultiplier: spaceMultiplier,
+    constructionCostPerSpace: costPerSpace,
+  });
+}
+
 export const PARKING_PROFILE_DEFINITIONS: Readonly<Record<PrivateParkingProfile, ParkingProfileDefinition>> = Object.freeze({
-  'legacy-none': Object.freeze({ spaceMultiplier: 0, costPerSpace: 0 }),
-  reduced: Object.freeze({ spaceMultiplier: 0.50, costPerSpace: 2_500 }),
-  standard: Object.freeze({ spaceMultiplier: 1.00, costPerSpace: 3_000 }),
-  abundant: Object.freeze({ spaceMultiplier: 1.50, costPerSpace: 3_500 }),
-  structured: Object.freeze({ spaceMultiplier: 1.00, costPerSpace: 9_000 }),
+  'legacy-none': parkingProfile(0, 0),
+  reduced: parkingProfile(0.50, 2_500),
+  standard: parkingProfile(1.00, 3_000),
+  abundant: parkingProfile(1.50, 3_500),
+  structured: parkingProfile(1.00, 9_000),
 });
+
+// Task 4 development code consumes the concise name; both exports reference the same immutable table.
+export const PARKING_PROFILES = PARKING_PROFILE_DEFINITIONS;
 
 export const PARKING_RANK: Readonly<Record<PrivateParkingProfile, number>> = Object.freeze({
   'legacy-none': -1, reduced: 0, standard: 1, abundant: 2, structured: 3,
