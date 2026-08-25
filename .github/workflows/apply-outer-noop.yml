@@ -1,0 +1,71 @@
+name: Apply Phase 0B Outer No-op Patch
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: civic-2.0-phase-0b-inline
+          fetch-depth: 0
+      - name: Guard exact feature head
+        run: |
+          test "$(git rev-parse HEAD)" = "6111c6376e6ba270c04b4cb76992cc344b17651c"
+      - name: Apply minimal outer no-op fast path
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          projector = Path('src/entities/LegacyV7EntityProjector.ts')
+          text = projector.read_text()
+          old = """  private readonly partitionCache = new Map<string, EntityProjectionPartition>();\n  private lastComposedPartitions: readonly EntityProjectionPartition[] | undefined;\n"""
+          new = """  private readonly partitionCache = new Map<string, EntityProjectionPartition>();\n  private lastProjectedPartitions: readonly EntityProjectionPartition[] | undefined;\n  private lastComposedPartitions: readonly EntityProjectionPartition[] | undefined;\n"""
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+
+          old = """    this.partitionCache.clear();\n    this.lastComposedPartitions = undefined;\n"""
+          new = """    this.partitionCache.clear();\n    this.lastProjectedPartitions = undefined;\n    this.lastComposedPartitions = undefined;\n"""
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+
+          old = """    return Object.freeze([\n      lots,\n      buildingPartition,\n      firms,\n      utilities,\n      services,\n      transit,\n      traffic,\n      serviceVehicles,\n      freight,\n      incidents,\n    ]);\n"""
+          new = """    const projectedPartitions = Object.freeze([\n      lots,\n      buildingPartition,\n      firms,\n      utilities,\n      services,\n      transit,\n      traffic,\n      serviceVehicles,\n      freight,\n      incidents,\n    ]);\n    if (this.lastProjectedPartitions !== undefined\n      && this.lastProjectedPartitions.length === projectedPartitions.length\n      && projectedPartitions.every((partition, index) => partition === this.lastProjectedPartitions![index])) {\n      return this.lastProjectedPartitions;\n    }\n    this.lastProjectedPartitions = projectedPartitions;\n    return projectedPartitions;\n"""
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+          projector.write_text(text)
+
+          core = Path('src/simulation/core/SimulationCore.ts')
+          text = core.read_text()
+          old = "import { commitEntityProjectionPartitions } from '../../entities/EntityProjection.ts';\n"
+          new = "import { commitEntityProjectionPartitions, type EntityProjectionPartition } from '../../entities/EntityProjection.ts';\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+
+          old = """  private readonly entityProjector: LegacyV7EntityProjector;\n  private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);\n"""
+          new = """  private readonly entityProjector: LegacyV7EntityProjector;\n  private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;\n  private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);\n"""
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+
+          old = """  private syncEntityProjection(): void {\n    const result = commitEntityProjectionPartitions(\n      this.entityRegistry,\n      this.entityReferences,\n      this.entityProjector.projectPartitions(this),\n    );\n    this.lastUnresolvedEntityReferences = result.unresolved;\n  }\n"""
+          new = """  private syncEntityProjection(): void {\n    const partitions = this.entityProjector.projectPartitions(this);\n    if (partitions === this.lastSyncedEntityPartitions) return;\n    const result = commitEntityProjectionPartitions(\n      this.entityRegistry,\n      this.entityReferences,\n      partitions,\n    );\n    this.lastUnresolvedEntityReferences = result.unresolved;\n    this.lastSyncedEntityPartitions = partitions;\n  }\n"""
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+          core.write_text(text)
+          PY
+          git diff --check
+      - name: Verify new contracts
+        run: node --experimental-strip-types --test tests/entity-outer-noop-fastpath.test.ts
+      - name: Commit feature patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/entities/LegacyV7EntityProjector.ts src/simulation/core/SimulationCore.ts
+          git commit -m "perf: bypass unchanged entity sync coordinator"
+          git push origin HEAD:civic-2.0-phase-0b-inline
