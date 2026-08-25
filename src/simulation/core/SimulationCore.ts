@@ -53,7 +53,7 @@ import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';
 import { EntityRegistry } from '../../entities/EntityRegistry.ts';
 import { EntityReferenceGraph } from '../../entities/EntityReferenceGraph.ts';
 import { LegacyV7EntityProjector } from '../../entities/LegacyV7EntityProjector.ts';
-import { commitEntityProjectionPartitions } from '../../entities/EntityProjection.ts';
+import { commitEntityProjectionPartitions, type EntityProjectionPartition } from '../../entities/EntityProjection.ts';
 import { assertEntityIntegrity, buildEntityDiagnostics, type EntityDiagnosticsSnapshot } from '../../entities/EntityDiagnostics.ts';
 import type { UnresolvedEntityReference } from '../../entities/EntityTypes.ts';
 
@@ -129,6 +129,7 @@ export class SimulationCore {
   readonly developmentPolicy: DevelopmentPolicySystem;
   private readonly redevelopmentFeasibility: DevelopmentFeasibilitySystem;
   private readonly entityProjector: LegacyV7EntityProjector;
+  private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;
   private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);
 
   employmentSnapshot: EmploymentSnapshot;
@@ -397,12 +398,15 @@ export class SimulationCore {
   }
 
   private syncEntityProjection(): void {
+    const partitions = this.entityProjector.projectPartitions(this);
+    if (partitions === this.lastSyncedEntityPartitions) return;
     const result = commitEntityProjectionPartitions(
       this.entityRegistry,
       this.entityReferences,
-      this.entityProjector.projectPartitions(this),
+      partitions,
     );
     this.lastUnresolvedEntityReferences = result.unresolved;
+    this.lastSyncedEntityPartitions = partitions;
   }
 
   private runLegacyV7Tick(): void {

@@ -91,6 +91,7 @@ export class LegacyV7EntityProjector {
   private lastSource: LegacyV7EntitySource | undefined;
   private readonly listCache = new Map<string, CachedList>();
   private readonly partitionCache = new Map<string, EntityProjectionPartition>();
+  private lastProjectedPartitions: readonly EntityProjectionPartition[] | undefined;
   private lastComposedPartitions: readonly EntityProjectionPartition[] | undefined;
   private lastProjection: EntityProjectionData | undefined;
   private volatileRevision = 0;
@@ -100,6 +101,7 @@ export class LegacyV7EntityProjector {
     this.lastSource = source;
     this.listCache.clear();
     this.partitionCache.clear();
+    this.lastProjectedPartitions = undefined;
     this.lastComposedPartitions = undefined;
     this.lastProjection = undefined;
     this.volatileRevision = 0;
@@ -456,7 +458,7 @@ export class LegacyV7EntityProjector {
       },
     );
 
-    return Object.freeze([
+    const projectedPartitions = Object.freeze([
       lots,
       buildingPartition,
       firms,
@@ -468,6 +470,13 @@ export class LegacyV7EntityProjector {
       freight,
       incidents,
     ]);
+    if (this.lastProjectedPartitions !== undefined
+      && this.lastProjectedPartitions.length === projectedPartitions.length
+      && projectedPartitions.every((partition, index) => partition === this.lastProjectedPartitions![index])) {
+      return this.lastProjectedPartitions;
+    }
+    this.lastProjectedPartitions = projectedPartitions;
+    return projectedPartitions;
   }
 
   project(source: LegacyV7EntitySource): EntityProjectionData {
