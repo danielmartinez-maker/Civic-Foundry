@@ -14,13 +14,20 @@ import {
   type TransportPhysicalNetwork,
 } from './TransportNetworkTypes.ts';
 
+export type LegacyRoadTypeSource = Readonly<{
+  junctionId: string;
+  roadType: RoadType;
+}>;
+
 export type LegacyProjection = Readonly<{
   physical: TransportPhysicalNetwork;
+  sourceRoadTypes: readonly LegacyRoadTypeSource[];
   sourceRoadRevision: number;
 }>;
 
 export type LegacyAuthorityProjection = Readonly<{
   authority: TransportNetworkAuthority;
+  sourceRoadTypes: readonly LegacyRoadTypeSource[];
   sourceRoadRevision: number;
 }>;
 
@@ -129,6 +136,7 @@ export class LegacyRoadNetworkAdapter {
     const cells = roads.list();
     const byKey = new Map<string, RoadCell>();
     const junctions: Junction[] = [];
+    const sourceRoadTypes: LegacyRoadTypeSource[] = [];
     const segments: RoadSegment[] = [];
     const carriageways: Carriageway[] = [];
     const lanes: Lane[] = [];
@@ -138,13 +146,15 @@ export class LegacyRoadNetworkAdapter {
 
     for (const cell of cells) {
       const key = cellKey(cell.x, cell.y);
+      const junctionId = legacyJunctionId(cell.x, cell.y);
       byKey.set(key, cell);
       junctions.push({
-        id: legacyJunctionId(cell.x, cell.y),
+        id: junctionId,
         x: cell.x,
         y: cell.y,
         sourceLegacyCell: key,
       });
+      sourceRoadTypes.push({ junctionId, roadType: cell.type });
     }
 
     for (const cell of cells) {
@@ -206,6 +216,7 @@ export class LegacyRoadNetworkAdapter {
         carriageways: carriageways.sort((a, b) => a.id.localeCompare(b.id)),
         lanes: lanes.sort((a, b) => a.id.localeCompare(b.id)),
       },
+      sourceRoadTypes: sourceRoadTypes.sort((a, b) => a.junctionId.localeCompare(b.junctionId)),
       sourceRoadRevision: roads.revision,
     };
 
@@ -225,6 +236,7 @@ export class LegacyRoadNetworkAdapter {
         ...projection.physical,
         movements: buildTurnMovements(projection.physical),
       },
+      sourceRoadTypes: projection.sourceRoadTypes,
       sourceRoadRevision: projection.sourceRoadRevision,
     };
     this.cachedAuthorityProjection = authorityProjection;
