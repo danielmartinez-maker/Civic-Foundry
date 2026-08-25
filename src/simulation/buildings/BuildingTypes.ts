@@ -24,7 +24,7 @@ export type BuildingFloor = Readonly<{
   level: number;
   elevationMeters: number;
   grossAreaM2: number;
-  usableAreaM2: number;
+  usableAreaM2?: number;
   uses: readonly FloorUseAllocation[];
 }>;
 
@@ -48,7 +48,7 @@ export type BuildingEntitlement = Readonly<{
   approvedFAR: number;
   approvedHeightMeters: number;
   approvedUses: readonly UseType[];
-  legalNonconforming: boolean;
+  legalNonconforming?: boolean;
 }>;
 
 export type BuildingProjectPhase =
@@ -88,37 +88,47 @@ export type BuildingV2 = Readonly<{
   projectCost: number;
   entitlement: BuildingEntitlement;
   lifecycle: BuildingLifecycleState;
-  project: BuildingProjectState;
+  project?: BuildingProjectState;
 }>;
 
 export type BuildingTypology = Readonly<{
   id: string;
+  name: string;
   legacyDefinitionId?: string;
-  permittedUses: readonly UseType[];
+  primaryUse: UseType;
+  allowedUses: readonly UseType[];
+  defaultUseMix: Readonly<Partial<Record<UseType, number>>>;
   preferredStories: number;
+  minStories: number;
+  maxStories: number;
   floorToFloorHeightMeters: number;
   efficiencyRatio: number;
   costPerM2: number;
-  annualMaintenancePerM2: number;
-  constructionTicks: number;
-  complexityFactor: number;
-  averageResidentialUnitM2: number;
-  jobAreaPerEmployeeM2: Readonly<Partial<Record<UseType, number>>>;
-  powerDemandPerM2: number;
-  waterDemandPerM2: number;
-  garbagePerM2: number;
+  maintenanceCostPerM2: number;
+  constructionTicksPer1000M2: number;
+  averageResidentialUnitAreaM2: number;
+  jobsPer1000M2ByUse: Readonly<Partial<Record<UseType, number>>>;
+  powerDemandPer1000M2: number;
+  waterDemandPer1000M2: number;
+  garbagePer1000M2: number;
   taxBasePerM2: number;
-  baseRentPerM2: number;
+  baseRentPerM2ByUse: Readonly<Partial<Record<UseType, number>>>;
   operatingExpenseRatio: number;
   baseVacancy: number;
   baseCapRate: number;
-  conversionSuitability: number;
+  minimumAccess: number;
+  minimumUtilityRatio: number;
+  minimumServiceQuality: number;
+  complexityFactor: number;
+  riskWeight: number;
+  conversionSuitability?: number;
 }>;
 
 export type DevelopmentCandidate = Readonly<{
   id: string;
   parcelIds: readonly string[];
   typologyId: string;
+  targetUtilization: number;
   footprint: PolygonRing;
   grossFloorAreaM2: number;
   usableFloorAreaM2: number;
