@@ -32,13 +32,30 @@ export class PersonEntityBridge {
   }
 
   createPerson(input: PersonCreateInput): PersonRecord {
-    const normalized = normalizePersonCreateInput(input);
-    if (this.store.get(normalized.id)) throw new Error(`duplicate person: ${normalized.id}`);
+    const created = this.createPeople([input]);
+    const person = created[0];
+    if (!person) throw new Error('person batch creation returned no person');
+    return person;
+  }
 
-    const projectedPeople = [...this.store.list(), normalized].map(projectPerson);
+  createPeople(inputs: readonly PersonCreateInput[]): readonly PersonRecord[] {
+    const normalized = inputs.map((input) => normalizePersonCreateInput(input));
+    const incomingIds = new Set<string>();
+
+    for (const person of normalized) {
+      if (incomingIds.has(person.id)) throw new Error(`duplicate person: ${person.id}`);
+      incomingIds.add(person.id);
+      if (this.store.get(person.id)) throw new Error(`duplicate person: ${person.id}`);
+    }
+
+    if (normalized.length === 0) return Object.freeze([]);
+
+    const projectedPeople = [...this.store.list(), ...normalized].map(projectPerson);
     const prepared = this.registry.preparePartitionProjection(['person'], projectedPeople);
     this.registry.commitPreparedPartitions([prepared]);
-    return this.store.create(normalized);
+
+    const created = normalized.map((person) => this.store.create(person));
+    return Object.freeze(created);
   }
 
   sync(): void {
