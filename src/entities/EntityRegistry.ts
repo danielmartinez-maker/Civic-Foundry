@@ -162,6 +162,10 @@ export class EntityRegistry implements KnownEntityView {
   private highestGenerationByLegacyKey = new Map<string, number>();
   private revision = 0;
 
+  get commitRevision(): number {
+    return this.revision;
+  }
+
   resolve<K extends EntityKind>(kind: K, legacyId: string): EntityHandle<K> | undefined {
     return resolveActiveFrom(this.activeByLegacyKey, kind, legacyId) as EntityHandle<K> | undefined;
   }
