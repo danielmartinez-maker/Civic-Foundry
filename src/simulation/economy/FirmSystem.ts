@@ -1,4 +1,5 @@
 import type { Building } from '../buildings/BuildingSystem.ts';
+import type { UrbanBusinessSite } from '../urban/UrbanBuildingView.ts';
 import { ARCHETYPES, LIFECYCLE, type FirmArchetype } from '../../data/economy.ts';
 
 export type FirmStatus = 'forming' | 'operating' | 'distressed' | 'closed';
@@ -29,6 +30,17 @@ function stableNumber(text: string, seed: number): number {
   return h >>> 0;
 }
 
+function siteZone(site: UrbanBusinessSite): 'commercial' | 'industrial' | null {
+  if (site.industrialJobCapacity > 0 && (site.dominantZone === 'industrial' || site.commercialJobCapacity === 0)) return 'industrial';
+  if (site.commercialJobCapacity > 0) return 'commercial';
+  if (site.industrialJobCapacity > 0) return 'industrial';
+  return null;
+}
+
+function siteCapacity(site: UrbanBusinessSite, zone: 'commercial' | 'industrial'): number {
+  return zone === 'commercial' ? site.commercialJobCapacity : site.industrialJobCapacity;
+}
+
 export class FirmSystem {
   private readonly firms = new Map<string, MutableFirm>();
   private nextId = 1;
@@ -47,13 +59,56 @@ export class FirmSystem {
       const choices: FirmArchetype[] = zone === 'commercial' ? ['retail_local', 'wholesale_logistics'] : ['light_manufacturing', 'assembly_manufacturing'];
       const archetype = choices[stableNumber(building.id, this.seed) % choices.length]!;
       const definition = ARCHETYPES[archetype];
-      const id = `firm:${this.nextId++}`;
-      this.firms.set(id, {
-        id, buildingId: building.id, zone, archetype, status: 'forming', jobCapacity: definition.jobCapacity,
-        filledJobs: 0, vacancies: 0, productivity: definition.baseProductivity, cashHealth: LIFECYCLE.initialCashHealth,
-        consecutiveLossCycles: 0, consecutiveRecoveryCycles: 0, formationTick: tick, lastOperatingMargin: 0,
-      });
+      this.createFirm(building.id, zone, archetype, definition.jobCapacity, tick);
     }
+  }
+
+  syncEligibleSites(sites: readonly UrbanBusinessSite[], tick: number): void {
+    const eligible = sites
+      .filter((site) => site.occupancyEligible && site.totalJobCapacity > 0 && siteZone(site) !== null)
+      .slice()
+      .sort((a, b) => a.buildingId.localeCompare(b.buildingId));
+    const siteById = new Map(eligible.map((site) => [site.buildingId, site] as const));
+
+    for (const firm of this.firms.values()) {
+      if (firm.status === 'closed') continue;
+      const site = siteById.get(firm.buildingId);
+      const zone = site ? siteZone(site) : null;
+      if (!site || !zone || zone !== firm.zone) {
+        this.update(firm.id, { status: 'closed', closureTick: tick, filledJobs: 0, vacancies: 0, distressReason: 'building unavailable' });
+        continue;
+      }
+      const maximum = Math.min(ARCHETYPES[firm.archetype].jobCapacity, siteCapacity(site, zone));
+      if (maximum <= 0) {
+        this.update(firm.id, { status: 'closed', closureTick: tick, filledJobs: 0, vacancies: 0, distressReason: 'building capacity lost' });
+        continue;
+      }
+      if (firm.jobCapacity !== maximum || firm.filledJobs > maximum) {
+        const filledJobs = Math.min(firm.filledJobs, maximum);
+        this.update(firm.id, { jobCapacity: maximum, filledJobs, vacancies: Math.max(0, maximum - filledJobs) });
+      }
+    }
+
+    for (const site of eligible) {
+      if ([...this.firms.values()].some((firm) => firm.buildingId === site.buildingId && firm.status !== 'closed')) continue;
+      const zone = siteZone(site);
+      if (!zone) continue;
+      const choices: FirmArchetype[] = zone === 'commercial' ? ['retail_local', 'wholesale_logistics'] : ['light_manufacturing', 'assembly_manufacturing'];
+      const archetype = choices[stableNumber(site.buildingId, this.seed) % choices.length]!;
+      const capacity = Math.min(ARCHETYPES[archetype].jobCapacity, siteCapacity(site, zone));
+      if (capacity <= 0) continue;
+      this.createFirm(site.buildingId, zone, archetype, capacity, tick);
+    }
+  }
+
+  private createFirm(buildingId: string, zone: 'commercial' | 'industrial', archetype: FirmArchetype, jobCapacity: number, tick: number): void {
+    const definition = ARCHETYPES[archetype];
+    const id = `firm:${this.nextId++}`;
+    this.firms.set(id, {
+      id, buildingId, zone, archetype, status: 'forming', jobCapacity,
+      filledJobs: 0, vacancies: 0, productivity: definition.baseProductivity, cashHealth: LIFECYCLE.initialCashHealth,
+      consecutiveLossCycles: 0, consecutiveRecoveryCycles: 0, formationTick: tick, lastOperatingMargin: 0,
+    });
   }
 
   list(): Firm[] { return [...this.firms.values()].map((f) => ({ ...f })).sort((a, b) => a.id.localeCompare(b.id)); }

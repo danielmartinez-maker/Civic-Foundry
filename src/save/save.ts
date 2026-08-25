@@ -2,12 +2,14 @@ import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import { hydrateCore as hydrateCoreV4, serializeCore as serializeCoreV4 } from './saveLegacy.ts';
 import { hydrateCoreV5, serializeCoreV5 } from './saveV5.ts';
 import { hydrateCoreV6, serializeCoreV6 } from './saveV6.ts';
-import { hydrateCoreV7, serializeCoreV7, type SaveV7 } from './saveV7.ts';
+import { hydrateCoreV7, serializeCoreV7 } from './saveV7.ts';
+import { hydrateCoreV8, serializeCoreV8, type SaveV8 } from './saveV8.ts';
 
 export type { SaveTrafficVehicle, SaveV3, SaveV4 } from './saveLegacy.ts';
 export type { SaveV5 } from './saveV5.ts';
 export type { SaveV6 } from './saveV6.ts';
 export type { SaveV7 } from './saveV7.ts';
+export type { SaveV8 } from './saveV8.ts';
 export {
   hydrateCoreV4,
   serializeCoreV4,
@@ -17,15 +19,17 @@ export {
   serializeCoreV6,
   hydrateCoreV7,
   serializeCoreV7,
+  hydrateCoreV8,
+  serializeCoreV8,
 };
 
-export function serializeCore(core: SimulationCore): SaveV7 {
-  return sanitizePausedServiceState(serializeCoreV7(core), core);
+export function serializeCore(core: SimulationCore): SaveV8 {
+  return sanitizePausedServiceState(serializeCoreV8(core), core);
 }
 
-export function hydrateCore(input: unknown): SimulationCore { return hydrateCoreV7(input); }
+export function hydrateCore(input: unknown): SimulationCore { return hydrateCoreV8(input); }
 
-function sanitizePausedServiceState(save: SaveV7, core: SimulationCore): SaveV7 {
+function sanitizePausedServiceState(save: SaveV8, core: SimulationCore): SaveV8 {
   const buildingIds = new Set(core.buildings.list().map((building) => building.id));
   const orphanJobIds = new Set(save.services.jobs.filter((job) => !buildingIds.has(job.targetBuildingId)).map((job) => job.id));
   const resetVehicleIds = new Set(save.services.vehicles.filter((vehicle) => vehicle.currentJobId !== null && orphanJobIds.has(vehicle.currentJobId)).map((vehicle) => vehicle.id));

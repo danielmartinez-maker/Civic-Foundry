@@ -1,5 +1,13 @@
 import type { BuildingIntensity } from '../../data/buildings.ts';
 import type { ZoneType } from '../core/types.ts';
+import type { BuildingQualityTier, PrivateParkingProfile, UrbanUse } from '../urban/UrbanTypes.ts';
+
+export type DevelopmentUseMarketSignal = Readonly<{
+  demand: number;
+  taxRate: number;
+  marketRentMultiplier: number;
+  marketVacancyRate: number;
+}>;
 
 export type DevelopmentParcelContext = Readonly<{
   demand: number;
@@ -16,9 +24,17 @@ export type DevelopmentParcelContext = Readonly<{
   marketRentMultiplier: number;
   marketVacancyRate: number;
   landValueMultiplier: number;
+  marketByUse?: Readonly<Record<UrbanUse, DevelopmentUseMarketSignal>>;
   policyAffordableHousingShare?: number;
   policyDevelopmentFeeRate?: number;
   policyPermittingCostReduction?: number;
+}>;
+
+export type DevelopmentSemanticTuple = Readonly<{
+  qualityTier: BuildingQualityTier;
+  parkingProfile: PrivateParkingProfile;
+  parkingSpaces: number;
+  useMixKey: string;
 }>;
 
 export type DevelopmentFeasibilityResult = Readonly<{
@@ -38,6 +54,7 @@ export type DevelopmentFeasibilityResult = Readonly<{
   propertyTaxes: number;
   netOperatingIncome: number;
   hardConstructionCost: number;
+  parkingCost?: number;
   softCosts: number;
   sitePreparationCost: number;
   preFinanceDevelopmentCost: number;
@@ -50,6 +67,10 @@ export type DevelopmentFeasibilityResult = Readonly<{
   residualLandValue: number;
   riskScore: number;
   rejectionReasons: readonly string[];
+  qualityTier?: BuildingQualityTier;
+  parkingProfile?: PrivateParkingProfile;
+  parkingSpaces?: number;
+  useMixKey?: string;
 }>;
 
 export type DeveloperPreferences = Readonly<Record<ZoneType, number>>;
@@ -75,7 +96,7 @@ export type DeveloperMarketContext = Readonly<{
   marketInterestRate: number;
 }>;
 
-export type DevelopmentBid = Readonly<{
+export type DevelopmentBid = DevelopmentSemanticTuple & Readonly<{
   id: string;
   lotId: string;
   definitionId: string;
@@ -102,7 +123,24 @@ export type DevelopmentAward = DevelopmentBid & Readonly<{
   releaseTick: number;
 }>;
 
-export type DeveloperCommitment = Readonly<{
+export type DeveloperCommitment = DevelopmentSemanticTuple & Readonly<{
+  awardId: string;
+  buildingId: string;
+  lotId: string;
+  definitionId: string;
+  developerId: string;
+  equity: number;
+  awardTick: number;
+  completionTick: number;
+  releaseTick: number;
+  expectedReturn: number;
+}>;
+
+/**
+ * The V7 persistence envelope predates B1 semantic development fields.
+ * Keep this shape byte-compatible until Save V8 becomes authoritative.
+ */
+export type DeveloperMarketStateCommitment = Readonly<{
   awardId: string;
   buildingId: string;
   lotId: string;
@@ -116,6 +154,12 @@ export type DeveloperCommitment = Readonly<{
 }>;
 
 export type DeveloperMarketStateSnapshot = Readonly<{
+  developers: readonly DeveloperState[];
+  commitments: readonly DeveloperMarketStateCommitment[];
+}>;
+
+/** B1/V8 persistence retains the semantic tuple on active commitments. */
+export type SemanticDeveloperMarketStateSnapshot = Readonly<{
   developers: readonly DeveloperState[];
   commitments: readonly DeveloperCommitment[];
 }>;
