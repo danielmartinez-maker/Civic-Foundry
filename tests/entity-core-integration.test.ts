@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { EntityRegistry } from '../src/entities/EntityRegistry.ts';
 import { EntityReferenceGraph } from '../src/entities/EntityReferenceGraph.ts';
+import { LegacyV7EntityProjector } from '../src/entities/LegacyV7EntityProjector.ts';
+import { commitEntityProjection } from '../src/entities/EntityProjection.ts';
 import { serializeCoreV7, hydrateCoreV7 } from '../src/save/saveV7.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 
@@ -38,6 +40,25 @@ test('entity registry synchronization runs after legacy V7 gameplay each tick', 
   );
 });
 
+test('runtime entity synchronization consumes partitions rather than the legacy full-projector path', () => {
+  const core = new SimulationCore({ terrain: flat(), seed: 307 });
+  type ProjectorProbe = {
+    project: (source: SimulationCore) => unknown;
+    projectPartitions: (source: SimulationCore) => readonly unknown[];
+  };
+  const projector = (core as unknown as { entityProjector: ProjectorProbe }).entityProjector;
+  const originalProjectPartitions = projector.projectPartitions.bind(projector);
+  let partitionCalls = 0;
+  projector.project = () => { throw new Error('legacy full projector path used'); };
+  projector.projectPartitions = (source) => {
+    partitionCalls += 1;
+    return originalProjectPartitions(source);
+  };
+
+  assert.doesNotThrow(() => core.rebuildEntityProjection());
+  assert.equal(partitionCalls, 1);
+});
+
 test('unchanged entity sync keeps its kernel slot without recommitting derived identity state', () => {
   const core = new SimulationCore({ terrain: flat(), seed: 306 });
   const registryRevision = core.entityRegistry.commitRevision;
@@ -71,6 +92,31 @@ test('hydrate rebuilds identical derived entity state without persisting it', ()
   assert.deepEqual(hydrated.entityRegistry.snapshot(), beforeRegistry);
   assert.deepEqual(hydrated.entityReferences.snapshot(), beforeGraph);
   assert.deepEqual(hydrated.entityDiagnostics, original.entityDiagnostics);
+});
+
+test('hydrate consumes no tick or gameplay RNG draw and first incremental sync matches the full projection oracle', () => {
+  const original = new SimulationCore({ terrain: flat(), startingFunds: 100_000, seed: 308 });
+  assert.equal(original.buildRoad([{ x: 2, y: 4 }, { x: 3, y: 4 }, { x: 4, y: 4 }], 'local').ok, true);
+  original.paintZone([{ x: 3, y: 3 }], 'commercial');
+  original.step(3);
+  const save = serializeCoreV7(original);
+  const expectedTick = original.clock.tick;
+  const expectedRandomState = original.random.getState();
+
+  const hydrated = hydrateCoreV7(structuredClone(save));
+  assert.equal(hydrated.clock.tick, expectedTick);
+  assert.equal(hydrated.random.getState(), expectedRandomState);
+
+  hydrated.step(1);
+  const oracleRegistry = new EntityRegistry();
+  const oracleGraph = new EntityReferenceGraph();
+  commitEntityProjection(
+    oracleRegistry,
+    oracleGraph,
+    new LegacyV7EntityProjector().project(hydrated),
+  );
+  assert.deepEqual(hydrated.entityRegistry.snapshot(), oracleRegistry.snapshot());
+  assert.deepEqual(hydrated.entityReferences.snapshot(), oracleGraph.snapshot());
 });
 
 test('Save V7 excludes all Phase 0B derived identity infrastructure', () => {
