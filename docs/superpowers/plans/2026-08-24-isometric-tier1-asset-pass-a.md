@@ -2,79 +2,55 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace Civic Foundry's square top-down primitive world presentation with a production-ready all-raster 2:1 isometric renderer and the first Tier 1 North American metropolitan asset pack, without changing authoritative V7 simulation or save behavior.
+**Goal:** Replace Civic Foundry's square top-down primitive world presentation with a production-ready all-raster 2:1 isometric renderer and a Tier 1 North American metropolitan asset pack, while preserving V7 simulation and save behavior exactly.
 
-**Architecture:** Keep V7 simulation coordinates and state authoritative. Add a single isometric camera/projection contract, a typed presentation-only asset manifest/registry, deterministic sprite selection, raster atlas generation from source-controlled vector atlas sheets, and focused ground/object/vehicle/overlay render passes. Canvas remains the compositor and analytical-overlay surface; normal terrain, roads, buildings, facilities, vegetation, construction, and moving vehicles render from PNG atlas regions generated at build time.
+**Architecture:** Keep simulation state on the existing authoritative `(x,y)` grid. Add one isometric camera/projection contract, a presentation-only manifest/atlas registry, stable variant-family selection, raster atlas generation from source-controlled SVG sheets, and focused ground/object/vehicle/overlay passes. Canvas remains the compositor and analytical-overlay surface; terrain, roads, buildings, facilities, vegetation, construction, and moving vehicles render from PNG atlas regions at runtime.
 
-**Tech Stack:** TypeScript 5.x ES modules, browser Canvas 2D, Node 22 built-in test runner with TypeScript strip-types, Python Playwright + Chromium for build-time rasterization and browser smoke tests, source-controlled SVG atlas sheets, generated PNG runtime atlases.
+**Tech Stack:** TypeScript 5.x ES modules, browser Canvas 2D, Node 22 built-in test runner with TypeScript strip-types, Python Playwright + Chromium for build-time SVG→PNG rasterization and browser smoke tests.
 
 **Spec:** `docs/superpowers/specs/2026-08-24-isometric-tier1-asset-pass-a-design.md`
 
 ## Global Constraints
 
-- Preserve V7 (`0.7.0-metropolitan`) authoritative simulation, deterministic formulas, public mutation semantics, and `saveVersion: 7` behavior.
-- Do not persist presentation asset IDs or visual random state.
-- Runtime world assets are raster sprites/atlas regions; Canvas primitives are permitted only for overlays, selection/tool feedback, and deliberate diagnostic fallback.
-- Fixed 2:1 projection: 64×32 logical display tile at 1× zoom; source ground art 128×64.
+- Preserve V7 (`0.7.0-metropolitan`) authoritative simulation formulas, public mutation semantics, deterministic results, and `saveVersion: 7` behavior.
+- Do not persist visual asset IDs, camera orientation, or presentation RNG state in gameplay saves.
+- Runtime world art is raster. Canvas primitives remain valid only for analytical overlays, selection/tool feedback, and deliberate diagnostic fallback.
+- Fixed 2:1 projection: 64×32 logical display tile at 1× zoom; source ground tile 128×64.
 - Preserve approximately 0.45×–2.5× zoom, cursor-centered zoom, pan, and four quarter-turn camera orientations.
-- Current V7 authoritative building footprints remain one simulation cell; visual sprites may extend upward/outward but cannot manufacture multi-cell gameplay occupancy.
-- Current road classes remain `local`, `collector`, and `arterial`; Pass A does not add gameplay road types.
-- Variant selection must be deterministic from stable presentation inputs; browser RNG is prohibited for persistent visual selection.
-- Use a general North American metropolitan visual baseline, fictional signage only, no real logos or copied proprietary game/building assets.
-- Shared daylight: upper-left/northwest screen-space light, shadows down-right/southeast, restrained AO and saturation.
-- At least three materially distinct core variants per zone × intensity family where production scope permits, targeting 27+ core building sprites before orientation variants.
-- Construction must expose four derived progress stages plus completion using existing construction timing only.
-- Asset-load or manifest failure must degrade to readable fallback rendering without crashing the simulation loop.
-- No runtime npm dependency is introduced.
-- Keep new rendering files focused; do not expand `WorldRenderer.ts` into a larger monolith.
+- V7 building gameplay footprints remain one cell. Sprite overhang is visual only.
+- V7 road classes remain `local`, `collector`, and `arterial`; no new gameplay road classes in Pass A.
+- Persistent visual choice must be deterministic from stable inputs; never use `Math.random()` for building/terrain/vehicle variants.
+- Use a general North American metropolitan art baseline, fictional signage, no real logos, and no copied proprietary assets.
+- Shared daylight: upper-left/northwest screen-space sun, shadows lower-right/southeast, restrained AO/saturation.
+- Target at least 27 materially distinct completed building variants before orientation frames: 3 per zone × intensity family.
+- Construction exposes four derived visual stages plus completion from existing timing only.
+- Asset/manifest failure degrades to readable fallback rendering without crashing the simulation loop.
+- Introduce no runtime npm dependency.
+- Split `WorldRenderer.ts`; do not turn it into a larger coordinator.
 
----
+## Locked File Map
 
-## File Structure Locked for This Pass
-
-### New rendering modules
-
-- `src/rendering/isometric/IsometricProjection.ts` — pure rotation, projection, inverse projection, diamond geometry.
-- `src/rendering/isometric/IsometricCamera.ts` — pan, zoom, quarter-turn state, map offset, public world/canvas conversion.
-- `src/rendering/isometric/IsometricOverlayPainter.ts` — projected diamond fills/strokes and world-edge line helpers.
-- `src/rendering/assets/AssetTypes.ts` — manifest, atlas, query, resolution, diagnostics types.
-- `src/rendering/assets/PassAAssetManifest.ts` — atlas descriptors and all Pass A sprite metadata.
-- `src/rendering/assets/AssetManifestValidation.ts` — pure manifest validation.
-- `src/rendering/assets/AssetRegistry.ts` — image preload/cache and safe sprite resolution.
-- `src/rendering/assets/VariantSelector.ts` — stable weighted hashing and building/terrain/vehicle selectors.
-- `src/rendering/assets/RoadAutotile.ts` — 4-bit road connectivity masks and camera mask rotation.
-- `src/rendering/assets/ConstructionVisuals.ts` — construction progress → presentation stage.
-- `src/rendering/assets/SpritePainter.ts` — atlas-region drawing at a world anchor with scale/orientation.
-- `src/rendering/passes/GroundRenderPass.ts` — terrain, zoning underlay, road raster pass.
-- `src/rendering/passes/ObjectRenderPass.ts` — buildings, facilities, vegetation, construction objects and deterministic depth ordering.
-- `src/rendering/passes/OverlayRenderPass.ts` — existing traffic/service/transit/economy overlays in isometric geometry.
-- `src/rendering/passes/SelectionRenderPass.ts` — selection and road-preview diamonds.
-
-### Existing rendering files modified
-
-- `src/rendering/WorldRenderer.ts` — becomes orchestration/camera facade; delegates passes.
-- `src/rendering/VehicleRenderer.ts`
-- `src/rendering/ServiceVehicleRenderer.ts`
-- `src/rendering/TransitVehicleRenderer.ts`
-- `src/rendering/FreightVehicleRenderer.ts`
-- `src/ui/LandHousingUiController.ts`
-- `src/app/GameApp.ts`
-
-### Asset source and build files
-
-- `assets/source/terrain.svg`
-- `assets/source/roads.svg`
-- `assets/source/buildings.svg`
-- `assets/source/construction.svg`
-- `assets/source/civic.svg`
-- `assets/source/utilities.svg`
-- `assets/source/vegetation.svg`
-- `assets/source/vehicles.svg`
+**Create**
+- `src/rendering/isometric/IsometricProjection.ts`
+- `src/rendering/isometric/IsometricCamera.ts`
+- `src/rendering/isometric/IsometricOverlayPainter.ts`
+- `src/rendering/isometric/IsometricCulling.ts`
+- `src/rendering/assets/AssetTypes.ts`
+- `src/rendering/assets/AssetManifestValidation.ts`
+- `src/rendering/assets/AssetRegistry.ts`
+- `src/rendering/assets/PassAAssetManifest.ts`
+- `src/rendering/assets/VariantSelector.ts`
+- `src/rendering/assets/RoadAutotile.ts`
+- `src/rendering/assets/ConstructionVisuals.ts`
+- `src/rendering/assets/VehicleVisuals.ts`
+- `src/rendering/assets/SpritePainter.ts`
+- `src/rendering/passes/RenderOrder.ts`
+- `src/rendering/passes/GroundRenderPass.ts`
+- `src/rendering/passes/ObjectRenderPass.ts`
+- `src/rendering/passes/OverlayRenderPass.ts`
+- `src/rendering/passes/SelectionRenderPass.ts`
+- `assets/source/{terrain,roads,buildings,construction,civic,utilities,vegetation,vehicles}.svg`
 - `tools/render_isometric_atlases.py`
-- generated at build time: `dist/assets/atlases/{terrain,roads,buildings,construction,civic,utilities,vegetation,vehicles}.png`
-
-### New tests
-
 - `tests/isometric-projection.test.ts`
 - `tests/isometric-road-autotile.test.ts`
 - `tests/isometric-assets.test.ts`
@@ -83,110 +59,104 @@
 - `tests/isometric-construction-visuals.test.ts`
 - `tests/smoke/isometric_pass_a_smoke.py`
 - `tests/smoke/isometric_visual_smoke.py`
+- `docs/art/ASSET_BIBLE.md`
+- `docs/art/PASS_A_REPORT.md`
 
-### Documentation modified/created
-
+**Modify**
+- `src/rendering/WorldRenderer.ts`
+- `src/rendering/VehicleRenderer.ts`
+- `src/rendering/ServiceVehicleRenderer.ts`
+- `src/rendering/TransitVehicleRenderer.ts`
+- `src/rendering/FreightVehicleRenderer.ts`
+- `src/ui/LandHousingUiController.ts`
+- `src/app/GameApp.ts`
 - `package.json`
 - `README.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DEVELOPMENT_LOG.md`
-- `docs/art/ASSET_BIBLE.md`
-- `docs/art/PASS_A_REPORT.md`
+
+Generated build output:
+- `dist/assets/atlases/{terrain,roads,buildings,construction,civic,utilities,vegetation,vehicles}.png`
 
 ---
 
-### Task 1: Introduce the single isometric projection and picking contract
+### Task 1: Build the single isometric projection, rotation, camera, and picking contract
 
-**Files:**
-- Create: `src/rendering/isometric/IsometricProjection.ts`
-- Create: `src/rendering/isometric/IsometricCamera.ts`
-- Create: `tests/isometric-projection.test.ts`
+**Files:** Create `src/rendering/isometric/IsometricProjection.ts`, `src/rendering/isometric/IsometricCamera.ts`, `tests/isometric-projection.test.ts`.
 
-**Interfaces:**
-- Produces: `QuarterTurn`, `IsoMetrics`, `DEFAULT_ISO_METRICS`, `rotateWorldPoint()`, `inverseRotateWorldPoint()`, `rotatedWorldSize()`, `projectRotatedPoint()`, `inverseProjectPoint()`, `diamondContains()`, `IsometricCamera.worldToCanvas()`, `IsometricCamera.canvasToCell()`, `IsometricCamera.tilePolygon()`, `IsometricCamera.tileCenter()`, `IsometricCamera.pan()`, `IsometricCamera.zoomBy()`, `IsometricCamera.rotate()`.
-- Consumes: only numeric world coordinates and world dimensions; no simulation mutations.
+**Produces:** `QuarterTurn`, `IsoMetrics`, `WorldSize`, `Point`, `DEFAULT_ISO_METRICS`, `rotateWorldPoint()`, `inverseRotateWorldPoint()`, `rotatedWorldSize()`, `projectRotatedPoint()`, `inverseProjectPoint()`, `diamondContains()`, and `IsometricCamera`.
 
-- [ ] **Step 1: Write failing projection/round-trip tests**
+- [ ] **Step 1: Write failing projection tests**
 
 ```ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_ISO_METRICS,
-  inverseProjectPoint,
-  projectRotatedPoint,
-  rotateWorldPoint,
-  inverseRotateWorldPoint,
+  DEFAULT_ISO_METRICS, projectRotatedPoint, inverseProjectPoint,
+  rotateWorldPoint, inverseRotateWorldPoint,
 } from '../src/rendering/isometric/IsometricProjection.ts';
 
 const size = { width: 40, height: 24 } as const;
 
-test('2:1 projection uses the 64x32 logical tile contract', () => {
+test('uses the 64x32 2:1 contract', () => {
   assert.deepEqual(DEFAULT_ISO_METRICS, { tileWidth: 64, tileHeight: 32 });
-  assert.deepEqual(projectRotatedPoint(0, 0, DEFAULT_ISO_METRICS), { x: 0, y: 0 });
-  assert.deepEqual(projectRotatedPoint(1, 0, DEFAULT_ISO_METRICS), { x: 32, y: 16 });
-  assert.deepEqual(projectRotatedPoint(0, 1, DEFAULT_ISO_METRICS), { x: -32, y: 16 });
+  assert.deepEqual(projectRotatedPoint(1, 0), { x: 32, y: 16 });
+  assert.deepEqual(projectRotatedPoint(0, 1), { x: -32, y: 16 });
 });
 
-test('projection and inverse projection round-trip fractional world points', () => {
-  const p = projectRotatedPoint(7.25, 11.75, DEFAULT_ISO_METRICS);
-  const world = inverseProjectPoint(p.x, p.y, DEFAULT_ISO_METRICS);
+test('projection round-trips fractional points', () => {
+  const p = projectRotatedPoint(7.25, 11.75);
+  const world = inverseProjectPoint(p.x, p.y);
   assert.ok(Math.abs(world.x - 7.25) < 1e-9);
   assert.ok(Math.abs(world.y - 11.75) < 1e-9);
 });
 
-test('all four rotations round-trip authoritative cells', () => {
+test('all quarter turns round-trip authoritative coordinates', () => {
   for (const turn of [0, 1, 2, 3] as const) {
-    const rotated = rotateWorldPoint(6, 9, size, turn);
-    assert.deepEqual(inverseRotateWorldPoint(rotated.x, rotated.y, size, turn), { x: 6, y: 9 });
+    const r = rotateWorldPoint(6, 9, size, turn);
+    assert.deepEqual(inverseRotateWorldPoint(r.x, r.y, size, turn), { x: 6, y: 9 });
   }
 });
 ```
 
-- [ ] **Step 2: Run the focused test and verify failure**
+- [ ] **Step 2: Verify failure**
 
-Run:
 ```bash
 node --experimental-strip-types --test tests/isometric-projection.test.ts
 ```
-Expected: FAIL because the isometric projection module does not exist.
+Expected: FAIL because the modules do not exist.
 
-- [ ] **Step 3: Implement pure projection helpers**
-
-Implement these exact exported contracts:
+- [ ] **Step 3: Implement pure math helpers**
 
 ```ts
 export type QuarterTurn = 0 | 1 | 2 | 3;
 export type IsoMetrics = Readonly<{ tileWidth: number; tileHeight: number }>;
 export type WorldSize = Readonly<{ width: number; height: number }>;
 export type Point = Readonly<{ x: number; y: number }>;
-
 export const DEFAULT_ISO_METRICS: IsoMetrics = Object.freeze({ tileWidth: 64, tileHeight: 32 });
 
-export function projectRotatedPoint(x: number, y: number, metrics = DEFAULT_ISO_METRICS): Point {
-  return { x: (x - y) * metrics.tileWidth / 2, y: (x + y) * metrics.tileHeight / 2 };
+export function projectRotatedPoint(x: number, y: number, m = DEFAULT_ISO_METRICS): Point {
+  return { x: (x - y) * m.tileWidth / 2, y: (x + y) * m.tileHeight / 2 };
 }
 
-export function inverseProjectPoint(x: number, y: number, metrics = DEFAULT_ISO_METRICS): Point {
-  const a = x / (metrics.tileWidth / 2);
-  const b = y / (metrics.tileHeight / 2);
+export function inverseProjectPoint(x: number, y: number, m = DEFAULT_ISO_METRICS): Point {
+  const a = x / (m.tileWidth / 2);
+  const b = y / (m.tileHeight / 2);
   return { x: (a + b) / 2, y: (b - a) / 2 };
 }
+
+export function diamondContains(localX: number, localY: number, m = DEFAULT_ISO_METRICS): boolean {
+  return Math.abs(localX) / (m.tileWidth / 2) + Math.abs(localY) / (m.tileHeight / 2) <= 1 + 1e-9;
+}
 ```
 
-Implement rotation/inverse rotation using the current `WorldRenderer` quarter-turn behavior, generalized for fractional coordinates. Add `diamondContains(localX, localY, metrics)` using normalized Manhattan distance:
+Port current quarter-turn formulas from `WorldRenderer` into pure rotation helpers and support fractional coordinates for moving vehicles.
 
-```ts
-return Math.abs(localX) / (metrics.tileWidth / 2) + Math.abs(localY) / (metrics.tileHeight / 2) <= 1 + 1e-9;
-```
+- [ ] **Step 4: Add camera round-trip tests**
 
-- [ ] **Step 4: Add camera tests for map offsets, zoom anchoring, rotation, and picking**
-
-Add tests that instantiate `IsometricCamera`, project cells `(0,0)`, `(39,0)`, `(0,23)`, `(39,23)`, then verify `canvasToCell(worldToCanvas(cell))` returns the original cell for all four rotations. Add a test where a point outside the diamond bounding region returns `null` rather than the wrong cell.
+For all four rotations, project `(0,0)`, `(39,0)`, `(0,23)`, `(39,23)`, and `(6,9)`, then verify `canvasToCell()` returns the original cell when given the projected center. Add edge/corner tests where points outside a diamond return `null` or the neighboring correct cell rather than a false hit.
 
 - [ ] **Step 5: Implement `IsometricCamera`**
-
-Use these public methods:
 
 ```ts
 export class IsometricCamera {
@@ -205,188 +175,92 @@ export class IsometricCamera {
 }
 ```
 
-The camera must include a rotation-aware map X offset based on the rotated world height so negative `(x-y)` coordinates remain inside the map's projected bounding box before user pan is applied. Keep zoom clamped to `0.45–2.5`.
+Use a rotation-aware horizontal map offset based on rotated height so negative `(x-y)` projection remains in the map bounding box. Clamp zoom to `0.45–2.5`; cursor anchoring must preserve the screen point under the cursor.
 
-- [ ] **Step 6: Run projection tests and typecheck**
+- [ ] **Step 6: Verify and commit**
 
 ```bash
 node --experimental-strip-types --test tests/isometric-projection.test.ts
 npm run typecheck
-```
-Expected: PASS.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add src/rendering/isometric/IsometricProjection.ts src/rendering/isometric/IsometricCamera.ts tests/isometric-projection.test.ts
+git add src/rendering/isometric tests/isometric-projection.test.ts
 git commit -m "feat: add deterministic isometric camera projection"
 ```
 
 ---
 
-### Task 2: Add road connectivity masks and deterministic render depth keys
+### Task 2: Add road autotile masks and deterministic render ordering
 
-**Files:**
-- Create: `src/rendering/assets/RoadAutotile.ts`
-- Create: `src/rendering/passes/RenderOrder.ts`
-- Create: `tests/isometric-road-autotile.test.ts`
-- Create: `tests/isometric-render-order.test.ts`
+**Files:** Create `src/rendering/assets/RoadAutotile.ts`, `src/rendering/passes/RenderOrder.ts`, `tests/isometric-road-autotile.test.ts`, `tests/isometric-render-order.test.ts`.
 
-**Interfaces:**
-- Produces: `ROAD_NORTH`, `ROAD_EAST`, `ROAD_SOUTH`, `ROAD_WEST`, `roadConnectivityMask()`, `rotateRoadMask()`, `SceneLayer`, `makeDepthKey()`, `compareDepthKeys()`.
-- Consumes: `(x, y) => RoadType | undefined` lookup and `QuarterTurn`.
-
-- [ ] **Step 1: Write failing road-mask tests for all logical cases**
+- [ ] **Step 1: Write failing mask tests**
 
 ```ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  ROAD_EAST, ROAD_NORTH, ROAD_SOUTH, ROAD_WEST,
-  roadConnectivityMask, rotateRoadMask,
-} from '../src/rendering/assets/RoadAutotile.ts';
+import { ROAD_NORTH, ROAD_EAST, ROAD_SOUTH, roadConnectivityMask, rotateRoadMask }
+  from '../src/rendering/assets/RoadAutotile.ts';
 
 const roads = new Set(['2,2', '2,1', '3,2', '2,3']);
 const lookup = (x: number, y: number) => roads.has(`${x},${y}`) ? 'local' as const : undefined;
 
-test('road mask derives cardinal connectivity from topology', () => {
+test('derives topology mask', () => {
   assert.equal(roadConnectivityMask(2, 2, lookup), ROAD_NORTH | ROAD_EAST | ROAD_SOUTH);
 });
 
-test('camera rotation rotates mask bits without changing topology', () => {
+test('camera rotation rotates mask bits', () => {
   assert.equal(rotateRoadMask(ROAD_NORTH, 1), ROAD_EAST);
-  assert.equal(rotateRoadMask(ROAD_NORTH | ROAD_EAST, 2), ROAD_SOUTH | ROAD_WEST);
 });
 ```
 
-Correct the fixture so the expected mask exactly matches the inserted neighbor set; include table-driven coverage for masks `0..15`.
+Add table coverage for every mask `0..15`.
 
-- [ ] **Step 2: Run and verify failure**
-
-```bash
-node --experimental-strip-types --test tests/isometric-road-autotile.test.ts
-```
-Expected: FAIL because the module does not exist.
-
-- [ ] **Step 3: Implement road masking**
-
-Use bit assignments:
+- [ ] **Step 2: Implement cardinal bits and rotation**
 
 ```ts
 export const ROAD_NORTH = 1;
 export const ROAD_EAST = 2;
 export const ROAD_SOUTH = 4;
 export const ROAD_WEST = 8;
-export type RoadMask = number;
 ```
 
-`roadConnectivityMask()` connects to any existing cardinal road regardless of class because current V7 graph connectivity allows class transitions. `rotateRoadMask(mask, turn)` rotates bits clockwise once per quarter turn.
+Connectivity is to any cardinal road cell, regardless of road class, because current V7 topology supports class transitions. Camera rotation changes presentation mask only; it never mutates road topology.
 
-- [ ] **Step 4: Write failing deterministic render-order tests**
+- [ ] **Step 3: Write and implement render-order tests**
 
 ```ts
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { compareDepthKeys, makeDepthKey } from '../src/rendering/passes/RenderOrder.ts';
-
-test('objects sort by isometric depth then elevation then stable id', () => {
-  const keys = [
-    makeDepthKey('objects', 4, 2, 0, 'b'),
-    makeDepthKey('objects', 4, 2, 0, 'a'),
-    makeDepthKey('objects', 2, 1, 0, 'z'),
-  ].sort(compareDepthKeys);
-  assert.deepEqual(keys.map((key) => key.stableId), ['z', 'a', 'b']);
-});
+const keys = [
+  makeDepthKey('objects', 4, 2, 0, 'b'),
+  makeDepthKey('objects', 4, 2, 0, 'a'),
+  makeDepthKey('objects', 2, 1, 0, 'z'),
+].sort(compareDepthKeys);
+assert.deepEqual(keys.map((k) => k.stableId), ['z', 'a', 'b']);
 ```
 
-- [ ] **Step 5: Implement render-order types**
+Use explicit scene layer ranks; within a layer sort by `rotatedX + rotatedY`, then elevation, then stable ID. Never use nondeterministic collection order as a tie-breaker.
 
-```ts
-export type SceneLayer = 'terrain' | 'roads' | 'low-props' | 'objects' | 'vehicles' | 'construction';
-export type DepthKey = Readonly<{
-  layerRank: number;
-  isoDepth: number;
-  elevation: number;
-  stableId: string;
-}>;
-
-export function makeDepthKey(layer: SceneLayer, rotatedX: number, rotatedY: number, elevation: number, stableId: string): DepthKey;
-export function compareDepthKeys(a: DepthKey, b: DepthKey): number;
-```
-
-Use explicit layer ranks and `isoDepth = rotatedX + rotatedY`. Never rely on Map insertion order as a tie-breaker.
-
-- [ ] **Step 6: Run tests and commit**
+- [ ] **Step 4: Verify and commit**
 
 ```bash
 node --experimental-strip-types --test tests/isometric-road-autotile.test.ts tests/isometric-render-order.test.ts
 npm run typecheck
 git add src/rendering/assets/RoadAutotile.ts src/rendering/passes/RenderOrder.ts tests/isometric-road-autotile.test.ts tests/isometric-render-order.test.ts
-git commit -m "feat: add road autotile masks and render ordering"
+git commit -m "feat: add isometric road masks and render ordering"
 ```
 
 ---
 
-### Task 3: Add typed manifest validation, safe asset resolution, and deterministic variant selection
+### Task 3: Add the presentation manifest, variant families, validation, and safe registry
 
-**Files:**
-- Create: `src/rendering/assets/AssetTypes.ts`
-- Create: `src/rendering/assets/AssetManifestValidation.ts`
-- Create: `src/rendering/assets/AssetRegistry.ts`
-- Create: `src/rendering/assets/VariantSelector.ts`
-- Create: `tests/isometric-assets.test.ts`
-- Create: `tests/isometric-variant-selection.test.ts`
+**Files:** Create `src/rendering/assets/AssetTypes.ts`, `AssetManifestValidation.ts`, `AssetRegistry.ts`, `VariantSelector.ts`, `PassAAssetManifest.ts`, `tests/isometric-assets.test.ts`, `tests/isometric-variant-selection.test.ts`.
 
-**Interfaces:**
-- Produces: `AssetManifestEntry`, `AtlasDescriptor`, `AssetManifest`, `AssetQuery`, `AssetResolution`, `validateAssetManifest()`, `AssetRegistry.preload()`, `AssetRegistry.resolve()`, `AssetRegistry.query()`, `stableHash32()`, `selectWeightedVariant()`.
-- Consumes: browser `Image` only inside `AssetRegistry`; validation and selection stay pure for Node tests.
+**Key rule:** `variantKey` is stable across camera orientations. A building may change orientation frame when the camera rotates, but it must not become a different architectural variant.
 
-- [ ] **Step 1: Define the failing manifest-validation tests**
-
-```ts
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { validateAssetManifest } from '../src/rendering/assets/AssetManifestValidation.ts';
-
-const manifest = {
-  schemaVersion: 1,
-  atlases: [{ atlasId: 'terrain', url: '/assets/atlases/terrain.png', width: 1024, height: 64 }],
-  entries: [{
-    assetId: 'terrain_grass_01', atlasId: 'terrain',
-    sourceRect: { x: 0, y: 0, width: 128, height: 64 },
-    footprint: { width: 1, height: 1 }, anchor: { x: 64, y: 32 },
-    category: 'terrain', subcategory: 'grass', weight: 1,
-  }],
-} as const;
-
-test('valid manifest passes', () => assert.deepEqual(validateAssetManifest(manifest), []));
-
-test('out-of-bounds source rect is rejected', () => {
-  const bad = structuredClone(manifest) as any;
-  bad.entries[0].sourceRect.x = 1000;
-  assert.match(validateAssetManifest(bad).join('\n'), /sourceRect.*atlas bounds/);
-});
-
-test('duplicate asset ids are rejected', () => {
-  const bad = { ...manifest, entries: [manifest.entries[0], manifest.entries[0]] };
-  assert.match(validateAssetManifest(bad).join('\n'), /duplicate assetId/);
-});
-```
-
-- [ ] **Step 2: Run and verify failure**
-
-```bash
-node --experimental-strip-types --test tests/isometric-assets.test.ts
-```
-Expected: FAIL.
-
-- [ ] **Step 3: Implement the exact presentation schema**
-
-`AssetTypes.ts` must include the spec fields plus atlas metadata:
+- [ ] **Step 1: Define the schema and failing validation tests**
 
 ```ts
 export type AssetManifestEntry = Readonly<{
   assetId: string;
+  variantKey: string;
   atlasId: string;
   sourceRect: Readonly<{ x: number; y: number; width: number; height: number }>;
   footprint: Readonly<{ width: number; height: number }>;
@@ -407,442 +281,291 @@ export type AssetManifestEntry = Readonly<{
 
 export type AtlasDescriptor = Readonly<{ atlasId: string; url: string; width: number; height: number }>;
 export type AssetManifest = Readonly<{ schemaVersion: 1; atlases: readonly AtlasDescriptor[]; entries: readonly AssetManifestEntry[] }>;
+```
+
+Tests must reject duplicate `assetId`, unknown atlas IDs, non-positive rectangles/footprints, out-of-bounds source rectangles, invalid weights, invalid orientation, and nonexistent night-variant targets.
+
+- [ ] **Step 2: Implement pure manifest validation**
+
+`validateAssetManifest(manifest): string[]` returns all validation errors without throwing. `AssetRegistry` throws only during constructor programmer-error setup if schema itself is unusable; runtime missing images become fallback resolutions.
+
+- [ ] **Step 3: Write stable variant-family tests**
+
+```ts
+const variants = [
+  { variantKey: 'house-a', weight: 1 },
+  { variantKey: 'house-b', weight: 1 },
+  { variantKey: 'house-c', weight: 1 },
+] as const;
+const chosen = selectWeightedVariantKey('building:lot-8', variants);
+assert.equal(chosen, selectWeightedVariantKey('building:lot-8', variants));
+```
+
+For 100 stable keys assert all three families appear. No selector may call `Math.random()`.
+
+- [ ] **Step 4: Implement stable hashing and orientation-safe selection**
+
+Use FNV-1a or equivalent in `stableHash32()`. Sort candidate variant families by `variantKey` before applying weights. Selection flow for any oriented asset is:
+1. select `variantKey` using a key that excludes camera orientation;
+2. resolve the entry with that `variantKey` and requested orientation;
+3. if the variant is explicitly tagged `symmetric`, orientation 0 may be reused;
+4. otherwise return fallback if the orientation frame is missing.
+
+- [ ] **Step 5: Implement `AssetRegistry`**
+
+```ts
 export type AssetResolution =
   | Readonly<{ kind: 'sprite'; entry: AssetManifestEntry; image: HTMLImageElement }>
   | Readonly<{ kind: 'fallback'; assetId: string; reason: string }>;
-```
 
-Validation must reject duplicate IDs, unknown atlases, non-positive footprints/source rectangles, out-of-bounds rectangles, invalid weights, invalid orientations, and nonexistent night-variant references.
-
-- [ ] **Step 4: Write deterministic weighted-selection tests**
-
-```ts
-test('stable selection is repeatable and uses only eligible entries', () => {
-  const eligible = [
-    { assetId: 'a', weight: 1 },
-    { assetId: 'b', weight: 2 },
-    { assetId: 'c', weight: 1 },
-  ] as const;
-  assert.equal(selectWeightedVariant('building:lot-8', eligible).assetId,
-               selectWeightedVariant('building:lot-8', eligible).assetId);
-  assert.ok(eligible.some((item) => item.assetId === selectWeightedVariant('building:lot-8', eligible).assetId));
-});
-```
-
-Also test 100 stable keys distribute across all three equal-weight variants and that no call uses `Math.random()`.
-
-- [ ] **Step 5: Implement `stableHash32()` and weighted selection**
-
-Use a small deterministic string hash (FNV-1a or equivalent), convert to an unsigned 32-bit integer, then map into cumulative positive weights. Sort eligible entries by `assetId` before weighting so manifest declaration order does not change visual choice.
-
-- [ ] **Step 6: Implement browser asset registry with one-time diagnostics**
-
-`AssetRegistry` must:
-
-```ts
 export class AssetRegistry {
   constructor(manifest: AssetManifest);
   preload(): Promise<void>;
   get ready(): boolean;
   query(query: AssetQuery): readonly AssetManifestEntry[];
-  resolve(assetId: string): AssetResolution;
-  resolveOrientation(assetId: string, orientation: 0 | 1 | 2 | 3): AssetResolution;
+  resolveAssetId(assetId: string): AssetResolution;
+  resolveVariant(variantKey: string, orientation: 0 | 1 | 2 | 3): AssetResolution;
   diagnostics(): readonly string[];
 }
 ```
 
-Load one `Image` per atlas URL. Validate declared image dimensions after load. Cache failures by atlas ID. `resolve()` returns `fallback` instead of throwing for unavailable/invalid sprites. Deduplicate diagnostic strings so the render loop cannot spam the console every frame.
+Build indexes once in the constructor. Load one `Image` per atlas URL. Cache image handles/failures and deduplicate diagnostics so rendering cannot flood the console.
 
-- [ ] **Step 7: Run tests, typecheck, and commit**
+- [ ] **Step 6: Verify and commit**
 
 ```bash
 node --experimental-strip-types --test tests/isometric-assets.test.ts tests/isometric-variant-selection.test.ts
 npm run typecheck
-git add src/rendering/assets/AssetTypes.ts src/rendering/assets/AssetManifestValidation.ts src/rendering/assets/AssetRegistry.ts src/rendering/assets/VariantSelector.ts tests/isometric-assets.test.ts tests/isometric-variant-selection.test.ts
-git commit -m "feat: add isometric asset manifest registry"
+git add src/rendering/assets/AssetTypes.ts src/rendering/assets/AssetManifestValidation.ts src/rendering/assets/AssetRegistry.ts src/rendering/assets/VariantSelector.ts src/rendering/assets/PassAAssetManifest.ts tests/isometric-assets.test.ts tests/isometric-variant-selection.test.ts
+git commit -m "feat: add isometric asset registry and stable variant families"
 ```
 
 ---
 
-### Task 4: Create the reproducible SVG-to-raster atlas build pipeline
+### Task 4: Add a reproducible source-art to raster-atlas build pipeline
 
-**Files:**
-- Create: `tools/render_isometric_atlases.py`
-- Create: `assets/source/terrain.svg`
-- Create: `assets/source/roads.svg`
-- Create: `assets/source/buildings.svg`
-- Create: `assets/source/construction.svg`
-- Create: `assets/source/civic.svg`
-- Create: `assets/source/utilities.svg`
-- Create: `assets/source/vegetation.svg`
-- Create: `assets/source/vehicles.svg`
-- Modify: `package.json`
-- Modify: `.gitignore` only if local generated-art directories need exclusion.
+**Files:** Create `tools/render_isometric_atlases.py`, eight `assets/source/*.svg` sheets; modify `package.json`.
 
-**Interfaces:**
-- Produces: `dist/assets/atlases/*.png` with dimensions exactly matching `PassAAssetManifest` atlas descriptors.
-- Consumes: source-controlled SVG sheets with explicit `width`, `height`, transparent backgrounds, and no external font/image dependencies.
+- [ ] **Step 1: Create transparent source SVG sheets with explicit dimensions**
 
-- [ ] **Step 1: Create minimal valid transparent atlas sheets**
-
-Start each SVG with explicit pixel dimensions and no page-sized opaque background. Example terrain source root:
+Each sheet has a transparent background and fixed pixel dimensions. No remote images, fonts, or external URLs. Example root:
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="64" viewBox="0 0 1024 64">
-  <defs>
-    <clipPath id="diamond"><polygon points="64,0 128,32 64,64 0,32"/></clipPath>
-  </defs>
-  <!-- eight 128x64 terrain cells are authored in later tasks -->
+  <defs><clipPath id="diamond"><polygon points="64,0 128,32 64,64 0,32"/></clipPath></defs>
 </svg>
 ```
 
-Do not use embedded raster references or remote URLs.
+- [ ] **Step 2: Implement `tools/render_isometric_atlases.py`**
 
-- [ ] **Step 2: Implement the atlas rasterizer**
-
-`tools/render_isometric_atlases.py` must use Python Playwright synchronously, iterate the fixed source list, read SVG width/height, open the local SVG in Chromium, set viewport to the exact sheet dimensions, and write a transparent PNG to `dist/assets/atlases/<name>.png`.
-
-Required CLI behavior:
+Required commands:
 
 ```bash
 python tools/render_isometric_atlases.py --check
 python tools/render_isometric_atlases.py
 ```
 
-`--check` validates source existence, numeric dimensions, and duplicate/missing sheet names without launching Chromium. Normal mode creates `dist/assets/atlases/` and rasterizes all eight sheets. Any rasterization failure exits non-zero.
+`--check` verifies all eight sources and numeric root dimensions without Chromium. Normal mode uses Python Playwright/Chromium to render each SVG at exact pixel dimensions with transparent background to `dist/assets/atlases/<name>.png`. Any failure exits non-zero.
 
-- [ ] **Step 3: Update package scripts**
-
-Change `package.json` scripts to include:
+- [ ] **Step 3: Update build scripts**
 
 ```json
-{
-  "assets:check": "python tools/render_isometric_atlases.py --check",
-  "assets:build": "python tools/render_isometric_atlases.py",
-  "build": "rm -rf dist && tsc -p tsconfig.json && cp index.html dist/index.html && cp src/styles.css dist/styles.css && python tools/render_isometric_atlases.py"
-}
+"assets:check": "python tools/render_isometric_atlases.py --check",
+"assets:build": "python tools/render_isometric_atlases.py",
+"build": "rm -rf dist && tsc -p tsconfig.json && cp index.html dist/index.html && cp src/styles.css dist/styles.css && python tools/render_isometric_atlases.py"
 ```
 
-Keep existing test/smoke scripts unchanged.
+Keep existing scripts intact.
 
-- [ ] **Step 4: Verify generated files are real raster PNGs**
+- [ ] **Step 4: Verify PNG output signatures**
 
 ```bash
 npm run assets:check
 npm run build
 python - <<'PY'
 from pathlib import Path
-for name in ('terrain','roads','buildings','construction','civic','utilities','vegetation','vehicles'):
-    p = Path('dist/assets/atlases') / f'{name}.png'
-    data = p.read_bytes()
-    assert data[:8] == b'\x89PNG\r\n\x1a\n', p
-    assert len(data) > 100, p
+for n in ('terrain','roads','buildings','construction','civic','utilities','vegetation','vehicles'):
+    p = Path('dist/assets/atlases') / f'{n}.png'
+    assert p.read_bytes()[:8] == b'\x89PNG\r\n\x1a\n'
 print('atlas PNG signatures ok')
 PY
 ```
-Expected: all eight PNG signatures pass.
 
-- [ ] **Step 5: Commit source pipeline, not generated `dist/`**
+- [ ] **Step 5: Commit source pipeline only**
 
 ```bash
-git add tools/render_isometric_atlases.py assets/source package.json .gitignore
+git add tools/render_isometric_atlases.py assets/source package.json
 git commit -m "build: add reproducible isometric atlas pipeline"
 ```
 
 ---
 
-### Task 5: Author Tier 1 terrain and complete 48-sprite road autotile atlas
+### Task 5: Author terrain and all road masks
 
-**Files:**
-- Modify: `assets/source/terrain.svg`
-- Modify: `assets/source/roads.svg`
-- Create: `src/rendering/assets/PassAAssetManifest.ts`
-- Extend test: `tests/isometric-assets.test.ts`
-- Extend test: `tests/isometric-road-autotile.test.ts`
+**Files:** Modify `assets/source/terrain.svg`, `assets/source/roads.svg`, `PassAAssetManifest.ts`, relevant tests.
 
-**Interfaces:**
-- Produces terrain IDs `terrain_{grass,forest,rock,water}_{01,02}` and road IDs `road_{local,collector,arterial}_mask_00` through `_15`.
-- Produces atlas descriptors used by `AssetRegistry`.
-
-- [ ] **Step 1: Lock the first-pass palette and geometry in `PassAAssetManifest.ts` comments/constants**
-
-Use restrained North American daytime values as source-art guidance:
+- [ ] **Step 1: Lock first-pass art constants**
 
 ```ts
 export const PASS_A_ART_BIBLE = Object.freeze({
-  grass: '#7f956e',
-  forestGround: '#647d59',
-  rock: '#7d7f7d',
-  water: '#5f88a4',
-  asphalt: '#3f454a',
-  localSidewalk: '#b9b1a5',
-  concrete: '#aaa79f',
-  laneWhite: '#e3e0d5',
-  laneYellow: '#d9be69',
-  shadow: 'rgba(38,45,48,.24)',
+  grass: '#7f956e', forestGround: '#647d59', rock: '#7d7f7d', water: '#5f88a4',
+  asphalt: '#3f454a', sidewalk: '#b9b1a5', concrete: '#aaa79f',
+  laneWhite: '#e3e0d5', laneYellow: '#d9be69', shadow: 'rgba(38,45,48,.24)',
 } as const);
 ```
 
-These are source-art controls, not gameplay colors.
+These guide source artwork only; they do not affect simulation values.
 
-- [ ] **Step 2: Author eight seamless terrain cells**
+- [ ] **Step 2: Create two 128×64 variants for each current biome**
 
-Use two materially different low-frequency variants per current biome. Keep the exact 128×64 diamond silhouette transparent outside the diamond. Forest ground should remain ground-only; trees come from the vegetation atlas. Water should be readable with two or three broad highlight bands, not noisy micro-wave patterns.
+Create `terrain_grass_01/02`, `terrain_forest_01/02`, `terrain_rock_01/02`, `terrain_water_01/02`. Keep alpha transparent outside the diamond. Use low-frequency detail; no microscopic noise.
 
-Manifest entries use weight `1` and tags `['pass-a','north-american']`.
+- [ ] **Step 3: Create all 48 road sprites**
 
-- [ ] **Step 3: Author all 16 masks for each road class**
+Use a `2048×192` road sheet with 16 masks per row, each 128×64. Rows: local, collector, arterial. Source X is `mask * 128`; row Y is `0`, `64`, `128`.
 
-Lay out road sprites in three 2048×64 rows inside a `2048×192` roads SVG: local row 0, collector row 1, arterial row 2. Each source rectangle is `128×64`; mask `m` starts at `x = m * 128`.
+Road carriageway targets:
+- local ≈55% of diamond width;
+- collector ≈68%;
+- arterial ≈82%.
 
-Road shapes must obey these carriageway proportions of the diamond:
-- local ~55%;
-- collector ~68%;
-- arterial ~82%.
+Include coherent curbs/sidewalks and restrained North American markings. No geometry may imply a connection missing from the mask.
 
-Include coherent curb/sidewalk edges. Collectors and arterials use restrained lane markings; arterials may use a center median treatment only where it does not create impossible joins at mask transitions.
-
-- [ ] **Step 4: Register exact road and terrain source rectangles**
-
-Generate manifest entries mechanically in TypeScript rather than hand-writing 48 repeated blocks:
+- [ ] **Step 4: Register road entries mechanically**
 
 ```ts
-const ROAD_TYPES = ['local', 'collector', 'arterial'] as const;
-const roadEntries = ROAD_TYPES.flatMap((roadType, row) =>
+const roadEntries = (['local','collector','arterial'] as const).flatMap((roadType, row) =>
   Array.from({ length: 16 }, (_, mask) => ({
-    assetId: `road_${roadType}_mask_${mask.toString().padStart(2, '0')}`,
+    assetId: `road_${roadType}_mask_${mask.toString().padStart(2,'0')}`,
+    variantKey: `road_${roadType}_mask_${mask.toString().padStart(2,'0')}`,
     atlasId: 'roads',
     sourceRect: { x: mask * 128, y: row * 64, width: 128, height: 64 },
-    footprint: { width: 1, height: 1 },
-    anchor: { x: 64, y: 32 },
-    category: 'road', subcategory: roadType,
-    tags: [`mask:${mask}`], weight: 1,
+    footprint: { width: 1, height: 1 }, anchor: { x: 64, y: 32 },
+    category: 'road', subcategory: roadType, orientation: 0 as const,
+    tags: [`mask:${mask}`, 'symmetric-camera-mask'], weight: 1,
   })),
 );
 ```
 
-- [ ] **Step 5: Add manifest-count and mask-coverage tests**
+Road camera rotation is handled by rotating the mask, not by changing the road's authoritative topology.
 
-Assert:
-- exactly 48 road entries exist;
-- each road class contains every mask `0..15` once;
-- all terrain/road rectangles stay inside declared atlas dimensions;
-- terrain includes both variants for all four biomes.
+- [ ] **Step 5: Add manifest coverage tests**
 
-- [ ] **Step 6: Build atlases and visually inspect source/output dimensions**
+Assert exactly 48 road entries, masks `0..15` exactly once per class, all eight terrain variants, and all source rectangles within atlas bounds.
+
+- [ ] **Step 6: Build/test/commit**
 
 ```bash
 npm run build
 node --experimental-strip-types --test tests/isometric-assets.test.ts tests/isometric-road-autotile.test.ts
-```
-Expected: PASS; `dist/assets/atlases/roads.png` is `2048×192` and terrain atlas matches its descriptor.
-
-- [ ] **Step 7: Commit**
-
-```bash
 git add assets/source/terrain.svg assets/source/roads.svg src/rendering/assets/PassAAssetManifest.ts tests/isometric-assets.test.ts tests/isometric-road-autotile.test.ts
-git commit -m "feat: add Tier 1 terrain and road raster atlases"
+git commit -m "feat: add Tier 1 terrain and road atlases"
 ```
 
 ---
 
-### Task 6: Author 27+ building variants and deterministic construction-stage selection
+### Task 6: Author 27+ building variants and construction stages
 
-**Files:**
-- Modify: `assets/source/buildings.svg`
-- Modify: `assets/source/construction.svg`
-- Create: `src/rendering/assets/ConstructionVisuals.ts`
-- Extend: `src/rendering/assets/PassAAssetManifest.ts`
-- Extend: `src/rendering/assets/VariantSelector.ts`
-- Create: `tests/isometric-construction-visuals.test.ts`
-- Extend: `tests/isometric-variant-selection.test.ts`
+**Files:** Modify `assets/source/buildings.svg`, `assets/source/construction.svg`, `PassAAssetManifest.ts`, `VariantSelector.ts`; create `ConstructionVisuals.ts`, `tests/isometric-construction-visuals.test.ts`.
 
-**Interfaces:**
-- Produces: `selectBuildingAsset(building, tick, orientation, manifest)` and `constructionStageFor(building, tick)`.
-- Consumes: `Building`, `definitionForBuilding()`, current simulation tick, manifest entries.
-
-- [ ] **Step 1: Write construction-stage tests before implementation**
+- [ ] **Step 1: Write construction-stage test**
 
 ```ts
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { constructionStageFor } from '../src/rendering/assets/ConstructionVisuals.ts';
-
 const building = {
   id: 'building:lot:1', lotId: 'lot:1', x: 2, y: 3, zone: 'residential',
   definitionId: 'residential_apartment', status: 'construction',
   constructionStartedTick: 100, completionTick: 200,
 } as const;
-
-test('construction timing maps to four derived stages without new state', () => {
-  assert.equal(constructionStageFor(building, 100), 'site');
-  assert.equal(constructionStageFor(building, 120), 'foundation');
-  assert.equal(constructionStageFor(building, 150), 'structure');
-  assert.equal(constructionStageFor(building, 180), 'facade');
-  assert.equal(constructionStageFor({ ...building, status: 'occupied' }, 220), 'complete');
-});
+assert.equal(constructionStageFor(building, 100), 'site');
+assert.equal(constructionStageFor(building, 120), 'foundation');
+assert.equal(constructionStageFor(building, 150), 'structure');
+assert.equal(constructionStageFor(building, 180), 'facade');
+assert.equal(constructionStageFor({ ...building, status: 'occupied' }, 220), 'complete');
 ```
 
-Use thresholds `0–0.15 site`, `0.15–0.35 foundation`, `0.35–0.70 structure`, `0.70–1.0 facade`, with `occupied → complete` regardless of tick.
+Use thresholds `[0,.15) site`, `[.15,.35) foundation`, `[.35,.70) structure`, `[.70,1] facade`, occupied→complete.
 
-- [ ] **Step 2: Implement `constructionStageFor()` and pass the test**
+- [ ] **Step 2: Author exactly these 27 core completed variant families**
 
-It must clamp progress to `[0,1]`, handle zero/invalid duration defensively as `facade`, and never mutate the building.
+Residential low: `res_low_detached_01`, `_02`, `_03`.
+Residential medium: `res_mid_rowhouse_01`, `res_mid_walkup_01`, `res_mid_courtyard_01`.
+Residential high: `res_high_slab_01`, `res_high_podium_01`, `res_high_tower_01`.
 
-- [ ] **Step 3: Author the building source atlas**
+Commercial low: `com_low_corner_01`, `com_low_strip_01`, `com_low_office_01`.
+Commercial medium: `com_mid_block_01`, `com_mid_office_01`, `com_mid_hotel_01`.
+Commercial high: `com_high_office_01`, `com_high_hotel_01`, `com_high_corporate_01`.
 
-Create at least these 27 core architectural variants before orientation reuse:
+Industrial low: `ind_low_workshop_01`, `ind_low_repair_01`, `ind_low_warehouse_01`.
+Industrial medium: `ind_mid_distribution_01`, `ind_mid_logistics_01`, `ind_mid_factory_01`.
+Industrial high: `ind_high_plant_01`, `ind_high_processing_01`, `ind_high_manufacturing_01`.
 
-Residential:
-- low: `res_low_detached_01`, `_02`, `_03`;
-- medium: `res_mid_rowhouse_01`, `res_mid_walkup_01`, `res_mid_courtyard_01`;
-- high: `res_high_slab_01`, `res_high_podium_01`, `res_high_tower_01`.
+Each name above is a `variantKey`. Orientation frames use unique asset IDs such as `res_low_detached_01_o0` through `_o3`, or reuse an orientation-0 source rectangle only when tagged `symmetric`.
 
-Commercial:
-- low: `com_low_corner_01`, `com_low_strip_01`, `com_low_office_01`;
-- medium: `com_mid_block_01`, `com_mid_office_01`, `com_mid_hotel_01`;
-- high: `com_high_office_01`, `com_high_hotel_01`, `com_high_corporate_01`.
+- [ ] **Step 3: Enforce architecture identity across rotation**
 
-Industrial:
-- low: `ind_low_workshop_01`, `ind_low_repair_01`, `ind_low_warehouse_01`;
-- medium: `ind_mid_distribution_01`, `ind_mid_logistics_01`, `ind_mid_factory_01`;
-- high: `ind_high_plant_01`, `ind_high_processing_01`, `ind_high_manufacturing_01`.
+`selectBuildingAsset(building,tick,orientation,manifest)` first chooses `variantKey` from zone/intensity using stable key `${building.id}|${building.definitionId}`. Then resolve that same `variantKey` at requested orientation. The stable selection key must not contain camera orientation.
 
-Each variant must have one transparent 1×1 ground diamond and architectural mass rising above it. Use materially distinct rooflines/facades/site treatment, shared light direction, no fake multi-cell occupancy. Author explicit orientation frames for visibly asymmetric forms; symmetric forms may map multiple orientations to the same source rectangle through manifest entries.
+- [ ] **Step 4: Author construction families**
 
-- [ ] **Step 4: Author reusable construction art by intensity**
+For each intensity `low|medium|high`, author `site`, `foundation`, `structure`, `facade` variant families. Use fencing/material stacks at early stages, exposed frame at structure, partial cladding/scaffolding at facade. Do not use a tower crane on low-density housing.
 
-For `low`, `medium`, and `high` intensity, create four stage families: `site`, `foundation`, `structure`, `facade`. Use fencing/material stacks at site/foundation, exposed frames at structure, partial glazing/cladding/scaffolding at facade. Include a crane only where scale supports it; do not place tower cranes over low-density houses.
+- [ ] **Step 5: Add coverage/repetition tests**
 
-- [ ] **Step 5: Register building and construction metadata**
+Assert at least three completed `variantKey`s for every zone/intensity family. For a synthetic 12×12 grid of stable building IDs, assert all three families appear and no row/column has more than five identical consecutive variant keys. Re-running selection must produce identical grids. Rotate the camera through all four orientations and assert each building retains its chosen `variantKey`.
 
-Building entries must carry `zone`, `intensity`, `orientation`, `weight`, and `tags`. Construction entries carry `intensity`, `constructionStage`, and orientation. The manifest must expose at least three eligible completed entries for every zone/intensity combination.
-
-- [ ] **Step 6: Implement deterministic building selection**
-
-Use authoritative building identity and definition intensity:
-
-```ts
-export function selectBuildingAsset(
-  building: Building,
-  tick: number,
-  orientation: QuarterTurn,
-  manifest: AssetManifest,
-): AssetManifestEntry | undefined;
-```
-
-If `building.status === 'construction'`, query construction entries by intensity/stage/orientation. Otherwise query completed building entries by zone/intensity/orientation. Use stable key `${building.id}|${building.definitionId}|${orientation}` and `selectWeightedVariant()`.
-
-- [ ] **Step 7: Test minimum variation coverage and stable save/load behavior**
-
-Create synthetic buildings for all nine current definitions. Assert each family has at least 3 completed variants. For 100 stable building IDs in one family, assert at least all three variants are selected and repeated calls produce identical IDs.
-
-- [ ] **Step 8: Build, test, and commit**
+- [ ] **Step 6: Build/test/commit**
 
 ```bash
 npm run build
 node --experimental-strip-types --test tests/isometric-construction-visuals.test.ts tests/isometric-variant-selection.test.ts tests/isometric-assets.test.ts
 npm run typecheck
 git add assets/source/buildings.svg assets/source/construction.svg src/rendering/assets/ConstructionVisuals.ts src/rendering/assets/PassAAssetManifest.ts src/rendering/assets/VariantSelector.ts tests/isometric-construction-visuals.test.ts tests/isometric-variant-selection.test.ts tests/isometric-assets.test.ts
-git commit -m "feat: add Tier 1 building and construction assets"
+git commit -m "feat: add Tier 1 buildings and construction art"
 ```
 
 ---
 
-### Task 7: Author civic, utility, vegetation, and vehicle raster families
+### Task 7: Author civic, utility, vegetation, and vehicle families
 
-**Files:**
-- Modify: `assets/source/civic.svg`
-- Modify: `assets/source/utilities.svg`
-- Modify: `assets/source/vegetation.svg`
-- Modify: `assets/source/vehicles.svg`
-- Extend: `src/rendering/assets/PassAAssetManifest.ts`
-- Extend: `tests/isometric-assets.test.ts`
+**Files:** Modify `assets/source/civic.svg`, `utilities.svg`, `vegetation.svg`, `vehicles.svg`, `PassAAssetManifest.ts`, tests.
 
-**Interfaces:**
-- Produces facility IDs used by service/utility type, vegetation selectors by biome/cell, and vehicle IDs by family/orientation.
+- [ ] **Step 1: Author current civic/service facilities**
 
-- [ ] **Step 1: Author current placeable civic/service facilities**
+Create original raster-source families for fire station, police station, clinic, elementary school, landfill, and recycling center. Use orientation frames where entrance/apron direction is asymmetric. No floating letters replace architecture in normal rendering.
 
-Create original North American municipal forms for:
-- `civic_fire_station_01`;
-- `civic_police_station_01`;
-- `civic_clinic_01`;
-- `civic_elementary_school_01`;
-- `civic_landfill_01`;
-- `civic_recycling_center_01`.
+- [ ] **Step 2: Author current utilities**
 
-Register four orientations where entrance/apron direction materially changes the view. Keep buildings recognizable through architecture and site cues rather than floating letters.
-
-- [ ] **Step 2: Author current utility facilities**
-
-Create:
-- `utility_power_01` as a compact substation/utility compound;
-- `utility_water_01` as a pumping/water-service compound;
-- `utility_landfill_01` only if the legacy utility landfill path remains separately placeable from the service landfill.
-
-Preserve exact gameplay type mappings; do not add new utility mechanics.
+Create `utility_power_01`, `utility_water_01`, and a separate legacy utility-landfill family only if the current utility API still exposes it independently. Keep mappings explicit to current service/utility type names.
 
 - [ ] **Step 3: Author vegetation**
 
-Create at least:
-- `tree_street_young_01`, `_02`;
-- `tree_street_mature_01`, `_02`;
-- `tree_forest_large_01`, `_02`, `_03`;
-- `shrub_low_01`, `_02`.
+Create at least two young street trees, two mature street trees, three large forest/park trees, and two shrubs. Forest placement is deterministic from biome + coordinates and never authoritative.
 
-Trees use shared northwest lighting and transparent alpha. Forest tree placement is deterministic from biome + coordinates; tree sprites are presentation-only.
+- [ ] **Step 4: Author vehicle variant families with four orientation frames**
 
-- [ ] **Step 4: Author the minimum vehicle family with four travel orientations**
-
-Create four directional frames for:
-- sedan/compact;
-- SUV/pickup;
-- delivery van;
-- box truck;
-- semi/freight truck;
-- bus;
-- BRT vehicle;
-- tram vehicle;
-- fire engine;
-- police vehicle;
-- ambulance;
-- garbage truck.
-
-No recognizable real-world manufacturer styling or logos. Passenger colors may vary through separate authored variants, not arbitrary runtime hue filters.
+Required families: sedan/compact, SUV/pickup, delivery van, box truck, semi/freight truck, bus, BRT, tram, fire engine, police vehicle, ambulance, garbage truck. Use `variantKey` per authored vehicle design and `_o0.._o3` asset IDs.
 
 - [ ] **Step 5: Add manifest coverage tests**
 
-Assert every current service type and utility type resolves to at least one asset; every required vehicle family has orientations `0..3`; vegetation has all required categories; no entry references an unknown atlas.
+Assert every current service/utility type resolves, every required vehicle family has all four orientations unless explicitly symmetric, vegetation categories are present, and every entry references a known atlas.
 
-- [ ] **Step 6: Build and commit**
+- [ ] **Step 6: Build/test/commit**
 
 ```bash
 npm run build
 node --experimental-strip-types --test tests/isometric-assets.test.ts
 npm run typecheck
 git add assets/source/civic.svg assets/source/utilities.svg assets/source/vegetation.svg assets/source/vehicles.svg src/rendering/assets/PassAAssetManifest.ts tests/isometric-assets.test.ts
-git commit -m "feat: add civic vegetation and vehicle asset families"
+git commit -m "feat: add civic vegetation and vehicle art"
 ```
 
 ---
 
-### Task 8: Add shared sprite painting and split the world renderer into ground/object passes
+### Task 8: Add sprite painting, culling, ground pass, and object pass
 
-**Files:**
-- Create: `src/rendering/assets/SpritePainter.ts`
-- Create: `src/rendering/passes/GroundRenderPass.ts`
-- Create: `src/rendering/passes/ObjectRenderPass.ts`
-- Modify: `src/rendering/WorldRenderer.ts`
-- Extend: `tests/isometric-render-order.test.ts`
+**Files:** Create `SpritePainter.ts`, `IsometricCulling.ts`, `GroundRenderPass.ts`, `ObjectRenderPass.ts`; modify `WorldRenderer.ts`; extend render-order/projection tests.
 
-**Interfaces:**
-- Consumes: `IsometricCamera`, `AssetRegistry`, `PassAAssetManifest`, current `SimulationCore` read APIs.
-- Produces: `SpritePainter.draw()`, `GroundRenderPass.draw()`, `ObjectRenderPass.draw()`, and a slimmer `WorldRenderer` facade retaining `worldToCanvas`, `canvasToCell`, `pan`, `zoomBy`, `rotate`.
-
-- [ ] **Step 1: Implement a single atlas-region painter**
-
-Use this signature:
+- [ ] **Step 1: Implement `SpritePainter`**
 
 ```ts
 export class SpritePainter {
@@ -856,355 +579,211 @@ export class SpritePainter {
 }
 ```
 
-For sprite resolutions, call `drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh)` using the manifest source rectangle and anchor. For fallback resolutions, draw one restrained diagnostic isometric diamond/box and label once only when zoom permits.
+Sprite mode uses `drawImage(image,sx,sy,sw,sh,dx,dy,dw,dh)` with manifest source rectangle and anchor. Fallback mode draws a restrained diagnostic isometric diamond/box; it is resilience, not normal art.
 
-- [ ] **Step 2: Write a render-order unit test that does not require DOM Canvas**
+- [ ] **Step 2: Implement conservative culling**
 
-Expose `ObjectRenderPass.buildCommands(core, camera)` or a pure helper returning command metadata. Given three synthetic objects at different rotated `x+y` and stable IDs, assert deterministic order independent of input array order.
+`isProjectedSpriteVisible()` performs screen-space AABB checks using source size × display scale and anchor offsets, with a 32 logical-pixel margin to avoid pop-in. Ground tiles use projected diamond bounds.
 
 - [ ] **Step 3: Implement `GroundRenderPass`**
 
-Responsibilities:
-1. iterate visible terrain cells in deterministic isometric order;
-2. select deterministic terrain variant;
-3. draw terrain raster;
-4. draw zoning as a translucent isometric diamond under roads/buildings;
-5. derive road topology lookup once per frame;
-6. compute road mask, rotate mask into camera orientation, resolve `road_<type>_mask_XX`, draw raster.
+Per frame:
+1. determine visible cells;
+2. draw deterministic terrain raster;
+3. draw transparent zoning diamond underlay;
+4. build one road lookup structure;
+5. compute road mask and rotate mask to camera orientation;
+6. draw `road_<type>_mask_XX` raster.
 
-Do not mutate zoning, roads, terrain, or graph state.
+No simulation state writes.
 
 - [ ] **Step 4: Implement `ObjectRenderPass`**
 
-Build a bounded command array for visible:
-- buildings/construction;
-- service facilities;
-- utility facilities;
-- deterministic forest vegetation.
-
-Compute depth keys from rotated coordinates plus stable entity IDs, sort once, then paint. Building selection uses `selectBuildingAsset()`. Service/utility mapping uses explicit type→asset-family maps in this module or a small adjacent constant file; no emoji/letter markers remain in normal rendering.
+Build commands for visible buildings/construction, service facilities, utilities, and deterministic forest vegetation. Compute depth key from rotated coordinates + stable entity ID; sort once; draw through `SpritePainter`. Use `selectBuildingAsset()` and explicit facility maps.
 
 - [ ] **Step 5: Refactor `WorldRenderer` into orchestration**
 
-`WorldRenderer` should own:
-- canvas/context/DPR resize;
-- `IsometricCamera`;
-- `AssetRegistry`;
-- render-pass instances;
-- public compatibility methods used by `GameApp`/LandHousing UI.
-
-Keep public compatibility:
+It owns canvas/DPR, `IsometricCamera`, `AssetRegistry`, passes, and public facade methods:
 
 ```ts
-get cellSize(): number; // return logical tile width * zoom for callers still using scale thresholds
+get cellSize(): number; // logical tile width * zoom for old scale thresholds
 get tileWidth(): number;
 get tileHeight(): number;
-worldToCanvas(x: number, y: number, core: SimulationCore): CanvasPoint; // now returns tile center
-canvasToCell(clientX: number, clientY: number, core: SimulationCore): CellCoord | null;
+worldToCanvas(x:number,y:number,core:SimulationCore): CanvasPoint; // tile center
+canvasToCell(clientX:number,clientY:number,core:SimulationCore): CellCoord | null;
+tilePolygon(x:number,y:number,core:SimulationCore): readonly CanvasPoint[];
+pan(dx:number,dy:number): void;
+zoomBy(factor:number,anchorX:number,anchorY:number): void;
+rotate(direction:-1|1): void;
+preloadAssets(): Promise<void>;
+assetDiagnostics(): readonly string[];
 ```
 
-Remove primitive normal terrain/road/building/facility loops from `WorldRenderer`; they live in the passes.
+Remove normal primitive terrain/road/building/facility drawing from `WorldRenderer`.
 
-- [ ] **Step 6: Run focused tests/typecheck and commit**
+- [ ] **Step 6: Verify and commit**
 
 ```bash
 node --experimental-strip-types --test tests/isometric-projection.test.ts tests/isometric-render-order.test.ts tests/isometric-assets.test.ts
 npm run typecheck
-git add src/rendering/assets/SpritePainter.ts src/rendering/passes/GroundRenderPass.ts src/rendering/passes/ObjectRenderPass.ts src/rendering/WorldRenderer.ts tests/isometric-render-order.test.ts
-git commit -m "refactor: render Civic Foundry through isometric passes"
+git add src/rendering/assets/SpritePainter.ts src/rendering/isometric/IsometricCulling.ts src/rendering/passes/GroundRenderPass.ts src/rendering/passes/ObjectRenderPass.ts src/rendering/WorldRenderer.ts tests/isometric-projection.test.ts tests/isometric-render-order.test.ts
+git commit -m "refactor: render world through isometric raster passes"
 ```
 
 ---
 
-### Task 9: Convert passenger, service, transit, and freight vehicles to raster sprites
+### Task 9: Convert moving vehicles to raster sprites
 
-**Files:**
-- Modify: `src/rendering/VehicleRenderer.ts`
-- Modify: `src/rendering/ServiceVehicleRenderer.ts`
-- Modify: `src/rendering/TransitVehicleRenderer.ts`
-- Modify: `src/rendering/FreightVehicleRenderer.ts`
-- Create: `src/rendering/assets/VehicleVisuals.ts`
-- Extend: `tests/isometric-variant-selection.test.ts`
+**Files:** Create `VehicleVisuals.ts`; modify all four existing vehicle renderers; extend variant tests.
 
-**Interfaces:**
-- Produces: `vehicleOrientationFromWorldDelta(dx, dy, quarterTurns)`, `selectVehicleAsset(family, stableId, orientation, manifest)`.
-- Consumes: current graph/vehicle state, camera's fractional `worldToCanvas()` conversion, `AssetRegistry`, `SpritePainter`.
-
-- [ ] **Step 1: Write direction/orientation tests**
+- [ ] **Step 1: Define/test travel orientation**
 
 ```ts
-test('world travel direction rotates with the camera', () => {
-  assert.equal(vehicleOrientationFromWorldDelta(1, 0, 0), 0);
-  assert.equal(vehicleOrientationFromWorldDelta(1, 0, 1), 1);
-  assert.equal(vehicleOrientationFromWorldDelta(0, 1, 0), 1);
-});
+assert.equal(vehicleOrientationFromWorldDelta(1, 0, 0), 0);
+assert.equal(vehicleOrientationFromWorldDelta(1, 0, 1), 1);
+assert.equal(vehicleOrientationFromWorldDelta(0, 1, 0), 1);
 ```
 
-Define orientation values explicitly as the four authored screen-facing travel directions and document the mapping in `VehicleVisuals.ts`.
+Document exact `_o0.._o3` screen-facing mapping in `VehicleVisuals.ts`.
 
-- [ ] **Step 2: Implement deterministic vehicle family selection**
+- [ ] **Step 2: Map existing vehicle domains to visual families**
 
-Map current renderers to the minimum family:
-- private traffic → sedan or SUV/pickup variants from stable vehicle ID;
-- freight → semi/freight truck, with box-truck fallback only where the domain exposes a lighter class;
-- service fire → fire engine;
-- police → police vehicle;
-- healthcare → ambulance;
-- garbage → garbage truck;
-- transit bus/BRT/tram → matching vehicle family; metro remains route/station presentation if not surface-visible.
+Private traffic → stable sedan/SUV variants; freight → semi/freight truck with box-truck only when current state supports a lighter class; fire/police/healthcare/garbage → corresponding service vehicles; bus/BRT/tram → matching transit family; underground metro remains route/station-only where current renderer has no surface vehicle.
 
-- [ ] **Step 3: Replace circle/primitive vehicle drawing**
+- [ ] **Step 3: Preserve interpolation and replace only final paint**
 
-Preserve each renderer's existing position interpolation, queue progress, route timing, and authoritative inputs. Only replace final primitive drawing with `SpritePainter.draw()` at the fractional isometric world point. Use queue/status effects as subtle Canvas markers only if necessary; do not recolor the entire vehicle dynamically.
+Keep current edge progress, queue timing, graph reads, route timing, and weights. Project fractional world coordinates through the isometric camera and draw a raster sprite. Vehicle `variantKey` is chosen from stable vehicle identity independent of orientation; orientation resolution happens after selection.
 
-- [ ] **Step 4: Test, typecheck, and commit**
+- [ ] **Step 4: Verify and commit**
 
 ```bash
 node --experimental-strip-types --test tests/isometric-variant-selection.test.ts
 npm run typecheck
-git add src/rendering/VehicleRenderer.ts src/rendering/ServiceVehicleRenderer.ts src/rendering/TransitVehicleRenderer.ts src/rendering/FreightVehicleRenderer.ts src/rendering/assets/VehicleVisuals.ts tests/isometric-variant-selection.test.ts
-git commit -m "feat: render moving vehicles from isometric atlases"
+git add src/rendering/assets/VehicleVisuals.ts src/rendering/VehicleRenderer.ts src/rendering/ServiceVehicleRenderer.ts src/rendering/TransitVehicleRenderer.ts src/rendering/FreightVehicleRenderer.ts tests/isometric-variant-selection.test.ts
+git commit -m "feat: render vehicles from isometric atlases"
 ```
 
 ---
 
-### Task 10: Reproject every existing analytical overlay and selection state
+### Task 10: Reproject all analytical overlays, selection, and road preview
 
-**Files:**
-- Create: `src/rendering/isometric/IsometricOverlayPainter.ts`
-- Create: `src/rendering/passes/OverlayRenderPass.ts`
-- Create: `src/rendering/passes/SelectionRenderPass.ts`
-- Modify: `src/rendering/WorldRenderer.ts`
-- Modify: `src/ui/LandHousingUiController.ts`
-- Existing map-data layers remain data-only: `TrafficOverlayLayer.ts`, `ServiceOverlayLayer.ts`, `TransitOverlayLayer.ts`, `EconomyOverlayLayer.ts`, `LandHousingOverlayLayer.ts`.
+**Files:** Create `IsometricOverlayPainter.ts`, `OverlayRenderPass.ts`, `SelectionRenderPass.ts`; modify `WorldRenderer.ts`, `LandHousingUiController.ts`.
 
-**Interfaces:**
-- Produces: `fillCell()`, `strokeCell()`, `strokeWorldSegment()`, `drawLabelAtCell()` using camera-projected diamond geometry.
-- Consumes: existing overlay snapshots unchanged.
+- [ ] **Step 1: Implement projected overlay primitives**
 
-- [ ] **Step 1: Implement reusable isometric overlay painter**
+Provide:
 
-Use camera `tilePolygon()`/`tileCenter()` and Canvas paths. A cell fill must draw a diamond, not its square bounding box. World route/traffic segments must connect projected centers without adding half-cell square offsets.
+```ts
+fillCell(ctx, camera, x, y, worldSize, fillStyle): void;
+strokeCell(ctx, camera, x, y, worldSize, strokeStyle, lineWidth): void;
+strokeWorldSegment(ctx, camera, a, b, worldSize, strokeStyle, lineWidth): void;
+drawLabelAtCell(ctx, camera, x, y, worldSize, label, font): void;
+```
 
-- [ ] **Step 2: Move WorldRenderer's traffic/service/transit/economy drawing into `OverlayRenderPass`**
+Cell overlays draw diamonds, never square bounding boxes.
 
-Preserve existing colors, numeric labels, legends, line widths scaled by zoom, and source snapshots. Only geometry changes.
+- [ ] **Step 2: Move traffic/service/transit/economy drawing into `OverlayRenderPass`**
 
-- [ ] **Step 3: Add `SelectionRenderPass`**
+Keep all current data snapshots, colors, legends, labels, and normalized values. Only geometry changes. Route lines connect projected cell centers without `+cellSize/2` square offsets.
 
-Draw:
-- selected cell as a white diamond outline;
-- road preview as translucent projected diamonds;
-- no square `fillRect`/`strokeRect` for normal selection/path feedback.
+- [ ] **Step 3: Add selection/path preview pass**
 
-- [ ] **Step 4: Convert `LandHousingUiController` overlay canvas**
+Selected cell is a white diamond outline. Road preview is translucent projected diamonds following the unchanged authoritative Manhattan path.
 
-Replace its `fillRect(point.x + inset, ...)` path with `app.renderer.tilePolygon()` or a public `fillOverlayCell()` helper. Labels use `app.renderer.worldToCanvas()` directly as the tile center. Keep its overlay canvas pointer-transparent and mutually exclusive behavior unchanged.
+- [ ] **Step 4: Convert land/housing overlay canvas**
 
-- [ ] **Step 5: Typecheck and commit**
+Replace `fillRect` square cells in `LandHousingUiController` with renderer `tilePolygon()`/isometric overlay helpers. Keep the separate overlay canvas pointer-transparent and mutually exclusive with other overlay selectors.
+
+- [ ] **Step 5: Verify and commit**
 
 ```bash
 npm run typecheck
 node --experimental-strip-types --test tests/development-policy-presentation.test.ts tests/economy-presentation.test.ts
 git add src/rendering/isometric/IsometricOverlayPainter.ts src/rendering/passes/OverlayRenderPass.ts src/rendering/passes/SelectionRenderPass.ts src/rendering/WorldRenderer.ts src/ui/LandHousingUiController.ts
-git commit -m "feat: align overlays and selection to isometric projection"
+git commit -m "feat: align analytical overlays to isometric city"
 ```
 
 ---
 
-### Task 11: Integrate asset preload and preserve GameApp input semantics
+### Task 11: Integrate preload and preserve GameApp interaction semantics
 
-**Files:**
-- Modify: `src/app/GameApp.ts`
-- Modify: `src/rendering/WorldRenderer.ts`
-- Modify: `src/main.ts` only if a test/debug readiness handle is needed.
+**Files:** Modify `GameApp.ts`, `WorldRenderer.ts`.
 
-**Interfaces:**
-- Produces: `WorldRenderer.preloadAssets(): Promise<void>`, `WorldRenderer.assetDiagnostics(): readonly string[]`.
-- Preserves: `GameApp` pointer/wheel/key behavior and all existing tool/controller APIs.
+- [ ] **Step 1: Preload without blocking simulation startup**
 
-- [ ] **Step 1: Start asset preload at app initialization without blocking simulation construction**
-
-In `GameApp` after `new WorldRenderer(canvas)`, call:
+Immediately after renderer creation:
 
 ```ts
 void this.renderer.preloadAssets().catch(() => {
-  // Renderer already retains deliberate fallback state; do not stop the game loop.
+  // The registry already records failure and fallback rendering remains available.
 });
 ```
 
-Do not gate `requestAnimationFrame` on asset completion. Frames rendered before preload completion use fallback diagnostics and automatically switch to sprites when ready.
+The simulation loop starts normally; fallback may render until images load.
 
-- [ ] **Step 2: Preserve pointer coordinate conversion**
+- [ ] **Step 2: Keep existing pointer API**
 
-Keep all existing `canvasToCell(event.clientX, event.clientY, core)` call sites. The renderer now handles DOM rect subtraction, camera offset, inverse iso transform, rotation, and diamond hit-testing.
+Retain all current `renderer.canvasToCell(event.clientX,event.clientY,core)` calls. The renderer handles DOM-rect subtraction, inverse projection, rotation, and diamond hit-testing.
 
-Road drag must still call the unchanged `manhattanPath()` in authoritative coordinates. Do not create diagonal simulation roads just because isometric screen axes are diagonal.
+- [ ] **Step 3: Keep authoritative Manhattan road dragging**
 
-- [ ] **Step 3: Preserve Q/E, wheel zoom, and pan commands**
+Do not replace `manhattanPath()`. Isometric screen axes do not imply diagonal simulation roads.
 
-Existing GameApp shortcuts remain unchanged. `renderer.rotate()`, `.zoomBy()`, and `.pan()` now forward to `IsometricCamera`.
+- [ ] **Step 4: Preserve wheel/pan/Q/E behavior**
 
-- [ ] **Step 4: Expose non-authoritative test diagnostics only**
+Existing inputs call camera-backed renderer methods. Rotation changes presentation only.
 
-If browser smoke needs it, expose read-only renderer state through existing `window.__civicApp.renderer`, which already exists through `__civicApp`. Do not add persistence fields.
-
-- [ ] **Step 5: Typecheck and commit**
+- [ ] **Step 5: Verify and commit**
 
 ```bash
 npm run typecheck
-git add src/app/GameApp.ts src/rendering/WorldRenderer.ts src/main.ts
-git commit -m "feat: integrate isometric asset preload with game input"
+git add src/app/GameApp.ts src/rendering/WorldRenderer.ts
+git commit -m "feat: integrate isometric renderer with existing controls"
 ```
 
 ---
 
-### Task 12: Add bounded culling and fallback diagnostics before visual smoke testing
+### Task 12: Add browser smoke, visual scenes, repetition validation, and full production report
 
-**Files:**
-- Create: `src/rendering/isometric/IsometricCulling.ts`
-- Modify: `src/rendering/passes/GroundRenderPass.ts`
-- Modify: `src/rendering/passes/ObjectRenderPass.ts`
-- Modify: `src/rendering/WorldRenderer.ts`
-- Extend: `tests/isometric-projection.test.ts`
+**Files:** Create both isometric smoke scripts and art docs; modify package/readme/architecture/development log.
 
-**Interfaces:**
-- Produces: `projectedWorldBounds()`, `isProjectedSpriteVisible()`.
-- Consumes: camera, canvas CSS width/height, conservative sprite padding.
-
-- [ ] **Step 1: Add culling tests around map/canvas edges**
-
-Test that a projected 1×1 tile just outside the viewport is culled, a tall sprite whose anchor is outside but extent overlaps the viewport remains visible, and zoom/rotation do not produce negative-size bounds.
-
-- [ ] **Step 2: Implement conservative culling**
-
-Use screen-space AABB tests after projection. Ground uses tile diamond bounds. Elevated objects use manifest source size × display scale and anchor offsets. Add 32 logical pixels of safety margin to avoid popping at edges.
-
-- [ ] **Step 3: Avoid per-frame asset allocation**
-
-Audit render passes:
-- atlas images are preloaded once;
-- manifest indexes are constructed once in registry constructor;
-- road lookup Map/Set may be rebuilt once per frame, not once per cell;
-- no `new Image()` in draw paths;
-- no manifest `filter()` across every entry for every building; registry query indexes keys such as category/zone/intensity/orientation.
-
-- [ ] **Step 4: Surface diagnostics without frame spam**
-
-`WorldRenderer.assetDiagnostics()` returns deduplicated failures. Log each new failure once from preload/first resolution, not each frame. Fallback sprites remain readable.
-
-- [ ] **Step 5: Test and commit**
-
-```bash
-node --experimental-strip-types --test tests/isometric-projection.test.ts tests/isometric-assets.test.ts tests/isometric-render-order.test.ts
-npm run typecheck
-git add src/rendering/isometric/IsometricCulling.ts src/rendering/passes/GroundRenderPass.ts src/rendering/passes/ObjectRenderPass.ts src/rendering/WorldRenderer.ts tests/isometric-projection.test.ts
-git commit -m "perf: add conservative isometric view culling"
-```
-
----
-
-### Task 13: Add browser interaction smoke tests, deterministic visual scenes, and repetition checks
-
-**Files:**
-- Create: `tests/smoke/isometric_pass_a_smoke.py`
-- Create: `tests/smoke/isometric_visual_smoke.py`
-- Modify: `package.json`
-- Extend: `tests/isometric-variant-selection.test.ts`
-
-**Interfaces:**
-- Consumes: production browser app through `window.__civicApp` and visible UI.
-- Produces: repeatable smoke validation; screenshots are local CI/test artifacts, not authoritative game state.
-
-- [ ] **Step 1: Add a dedicated package smoke command**
+- [ ] **Step 1: Add dedicated smoke script command**
 
 ```json
 "test:smoke:isometric": "python tests/smoke/isometric_pass_a_smoke.py"
 ```
 
-- [ ] **Step 2: Write browser load/atlas smoke test**
+- [ ] **Step 2: Implement browser interaction smoke**
 
-`isometric_pass_a_smoke.py` must:
-1. run against the built app using the same server pattern as existing phase smoke tests;
-2. capture console errors/page errors and fail on uncaught errors;
-3. wait until `window.__civicApp.renderer` exists;
-4. wait until atlas preload finishes or diagnostics stabilize;
-5. assert no required atlas request returned 404;
-6. assert renderer tile metrics report `64×32` at zoom 1 before interaction.
+`isometric_pass_a_smoke.py` must fail on page/console errors and verify:
+1. app and renderer load;
+2. required atlas requests return successfully;
+3. logical metrics are 64×32 at zoom 1;
+4. clicking projected world cell `(6,6)` zones exactly `(6,6)`;
+5. after Q/E rotation, projected click still targets the same authoritative requested cell;
+6. road drag from `(3,3)` to `(8,6)` produces the current horizontal-then-vertical Manhattan path;
+7. zoom remains inside `0.45–2.5`;
+8. pan changes screen position, not world state;
+9. traffic/economy/land-housing overlays render without errors;
+10. save→mutate→load restores authoritative state.
 
-- [ ] **Step 3: Test isometric click targeting**
+Use `window.__civicApp.renderer.worldToCanvas()` to obtain exact click centers rather than hard-coded screen pixels.
 
-From the browser, obtain a visible authoritative cell center via:
+- [ ] **Step 3: Implement deterministic visual smoke scenes**
 
-```js
-const app = window.__civicApp;
-const p = app.renderer.worldToCanvas(6, 6, app.core);
-return { x: p.x, y: p.y };
-```
+`isometric_visual_smoke.py` creates screenshots named:
+- `suburban_edge.png`
+- `urban_mixed_density.png`
+- `dense_core.png`
+- `industrial_logistics.png`
+- `civic_cluster.png`
+- `construction.png`
+- `traffic_freight.png`
+- `overlay.png`
 
-Click that canvas point with the residential zoning tool and assert `core.zoning.get(6,6)?.zone === 'residential'`. Repeat after one Q rotation and verify the same requested world cell is selected using its newly projected center.
+Save to a temp/test-artifact directory, not authoritative game data. Fail on blank/near-uniform screenshots using pixel-variance sampling. Do not add brittle pixel-perfect baselines in Pass A.
 
-- [ ] **Step 4: Test road drag semantics**
-
-Project start `(3,3)` and end `(8,6)`, perform the existing road pointer drag, then assert the road cells match the current Manhattan path semantics: horizontal segment first, then vertical segment, with no diagonal-only cells.
-
-- [ ] **Step 5: Test zoom, pan, overlays, and save/load**
-
-Verify:
-- wheel zoom changes renderer zoom but remains within `0.45–2.5`;
-- middle/right pan changes projected screen point for a fixed world cell without changing world state;
-- activate one traffic/economy/land-housing overlay and take a screenshot while no page error occurs;
-- save, mutate a visible cell, load, and confirm authoritative state returns to the saved value.
-
-- [ ] **Step 6: Create deterministic visual smoke scenes**
-
-`isometric_visual_smoke.py` should use existing public tools/core APIs to construct and capture these named screenshots in a temp/artifact directory:
-- `suburban_edge.png`;
-- `urban_mixed_density.png`;
-- `dense_core.png`;
-- `industrial_logistics.png`;
-- `civic_cluster.png`;
-- `construction.png`;
-- `traffic_freight.png`;
-- `overlay.png`.
-
-The script must fail if any screenshot is blank/near-uniform by sampling pixel variance, but it does not establish brittle pixel-perfect baselines in Pass A.
-
-- [ ] **Step 7: Add deterministic repetition guard**
-
-In `tests/isometric-variant-selection.test.ts`, generate a 12×12 synthetic grid of stable IDs for each zone/intensity and select variants. Assert:
-- every family uses at least 3 variant IDs;
-- no row or column contains a run of more than 5 identical selected asset IDs;
-- rerunning selection returns byte-identical asset-ID grids.
-
-This guards algorithmic repetition; the visual smoke scene remains the manual art-quality check.
-
-- [ ] **Step 8: Run smoke tests and commit**
-
-```bash
-npm run build
-npm run test:smoke:isometric
-python tests/smoke/isometric_visual_smoke.py
-node --experimental-strip-types --test tests/isometric-variant-selection.test.ts
-git add tests/smoke/isometric_pass_a_smoke.py tests/smoke/isometric_visual_smoke.py tests/isometric-variant-selection.test.ts package.json
-git commit -m "test: validate isometric interaction and visual scenes"
-```
-
----
-
-### Task 14: Run full regression, finalize art documentation, and produce the Pass A production report
-
-**Files:**
-- Create: `docs/art/ASSET_BIBLE.md`
-- Create: `docs/art/PASS_A_REPORT.md`
-- Modify: `README.md`
-- Modify: `docs/ARCHITECTURE.md`
-- Modify: `docs/DEVELOPMENT_LOG.md`
-
-**Interfaces:**
-- No new runtime interfaces. Documentation records the shipped presentation contract and exact verification evidence.
-
-- [ ] **Step 1: Run the full existing simulation regression suite before changing docs**
+- [ ] **Step 4: Run full regression before documentation**
 
 ```bash
 npm test
@@ -1214,34 +793,21 @@ npm run build
 npm run test:smoke
 npm run test:smoke:phase7
 npm run test:smoke:isometric
+python tests/smoke/isometric_visual_smoke.py
 ```
 
-Expected: every command exits 0. If any pre-existing deterministic digest changes, stop and fix the presentation code; do not update expected V7 snapshots to hide a renderer-induced simulation change.
+Every command must exit 0. If any V7 deterministic digest changes, fix renderer integration; never update V7 expected results to hide a presentation-induced simulation change.
 
-- [ ] **Step 2: Inspect generated atlas inventory and record exact counts**
+- [ ] **Step 5: Write `docs/art/ASSET_BIBLE.md`**
 
-Use a small one-off Node command against `PASS_A_ASSET_MANIFEST` to print counts by category, zone/intensity, road class, vehicle family, facility, terrain, and construction stage. Copy the actual counts into `PASS_A_REPORT.md`; do not estimate.
+Record exact projection, 128×64 source/64×32 display tile, scale ranges, northwestern light, material/window/signage rules, North American baseline, orientation/variant-family rule, naming, alpha, originality, and runtime raster requirement.
 
-- [ ] **Step 3: Write `docs/art/ASSET_BIBLE.md`**
+- [ ] **Step 6: Write `docs/art/PASS_A_REPORT.md` with actual counts**
 
-Record the locked values from the approved spec and implementation:
-- 2:1 projection;
-- 128×64 source ground tile / 64×32 display tile;
-- floor/vehicle/tree scale ranges;
-- northwest light direction and southeast shadows;
-- palette/material/window/signage rules;
-- anchor/orientation rules;
-- North American baseline;
-- naming and atlas conventions;
-- explicit prohibition on real logos/copied proprietary assets.
-
-- [ ] **Step 4: Write the exact Pass A report**
-
-Use these headings from the spec:
+Use headings:
 
 ```markdown
 # Civic Foundry Isometric Pass A Report
-
 ## Assets created
 ## Gameplay systems supported
 ## Variants
@@ -1250,46 +816,34 @@ Use these headings from the spec:
 ## Problems discovered
 ## Remaining gaps
 ## Recommended next batch
+## Acceptance criteria
 ```
 
-Under **Assets created**, list each source SVG, generated atlas filename, manifest location, and actual entry counts. Under **Testing**, paste command names and pass/fail results, plus visual-scene names and zoom/rotation coverage. Under **Remaining gaps**, keep Pass B/C/D/E items out of Pass A unless they are actual defects.
+Compute counts directly from `PASS_A_ASSET_MANIFEST`; list exact source SVGs, generated PNG atlas files, manifest entries, zone/intensity variant counts, road-mask counts, vehicle/facility/terrain/construction counts, test commands, visual scenes, zoom/rotation coverage, and all 15 design acceptance criteria.
 
-- [ ] **Step 5: Update architecture/readme/development log**
+- [ ] **Step 7: Update architecture/readme/development log**
 
-Document that:
-- authoritative V7 simulation/save remains unchanged;
-- `WorldRenderer` now projects the same grid isometrically and delegates focused passes;
-- raster atlases are build-time outputs from source-controlled SVG sheets;
-- manifest/registry are presentation-only;
-- fallback rendering is deliberate and non-authoritative.
+Document that V7 simulation/save remains unchanged; the same authoritative grid is projected isometrically; raster atlases are build outputs from source-controlled art sheets; manifest/registry are presentation-only; fallback is deliberate and non-authoritative.
 
-- [ ] **Step 6: Review Pass A acceptance criteria one-by-one**
-
-Confirm in `PASS_A_REPORT.md` that all 15 acceptance criteria from the design spec are met. If any criterion is not met, mark Pass A incomplete and fix it before the final commit.
-
-- [ ] **Step 7: Commit final documentation**
+- [ ] **Step 8: Commit docs and final verification**
 
 ```bash
-git add docs/art/ASSET_BIBLE.md docs/art/PASS_A_REPORT.md README.md docs/ARCHITECTURE.md docs/DEVELOPMENT_LOG.md
+git add tests/smoke/isometric_pass_a_smoke.py tests/smoke/isometric_visual_smoke.py package.json docs/art/ASSET_BIBLE.md docs/art/PASS_A_REPORT.md README.md docs/ARCHITECTURE.md docs/DEVELOPMENT_LOG.md
 git commit -m "docs: complete isometric Tier 1 asset Pass A"
-```
-
-- [ ] **Step 8: Final verification after the documentation commit**
-
-```bash
 npm test && npm run typecheck && npm run lint && npm run build && npm run test:smoke && npm run test:smoke:phase7 && npm run test:smoke:isometric
 ```
+
 Expected: all green on the final commit.
 
 ---
 
-## Implementation Notes for Reviewers
+## Reviewer Gates
 
-1. **Presentation-only invariant:** Every code review should reject renderer code that writes to `SimulationCore`, road graph, zoning, buildings, service state, transit state, economy state, housing state, or save payloads.
-2. **No silent fallback as production art:** Diagnostic fallback is resilience, not a substitute for required Tier 1 atlas coverage. Smoke tests should normally report zero required-asset fallbacks.
-3. **Generated PNG policy:** SVG atlas sheets are source-controlled authoring files; PNG atlases are generated into `dist/` by the build and are not authoritative source files.
-4. **Rotation correctness:** Rotate world coordinates and topology masks before selection/drawing. Do not rotate the Canvas bitmap wholesale; that breaks text, overlays, picking, and directional asset semantics.
-5. **Building identity:** Use current `Building.id`/`lotId` and `definitionId` for stable selection. Do not add visual IDs to saves.
-6. **Construction:** Stage is derived from `constructionStartedTick`, `completionTick`, `status`, and current tick only.
-7. **Future geometry:** Keep manifest footprint/anchor fields even though V7 uses one-cell authoritative buildings. Phase 2R can later consume larger footprints without replacing the asset contract.
-8. **Pass boundary:** Do not add highways, parking simulation, full mixed-use mechanics, nighttime, weather, pedestrians, landmarks, or the full UI icon replacement in this plan. Those remain later reviewed passes.
+1. Reject any renderer code that writes to authoritative simulation domains or changes save payloads.
+2. Reject use of diagnostic fallback as a substitute for required Tier 1 asset coverage.
+3. Reject camera rotation that changes a building/vehicle's selected `variantKey`; only its orientation frame may change.
+4. Reject whole-canvas bitmap rotation; rotate world coordinates/masks and select correct orientation assets instead.
+5. Reject per-frame `Image` construction, full-manifest scans per entity, or frame-rate-dependent simulation behavior.
+6. Reject fake multi-cell building footprints in V7.
+7. Reject scope creep into highways, full parking, pedestrians, nighttime, weather, landmarks, mixed-use simulation, or full UI icon replacement; those remain later passes.
+8. Pass A is incomplete until all 15 acceptance criteria in the approved design spec are checked off in `docs/art/PASS_A_REPORT.md` with evidence.
