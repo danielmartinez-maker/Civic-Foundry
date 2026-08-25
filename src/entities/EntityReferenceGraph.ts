@@ -208,6 +208,43 @@ export class EntityReferenceGraph {
     });
   }
 
+  prepareSourceDelta(
+    ownedSourceKinds: readonly EntityKind[],
+    references: readonly EntityReference[],
+    removedSourceKeys: readonly string[],
+    view: KnownEntityView,
+  ): PreparedReferencePartition {
+    const normalizedKinds = normalizeKinds(ownedSourceKinds);
+    const kindSet = new Set<EntityKind>(normalizedKinds);
+    const normalizedReferences = normalizeAndValidateReferences(references, view, kindSet);
+    const incomingBySourceKey = groupBySource(normalizedReferences);
+    const removals = [...new Set(removedSourceKeys)].sort(ordinalCompare);
+
+    for (const sourceKey of removals) {
+      if (incomingBySourceKey.has(sourceKey)) {
+        throw new Error(`reference source delta cannot replace and remove the same source: ${sourceKey}`);
+      }
+      const existing = this.referencesBySourceKey.get(sourceKey);
+      const kind = existing?.[0]?.source.kind;
+      if (kind && !kindSet.has(kind)) {
+        throw new Error(`reference source delta removal kind ${kind} is outside partition ownership`);
+      }
+    }
+
+    const replacementsBySourceKey = new Map<string, readonly EntityReference[]>();
+    for (const [sourceKey, bucket] of incomingBySourceKey) {
+      const current = this.referencesBySourceKey.get(sourceKey);
+      if (!current || !referencesEqual(current, bucket)) replacementsBySourceKey.set(sourceKey, bucket);
+    }
+
+    return Object.freeze({
+      ownedSourceKinds: normalizedKinds,
+      replacementsBySourceKey,
+      removedSourceKeys: Object.freeze(removals),
+      baseRevision: this.revision,
+    });
+  }
+
   commitPrepared(prepared: PreparedReferenceGraph): void {
     const nextBySource = groupBySource(prepared.references);
     const nextKindIndex = new Map<EntityKind, Set<string>>();
