@@ -1,0 +1,144 @@
+name: Apply Phase 0B Top Revision Gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch exact Phase 0B feature head
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED=2fee5865339b48e5952d05e13018d98e920e7c61
+          TARGET=civic-2.0-phase-0b-inline
+          git fetch origin "$TARGET"
+          ACTUAL=$(git rev-parse "origin/$TARGET")
+          test "$ACTUAL" = "$EXPECTED" || { echo "feature head moved: $ACTUAL"; exit 1; }
+          git checkout -B "$TARGET" "origin/$TARGET"
+          python <<'PY'
+          from pathlib import Path
+
+          projector = Path('src/entities/LegacyV7EntityProjector.ts')
+          text = projector.read_text()
+          old = '''  private resetForSource(source: LegacyV7EntitySource): void {
+            if (source === this.lastSource) return;
+            this.lastSource = source;
+            this.listCache.clear();
+            this.partitionCache.clear();
+            this.lastProjectedPartitions = undefined;
+            this.lastComposedPartitions = undefined;
+            this.lastProjection = undefined;
+            this.volatileRevision = 0;
+          }
+          '''
+          new = '''  sourceRevisionKey(source: LegacyV7EntitySource): string | undefined {
+            return stableRevisionKey([
+              source.lots.entityRevision,
+              source.buildings.entityRevision,
+              source.economyDomain.firms.entityRevision,
+              source.economyDomain.freightVehicles.entityRevision,
+              source.utilities.entityRevision,
+              source.services.entityRevision,
+              source.transit.revision,
+              source.traffic.entityRevision,
+              source.serviceVehicles.entityRevision,
+              source.incidents.entityRevision,
+            ]);
+          }
+
+          invalidate(): void {
+            this.lastSource = undefined;
+            this.listCache.clear();
+            this.partitionCache.clear();
+            this.lastProjectedPartitions = undefined;
+            this.lastComposedPartitions = undefined;
+            this.lastProjection = undefined;
+            this.volatileRevision = 0;
+          }
+
+          private resetForSource(source: LegacyV7EntitySource): void {
+            if (source === this.lastSource) return;
+            this.invalidate();
+            this.lastSource = source;
+          }
+          '''
+          if old not in text:
+              raise SystemExit('projector resetForSource block not found')
+          projector.write_text(text.replace(old, new, 1))
+
+          core = Path('src/simulation/core/SimulationCore.ts')
+          text = core.read_text()
+          old = '''  private readonly entityProjector: LegacyV7EntityProjector;
+            private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;
+            private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);
+          '''
+          new = '''  private readonly entityProjector: LegacyV7EntityProjector;
+            private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;
+            private lastSyncedEntitySourceRevisionKey: string | undefined;
+            private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);
+          '''
+          if old not in text:
+              raise SystemExit('SimulationCore entity fields block not found')
+          text = text.replace(old, new, 1)
+
+          old = '''  rebuildEntityProjection(): void {
+            this.syncEntityProjection();
+          }
+
+          private syncEntityProjection(): void {
+            const partitions = this.entityProjector.projectPartitions(this);
+            if (partitions === this.lastSyncedEntityPartitions) return;
+            const result = commitEntityProjectionPartitions(
+              this.entityRegistry,
+              this.entityReferences,
+              partitions,
+            );
+            this.lastUnresolvedEntityReferences = result.unresolved;
+            this.lastSyncedEntityPartitions = partitions;
+          }
+          '''
+          new = '''  rebuildEntityProjection(): void {
+            this.lastSyncedEntitySourceRevisionKey = undefined;
+            this.entityProjector.invalidate();
+            this.syncEntityProjection();
+          }
+
+          private syncEntityProjection(): void {
+            const sourceRevisionKey = this.entityProjector.sourceRevisionKey(this);
+            if (sourceRevisionKey !== undefined
+              && sourceRevisionKey === this.lastSyncedEntitySourceRevisionKey) return;
+
+            const partitions = this.entityProjector.projectPartitions(this);
+            if (partitions === this.lastSyncedEntityPartitions) {
+              this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;
+              return;
+            }
+            const result = commitEntityProjectionPartitions(
+              this.entityRegistry,
+              this.entityReferences,
+              partitions,
+            );
+            this.lastUnresolvedEntityReferences = result.unresolved;
+            this.lastSyncedEntityPartitions = partitions;
+            this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;
+          }
+          '''
+          if old not in text:
+              raise SystemExit('SimulationCore rebuild/sync block not found')
+          core.write_text(text.replace(old, new, 1))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/entities/LegacyV7EntityProjector.ts src/simulation/core/SimulationCore.ts
+          git diff --cached --check
+          git commit -m 'perf: skip stable entity projector polling'
+          git push origin "HEAD:$TARGET"
