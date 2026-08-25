@@ -72,31 +72,41 @@ export class ServiceDispatchSystem {
     const byBuilding = new Map(buildings.map((building) => [building.id, building]));
     for (const job of [...this.jobs.values()].filter((candidate) => candidate.status === 'waiting').sort((a, b) => a.id.localeCompare(b.id))) {
       const target = byBuilding.get(job.targetBuildingId);
-      if (!target) continue;
-      const targetNode = this.accessNode(graph, target.x, target.y);
-      if (!targetNode) continue;
-      let best: { facilityId: string; vehicleId: string; outbound: RouteResult; back: RouteResult; homeNode: string; cost: number } | null = null;
+      if (!target) {
+        job.status = 'failed';
+        job.completionTick = tick;
+        job.accumulatedDelayTicks = Math.max(job.accumulatedDelayTicks, tick - job.createdTick);
+        continue;
+      }
+      const targetNodes = this.accessNodes(graph, target.x, target.y);
+      if (targetNodes.length === 0) continue;
+      let best: { facilityId: string; vehicleId: string; outbound: RouteResult; back: RouteResult; homeNode: string; targetNode: string; cost: number } | null = null;
       for (const facility of facilities.listFacilities().filter((candidate) => candidate.department === job.department)) {
         const available = vehicles.availableVehicleIds(facility.id);
         if (available.length === 0) continue;
-        const homeNode = this.accessNode(graph, facility.x, facility.y);
-        if (!homeNode) continue;
+        const homeNodes = this.accessNodes(graph, facility.x, facility.y);
+        if (homeNodes.length === 0) continue;
         const definition = SERVICE_DEFINITIONS[facility.type];
         const routeCost = (edge: TransportationEdge) => this.responseEdgeCost(job.department, edge, edgeCost);
-        const costKey = `service-dispatch:${job.department}`;
-        const outbound = pathfinding.findRoute(graph, homeNode, targetNode, { edgeCost: routeCost, costKey });
-        const back = pathfinding.findRoute(graph, targetNode, homeNode, { edgeCost: routeCost, costKey });
-        if (!outbound || !back || outbound.edgeIds.length === 0 || back.edgeIds.length === 0) continue;
-        const cost = outbound.totalCost + definition.dispatchTurnaroundTicks / facilities.fundingEffectiveness(job.department);
-        const candidate = { facilityId: facility.id, vehicleId: available[0]!, outbound, back, homeNode, cost };
-        if (!best || candidate.cost < best.cost - 1e-9 || (Math.abs(candidate.cost - best.cost) <= 1e-9 && candidate.facilityId.localeCompare(best.facilityId) < 0)) best = candidate;
+        const costKey = `service-dispatch:${job.department}:${Math.floor(tick / 10)}`;
+        for (const homeNode of homeNodes) {
+          for (const targetNode of targetNodes) {
+            const outbound = pathfinding.findRoute(graph, homeNode, targetNode, { edgeCost: routeCost, costKey });
+            const back = pathfinding.findRoute(graph, targetNode, homeNode, { edgeCost: routeCost, costKey });
+            if (!outbound || !back || outbound.edgeIds.length === 0 || back.edgeIds.length === 0) continue;
+            const cost = outbound.totalCost + definition.dispatchTurnaroundTicks / facilities.fundingEffectiveness(job.department);
+            const candidate = { facilityId: facility.id, vehicleId: available[0]!, outbound, back, homeNode, targetNode, cost };
+            if (!best || candidate.cost < best.cost - 1e-9
+              || (Math.abs(candidate.cost - best.cost) <= 1e-9 && `${candidate.facilityId}|${candidate.homeNode}|${candidate.targetNode}`.localeCompare(`${best.facilityId}|${best.homeNode}|${best.targetNode}`) < 0)) best = candidate;
+          }
+        }
       }
       if (!best) continue;
       job.status = 'assigned';
       job.assignedFacilityId = best.facilityId;
       job.assignedVehicleId = best.vehicleId;
       job.responseStartTick = tick;
-      if (vehicles.dispatchVehicle(best.vehicleId, job.id, best.outbound, best.back, best.homeNode, targetNode)) job.status = 'responding';
+      if (vehicles.dispatchVehicle(best.vehicleId, job.id, best.outbound, best.back, best.homeNode, best.targetNode)) job.status = 'responding';
       else {
         job.status = 'waiting';
         delete job.assignedFacilityId;
@@ -135,9 +145,9 @@ export class ServiceDispatchSystem {
     return edge.freeFlowTicks + (raw - edge.freeFlowTicks) * 0.55;
   }
 
-  private accessNode(graph: TransportationGraph, x: number, y: number): string | undefined {
-    return CARDINAL.map(([dx, dy]) => graph.findNodeAt(x + dx, y + dy))
-      .filter((node): node is NonNullable<typeof node> => node !== undefined)
-      .sort((a, b) => a.id.localeCompare(b.id))[0]?.id;
+  private accessNodes(graph: TransportationGraph, x: number, y: number): string[] {
+    return CARDINAL.map(([dx, dy]) => graph.findNodeAt(x + dx, y + dy)?.id)
+      .filter((id): id is string => id !== undefined)
+      .sort();
   }
 }
