@@ -61,6 +61,11 @@ function compareReference(a: EntityReference, b: EntityReference): number {
 
 export class EntityReferenceGraph {
   private references: EntityReference[] = [];
+  private revision = 0;
+
+  get commitRevision(): number {
+    return this.revision;
+  }
 
   prepare(references: readonly EntityReference[], view: KnownEntityView): PreparedReferenceGraph {
     const normalized = references.map((reference) => {
@@ -93,6 +98,7 @@ export class EntityReferenceGraph {
 
   commitPrepared(prepared: PreparedReferenceGraph): void {
     this.references = prepared.references.map(cloneReference).sort(compareReference);
+    this.revision++;
   }
 
   outgoing(source: EntityHandle): readonly EntityReference[] {
