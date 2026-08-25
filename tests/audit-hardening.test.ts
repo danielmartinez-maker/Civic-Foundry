@@ -45,7 +45,7 @@ test('intersection snapshots preserve durable released travelers until acknowled
   assert.deepEqual(restored.stepNode(graph, node.id, 4), []);
 });
 
-test('legacy hydration rejects a queued traffic vehicle with no queue or pending release representation', () => {
+test('legacy hydration cannot leave a queued traffic vehicle permanently orphaned from intersection state', () => {
   const core = new SimulationCore({ terrain: flatTerrain(), seed: 13 });
   core.buildRoad([{ x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }], 'collector');
   core.transportationGraph.rebuildIfNeeded(core.roads);
@@ -57,7 +57,11 @@ test('legacy hydration rejects a queued traffic vehicle with no queue or pending
     edgeProgressTicks: 0, departureTick: 0, accumulatedDelayTicks: 0, freeFlowTicks: edge.freeFlowTicks,
     status: 'queued', queuedNodeId: edge.to,
   });
-  assert.throws(() => hydrateCore(save), /queued traffic.*intersection|intersection.*queued traffic/i);
+  const restored = hydrateCore(save);
+  assert.ok(restored.traffic.getVehicle('vehicle:corrupt'));
+  restored.step();
+  assert.equal(restored.traffic.getVehicle('vehicle:corrupt'), undefined);
+  assert.equal(restored.traffic.failedTrips, 1);
 });
 
 test('V6 hydration rejects firms and financial rows that reference missing authoritative entities', () => {
