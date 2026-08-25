@@ -99,13 +99,14 @@ export class WorldRenderer {
     const worldSize = this.worldSize(core);
     this.ground.draw(this.ctx, core, this.camera, viewport);
     this.objects.draw(this.ctx, core, this.camera, viewport);
-    this.overlays.draw(this.ctx, core, this.camera, overlayMode, serviceOverlayMode, transitOverlayMode, economyOverlayMode);
 
     this.vehicles.draw(this.ctx, core.transportationGraph, core.traffic, this.camera, worldSize);
     const travelTicks = new Map(core.traffic.edgeMetrics.map((metric) => [metric.edgeId, metric.travelTimeTicks]));
     this.serviceVehicles.draw(this.ctx, core.transportationGraph, core.serviceVehicles, travelTicks, this.camera, worldSize);
     this.transitVehicles.draw(this.ctx, core.transit, core.transportationGraph, core.mobility.vehicles, travelTicks, this.camera, worldSize);
     this.freightVehicles.draw(this.ctx, core.transportationGraph, core.economyDomain.freightVehicles, travelTicks, this.camera, worldSize);
+
+    this.overlays.draw(this.ctx, core, this.camera, overlayMode, serviceOverlayMode, transitOverlayMode, economyOverlayMode);
     this.selection.draw(this.ctx, core, this.camera, selected, previewPath);
   }
 
