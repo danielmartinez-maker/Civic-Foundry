@@ -1,0 +1,39 @@
+name: Isometric Pass B2 Bootstrap CI
+
+on:
+  push:
+    branches: [feature/isometric-pass-b2-public-realm]
+
+permissions:
+  contents: read
+
+jobs:
+  b2-bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout B2 head
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install project dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install pinned TypeScript compiler
+        run: npm install --global typescript@5.8.3
+      - name: B2 unit tests
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(tests/isometric-b2-*.test.ts)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No B2 tests authored yet."
+            exit 0
+          fi
+          node --experimental-strip-types --test "${files[@]}"
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Asset source validation
+        run: npm run assets:check
