@@ -55,7 +55,7 @@ test('parcel generation shares topology across adjacent parcel boundaries', () =
   assert.deepEqual(graph.adjacentParcelIds(right!.id), [left!.id]);
 });
 
-test('LotSystem compatibility lots are derived from parcel state', () => {
+test('LotSystem compatibility lots preserve legacy identity while deriving from parcel state', () => {
   const terrain = flatTerrain();
   const roads = new RoadSystem(terrain);
   roads.restore([{ x: 1, y: 2, type: 'local' }], 1);
@@ -63,12 +63,15 @@ test('LotSystem compatibility lots are derived from parcel state', () => {
   zoning.paint([{ x: 1, y: 1 }], 'residential');
 
   const graph = new CadastralGraph(new ParcelGenerationSystem().rebuild(terrain, roads, zoning));
+  const parcel = graph.listParcels()[0]!;
+  assert.equal(parcel.id, 'parcel:1,1', 'cadastre keeps canonical parcel identity');
+
   const lots = new LotSystem();
   lots.rebuildFromCadastre(graph, () => 'residential');
 
-  assert.equal(lots.list().length, 1);
-  assert.equal(lots.list()[0]!.id, graph.listParcels()[0]!.id);
-  assert.equal(lots.list()[0]!.frontageRoadKey, '1,2');
+  assert.deepEqual(lots.list(), [
+    { id: 'lot:1,1', x: 1, y: 1, zone: 'residential', frontageRoadKey: '1,2' },
+  ]);
 });
 
 test('unfrontaged parcels remain cadastral but do not leak into legacy lots', () => {
