@@ -95,6 +95,8 @@ def main() -> None:
         async () => {
           const { SimulationCore } = await import('http://civic.test/src/simulation/core/SimulationCore.js');
           const { TerrainGrid } = await import('http://civic.test/src/world/terrain/TerrainGrid.js');
+          const { NEW_BUILDING_LIFECYCLE } = await import('http://civic.test/src/simulation/buildings/BuildingTypes.js');
+          const { LEGACY_CELL_SIZE_METERS } = await import('http://civic.test/src/world/cadastre/Geometry.js');
           const { RUNTIME_ASSET_MANIFEST } = await import('http://civic.test/src/rendering/assets/RuntimeAssetManifest.js');
           const { buildingVariantKey } = await import('http://civic.test/src/rendering/assets/BuildingVisualResolver.js');
           const app=window.__civicApp,width=38,height=22;
@@ -117,7 +119,7 @@ def main() -> None:
               id,lotId:`lot:${id}`,x,y,zone,definitionId,status:'occupied',
               constructionStartedTick:0,completionTick:0
             });
-            specs.push({id,x,y,typologyId,condition,status});
+            specs.push({id,x,y,zone,typologyId,condition,status});
           };
 
           [5,9,13,17,21,25].forEach((x,i)=>add(
@@ -133,22 +135,32 @@ def main() -> None:
           ));
 
           app.core.buildings.restore(legacy);
-          app.core.rebuildCadastreFromLegacyState();
-
-          const overrides=new Map();
-          for(const spec of specs){
-            const canonical=app.core.buildings.getV2At(spec.x,spec.y);
-            if(!canonical) throw new Error(`missing canonical building at ${spec.x},${spec.y}`);
-            overrides.set(canonical.id,spec);
-          }
-          app.core.buildings.restoreV2(app.core.buildings.listV2().map(building=>{
-            const spec=overrides.get(building.id);
-            if(!spec) return building;
+          const cellSize=LEGACY_CELL_SIZE_METERS;
+          app.core.buildings.restoreV2(specs.map(spec=>{
+            const minX=spec.x*cellSize,minY=spec.y*cellSize,maxX=minX+cellSize,maxY=minY+cellSize;
+            const approvedUses=spec.typologyId.includes('mixed_use')
+              ? ['residential','retail','office']
+              : [spec.zone==='residential'?'residential':'office'];
             return {
-              ...building,
+              id:`canonical:${spec.id}`,
+              parcelIds:[`parcel:${spec.id}`],
               typologyId:spec.typologyId,
+              footprint:[{x:minX,y:minY},{x:maxX,y:minY},{x:maxX,y:maxY},{x:minX,y:maxY}],
+              grossFloorAreaM2:1200,
+              usableFloorAreaM2:960,
+              heightMeters:spec.typologyId==='podium_mixed_use'?38:18,
+              stories:spec.typologyId==='podium_mixed_use'?12:5,
+              realizedFAR:2.2,
+              coverageRatio:.65,
+              floors:[],
               status:spec.status,
-              lifecycle:{...building.lifecycle,exteriorCondition:spec.condition},
+              yearBuilt:0,
+              projectCost:100000,
+              entitlement:{
+                approvalTick:0,zoningDistrictId:spec.zone,approvedFAR:4,
+                approvedHeightMeters:60,approvedUses
+              },
+              lifecycle:{...NEW_BUILDING_LIFECYCLE,exteriorCondition:spec.condition},
             };
           }));
 
