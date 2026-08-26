@@ -7,7 +7,7 @@ import { getBuildingDefinition } from '../src/data/buildings.ts';
 import type { Lot } from '../src/world/lots/LotSystem.ts';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
-import { hydrateCore, serializeCore } from '../src/save/save.ts';
+import { hydrateCoreV7, serializeCoreV7 } from '../src/save/save.ts';
 
 const lot: Lot = { id: 'lot:4,4', x: 4, y: 4, zone: 'residential', frontageRoadKey: '4,5' };
 const baseContext = {
@@ -163,9 +163,9 @@ test('SimulationCore policy controls change aggregate affordability and persist 
   } as any);
   assert.deepEqual(core.developmentPolicySnapshot, policy);
   assert.ok(core.housingChoiceSnapshot.affordabilityIndex >= baselineAffordability);
-  const save = serializeCore(core);
+  const save = serializeCoreV7(core);
   assert.deepEqual(save.developmentPolicy, policy);
-  const loaded = hydrateCore(structuredClone(save));
+  const loaded = hydrateCoreV7(structuredClone(save));
   assert.deepEqual(loaded.developmentPolicySnapshot, policy);
-  assert.deepEqual(serializeCore(loaded), save);
+  assert.deepEqual(serializeCoreV7(loaded), save);
 });
