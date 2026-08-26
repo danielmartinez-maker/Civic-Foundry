@@ -9,6 +9,13 @@ import {
   type IntersectionControlSnapshot,
 } from '../src/simulation/transportation/IntersectionControlTypes.ts';
 
+function controlTypesSource(): string {
+  return readFileSync(
+    new URL('../src/simulation/transportation/IntersectionControlTypes.ts', import.meta.url),
+    'utf8',
+  );
+}
+
 test('3R-B U.S. intersection policy defaults are locked', () => {
   assert.deepEqual(US_INTERSECTION_POLICY, {
     rightTurnOnRed: true,
@@ -86,10 +93,7 @@ test('intersection snapshot carries canonical plan/runtime revision epochs', () 
 });
 
 test('IntersectionControlSnapshot declares the exact roadmap epoch field names', () => {
-  const source = readFileSync(
-    new URL('../src/simulation/transportation/IntersectionControlTypes.ts', import.meta.url),
-    'utf8',
-  );
+  const source = controlTypesSource();
   const match = source.match(/export type IntersectionControlSnapshot = Readonly<\{([\s\S]*?)\n\}>;/);
   assert.ok(match, 'IntersectionControlSnapshot declaration must exist');
   const body = match[1] ?? '';
@@ -98,4 +102,41 @@ test('IntersectionControlSnapshot declares the exact roadmap epoch field names',
   assert.match(body, /\bcontrolRuntimeEpoch:\s*number;/);
   assert.match(body, /\blastPlanReviewTick:\s*number;/);
   assert.doesNotMatch(body, /\blastReviewTick:\s*number;/);
+});
+
+test('Task 8 priority requests persist stable identity, kind, and expiry', () => {
+  const source = controlTypesSource();
+  const match = source.match(/export type IntersectionPriorityRequest = Readonly<\{([\s\S]*?)\n\}>;/);
+  assert.ok(match, 'IntersectionPriorityRequest declaration must exist');
+  const body = match[1] ?? '';
+
+  assert.match(body, /\bid:\s*string;/);
+  assert.match(body, /\bjunctionId:\s*JunctionId;/);
+  assert.match(body, /\bmovementId:\s*TurnMovementId;/);
+  assert.match(body, /\bkind:\s*'emergencyPreemption'\s*\|\s*'transitPriority';/);
+  assert.match(body, /\brequestedTick:\s*number;/);
+  assert.match(body, /\bexpiresTick:\s*number;/);
+
+  const snapshot = source.match(/export type IntersectionControlSnapshot = Readonly<\{([\s\S]*?)\n\}>;/);
+  assert.ok(snapshot);
+  assert.match(snapshot[1] ?? '', /priorityRequests:\s*readonly IntersectionPriorityRequest\[\];/);
+});
+
+test('Task 8 coordination groups persist direction and structural plan revision', () => {
+  const source = controlTypesSource();
+  const match = source.match(/export type SignalCoordinationGroup = Readonly<\{([\s\S]*?)\n\}>;/);
+  assert.ok(match, 'SignalCoordinationGroup declaration must exist');
+  const body = match[1] ?? '';
+
+  assert.match(body, /\bid:\s*CoordinationGroupId;/);
+  assert.match(body, /\bjunctionIds:\s*readonly JunctionId\[\];/);
+  assert.match(body, /\bcycleTicks:\s*number;/);
+  assert.match(body, /\boffsetsByJunction:\s*Readonly<Record<JunctionId, number>>;/);
+  assert.match(body, /\bprogressionFromJunctionId:\s*JunctionId;/);
+  assert.match(body, /\bprogressionToJunctionId:\s*JunctionId;/);
+  assert.match(body, /\bplanRevision:\s*number;/);
+
+  const snapshot = source.match(/export type IntersectionControlSnapshot = Readonly<\{([\s\S]*?)\n\}>;/);
+  assert.ok(snapshot);
+  assert.match(snapshot[1] ?? '', /coordinationGroups:\s*readonly SignalCoordinationGroup\[\];/);
 });
