@@ -71,10 +71,15 @@ export class TrafficSystem {
   private readonly vehicles = new Map<string, MutableTrafficVehicle>();
   private readonly outcomes: TripOutcome[] = [];
   private nextVehicleId = 1;
+  private _entityRevision = 0;
   edgeMetrics: EdgeTrafficMetric[] = [];
   completedTrips = 0;
   failedTrips = 0;
   congestionEpoch = 0;
+
+  get entityRevision(): number {
+    return this._entityRevision;
+  }
 
   get activeVehicles(): TrafficVehicle[] {
     return [...this.vehicles.values()].map((vehicle) => this.copyVehicle(vehicle)).sort((a, b) => a.id.localeCompare(b.id));
@@ -119,6 +124,7 @@ export class TrafficSystem {
       freeFlowTicks: Math.max(0, freeFlowTicks),
       status: 'moving',
     });
+    this._entityRevision++;
     return id;
   }
 
@@ -236,6 +242,7 @@ export class TrafficSystem {
     this.completedTrips = Math.max(0, Math.floor(state.completedTrips));
     this.failedTrips = Math.max(0, Math.floor(state.failedTrips));
     this.congestionEpoch = Math.max(0, Math.floor(state.congestionEpoch));
+    this._entityRevision++;
   }
 
   refreshMetrics(graph: TransportationGraph, extraEdgeLoads: Readonly<Record<string, number>> = {}): void {
@@ -281,6 +288,7 @@ export class TrafficSystem {
   private complete(vehicle: MutableTrafficVehicle, tick: number): void {
     this.vehicles.delete(vehicle.id);
     this.completedTrips++;
+    this._entityRevision++;
     this.recordOutcome({
       tripId: vehicle.tripId,
       purpose: vehicle.purpose,
@@ -295,6 +303,7 @@ export class TrafficSystem {
     intersections.removeVehicle(vehicle.id);
     this.vehicles.delete(vehicle.id);
     this.failedTrips++;
+    this._entityRevision++;
     this.recordOutcome({
       tripId: vehicle.tripId,
       purpose: vehicle.purpose,
