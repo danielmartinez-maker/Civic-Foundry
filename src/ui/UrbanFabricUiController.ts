@@ -1,6 +1,6 @@
 import type { GameApp } from '../app/GameApp.ts';
 import type { UrbanFabricOverlayMode } from '../rendering/CadastralOverlayLayer.ts';
-import { inspectParcelAt } from './Inspector.ts';
+import { ParcelInspector } from './ParcelInspector.ts';
 
 const EXCLUSIVE_OVERLAY_SELECTORS = ['#overlay', '#service-overlay', '#transit-overlay', '#economy-overlay'] as const;
 
@@ -76,9 +76,8 @@ export class UrbanFabricUiController {
       const cell = this.app.renderer.canvasToCell(event.clientX, event.clientY, this.app.core);
       this.selectedParcelId = cell ? this.app.tools.parcelIdAt(this.app.core, cell.x, cell.y) : null;
       this.app.renderer.setUrbanFabricOverlay(this.mode, this.selectedParcelId);
-      if (!cell || !this.selectedParcelId || this.app.tools.activeTool !== 'inspect') return;
-      const html = inspectParcelAt(this.app.core, cell.x, cell.y);
-      if (html) this.inspector.innerHTML = html;
+      if (!this.selectedParcelId || this.app.tools.activeTool !== 'inspect') return;
+      this.inspector.innerHTML = new ParcelInspector().render(this.selectedParcelId, this.app.core);
     });
   }
 
