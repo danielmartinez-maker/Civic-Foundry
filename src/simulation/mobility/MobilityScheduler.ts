@@ -123,6 +123,7 @@ export class MobilityScheduler {
     const trips = [...context.generateTrips()];
     const tripsBySource = new Map<string, MobilityPersonTrip>();
     for (const trip of trips) tripsBySource.set(trip.sourceTripId, trip);
+    const scheduler = this;
     const runtime: MobilityRuntimeContext = Object.freeze({
       tick: context.tick,
       costEpoch,
@@ -133,7 +134,9 @@ export class MobilityScheduler {
       multimodalGraph: this.multimodalGraph,
       journeyPlanner: this.journeyPlanner,
       passengers: this.passengers,
-      crowdingPenaltyTicks: this.crowdingPenaltyTicks + this.capacityPressureTicks(),
+      get crowdingPenaltyTicks() {
+        return scheduler.crowdingPenaltyTicks + scheduler.capacityPressureTicks();
+      },
       submitLegacyCarTrip: (sourceTripId, travelerWeight, route) => {
         const trip = tripsBySource.get(sourceTripId);
         if (!trip) throw new Error(`unknown legacy mobility source trip: ${sourceTripId}`);
