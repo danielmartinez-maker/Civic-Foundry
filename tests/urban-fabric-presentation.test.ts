@@ -6,6 +6,7 @@ import { mapZoningEnvelope } from '../src/rendering/ZoningEnvelopeLayer.ts';
 import { WorldRenderer } from '../src/rendering/WorldRenderer.ts';
 import { OverlayRenderPass } from '../src/rendering/passes/OverlayRenderPass.ts';
 import { IsometricCamera } from '../src/rendering/isometric/IsometricCamera.ts';
+import { inspectParcelAt } from '../src/ui/Inspector.ts';
 import { ParcelInspector } from '../src/ui/ParcelInspector.ts';
 import { ToolController } from '../src/ui/ToolController.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
@@ -141,6 +142,17 @@ test('inspect tool resolves the canonical parcel beneath a legacy cell', () => {
 
   assert.equal(tools.parcelIdAt(core, 3, 3), parcel.id);
   assert.equal(tools.parcelIdAt(core, 0, 0), null);
+});
+
+test('inspector routes a clicked parcel to canonical parcel details', () => {
+  const core = coreFixture();
+  const parcel = core.cadastre.listParcels()[0]!;
+
+  const html = inspectParcelAt(core, 3, 3);
+  assert.ok(html);
+  assert.match(html, new RegExp(parcel.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(html, /R2/);
+  assert.equal(inspectParcelAt(core, 0, 0), null);
 });
 
 test('cadastral overlay exposes deterministic parcel boundaries and frontage', () => {
