@@ -8,32 +8,30 @@ Branch: `civic-2.0-3r-b-intersection-control`
 
 3R-B replaces the live V7 intersection queue/control path with a movement-aware U.S.-style intersection-control engine built on the 3R-A transportation authority.
 
-The new runtime model operates on explicit `TurnMovementId`, lane groups, carriageways, and junctions rather than a single undifferentiated node-capacity queue. It supports U.S.-style unsignalized control, fixed-time traffic signals, protected/permissive turning, right-turn-on-red policy, pedestrian phases, arterial coordination, emergency preemption hooks, transit-priority hooks, and controlled-access freeway semantics.
+The runtime model operates on explicit `TurnMovementId`, lane groups, carriageways, and junctions rather than a single undifferentiated node-capacity queue. It supports U.S.-style unsignalized control, fixed-time signals, protected/permissive turning, right-turn-on-red policy, pedestrian phases, arterial coordination, emergency-preemption hooks, transit-priority hooks, and controlled-access freeway semantics.
 
-This is a live cutover, not a parallel shadow engine. `TrafficSystem` will use the 3R-B controller during normal simulation. Persistence therefore advances from Save V7 to Save V8, with deterministic V7→V8 migration for active queued traffic.
+This is a live cutover, not a parallel shadow engine. `TrafficSystem` will use 3R-B during normal simulation. Persistence therefore advances from Save V7 to Save V8, with deterministic V7→V8 migration for active queued traffic.
 
-The engineering reference baseline is the current FHWA Manual on Uniform Traffic Control Devices (MUTCD), 11th Edition with Revision 1, December 2025. Civic Foundry models the traffic-engineering mechanisms that materially affect simulation outcomes; it does not attempt to encode every jurisdiction-specific legal rule or sign-installation detail.
+The engineering reference baseline is the current FHWA Manual on Uniform Traffic Control Devices (MUTCD), 11th Edition with Revision 1, December 2025. Civic Foundry models traffic-engineering mechanisms that materially affect simulation outcomes; it does not attempt to encode every jurisdiction-specific legal rule or sign-installation detail.
 
 ## Locked decisions
 
-The following design decisions are approved and are not implementation-time choices:
-
-- 3R-B replaces the live V7 `IntersectionSystem` behavior.
+- 3R-B replaces live V7 `IntersectionSystem` behavior.
 - Save persistence advances to V8.
 - V7 saves migrate deterministically to V8.
 - The road/control model follows U.S. right-hand-traffic conventions.
-- Default intersection control is assigned deterministically from road hierarchy, geometry, and demand, with explicit override support.
-- Signalized left turns use protected/permissive operation by default, with protected-only operation where conflict/speed/visibility rules require it.
+- Default control is assigned deterministically from road hierarchy, geometry, demand, and policy, with explicit override support.
+- Signalized left turns use protected/permissive operation by default, with protected-only operation where safety/control rules require it.
 - Expressways and highways are controlled-access facilities.
 - Expressway/highway mainlines do not allow ordinary at-grade STOP/YIELD/signalized intersections.
-- Right-turn-on-red is represented as a jurisdiction policy enabled by default in the U.S. ruleset, not as a universal hard-coded law.
+- Right-turn-on-red is a jurisdiction policy enabled by default in the U.S. ruleset, not a universal hard-coded law.
 - Signal coordination and deterministic offsets are part of 3R-B.
 - Adaptive signal optimization is deferred; 3R-B exposes the interface it will use later.
 - Crashes, parking search, weather effects, dynamic reversible-lane scheduling, and lane-changing microsimulation remain outside 3R-B.
 
 ## Current architecture and migration seam
 
-3R-A already provides the authoritative transportation semantics required by 3R-B:
+3R-A already provides:
 
 - stable junction IDs;
 - stable road-segment IDs;
@@ -45,18 +43,18 @@ The following design decisions are approved and are not implementation-time choi
 - movement-aware routing topology;
 - deterministic V7 physical and graph compatibility projection.
 
-The existing live traffic stack still has two legacy assumptions:
+The live traffic stack still assumes:
 
 1. `TrafficSystem` follows V7 `TransportationGraph` edge IDs.
-2. `IntersectionSystem` queues vehicles only by incoming edge and releases them from a single node-level capacity budget.
+2. `IntersectionSystem` queues vehicles only by incoming edge and releases them from one node-level capacity budget.
 
-3R-B removes assumption 2 immediately. It does not require a simultaneous migration of every live route consumer to `MovementAwarePathfindingSystem`.
+3R-B removes assumption 2 immediately. It does not force every live route consumer to migrate to `MovementAwarePathfindingSystem` in the same tranche.
 
-For the live cutover, legacy route continuation is resolved deterministically at a junction:
+For the cutover, route continuation is resolved deterministically:
 
 `current legacy edge + next legacy edge -> current carriageway + next carriageway -> TurnMovementId`
 
-This bridge is temporary compatibility infrastructure. It allows traffic to use movement-aware intersection control while route planning remains compatible with current V7 graph consumers. A later 3R tranche may migrate all live routing to native 3R route states.
+This compatibility bridge lets live traffic use movement-aware control while route planning remains compatible with current V7 graph consumers. A later 3R tranche can migrate all live routing to native 3R route states.
 
 ## Goals
 
@@ -65,20 +63,20 @@ This bridge is temporary compatibility infrastructure. It allows traffic to use 
 The system must:
 
 - queue vehicles for a specific movement and lane-group service path;
-- determine which movements conflict physically;
-- represent uncontrolled, YIELD, STOP, all-way STOP, signal, merge, diverge, and ramp-terminal control;
-- derive a deterministic default control plan from U.S. road hierarchy and geometry;
-- preserve explicit player/system overrides across topology rebuilds when still valid;
+- determine physical movement/pedestrian conflicts;
+- represent uncontrolled, YIELD, two-way STOP, all-way STOP, signal, merge, diverge, and ramp-terminal control;
+- derive deterministic default plans from U.S. hierarchy, geometry, demand, and policy;
+- preserve explicit overrides across valid topology/control rebuilds;
 - service unsignalized movements using deterministic right-of-way and gap acceptance;
 - service signalized movements using explicit phases and clearance intervals;
-- support protected, permissive, and prohibited turn states;
-- model pedestrian WALK/change/clearance occupancy as an explicit source of vehicle conflicts;
-- support right-turn-on-red under configurable jurisdiction policy;
+- support protected, permissive, stop/yield, clearance, and prohibited movement states;
+- model pedestrian WALK/change/clearance occupancy as an explicit conflict source;
+- support configurable right-turn-on-red;
 - coordinate fixed-time signals along arterial corridors;
-- expose emergency preemption and transit-priority requests without implementing a future adaptive optimizer;
+- expose emergency-preemption and transit-priority requests;
 - reject illegal at-grade controlled-access intersections;
-- persist all authoritative continuation state required for deterministic Save V8 resume;
-- migrate existing V7 queued traffic without dropping, duplicating, or reordering vehicles nondeterministically;
+- persist authoritative continuation state for deterministic V8 resume;
+- migrate V7 queued traffic without dropping, duplicating, or nondeterministically reordering vehicles;
 - preserve existing trip completion/failure accounting and save/load determinism.
 
 ## Non-goals
@@ -86,165 +84,129 @@ The system must:
 3R-B does not implement:
 
 - crash generation or crash blocking;
-- parking occupancy or parking search;
-- weather-dependent intersection behavior;
+- parking occupancy/search;
+- weather-dependent control;
 - dynamic congestion rerouting;
-- adaptive/AI signal-plan optimization;
+- adaptive/AI signal optimization;
 - full NEMA hardware emulation;
-- detector hardware simulation at individual loop/camera level;
-- jurisdiction-by-jurisdiction traffic code databases;
-- sign placement, mast-arm geometry, pavement-marking rendering, or signal-head artwork;
+- individual detector hardware simulation;
+- jurisdiction-by-jurisdiction traffic-code databases;
+- sign placement, mast-arm geometry, markings, or signal-head artwork;
 - microscopic lane changing;
-- freeway weaving models beyond explicit merge/diverge control eligibility;
+- freeway weaving beyond explicit merge/diverge eligibility;
 - a player-facing intersection-control UI.
 
-Control overrides are exposed as simulation APIs and persisted state so a future UI can use them without changing the control architecture.
+Control overrides are exposed as simulation APIs and persisted state so a future UI can use them without changing the architecture.
 
 ## U.S. engineering reference baseline
 
-The reference is:
+Reference:
 
 - FHWA MUTCD, 11th Edition with Revision 1, December 2025.
-- Current-edition page: https://mutcd.fhwa.dot.gov/kno_11th_Editionr1.htm
-- FHWA MUTCD portal: https://mutcd.fhwa.dot.gov/
+- https://mutcd.fhwa.dot.gov/kno_11th_Editionr1.htm
+- https://mutcd.fhwa.dot.gov/
 
-The MUTCD is a traffic-control-device standard, not a full traffic-flow simulation specification. Civic Foundry therefore uses it as a standards baseline for control modes and signal semantics while applying deterministic simulation rules for queue discharge, gap acceptance, conflict occupancy, and timing-plan generation.
+The MUTCD is a traffic-control-device standard, not a complete traffic-flow simulation specification. Civic Foundry therefore uses it as a standards baseline for control modes and signal semantics while applying deterministic simulation rules for queue discharge, gap acceptance, conflict occupancy, timing-plan generation, and review cadence.
 
-The ruleset must distinguish between:
+The ruleset distinguishes:
 
 - national engineering/control semantics;
 - simulation defaults;
 - configurable jurisdiction policy.
 
-For example, right-turn-on-red is not encoded as an unconditional movement entitlement. It is a policy flag whose default is enabled for the U.S. ruleset and which may be disabled globally or at a specific junction/movement.
+Right-turn-on-red, for example, is a policy flag whose U.S. default is enabled and which may be disabled globally, per junction, or per movement.
 
 ## Core architecture
 
-`IntersectionControlSystem` becomes the authoritative live intersection controller.
-
-It depends on the 3R-A transportation authority and derived lane groups, and owns only control/queue state. It must not become the owner of road geometry or transportation topology.
-
-Recommended component boundaries:
+`IntersectionControlSystem` becomes the authoritative live controller. It depends on 3R-A transportation authority and derived lane groups and owns only control/queue state. It does not own road geometry or transportation topology.
 
 ### `IntersectionControlTypes.ts`
 
-Owns public immutable types and stable IDs for:
+Public immutable types and stable IDs for:
 
 - control plans;
-- controller state;
+- planning metrics/state;
+- controller runtime state;
 - movement service state;
-- phase definitions;
-- phase runtime state;
-- pedestrian crossings and pedestrian phase state;
+- signal phases;
+- pedestrian crossings/runtime state;
 - queue entries;
 - control overrides;
 - coordination groups;
 - priority/preemption requests;
-- controller snapshot state.
+- snapshots.
 
 ### `ConflictMatrixBuilder.ts`
 
-Builds deterministic movement and pedestrian conflict relationships from junction geometry, carriageways, lanes, and `TurnMovement` definitions.
-
-It is pure derived state and is not persisted.
+Pure derived builder for movement and pedestrian conflict relations from junction geometry, carriageways, lanes, and `TurnMovement` definitions.
 
 ### `ControlPlanBuilder.ts`
 
-Builds default `JunctionControlPlan` values from:
+Builds deterministic `JunctionControlPlan` values from:
 
 - road hierarchy;
 - facility access class;
 - junction leg count;
 - approach geometry;
-- traffic demand metrics;
-- pedestrian demand metrics;
-- crash-history input when available;
-- explicit control overrides.
-
-The builder must be deterministic for the same topology, metrics, policy, and overrides.
+- planning metrics snapshot;
+- explicit control overrides;
+- U.S. policy configuration.
 
 ### `MovementQueueStore.ts`
 
-Owns authoritative per-movement queues.
+Authoritative per-movement queue state:
 
-It is responsible for:
-
-- one active queue record per vehicle;
-- queue ordering;
+- one queue record per vehicle;
+- deterministic ordering;
 - movement/lane-group association;
 - traveler weight;
 - queued tick;
 - stop-compliance state;
-- partial service accounting where weighted vehicles consume fractional capacity;
-- released-but-not-yet-acknowledged state;
-- snapshot and restore.
+- partial service accounting;
+- pending-release acknowledgement;
+- snapshot/restore.
 
 ### `UnsignalizedController.ts`
 
-Determines service eligibility for:
-
-- uncontrolled movements;
-- YIELD-controlled movements;
-- two-way STOP;
-- all-way STOP;
-- ramp-terminal STOP/YIELD control.
-
-It uses conflict occupancy and deterministic gap acceptance.
+Service eligibility for uncontrolled, YIELD, two-way STOP, all-way STOP, and ramp-terminal STOP/YIELD control.
 
 ### `SignalController.ts`
 
-Owns fixed-time signal execution:
+Fixed-time signal execution:
 
 - active phase;
 - elapsed phase ticks;
 - cycle position;
-- protected/permissive service state;
-- yellow interval;
-- all-red interval;
-- phase change;
+- protected/permissive state;
+- yellow/all-red clearance;
 - coordination offset;
-- preemption/priority transition hooks.
-
-The signal controller executes a plan; it does not decide road topology.
+- preemption/priority transitions.
 
 ### `PedestrianController.ts`
 
-Owns pedestrian crossing service/occupancy state:
-
-- WALK entry interval;
-- pedestrian change interval;
-- clearance occupancy;
-- crossing demand;
-- conflicts with vehicle movements.
+Aggregate pedestrian crossing demand, WALK/change/clearance state, and crosswalk conflict occupancy.
 
 ### `PriorityController.ts`
 
-Consumes deterministic requests for:
-
-- emergency preemption;
-- transit signal priority.
-
-3R-B implements the request and transition contract. It does not implement future citywide adaptive optimization.
+Consumes deterministic emergency-preemption and transit-priority requests without bypassing physical conflict clearance.
 
 ### `IntersectionControlSystem.ts`
 
-Coordinates the above units for the live simulation.
-
-It is the single runtime API used by traffic consumers to:
+Orchestrates the above. Live consumers use it to:
 
 - enqueue a vehicle for a movement;
 - step controllers;
-- retrieve released vehicles;
-- acknowledge a release;
+- retrieve releases;
+- acknowledge release;
 - remove failed/despawned vehicles;
-- inspect queue/controller state;
+- inspect state;
 - snapshot/restore V8 state.
 
-It must remain orchestration-focused. Geometry, conflict generation, plan construction, queue storage, and signal execution stay in separate files.
+It must remain an orchestration layer. Geometry, conflict generation, planning, queues, signal execution, and unsignalized priority stay separate.
 
 ## Stable IDs
 
-3R-B must reuse 3R-A stable IDs whenever possible.
+Reuse 3R-A stable IDs wherever possible.
 
 Recommended IDs:
 
@@ -253,13 +215,13 @@ Recommended IDs:
 - pedestrian crossing: `pc:<junctionId>:<crossingSignature>`;
 - coordination group: `scg:<stableCorridorSignature>`;
 - controller plan: `icp:<junctionId>`;
-- control override: keyed directly by `junctionId`.
+- control override: keyed by `junctionId`.
 
 IDs must not depend on array iteration order.
 
 ## Control plan model
 
-Each junction receives exactly one control plan.
+Each junction receives exactly one authoritative plan.
 
 ```ts
 type JunctionControlType =
@@ -273,8 +235,6 @@ type JunctionControlType =
   | 'rampTerminal';
 ```
 
-A plan contains at minimum:
-
 ```ts
 type JunctionControlPlan = Readonly<{
   id: string;
@@ -287,119 +247,125 @@ type JunctionControlPlan = Readonly<{
 }>;
 ```
 
-`JunctionControlPolicy` contains configuration that affects legality/service without changing road topology, including:
+`JunctionControlPolicy` includes:
 
-- right-turn-on-red enabled/disabled;
+- right-turn-on-red policy;
 - protected-only movement overrides;
 - prohibited permissive movement overrides;
-- minimum-stop duration policy;
+- minimum-stop duration;
 - gap-acceptance profile;
 - pedestrian service policy;
-- emergency preemption enabled/disabled;
-- transit priority enabled/disabled.
+- emergency-preemption enablement;
+- transit-priority enablement.
 
 ## Hierarchy-based automatic control assignment
 
-Automatic assignment follows U.S.-style hierarchy and is deterministic.
-
-The builder does not blindly signal intersections based on road class alone. It combines hierarchy and demand/warrant-like inputs.
+Automatic assignment follows U.S.-style hierarchy and uses deterministic planning metrics.
 
 ### Local × local
 
-Default to uncontrolled operation when geometry and demand remain simple.
-
-Escalate to minor-road YIELD/STOP where hierarchy, sight-distance proxy, approach geometry, or traffic demand warrants control.
+Default to uncontrolled operation for simple low-demand geometry. Escalate to minor-road YIELD/STOP when hierarchy, sight-distance proxy, geometry, or planning demand justifies control.
 
 ### Local × collector / local × arterial
 
-The lower-order approach receives STOP or YIELD control by default.
-
-The higher-order road retains priority unless a signal plan is warranted.
+The lower-order approach receives STOP or YIELD by default. The higher-order street retains priority unless signal suitability is met.
 
 ### Collector × collector
 
-Default to two-way STOP where one road can be identified as the priority street.
-
-Use all-way STOP only when a deterministic warrant score supports it. All-way STOP must not be the default traffic-calming behavior.
+Default to two-way STOP where one road is the clear priority street. Use all-way STOP only when the deterministic suitability score supports it.
 
 ### Collector × arterial / arterial × arterial
 
-Evaluate signal suitability using deterministic inputs such as:
+Evaluate signal suitability from deterministic inputs such as:
 
 - approach demand;
-- major/minor street imbalance;
+- major/minor imbalance;
 - pedestrian demand;
 - left-turn demand;
 - speed;
 - conflict burden;
 - delay;
-- crash-history signal when available;
+- crash-history input when available;
 - corridor role.
 
-If signal criteria are not satisfied, use major/minor street priority control rather than installing a signal automatically.
+If signal suitability is not met, use major/minor priority control rather than installing a signal automatically.
 
 ### Ramp terminals
 
-Ramp-terminal control may be STOP, YIELD, or signalized depending on demand, geometry, and conflicting surface-street traffic.
+Ramp-terminal control may be STOP, YIELD, or signal based on demand, geometry, and surface-street conflicts.
 
 ### Overrides
 
-An explicit override may request a supported control type or policy change.
-
 Overrides must:
 
-- survive deterministic plan rebuilds;
+- survive deterministic plan rebuilds while valid;
 - be validated against current topology;
 - be rejected if illegal for the facility type;
-- fall back to automatic control only when the override becomes structurally impossible after topology change.
+- fall back to automatic control only when structurally impossible after topology change.
+
+## Automatic control review lifecycle
+
+Automatic plans are authoritative infrastructure state between explicit review events. They do **not** change every tick as demand fluctuates.
+
+A control review occurs only when:
+
+- relevant transportation topology changes; or
+- a deterministic configured planning-review epoch is reached; or
+- an explicit override is added/removed/changed.
+
+At a planning-review epoch, `ControlPlanBuilder` consumes a canonical `ControlPlanningMetricsSnapshot` captured for that tick. The snapshot contains only metrics available to the simulation at that time, such as approach demand, queued delay, pedestrian demand, left-turn demand, speeds, and optional crash-history aggregates.
+
+The control-planning state stores at minimum:
+
+- `lastReviewTick`;
+- per-junction previous automatic control type;
+- the current canonical planning thresholds/policy revision.
+
+Escalation and de-escalation use separate deterministic thresholds/hysteresis so a junction cannot oscillate between STOP and signal control around one boundary.
+
+A built control plan remains authoritative until the next valid review. Signal phases therefore do not rebuild in response to ordinary per-tick queue fluctuations.
 
 ## Controlled-access facility semantics
 
-`expressway` and `highway` road classes are controlled-access mainline facilities.
+`expressway` and `highway` are controlled-access mainline road classes.
 
 Mainline rules:
 
 - no ordinary at-grade cross-street turn movement;
 - no ordinary STOP control;
-- no ordinary YIELD-controlled crossing of the mainline;
-- no ordinary surface-street traffic signal on the mainline;
-- access occurs through explicit merge/diverge or interchange/ramp-terminal movement structure;
-- mainline through movement retains priority over entering ramp traffic unless a future managed-control feature explicitly changes it.
+- no ordinary YIELD-controlled crossing;
+- no ordinary surface-street traffic signal;
+- access occurs through explicit merge/diverge or interchange/ramp-terminal structure;
+- mainline through movement retains priority over entering ramp traffic unless a future managed-control feature changes it.
 
-The implementation may derive controlled-access status initially from road class rather than introducing a new persisted road-schema field, provided the API leaves room for a future explicit access-control attribute.
+The initial implementation may derive controlled-access status from road class rather than introducing a new persisted road-schema field, provided the API leaves room for future explicit access-control attributes.
 
-Invalid combinations fail validation rather than silently degrading to a surface-street intersection.
+Invalid combinations fail validation instead of silently degrading to surface-street control.
 
 ## Conflict matrix
 
-A movement may not be released solely because its signal/control state says "go." It must also satisfy physical conflict rules.
+A movement cannot be released solely because its control state says it may proceed. It must also satisfy physical conflict rules.
 
-`ConflictMatrixBuilder` creates a symmetric conflict relation for each junction.
+`ConflictMatrixBuilder` creates a symmetric per-junction relation over:
 
-Conflict participants include:
-
-- vehicle turn movements;
+- vehicle movements;
 - pedestrian crossings.
 
-Vehicle movement conflicts are derived from approach/departure geometry and movement paths through the junction conflict area.
-
-At minimum the matrix distinguishes:
+At minimum it distinguishes:
 
 - crossing conflicts;
 - opposing through/left conflicts;
-- merge conflicts into the same constrained departure lane group;
+- constrained shared-departure merge conflicts;
 - pedestrian crossing conflicts;
-- non-conflicting compatible movements.
-
-The conflict matrix is deterministic derived state and is rebuilt when transportation topology changes.
+- compatible movements.
 
 A movement never conflicts with itself.
 
-For the cardinal legacy grid, conflict classification must be exact and deterministic. The representation must not preclude future non-cardinal/native geometry.
+For the legacy cardinal grid, classification must be exact and deterministic. The public representation must not preclude future non-cardinal/native geometry.
+
+The matrix is derived and rebuilt only when relevant topology or crossing geometry changes.
 
 ## Movement service states
-
-Each movement has an instantaneous service state:
 
 ```ts
 type MovementServiceState =
@@ -413,16 +379,16 @@ type MovementServiceState =
 
 Semantics:
 
-- `prohibited`: entry is not permitted.
-- `stop`: the movement may become eligible only after stop-compliance and right-of-way rules are satisfied.
-- `yield`: the movement may enter only with an acceptable conflict gap.
-- `permissive`: signal/control permits entry after yielding to conflicting traffic and pedestrians.
-- `protected`: the controller provides an exclusive/non-conflicting service window subject only to downstream capacity and explicit allowed simultaneous movements.
-- `clearance`: the movement is clearing or held during a yellow/all-red transition; no new protected entry is granted unless the plan explicitly allows continuation under the defined transition semantics.
+- `prohibited`: entry not permitted.
+- `stop`: eligibility requires stop compliance plus right-of-way rules.
+- `yield`: entry requires an acceptable conflict gap.
+- `permissive`: signal/control permits entry after yielding to conflicts.
+- `protected`: exclusive/non-conflicting service window subject to downstream capacity and explicitly compatible simultaneous movements.
+- `clearance`: transition/clearance state; no new protected service is granted except where the plan explicitly defines continuation.
 
 ## Queue model
 
-The live queue unit becomes the movement, not the node.
+The live queue unit is the movement, not the node.
 
 ```ts
 type MovementQueueEntry = Readonly<{
@@ -437,78 +403,70 @@ type MovementQueueEntry = Readonly<{
 }>;
 ```
 
-Queue invariants:
+Invariants:
 
-- a vehicle may exist in at most one active intersection queue;
-- a vehicle may not be both queued and pending-released;
+- a vehicle exists in at most one active queue;
+- a vehicle is never both queued and pending-released;
 - queue order is deterministic;
-- emergency priority may affect controller preemption but does not permit teleporting through an occupied physical conflict zone;
+- emergency priority never bypasses an occupied physical conflict zone;
 - weighted service cannot become negative;
-- partial weighted service is deterministic;
-- a release remains pending until the owning traffic system acknowledges it;
-- repeated controller stepping in the same tick cannot spend the same service capacity twice.
+- partial service is deterministic;
+- releases remain pending until acknowledged;
+- repeated stepping in the same tick cannot spend service capacity twice.
 
-Queue ordering for ordinary vehicles is:
+Ordinary ordering:
 
 1. control eligibility;
 2. right-of-way/arrival rule;
 3. queued tick;
 4. stable vehicle ID.
 
-Controller-specific rules may insert emergency/transit priority before ordinary ordering, but stable ID remains the final deterministic tie-break.
+Controller-specific emergency/transit policy may precede ordinary ordering, with stable ID as the final deterministic tie-break.
 
 ## Capacity and discharge
 
-3R-B removes the live assumption that an intersection has one generic service-rate bucket.
+3R-B removes the live single-node service bucket.
 
-Available movement discharge is derived from:
+Movement discharge derives from:
 
 - eligible lane groups;
 - lane-group capacity;
 - movement permission;
-- active signal/control state;
+- active control state;
 - conflicting occupancy;
 - pedestrian occupancy;
-- downstream movement availability.
+- downstream service availability.
 
-The first implementation may use deterministic per-tick fractional capacity derived from lane-group `capacityPerMinute` rather than microscopic car-following headways.
-
-This preserves Civic Foundry's weighted-agent simulation model while making capacity lane/movement specific.
+The initial implementation may use deterministic per-tick fractional capacity derived from lane-group `capacityPerMinute` rather than microscopic headways. This preserves Civic Foundry's weighted-agent model while making service lane/movement specific.
 
 ## Unsignalized control
 
 ### Uncontrolled
 
-Compatible movements may proceed when no conflicting higher-priority occupancy blocks them.
+Compatible movements proceed when no conflicting higher-priority occupancy blocks them.
 
 ### YIELD
 
-A queued movement does not need a mandatory stop. It may proceed when deterministic gap acceptance says the conflict window is sufficient.
+No mandatory stop. A movement proceeds when deterministic gap acceptance finds sufficient conflict-free time.
 
 ### Two-way STOP
 
-STOP-controlled minor approaches must complete the configured minimum stop duration before becoming eligible.
-
-Major-street movement retains priority.
-
-Minor movements then use gap acceptance against major-street and other conflicting occupancy.
+Minor approaches must complete the configured minimum stop duration before eligibility. Major-street traffic retains priority. Minor movements then use gap acceptance against conflicts.
 
 ### All-way STOP
 
-Right-of-way order is:
+Right-of-way order:
 
 1. completed-stop arrival time;
 2. deterministic geometric priority for simultaneous arrivals;
 3. stable movement ID;
 4. stable vehicle ID.
 
-The geometry rule must be explicit and tested for every cardinal arrival combination. Stable IDs are reproducibility tie-breakers, not substitutes for right-of-way logic.
+The geometry rule must be explicit and fully tested for cardinal arrival combinations. Stable IDs are reproducibility tie-breakers, not substitutes for right-of-way logic.
 
 ### Gap acceptance
 
-Gap acceptance is deterministic.
-
-Required gap is a function of:
+Required gap is a deterministic function of:
 
 - movement kind;
 - vehicle class/permission profile;
@@ -516,11 +474,11 @@ Required gap is a function of:
 - junction geometry;
 - pedestrian occupancy.
 
-No RNG is used for individual acceptance decisions in 3R-B.
+No RNG is used for individual acceptance decisions.
 
 ## Signal control
 
-3R-B implements fixed-time signal plans with deterministic phase execution.
+3R-B implements deterministic fixed-time plans.
 
 ```ts
 type SignalTimingPlan = Readonly<{
@@ -542,84 +500,63 @@ A phase defines:
 
 ### Protected/permissive left turns
 
-The normal U.S. signalized default is protected/permissive operation where geometry and conflict rules allow it.
+Protected/permissive is the normal U.S. default where geometry and conflict rules allow it.
 
-Permissive left turns yield to:
+Permissive lefts yield to:
 
-- opposing through/right traffic that conflicts;
+- opposing conflicting through/right traffic;
 - active pedestrian occupancy;
-- any other explicitly conflicting movement with priority.
+- other explicitly conflicting priority movements.
 
-Protected-only operation is selected where the plan builder's deterministic safety profile indicates it is required, including high-speed/high-conflict conditions or an explicit override.
+Protected-only operation is selected by the deterministic safety/control profile or explicit override. The representation supports permissive-only, protected-only, protected/permissive, and future variable-by-plan operation.
 
-The runtime representation supports:
+### Right turns and right-turn-on-red
 
-- permissive only;
-- protected only;
-- protected/permissive;
-- future variable-by-plan operation.
+Right turns may proceed permissively with compatible green service unless prohibited.
 
-### Right turns
+Right-turn-on-red requires:
 
-Right turns may proceed with compatible green service as permissive movements unless prohibited.
-
-Right-turn-on-red requires all of:
-
-- U.S. jurisdiction policy enabled;
+- jurisdiction policy enabled;
 - no junction/movement prohibition;
 - completed stop;
 - no conflicting pedestrian occupancy;
-- acceptable vehicle conflict gap;
+- acceptable vehicle gap;
 - downstream service availability.
 
 ### Yellow and all-red clearance
 
-Yellow and all-red intervals are explicit controller states.
-
-Their configured duration is derived deterministically from approach speed and junction geometry through a clearance-timing policy.
-
-Timing must not be recomputed every tick. It is part of a built signal plan and remains stable until the plan is rebuilt.
+Yellow and all-red are explicit runtime intervals. Their durations are derived deterministically from approach speed and junction geometry through a clearance-timing policy and remain fixed within a built plan.
 
 ## Pedestrian control
 
 Pedestrian crossings are explicit conflict participants, not a generic delay multiplier.
 
-A crossing has runtime states sufficient to represent:
+Runtime crossing states represent:
 
 - DON'T WALK/hold;
 - WALK entry;
 - pedestrian change interval;
 - residual clearance occupancy.
 
-Vehicles making permissive turns must yield to active pedestrian crossing occupancy.
+Permissive turns yield to active crossing occupancy. Protected vehicle movements cannot conflict with pedestrian entry/occupancy unless geometry is explicitly non-conflicting.
 
-Protected vehicle movements that conflict with a pedestrian crossing cannot be active simultaneously with pedestrian entry/occupancy unless the plan explicitly defines a non-conflicting geometry.
+Clearance timing derives from crossing length and configured walking-speed policy.
 
-Pedestrian clearance timing is derived from crossing length and configured walking-speed policy.
-
-3R-B does not add a full pedestrian agent simulation; aggregate crossing demand and occupancy are sufficient for this tranche.
+3R-B uses aggregate pedestrian demand/occupancy; it does not add full pedestrian agents.
 
 ## Signal coordination
 
-Signalized junctions on the same arterial corridor may belong to a `SignalCoordinationGroup`.
-
-A group contains:
+Signalized junctions on the same arterial may belong to a `SignalCoordinationGroup` with:
 
 - ordered member junctions;
-- common or compatible cycle timing;
+- common/compatible cycle timing;
 - deterministic offsets;
 - dominant progression direction;
 - plan revision.
 
-The initial coordination algorithm optimizes deterministic progression for the dominant corridor direction using free-flow travel time between signals.
-
-It does not perform online adaptive optimization.
-
-Topology or timing-plan changes rebuild affected coordination groups deterministically.
+The initial coordinator targets deterministic progression in the dominant direction using free-flow travel time between signals. It does not perform online adaptive optimization.
 
 ## Emergency preemption and transit priority
-
-The system exposes explicit requests:
 
 ```ts
 type IntersectionPriorityRequest = Readonly<{
@@ -634,38 +571,34 @@ type IntersectionPriorityRequest = Readonly<{
 
 Emergency preemption has precedence over transit priority.
 
-Neither request can violate physical conflict clearance. The controller must transition through required yellow/all-red or equivalent safe-clearance states before granting an incompatible requested movement.
+Neither may violate conflict clearance. The controller transitions through required clearance before granting an incompatible requested movement.
 
-Transit priority may extend or advance compatible service within bounded plan rules.
-
-The exact adaptive optimization strategy is deferred, but this request contract is authoritative in 3R-B so future emergency/transit systems do not need to bypass the controller.
+Transit priority may extend or advance compatible service only within bounded plan rules.
 
 ## Live `TrafficSystem` integration
 
-`TrafficSystem` remains the owner of active vehicle/trip progression in 3R-B.
+`TrafficSystem` remains the owner of active vehicle/trip progression.
 
 At the end of a non-terminal edge:
 
-1. resolve the current edge and next edge;
-2. resolve those legacy graph edges to 3R carriageways;
-3. resolve the corresponding explicit `TurnMovement` at the shared junction;
-4. derive compatible lane group IDs;
-5. enqueue the vehicle in `IntersectionControlSystem` for that movement;
-6. keep the vehicle's `currentEdgeIndex` unchanged while queued;
+1. resolve current and next legacy edge;
+2. map them to 3R carriageways;
+3. resolve the explicit `TurnMovement` at the shared junction;
+4. derive compatible lane groups;
+5. enqueue the vehicle for that movement;
+6. keep `currentEdgeIndex` unchanged while queued;
 7. increment accumulated delay while queued;
-8. when released and acknowledged, advance `currentEdgeIndex`, reset edge progress, and resume moving.
+8. on acknowledged release, advance one edge, reset edge progress, resume moving.
 
-If no legal movement exists for the route continuation, the trip fails through the existing traffic failure path rather than fabricating a movement.
+If no legal movement exists, the trip fails through the existing failure path. The controller never fabricates a turn.
 
-If topology changes while a vehicle is queued and its movement disappears, the vehicle is failed/removed deterministically unless a valid same-route movement can be resolved without changing route intent.
+If topology changes while queued and the movement disappears, the vehicle fails/removes deterministically unless the same route continuation resolves to a valid replacement movement without changing route intent.
 
-`TrafficSystem` must no longer detect an intersection using only `graph.outgoingEdges(edge.to).length > 2`. Control is based on the 3R junction/control plan and explicit route movement.
+`TrafficSystem` no longer detects intersections solely via `graph.outgoingEdges(edge.to).length > 2`; it uses explicit 3R junction/control and route-movement semantics.
 
 ## Legacy edge-to-movement resolver
 
-A focused compatibility unit maps live V7 graph edges to 3R semantics.
-
-Recommended API:
+A focused derived compatibility unit maps V7 graph edges to 3R semantics.
 
 ```ts
 resolveMovement(
@@ -675,267 +608,274 @@ resolveMovement(
 ): ResolvedRouteMovement | undefined
 ```
 
-The resolver must reuse the same legacy coordinate/stable-ID conventions used by `LegacyRoadNetworkAdapter` and `LegacyTransportationGraphAdapter`.
+It reuses the stable coordinate/ID conventions of `LegacyRoadNetworkAdapter` and `LegacyTransportationGraphAdapter` and never derives identity from array position.
 
-It must not reverse-engineer movement identity through array position.
+## Revisions
 
-The resolver is derived compatibility infrastructure and is not persisted.
-
-## Topology and control revisions
-
-3R-B introduces explicit revision separation:
+3R-B separates:
 
 - `topologyRevision`: existing 3R-A physical/legal topology revision;
-- `controlPlanRevision`: increments when automatic/override control plans change;
-- `controlRuntimeEpoch`: optional monotonic runtime epoch for timing/priority changes that affect route cost but not movement legality.
+- `controlPlanRevision`: structural control-plan changes;
+- `controlRuntimeEpoch`: optional runtime cost epoch for timing/priority changes that affect future route cost without changing movement legality.
 
 Rules:
 
-- topology changes rebuild conflict matrices and affected control plans;
+- topology changes rebuild affected conflicts and plans;
 - no-op rebuilds do not inflate revisions;
-- control-plan changes do not pretend the road topology changed;
-- signal phase stepping does not increment structural revisions every tick;
-- future dynamic routing may consume control-runtime cost epochs without forcing topology rebuilds.
+- control-plan changes do not pretend road topology changed;
+- signal phase stepping does not increment structural revisions each tick;
+- future dynamic routing may consume control-runtime epochs without topology rebuild.
 
 ## Save V8
 
-V8 becomes the canonical save envelope for 3R-B.
+V8 becomes canonical.
 
-The V8 intersection-control state persists authoritative continuation data that cannot be safely reconstructed after load.
+Unlike V7, V8 persists the **canonical built control plans themselves** because plans may depend on planning metrics captured at explicit review epochs. Rebuilding a plan from only the current instantaneous demand after load could produce a different controller than the one that existed when the save was made.
 
-At minimum V8 persists:
+V8 persists at minimum:
 
+- canonical `JunctionControlPlan[]`;
+- plan fingerprints/stable IDs;
 - control overrides;
-- automatic/control plan identity or sufficient policy state to validate deterministic rebuild;
+- control-planning state including `lastReviewTick` and policy/threshold revision;
 - active signal phase index;
 - elapsed phase ticks;
-- cycle position/offset continuation where required;
+- cycle position/offset continuation;
 - movement queues;
 - queued stop-compliance state;
 - pending released vehicle IDs;
-- active pedestrian crossing runtime state;
+- active pedestrian runtime state;
 - active priority/preemption requests;
 - control-plan revision;
-- any runtime counters required for deterministic continuation.
+- runtime counters required for deterministic continuation.
 
 Derived data is not persisted:
 
 - conflict matrices;
 - lane groups;
 - edge-to-movement lookup indexes;
-- deterministic default control plans when no continuation state depends on preserving a prior built version;
-- analytics summaries.
+- recomputable analytics.
 
-If a rebuilt deterministic plan disagrees with persisted controller continuation in a way that cannot be validated, hydration fails rather than silently resuming under a different phase definition.
+On hydration:
+
+1. restore transportation topology;
+2. validate persisted plans against current junctions, carriageways, movements, facility-access rules, and stable plan fingerprints;
+3. rebuild conflict matrices and lane groups;
+4. restore controller runtime only after plan validation;
+5. restore queues and pending releases;
+6. restore planning review state and priority requests.
+
+Hydration fails if a persisted plan cannot be validated against the restored topology. It never silently substitutes a newly generated plan while resuming mid-cycle.
 
 ## V7 → V8 migration
 
 V7 persists traffic state and legacy `IntersectionSystem` queues.
 
-Migration must preserve every active vehicle exactly once.
+Migration preserves every active queued/released vehicle exactly once.
 
-For each V7 intersection queue entry:
+For each V7 queue entry:
 
-1. locate the active traffic vehicle by `vehicleId`;
-2. validate that the vehicle is queued at the same junction represented by the V7 queue;
-3. read its current edge and next edge from the persisted route;
-4. resolve those edges to a 3R `TurnMovementId` using the deterministic legacy edge-to-movement resolver;
-5. derive the movement's compatible lane groups;
+1. locate the active traffic vehicle;
+2. validate its queued junction;
+3. read current and next route edge;
+4. resolve those edges to a 3R `TurnMovementId`;
+5. derive compatible lane groups;
 6. create the V8 movement queue entry preserving traveler weight and queued tick;
-7. initialize stop-compliance state conservatively from the migrated control type;
-8. preserve pending-released semantics so an already released V7 vehicle is not charged capacity twice.
+7. initialize stop-compliance conservatively from the migrated control type;
+8. preserve pending-release semantics so capacity is not charged twice.
 
-Migration of controller state:
+Controller migration:
 
-- rebuild 3R physical authority from restored roads;
-- build deterministic default control plans;
-- apply no fabricated historical player overrides;
-- signal controllers start from deterministic phase/cycle position derived from restored simulation tick and coordination offset;
-- unsignalized controllers have no hidden historical state beyond migrated queue/stop state;
-- pedestrian runtime occupancy starts empty unless V7 has an explicit persisted equivalent, which it currently does not.
+- rebuild 3R authority from restored roads;
+- capture a deterministic initial `ControlPlanningMetricsSnapshot` from state actually available in the V7 candidate;
+- build canonical initial control plans from hierarchy, geometry, available demand metrics, and U.S. policy;
+- do not fabricate historical crash metrics, pedestrian occupancy, or player overrides;
+- persist the resulting plans as V8 authority on the next save;
+- signal controllers initialize deterministic phase/cycle position from restored simulation tick and coordination offset;
+- set `lastReviewTick` to the restored migration tick so automatic plans do not immediately rebuild again;
+- pedestrian runtime occupancy starts empty because V7 has no equivalent persisted state.
 
-Migration fails on inconsistent queue references instead of dropping orphaned vehicles silently.
+Migration fails on inconsistent queue references instead of dropping orphaned vehicles.
 
-## Snapshot determinism
+## Snapshot determinism and restore validation
 
-V8 snapshots must have canonical stable ordering.
+Canonical ordering:
 
-Required ordering:
-
-- junction/control-plan records by junction ID;
+- control plans by junction ID;
 - movement queues by movement ID;
 - queue entries by authoritative queue order;
 - phases by stable phase ID/order;
 - pedestrian crossings by crossing ID;
 - priority requests by request ID.
 
-Restore must reject:
+Restore rejects:
 
 - duplicate queued vehicle IDs;
-- duplicate pending-released IDs;
+- duplicate pending-release IDs;
 - unknown movement IDs;
 - unknown lane-group references that cannot be rebuilt;
 - invalid phase indices;
-- non-finite or negative capacity/weight/timing values;
+- non-finite/negative capacity, weight, or timing values;
 - impossible control types for controlled-access facilities;
-- controller state whose plan identity cannot be validated.
+- plan fingerprints inconsistent with persisted plan contents;
+- controller runtime whose phase/plan identity is invalid.
 
 ## Error handling
 
 Invalid control topology is a deterministic simulation error, not an implicit fallback.
 
-Examples that must throw or fail validation:
+Examples:
 
-- a highway mainline junction assigned `allWayStop`;
-- a signal phase containing two protected movements that conflict;
-- a persisted queue referencing a nonexistent movement;
-- a queued vehicle whose live route continuation does not match its movement;
+- highway mainline assigned `allWayStop`;
+- signal phase with conflicting protected movements;
+- persisted queue referencing a missing movement;
+- queued vehicle route continuation not matching its movement;
 - duplicate vehicle queue membership;
-- negative signal interval timing;
-- an override that references a removed junction;
-- a pedestrian crossing that references missing conflict geometry.
+- negative timing;
+- override referencing a removed junction;
+- crossing referencing missing geometry.
 
-Runtime demand conditions that merely prevent service are not errors; they result in continued queuing.
+Demand conditions that merely prevent service are not errors; they result in continued queuing.
 
 ## Determinism rules
 
-All 3R-B behavior must be deterministic for the same:
+All 3R-B behavior is deterministic for the same:
 
 - simulation state;
 - road topology;
-- traffic demand;
-- pedestrian demand;
-- control overrides;
+- planning metrics snapshot;
+- traffic/pedestrian demand;
+- overrides;
 - policy configuration;
 - tick sequence.
 
 No RNG is used for:
 
-- control-plan selection;
-- signal phase generation;
-- signal offsets;
+- plan selection;
+- phase generation;
+- offsets;
 - all-way-stop tie breaking;
 - gap acceptance;
 - queue ordering;
 - V7→V8 migration.
 
-Stable IDs are always the final tie-breaker after domain-specific priority rules.
+Stable IDs are final tie-breakers after domain-specific priority rules.
 
 ## Performance requirements
 
-3R-B must remain bounded for metropolitan networks.
-
-Design requirements:
-
-- conflict matrices are precomputed per topology/control-plan revision, not recomputed per vehicle per tick;
-- movement/lane/carriageway indexes are maps, not repeated whole-array scans;
-- controller stepping touches active controlled junctions/queues rather than scanning every road cell for every vehicle;
+- conflict matrices precompute per relevant topology revision;
+- movement/lane/carriageway lookups use indexes rather than repeated whole-array scans;
+- controller stepping touches active controlled junctions/queues rather than every road cell for every vehicle;
 - lane-group capacity lookup is indexed;
-- legacy edge-to-movement resolution is indexed by edge/carriageway identity;
-- snapshot output sorts only at the snapshot boundary where practical;
-- signal coordination rebuilds only affected corridors.
+- edge-to-movement resolution is indexed;
+- snapshot sorting occurs at the snapshot boundary where practical;
+- coordination rebuilds only affected corridors;
+- automatic control-plan review occurs only at explicit review epochs/topology changes, not every tick.
 
-Acceptance benchmarking must include a dense 10,000-road-cell legacy projection and a high-intersection queue fixture. Wall-clock values are diagnostic, while deterministic structural-operation counts are the primary complexity gate.
+Acceptance benchmarking includes a dense 10,000-road-cell legacy projection plus a high-intersection queue fixture. Wall-clock results are diagnostics; deterministic structural-operation counts are the primary complexity gate.
 
 ## Testing strategy
 
 Implementation follows TDD.
 
-### Conflict matrix tests
+### Conflict matrix
 
-Cover:
+Test:
 
 - opposing through compatibility;
 - opposing left/through conflict;
 - crossing through conflict;
 - compatible right turns;
-- shared departure merge conflict;
+- shared-departure merge conflict;
 - pedestrian conflict;
 - symmetry;
-- stable deterministic ordering.
+- stable ordering.
 
-### Control-plan tests
+### Control planning
 
-Cover:
+Test:
 
 - local/local automatic control;
 - local/collector priority;
 - local/arterial priority;
 - collector/collector two-way STOP default;
-- all-way STOP warrant escalation;
-- arterial signal warrant escalation;
+- all-way STOP escalation;
+- arterial signal escalation;
+- review cadence prevents per-tick replanning;
+- hysteresis prevents threshold flapping;
 - override persistence;
 - invalid controlled-access override rejection;
-- expressway/highway mainline merge/diverge semantics.
+- expressway/highway merge/diverge semantics.
 
-### Unsignalized-controller tests
+### Unsignalized controller
 
-Cover:
+Test:
 
 - mandatory STOP dwell;
 - YIELD with clear gap;
 - YIELD blocked by conflict;
 - major-street priority;
-- all-way STOP arrival ordering;
-- deterministic simultaneous-arrival tie resolution;
+- all-way STOP arrival order;
+- deterministic simultaneous arrival;
 - partial weighted service;
 - same-tick double-spend protection.
 
-### Signal-controller tests
+### Signal controller
 
-Cover:
+Test:
 
 - fixed phase progression;
-- protected through service;
-- protected/permissive left turn;
-- protected-only left turn;
-- permissive left yielding;
-- yellow interval;
-- all-red interval;
-- right turn on red allowed;
-- right turn on red prohibited;
-- pedestrian conflict blocking;
+- protected through;
+- protected/permissive left;
+- protected-only left;
+- permissive yielding;
+- yellow;
+- all-red;
+- right turn on red allowed/prohibited;
+- pedestrian blocking;
 - coordination offsets;
-- emergency preemption transition;
-- transit-priority bounded extension/advance.
+- emergency-preemption transition;
+- bounded transit-priority extension/advance.
 
-### Traffic integration tests
+### Traffic integration
 
-Cover:
+Test:
 
-- current edge + next edge resolves correct movement;
+- legacy current+next edge resolves correct movement;
 - live traffic queues by movement;
-- vehicle remains on current edge while queued;
+- queued vehicle remains on current edge;
 - release advances exactly one edge;
 - pending release cannot spend capacity twice;
-- invalid route movement fails trip cleanly;
+- invalid route movement fails cleanly;
 - topology invalidation cleans queued vehicles deterministically;
-- ordinary non-controlled degree-2 continuation remains efficient;
-- existing trip outcome accounting remains intact.
+- non-controlled simple continuation remains efficient;
+- trip outcome accounting remains intact.
 
-### Persistence tests
+### Persistence
 
-Cover:
+Test:
 
 - V8 round trip;
+- canonical control-plan round trip;
 - active signal mid-phase round trip;
 - queued STOP vehicle round trip;
-- pending released vehicle round trip;
+- pending release round trip;
+- planning-review state round trip;
 - priority request round trip;
 - deterministic snapshot equality;
 - invalid duplicate queue rejection;
-- invalid plan/controller state rejection;
-- V7→V8 migration with queued vehicles;
+- invalid plan/controller rejection;
+- V7→V8 queued migration;
 - V7 pending-release migration;
-- V7 save with no queues;
-- migration determinism over repeated hydrate/serialize cycles.
+- V7 no-queue migration;
+- repeated migration/hydration determinism.
 
-### Regression tests
+### Regression
 
-The full existing test suite must remain green, including:
+Full existing suite remains green, including:
 
-- 3R-A transport semantics;
-- V7 historical fixture loading;
+- 3R-A semantics;
+- V7 historical load support;
 - V5/V6 migration support;
 - browser smoke;
 - isometric smoke;
@@ -945,34 +885,32 @@ V7 remains a supported legacy load format after V8 becomes canonical.
 
 ## Acceptance criteria
 
-3R-B is complete only when all of the following are true:
+3R-B is complete only when:
 
-- `IntersectionControlSystem` is the live traffic intersection controller.
-- Legacy node-level generic capacity release is no longer the live decision mechanism.
-- Vehicles queue for explicit `TurnMovementId` values.
-- Movement conflicts are explicit and tested.
-- Lane-group capacity contributes to service.
-- U.S.-style STOP/YIELD/all-way STOP logic is operational.
-- Fixed-time signals are operational.
-- Protected/permissive left turns are operational.
-- Protected-only left turns are representable and operational.
-- Right-turn-on-red policy is configurable and operational.
-- Pedestrian WALK/change/clearance occupancy affects vehicle turns.
-- Signal coordination offsets are operational.
-- Emergency preemption and transit-priority request hooks are operational.
-- Expressway/highway mainlines reject ordinary at-grade control.
-- Automatic hierarchy-based control assignment is deterministic.
-- Explicit overrides survive valid rebuilds.
-- Save V8 is canonical.
-- V7 saves migrate deterministically to V8.
-- Existing active queued traffic is preserved exactly once through migration.
-- No current traffic trip is silently rerouted merely to satisfy an intersection control mismatch.
-- Structural performance tests show indexed/bounded control lookup behavior.
-- Full CI, browser smoke, and visual smoke pass.
+- `IntersectionControlSystem` is the live traffic controller;
+- legacy node-level generic capacity release is no longer the live decision mechanism;
+- vehicles queue for explicit `TurnMovementId` values;
+- conflicts are explicit/tested;
+- lane-group capacity contributes to service;
+- U.S.-style STOP/YIELD/all-way STOP works;
+- fixed-time signals work;
+- protected/permissive and protected-only lefts work;
+- right-turn-on-red is configurable/operational;
+- pedestrian WALK/change/clearance affects turns;
+- coordination offsets work;
+- emergency-preemption and transit-priority request hooks work;
+- expressway/highway mainlines reject ordinary at-grade control;
+- automatic hierarchy-based planning is deterministic and non-flapping;
+- explicit overrides survive valid rebuilds;
+- Save V8 is canonical;
+- canonical plans persist and restore exactly;
+- V7 saves migrate deterministically;
+- active queued/released traffic is preserved exactly once through migration;
+- no trip is silently rerouted merely to satisfy control mismatch;
+- structural performance tests show bounded indexed behavior;
+- full CI/browser/visual smoke passes.
 
 ## Recommended source layout
-
-New/expanded transportation-control files should remain focused and generally below the existing architecture-warning threshold:
 
 `src/simulation/transportation/`
 
@@ -989,85 +927,66 @@ New/expanded transportation-control files should remain focused and generally be
 
 Existing files likely touched:
 
-- `TrafficSystem.ts`
+- `TrafficSystem.ts`;
 - save schema/serializer/hydrator modules;
-- simulation-core wiring that instantiates/restores intersection control;
+- simulation-core wiring;
 - `docs/SAVE_FORMAT.md`;
-- `docs/ARCHITECTURE.md` and/or `docs/SIMULATION.md` where the live intersection authority is documented.
+- `docs/ARCHITECTURE.md` and/or `docs/SIMULATION.md`.
 
-The implementation plan may adjust exact filenames to match the repository's persistence-module structure, but must preserve these responsibility boundaries.
+Exact persistence filenames may follow the repository's existing structure, but these responsibility boundaries remain fixed.
 
 ## Risks and mitigations
 
-### Risk: live cutover changes traffic throughput materially
+### Live cutover changes throughput materially
 
-Mitigation:
+Mitigate with deterministic baseline fixtures, before/after throughput diagnostics, capacity-conservation tests, and controller tests before the TrafficSystem cutover.
 
-- deterministic baseline fixtures;
-- before/after throughput diagnostics;
-- explicit capacity conservation tests;
-- signal/STOP behavior tests before TrafficSystem cutover.
+### V7 queued vehicles become orphaned
 
-### Risk: V7 queued vehicles become orphaned during migration
+Mitigate with route-derived movement resolution, one-to-one vehicle validation, hydration failure on inconsistent references, and pending-release migration fixtures.
 
-Mitigation:
+### Conflict geometry becomes tied to the cardinal grid
 
-- route-derived movement resolution;
-- one-to-one queued vehicle validation;
-- fail hydration on inconsistent references;
-- migration fixtures including pending releases.
+Keep geometry behind `ConflictMatrixBuilder`; treat cardinal classification as the initial exact implementation, not the public API.
 
-### Risk: conflict geometry becomes overly tied to the legacy cardinal grid
+### Control plans flap with demand
 
-Mitigation:
+Plans change only at explicit review epochs/topology changes and use deterministic hysteresis. Canonical built plans persist in V8.
 
-- keep conflict computation behind `ConflictMatrixBuilder`;
-- use movement path/approach geometry abstractions;
-- treat cardinal classification as the initial exact geometry implementation, not the public API.
+### `IntersectionControlSystem` becomes monolithic
 
-### Risk: `IntersectionControlSystem` grows into another monolithic coordinator
+Keep queue storage, signal execution, unsignalized priority, pedestrian control, conflict building, planning, and priority logic in separate modules; retain architecture-size warnings.
 
-Mitigation:
+### Standards fidelity becomes regulatory overengineering
 
-- queue storage, signal execution, unsignalized priority, pedestrian control, conflict building, and plan construction remain separate modules;
-- architecture-size warnings remain enforced.
-
-### Risk: standards fidelity becomes regulatory overengineering
-
-Mitigation:
-
-- encode traffic-flow mechanisms that affect simulation outcomes;
-- keep state/jurisdiction legal variations configurable;
-- do not simulate sign hardware or every MUTCD installation detail.
+Encode traffic-flow mechanisms that affect simulation outcomes, keep legal variations configurable, and do not simulate every device-installation detail.
 
 ## Future extension seams
 
-3R-B intentionally leaves stable interfaces for later tranches:
+3R-B leaves interfaces for:
 
-- adaptive signal optimization consuming queue and delay metrics;
-- congestion-aware route costs using control runtime epochs;
+- adaptive signal optimization;
+- control-delay-aware dynamic route costs;
 - crash-induced movement closures;
 - parking-generated turn demand;
-- dedicated transit lanes and queue jumps;
-- reversible-lane control;
+- dedicated transit lanes/queue jumps;
+- reversible lanes;
 - freeway ramp metering;
-- non-cardinal/native road geometry;
+- non-cardinal/native geometry;
 - player intersection-editing UI;
 - jurisdiction presets beyond the default U.S. ruleset.
 
-None of those future features may bypass the 3R-B control authority. They must express changes through topology, control plans, policy, or priority requests.
+Future features must express changes through topology, control plans, policy, or priority requests. They may not bypass 3R-B control authority.
 
 ## Final architectural principle
-
-3R-B changes intersections from a generic capacity bottleneck into explicit pieces of transportation infrastructure.
 
 A vehicle crosses a junction because:
 
 - its route names a legal movement;
 - that movement has usable lanes;
-- the junction's U.S.-style control plan permits or conditionally permits it;
-- conflicting traffic and pedestrians allow it;
+- the U.S.-style control plan permits or conditionally permits it;
+- conflicts and pedestrians allow it;
 - the movement has discharge capacity;
-- the controller has completed any required stop, phase, or clearance rule.
+- required stop, phase, and clearance rules are satisfied.
 
-That control chain becomes the sole live intersection authority for Civic Foundry 2.0.
+That chain becomes the sole live intersection authority for Civic Foundry 2.0.
