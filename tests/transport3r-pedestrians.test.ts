@@ -48,6 +48,24 @@ test('WALK admits aggregate demand and exposes active pedestrian occupancy', () 
   assert.deepEqual(controller.activeCrossingIds(), [definition.id]);
 });
 
+test('entering WALK resets interval elapsed ticks after a prior HOLD dwell', () => {
+  const definition = crossing('pc:j:1:reset');
+  const controller = new PedestrianController([definition], US_INTERSECTION_POLICY);
+
+  step(controller, []);
+  step(controller, []);
+  step(controller, []);
+  assert.equal(controller.stateFor(definition.id)?.elapsedTicks, 3);
+
+  step(controller, [definition.id], { [definition.id]: 1 });
+  assert.deepEqual(controller.stateFor(definition.id), {
+    crossingId: definition.id,
+    interval: 'walk',
+    elapsedTicks: 1,
+    occupancyWeight: 1,
+  });
+});
+
 test('change interval admits no new demand and residual occupancy lasts exact crossing duration', () => {
   const definition = crossing('pc:j:1:east', 11);
   const controller = new PedestrianController([definition], US_INTERSECTION_POLICY);
