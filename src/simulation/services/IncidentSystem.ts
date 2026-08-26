@@ -41,10 +41,13 @@ export class IncidentSystem {
   private readonly incidents = new Map<string, MutableIncident>();
   private readonly outcomes: IncidentOutcome[] = [];
   private nextIncidentId = 1;
+  private _entityRevision = 0;
 
   constructor(seed: number) {
     this.random = new SeededRandom(seed ^ 0x4f2a9c17);
   }
+
+  get entityRevision(): number { return this._entityRevision; }
 
   generateFromDemand(tick: number, buildings: readonly Building[], demand: ServiceDemandSnapshot, dispatch: ServiceDispatchSystem): void {
     for (const building of [...buildings].sort((a, b) => a.id.localeCompare(b.id))) {
@@ -69,6 +72,7 @@ export class IncidentSystem {
       intensity: kind === 'fire' ? 0.35 + normalized * 0.25 : normalized,
       damage: 0, status: 'active', serviceJobId, spreadTriggered: false,
     });
+    this._entityRevision++;
     return id;
   }
 
@@ -137,6 +141,7 @@ export class IncidentSystem {
     this.outcomes.push(...outcomes.map((outcome) => ({ ...outcome })));
     this.random.setState(rngState);
     this.nextIncidentId = Math.max(1, Math.floor(nextIncidentId));
+    this._entityRevision++;
   }
 
   snapshotOutcomes(): IncidentOutcome[] { return this.outcomes.map((outcome) => ({ ...outcome })); }
@@ -146,7 +151,9 @@ export class IncidentSystem {
   }
 
   private resolve(incident: MutableIncident, job: ServiceJob | undefined, tick: number, success: boolean): void {
+    if (incident.status === 'resolved') return;
     incident.status = 'resolved';
+    this._entityRevision++;
     const responseTicks = Math.max(1, (job?.arrivalTick ?? job?.completionTick ?? tick) - incident.createdTick);
     this.outcomes.push({ kind: incident.kind, success, responseTicks });
     while (this.outcomes.length > 128) this.outcomes.shift();
