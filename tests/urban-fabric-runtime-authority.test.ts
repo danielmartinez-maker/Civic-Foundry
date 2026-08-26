@@ -62,3 +62,53 @@ test('runtime developer awards use one cadastral parcel identity instead of deri
   const award = core.developerMarket.lastAwards().find((item) => item.buildingId === commitments[0]!.buildingId);
   assert.ok(award?.physicalCandidateId, 'parcel-authoritative award must retain the winning massing candidate identity');
 });
+
+test('multiple grandfathered legacy buildings survive when their frontage cells merge into one cadastral parcel', () => {
+  const core = new SimulationCore({ terrain: flatTerrain(8, 6), startingFunds: 300_000, seed: 13 });
+  assert.equal(core.buildRoad([
+    { x: 0, y: 2 },
+    { x: 1, y: 2 },
+    { x: 2, y: 2 },
+    { x: 3, y: 2 },
+  ], 'local').ok, true);
+  core.paintZone([
+    { x: 1, y: 1 },
+    { x: 2, y: 1 },
+  ], 'residential');
+
+  const parcels = core.cadastre.listParcels();
+  assert.equal(parcels.length, 1, 'adjacent compatible frontage cells must merge into one parcel');
+  const parcel = parcels[0]!;
+
+  core.buildings.restore([
+    {
+      id: 'building:lot:1,1',
+      lotId: 'lot:1,1',
+      x: 1,
+      y: 1,
+      zone: 'residential',
+      definitionId: 'residential_cottage',
+      status: 'occupied',
+      constructionStartedTick: 0,
+      completionTick: 0,
+    },
+    {
+      id: 'building:lot:2,1',
+      lotId: 'lot:2,1',
+      x: 2,
+      y: 1,
+      zone: 'residential',
+      definitionId: 'residential_cottage',
+      status: 'occupied',
+      constructionStartedTick: 0,
+      completionTick: 0,
+    },
+  ]);
+  core.rebuildCadastreFromLegacyState();
+
+  const canonicalBuildings = core.buildings.listV2();
+  assert.equal(canonicalBuildings.length, 2, 'canonical projection must not discard grandfathered structures sharing a parcel');
+  assert.equal(new Set(canonicalBuildings.map((building) => building.id)).size, 2, 'canonical building ids must remain unique');
+  assert.ok(canonicalBuildings.every((building) => building.parcelIds.length === 1 && building.parcelIds[0] === parcel.id));
+  assert.ok(canonicalBuildings.some((building) => building.id === `building:${parcel.id}`), 'primary parcel building keeps canonical parcel identity');
+});

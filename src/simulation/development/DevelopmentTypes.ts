@@ -39,9 +39,9 @@ export type PhysicalDevelopmentContext = Readonly<{
   sitePreparationCost: number;
   developerLeverage: number;
   financingSpread: number;
-  policyAffordableHousingShare?: number;
-  policyDevelopmentFeeRate?: number;
-  policyPermittingCostReduction?: number;
+  policyAffordableHousingShare?: number | undefined;
+  policyDevelopmentFeeRate?: number | undefined;
+  policyPermittingCostReduction?: number | undefined;
 }>;
 
 export type DevelopmentFeasibilityResult = Readonly<{
