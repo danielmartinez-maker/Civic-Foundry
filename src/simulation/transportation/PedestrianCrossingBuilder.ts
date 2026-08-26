@@ -101,7 +101,7 @@ export function buildPedestrianCrossings(
         junctionId: junction.id,
         crossedCarriagewayIds,
         conflictingMovementIds,
-        lengthMeters: Math.max(7, travelLaneIds.size * 3.6),
+        crossingLengthMeters: Math.max(7, travelLaneIds.size * 3.6),
       }));
     }
   }
