@@ -57,7 +57,7 @@ These domains continue through the Phase 0A deterministic kernel compatibility s
 
 Phase 1R does **not** claim ownership of later systems simply because they can consume world data:
 
-- legal parcels, FAR, setbacks/height/coverage zoning, parcel splitting/assembly, mixed use, deterioration, renovation, and redevelopment geometry belong to **2R — Urban Fabric 2.0**;
+- legal parcels, FAR, setbacks, height/coverage zoning, parcel splitting/assembly, mixed use, deterioration, renovation, and redevelopment geometry belong to **2R — Urban Fabric 2.0**;
 - lane-level road authority, signals, turn movements, explicit parking, crashes, and the final transportation replacement belong to **3R — Transportation Engine 2.0**;
 - current V7 `LotSystem` remains cell/frontage based;
 - current rendering remains presentation-only and derives map size/ground art from `core.terrain`;
