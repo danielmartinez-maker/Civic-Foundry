@@ -91,7 +91,9 @@ export type SignalRuntimeState = Readonly<{
 export type PedestrianCrossing = Readonly<{
   id: PedestrianCrossingId;
   junctionId: JunctionId;
+  crossedCarriagewayIds: readonly CarriagewayId[];
   conflictingMovementIds: readonly TurnMovementId[];
+  lengthMeters: number;
 }>;
 
 export type PedestrianRuntimeState = Readonly<{
