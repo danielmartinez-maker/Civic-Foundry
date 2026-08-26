@@ -77,9 +77,18 @@ test('mobility scheduler preserves decision window and fiscal cursors across res
   for (let tick = 0; tick <= 30; tick++) mobility.tick({ tick, roadGraph: s.graph, transit: s.transit, pathfinding: s.path, roadTravelTime: (edge) => edge.freeFlowTicks * 4, generateTrips: () => tick === 20 ? [trip] : [], submitCarTrip: () => {} });
   mobility.consumeFiscalDelta();
   const state = mobility.snapshotState();
+  assert.ok(state.decisions.length > 0);
+  assert.deepEqual(Object.keys(state.decisions[0]!).sort(), [
+    'chosenCost', 'expectedWaitTicks', 'mode', 'purpose', 'travelerWeight',
+  ]);
+  const before = mobility.snapshot();
   const clone = new MobilityScheduler();
   clone.restoreState(state);
   assert.deepEqual(clone.snapshotState(), state);
-  assert.deepEqual(clone.snapshot(), mobility.snapshot());
+  const restored = clone.snapshot();
+  const { modeShares: _beforeModes, ...beforePersistedAnalytics } = before;
+  const { modeShares: restoredModes, ...restoredPersistedAnalytics } = restored;
+  assert.deepEqual(restoredPersistedAnalytics, beforePersistedAnalytics);
+  assert.deepEqual(Object.values(restoredModes), Array(12).fill(0));
   assert.deepEqual(clone.consumeFiscalDelta(), { operatingCost: 0, fareRevenue: 0 });
 });

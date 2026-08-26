@@ -29,6 +29,22 @@ test('default generated Save V8 round-trips exactly with authoritative world sta
   assert.deepEqual(loaded.world.snapshotAuthoritative(), core.world.snapshotAuthoritative());
 });
 
+test('Save V8 mobility envelope excludes derived 14R-A provider analytics', () => {
+  const save = serializeCore(new SimulationCore({ width: 18, height: 12, seed: 43 }));
+  assert.deepEqual(Object.keys(save.transit.mobility).sort(), [
+    'crowdingPenaltyTicks',
+    'decisions',
+    'fiscalFareCursor',
+    'fiscalOperatingCursor',
+    'operations',
+    'passengers',
+    'vehicles',
+  ].sort());
+  assert.equal('modeShares' in save.transit.mobility, false);
+  assert.equal('providers' in save.transit.mobility, false);
+  assert.equal('alternatives' in save.transit.mobility, false);
+});
+
 test('Save V8 persists last design-storm result without mutating terrain or hydrology', () => {
   const core = new SimulationCore({ width: 16, height: 10, seed: 19 });
   const terrainBefore = core.world.terrain.snapshotAuthoritative();
