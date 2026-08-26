@@ -32,8 +32,11 @@ function stableNumber(text: string, seed: number): number {
 export class FirmSystem {
   private readonly firms = new Map<string, MutableFirm>();
   private nextId = 1;
+  private _entityRevision = 0;
   readonly seed: number;
   constructor(seed: number) { this.seed = seed; }
+
+  get entityRevision(): number { return this._entityRevision; }
 
   syncEligibleBuildings(buildings: readonly Building[], tick: number): void {
     const eligible = buildings.filter((b) => b.status === 'occupied' && (b.zone === 'commercial' || b.zone === 'industrial')).sort((a, b) => a.id.localeCompare(b.id));
@@ -53,13 +56,26 @@ export class FirmSystem {
         filledJobs: 0, vacancies: 0, productivity: definition.baseProductivity, cashHealth: LIFECYCLE.initialCashHealth,
         consecutiveLossCycles: 0, consecutiveRecoveryCycles: 0, formationTick: tick, lastOperatingMargin: 0,
       });
+      this._entityRevision++;
     }
   }
 
   list(): Firm[] { return [...this.firms.values()].map((f) => ({ ...f })).sort((a, b) => a.id.localeCompare(b.id)); }
   get(id: string): Firm | undefined { const f = this.firms.get(id); return f ? { ...f } : undefined; }
   getByBuildingId(buildingId: string): Firm | undefined { const f = [...this.firms.values()].find((x) => x.buildingId === buildingId && x.status !== 'closed'); return f ? { ...f } : undefined; }
-  update(id: string, patch: Partial<Omit<Firm, 'id' | 'buildingId' | 'zone' | 'archetype'>>): void { const f = this.firms.get(id); if (f) { Object.assign(f, patch); if (patch.status === 'operating') delete f.distressReason; } }
+  update(id: string, patch: Partial<Omit<Firm, 'id' | 'buildingId' | 'zone' | 'archetype'>>): void {
+    const f = this.firms.get(id);
+    if (!f) return;
+    const statusChanged = patch.status !== undefined && patch.status !== f.status;
+    Object.assign(f, patch);
+    if (patch.status === 'operating') delete f.distressReason;
+    if (statusChanged) this._entityRevision++;
+  }
   snapshotState(): { firms: Firm[]; nextId: number; seed: number } { return { firms: this.list(), nextId: this.nextId, seed: this.seed }; }
-  restoreState(state: { firms: readonly Firm[]; nextId: number }): void { this.firms.clear(); for (const f of state.firms) this.firms.set(f.id, { ...f }); this.nextId = state.nextId; }
+  restoreState(state: { firms: readonly Firm[]; nextId: number }): void {
+    this.firms.clear();
+    for (const f of state.firms) this.firms.set(f.id, { ...f });
+    this.nextId = state.nextId;
+    this._entityRevision++;
+  }
 }

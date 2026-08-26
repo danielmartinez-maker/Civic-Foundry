@@ -28,6 +28,11 @@ export function definitionForBuilding(building: Pick<Building, 'definitionId' | 
 
 export class BuildingSystem {
   private readonly buildings = new Map<string, Building>();
+  private _entityRevision = 0;
+
+  get entityRevision(): number {
+    return this._entityRevision;
+  }
 
   startDevelopment(tick: number, lot: Lot, award: DevelopmentAward): Building {
     if (!Number.isInteger(tick) || tick < 0) throw new Error('tick must be a non-negative integer');
@@ -36,6 +41,7 @@ export class BuildingSystem {
 
     const building = this.buildingFromAward(tick, lot, award, definition);
     this.buildings.set(lot.id, building);
+    this._entityRevision++;
     return { ...building };
   }
 
@@ -61,13 +67,19 @@ export class BuildingSystem {
     const replacement = this.buildingFromAward(tick, lot, award, definition);
     const removed = { ...existing };
     this.buildings.set(lot.id, replacement);
+    this._entityRevision++;
     return { removed, replacement: { ...replacement } };
   }
 
   tick(tick: number): void {
+    let changed = false;
     for (const building of this.buildings.values()) {
-      if (building.status === 'construction' && tick >= building.completionTick) building.status = 'occupied';
+      if (building.status === 'construction' && tick >= building.completionTick) {
+        building.status = 'occupied';
+        changed = true;
+      }
     }
+    if (changed) this._entityRevision++;
   }
 
   getById(id: string): Building | undefined {
@@ -84,6 +96,7 @@ export class BuildingSystem {
     for (const [lotId, building] of this.buildings.entries()) {
       if (building.x === x && building.y === y) {
         this.buildings.delete(lotId);
+        this._entityRevision++;
         return { ...building };
       }
     }
@@ -109,6 +122,7 @@ export class BuildingSystem {
   restore(buildings: readonly Building[]): void {
     this.buildings.clear();
     for (const building of buildings) this.buildings.set(building.lotId, { ...building });
+    this._entityRevision++;
   }
 
   private validateAwardForLot(tick: number, lot: Lot, award: DevelopmentAward): BuildingDefinition {

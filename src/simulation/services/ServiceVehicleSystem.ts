@@ -56,6 +56,11 @@ const isEmergency = (type: ServiceVehicleType): boolean => type !== 'garbage_tru
 
 export class ServiceVehicleSystem {
   private readonly vehicles = new Map<string, MutableVehicle>();
+  private _entityRevision = 0;
+
+  get entityRevision(): number {
+    return this._entityRevision;
+  }
 
   syncFleet(facilities: ServiceFacilitySystem): void {
     const valid = new Set<string>();
@@ -75,12 +80,18 @@ export class ServiceVehicleSystem {
             currentSpeed: 0, state: shouldBeAvailable ? 'idle' : 'unavailable', accumulatedDelayTicks: 0,
             currentNodeId: null, destinationNodeId: null, homeNodeId: null, serviceRemainingTicks: 0,
           });
+          this._entityRevision++;
         } else if (existing.currentJobId === null) {
-          existing.state = shouldBeAvailable ? 'idle' : 'unavailable';
+          this.setState(existing, shouldBeAvailable ? 'idle' : 'unavailable');
         }
       }
     }
-    for (const id of [...this.vehicles.keys()]) if (!valid.has(id)) this.vehicles.delete(id);
+    for (const id of [...this.vehicles.keys()]) {
+      if (!valid.has(id)) {
+        this.vehicles.delete(id);
+        this._entityRevision++;
+      }
+    }
   }
 
   listVehicles(): ServiceVehicle[] {
@@ -100,6 +111,7 @@ export class ServiceVehicleSystem {
       };
       this.vehicles.set(restored.id, restored);
     }
+    this._entityRevision++;
   }
 
   availableVehicleIds(facilityId: string): string[] {
@@ -125,7 +137,7 @@ export class ServiceVehicleSystem {
     vehicle.currentEdgeIndex = 0;
     vehicle.edgeProgressTicks = 0;
     vehicle.currentSpeed = 0;
-    vehicle.state = 'outbound';
+    this.setState(vehicle, 'outbound');
     vehicle.accumulatedDelayTicks = 0;
     vehicle.currentNodeId = homeNodeId;
     vehicle.homeNodeId = homeNodeId;
@@ -169,7 +181,7 @@ export class ServiceVehicleSystem {
       if (vehicle.state === 'servicing') {
         vehicle.serviceRemainingTicks--;
         if (vehicle.serviceRemainingTicks <= 0 && vehicle.currentJobId) {
-          vehicle.state = 'returning';
+          this.setState(vehicle, 'returning');
           vehicle.currentEdgeIndex = 0;
           vehicle.edgeProgressTicks = 0;
           vehicle.currentNodeId = vehicle.destinationNodeId;
@@ -263,7 +275,7 @@ export class ServiceVehicleSystem {
     const jobId = vehicle.currentJobId;
     if (!jobId) return;
     if (vehicle.state === 'outbound') {
-      vehicle.state = 'servicing';
+      this.setState(vehicle, 'servicing');
       vehicle.currentEdgeIndex = 0;
       vehicle.edgeProgressTicks = 0;
       vehicle.currentNodeId = vehicle.destinationNodeId;
@@ -282,11 +294,17 @@ export class ServiceVehicleSystem {
     vehicle.currentEdgeIndex = 0;
     vehicle.edgeProgressTicks = 0;
     vehicle.currentSpeed = 0;
-    vehicle.state = 'idle';
+    this.setState(vehicle, 'idle');
     vehicle.currentNodeId = vehicle.homeNodeId;
     vehicle.destinationNodeId = null;
     vehicle.serviceRemainingTicks = 0;
     delete vehicle.queuedNodeId;
+  }
+
+  private setState(vehicle: MutableVehicle, state: ServiceVehicleState): void {
+    if (vehicle.state === state) return;
+    vehicle.state = state;
+    this._entityRevision++;
   }
 
   private copy(vehicle: MutableVehicle): ServiceVehicle {
