@@ -343,9 +343,15 @@ export class SimulationCore extends LegacySimulationCore {
 
   private reconcileCanonicalBuildingProjection(): void {
     const canonical: BuildingV2[] = [];
-    const claimedParcels = new Set<string>();
     const parcels = [...this.cadastre.listParcels()].sort((left, right) => left.id.localeCompare(right.id));
     const legacyBuildings = this.buildings.list().sort((left, right) => left.id.localeCompare(right.id));
+    const compatibilityLots = this.lots.list();
+    const primaryLotIdByParcel = new Map<string, string>();
+    for (const parcel of parcels) {
+      const primaryLot = this.compatibilityLotsForParcel(parcel, compatibilityLots)[0];
+      if (primaryLot) primaryLotIdByParcel.set(parcel.id, primaryLot.id);
+    }
+    const primaryAssignedParcels = new Set<string>();
 
     for (const building of legacyBuildings) {
       const center = {
@@ -353,7 +359,7 @@ export class SimulationCore extends LegacySimulationCore {
         y: (building.y + 0.5) * LEGACY_CELL_SIZE_METERS,
       };
       const parcel = parcels.find((candidate) => pointInPolygon(center, this.cadastre.parcelPolygon(candidate.id)));
-      if (!parcel || claimedParcels.has(parcel.id)) continue;
+      if (!parcel) continue;
       const zone = legacyZoneForParcel(parcel);
       if (!zone) continue;
       const typology = typologyForLegacyDefinition(building.definitionId);
@@ -361,10 +367,16 @@ export class SimulationCore extends LegacySimulationCore {
       const envelope = this.buildableEnvelopes.evaluate(parcel.id, this.cadastre, district);
       const projection = projectLegacyBuildingCandidate(building, parcel, typology);
       const compliance = this.zoningCompliance.evaluate(projection, envelope);
+      const preferredPrimary = primaryLotIdByParcel.get(parcel.id);
+      const isPrimary = !primaryAssignedParcels.has(parcel.id)
+        && (building.lotId === preferredPrimary || preferredPrimary === undefined);
+      const canonicalBuildingId = isPrimary
+        ? `building:${parcel.id}`
+        : `building:${parcel.id}:legacy:${building.lotId}`;
+      if (isPrimary) primaryAssignedParcels.add(parcel.id);
 
-      claimedParcels.add(parcel.id);
       canonical.push(Object.freeze({
-        id: `building:${parcel.id}`,
+        id: canonicalBuildingId,
         parcelIds: Object.freeze([parcel.id]),
         typologyId: typology.id,
         footprint: projection.footprint,
