@@ -56,6 +56,10 @@ export function hydrateCoreV9(input: unknown): SimulationCore {
   const core = hydrateCoreV8(v8);
 
   core.cadastre.replaceSnapshot(save.urbanFabric);
+  core.lots.rebuildFromCadastre(core.cadastre, (parcel) => {
+    const zone = parcel.zoningDistrictId;
+    return zone === 'residential' || zone === 'commercial' || zone === 'industrial' ? zone : undefined;
+  });
   validateUrbanFabricReferences(core, save.zoningV2.parcelAssignments, save.buildingsV2, save.propertyMarket);
   core.zoning.restoreParcelAssignments(save.zoningV2.parcelAssignments);
   core.buildings.restoreV2(save.buildingsV2);
