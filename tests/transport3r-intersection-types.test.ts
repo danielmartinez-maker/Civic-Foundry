@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   US_INTERSECTION_POLICY,
   isControlledAccessRoadClass,
@@ -82,4 +83,19 @@ test('intersection snapshot carries canonical plan/runtime revision epochs', () 
   assert.equal(snapshot.controlPlanRevision, 3);
   assert.equal(snapshot.controlRuntimeEpoch, 7);
   assert.equal(snapshot.lastPlanReviewTick, 6000);
+});
+
+test('IntersectionControlSnapshot declares the exact roadmap epoch field names', () => {
+  const source = readFileSync(
+    new URL('../src/simulation/transportation/IntersectionControlTypes.ts', import.meta.url),
+    'utf8',
+  );
+  const match = source.match(/export type IntersectionControlSnapshot = Readonly<\{([\s\S]*?)\n\}>;/);
+  assert.ok(match, 'IntersectionControlSnapshot declaration must exist');
+  const body = match[1] ?? '';
+
+  assert.match(body, /\bcontrolPlanRevision:\s*number;/);
+  assert.match(body, /\bcontrolRuntimeEpoch:\s*number;/);
+  assert.match(body, /\blastPlanReviewTick:\s*number;/);
+  assert.doesNotMatch(body, /\blastReviewTick:\s*number;/);
 });
