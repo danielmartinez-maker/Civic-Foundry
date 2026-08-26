@@ -1,7 +1,8 @@
 import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
-import type { DeveloperMarketStateSnapshot } from '../simulation/development/DevelopmentTypes.ts';
+import type { DeveloperCommitment, DeveloperMarketStateSnapshot } from '../simulation/development/DevelopmentTypes.ts';
 import type { DevelopmentPolicyState } from '../simulation/development/DevelopmentPolicySystem.ts';
 import type { HousingRelocationState } from '../simulation/housing/HousingRelocationSystem.ts';
+import { LEGACY_CELL_SIZE_METERS, pointInPolygon } from '../world/cadastre/Geometry.ts';
 import { hydrateCoreV6, serializeCoreV6, type SaveV6 } from './saveV6.ts';
 
 export type SaveV7 = Omit<SaveV6, 'saveVersion' | 'gameVersion'> & {
@@ -18,7 +19,7 @@ export function serializeCoreV7(core: SimulationCore): SaveV7 {
     ...v6,
     saveVersion: 7,
     gameVersion: '0.7.0-metropolitan',
-    developmentMarket: core.developerMarket.snapshotState(),
+    developmentMarket: legacyDevelopmentMarketSnapshot(core),
     developmentPolicy: core.developmentPolicySnapshot,
     housingState: core.housingRelocation.snapshotState(),
   };
@@ -47,6 +48,47 @@ export function hydrateCoreV7(input: unknown): SimulationCore {
   core.restoreHousingState(housingState);
   core.rebuildCadastreFromLegacyState();
   return core;
+}
+
+function legacyDevelopmentMarketSnapshot(core: SimulationCore): DeveloperMarketStateSnapshot {
+  const state = core.developerMarket.snapshotState();
+  const legacyBuildings = core.buildings.list().slice().sort((left, right) => left.id.localeCompare(right.id));
+  const buildingsById = new Map(legacyBuildings.map((building) => [building.id, building] as const));
+  const commitments = state.commitments.map((commitment): DeveloperCommitment => {
+    const direct = buildingsById.get(commitment.buildingId);
+    if (
+      direct
+      && direct.lotId === commitment.lotId
+      && direct.definitionId === commitment.definitionId
+      && (!direct.developerId || direct.developerId === commitment.developerId)
+    ) {
+      return commitment;
+    }
+
+    const parcel = core.cadastre.getParcel(commitment.lotId);
+    if (!parcel) throw new Error(`cannot project development commitment to Save V7: ${commitment.awardId}`);
+    const polygon = core.cadastre.parcelPolygon(parcel.id);
+    const legacyBuilding = legacyBuildings.find((building) => (
+      building.definitionId === commitment.definitionId
+      && (!building.developerId || building.developerId === commitment.developerId)
+      && pointInPolygon({
+        x: (building.x + 0.5) * LEGACY_CELL_SIZE_METERS,
+        y: (building.y + 0.5) * LEGACY_CELL_SIZE_METERS,
+      }, polygon)
+    ));
+    if (!legacyBuilding) throw new Error(`cannot resolve legacy building for development commitment: ${commitment.awardId}`);
+
+    return Object.freeze({
+      ...commitment,
+      buildingId: legacyBuilding.id,
+      lotId: legacyBuilding.lotId,
+    });
+  });
+
+  return Object.freeze({
+    developers: state.developers,
+    commitments: Object.freeze(commitments),
+  });
 }
 
 function validateEnvelope(record: Record<string, unknown>): void {
