@@ -78,7 +78,26 @@ When Personhood authority is enabled, canonical serialization must:
 
 The V9 serializer must not independently reconstruct World Foundation state, terrain compatibility state, or older save fields. It delegates those responsibilities to the prior-version serializer.
 
-If Personhood authority is not enabled, compatibility code may continue to serialize the highest valid pre-Personhood version required by the integration branch. Phase 3R completion requires the production cutover path to make Personhood authority canonical for detailed-city runtime state.
+If Personhood authority is not enabled, compatibility code may continue to serialize the highest valid pre-Personhood version required by the integration branch. Phase 3R completion requires normal detailed-city construction and canonical migration paths to activate Personhood authority before normal gameplay persistence.
+
+### Version-router semantics
+
+Prior-version APIs remain semantically pure:
+
+- `serializeCoreV8` always emits a World Foundation V8 envelope and never adds Personhood.
+- `hydrateCoreV8` hydrates World Foundation/legacy state and never bootstraps Persons as a hidden side effect.
+- `serializeCoreV9` requires Personhood authority and emits the V8-derived envelope plus the Person payload.
+- `hydrateCoreV9` restores genuine V9 input exactly and never bootstraps Persons.
+
+The canonical Phase 3R router owns migration policy:
+
+- V9 input -> `hydrateCoreV9` exact restore.
+- V8 input -> `hydrateCoreV8`, then one-time deterministic Personhood materialization.
+- V7-or-older input -> existing lower-version/World Foundation migration, then one-time deterministic Personhood materialization.
+
+This separation prevents lower-version compatibility tests and callers from acquiring new Personhood side effects merely because Phase 3R exists.
+
+Canonical serialization must not mutate a legacy runtime merely to make it saveable. If authority is not yet enabled, it may emit the highest valid pre-Personhood save. The production cutover instead ensures normal Phase 3R detailed-city runtimes have Personhood authority enabled before canonical persistence is expected to emit V9.
 
 ### V9 hydration
 
@@ -96,7 +115,7 @@ A V9 restore must reproduce the exact persisted Person identities and must not c
 
 ### V8-to-V9 migration
 
-A World Foundation V8 save contains no Personhood payload. Loading it into the Phase 3R canonical runtime performs a one-time Person materialization:
+A World Foundation V8 save contains no Personhood payload. Loading it through the canonical Phase 3R router performs a one-time Person materialization:
 
 1. Hydrate the V8 save through the existing V8 loader so World Foundation remains authoritative.
 2. Read the restored legacy/detailed-city resident population compatibility count.
@@ -186,13 +205,15 @@ The stale Personhood-V8 tests are not patched in place merely to turn CI green. 
 The first reconciliation tests must establish:
 
 1. World Foundation V8 remains recognized as V8 and is not interpreted as Personhood.
-2. Canonical Personhood saves emit the next available save version, expected V9.
-3. V9 contains both a valid V8-derived world envelope and canonical Personhood payload.
-4. V9 restore reproduces exact Persons without bootstrap RNG usage.
-5. V8-to-V9 migration materializes residents exactly once.
-6. V7-or-older migration passes through World Foundation migration before Personhood materialization.
-7. Corrupt Person population envelopes fail before partial Person mutation.
-8. Existing V8 World Foundation round-trip tests remain green.
+2. Direct `hydrateCoreV8` remains Personhood-free.
+3. Canonical hydration of V8 performs the one-time Personhood migration.
+4. Canonical Personhood saves emit the next available save version, expected V9.
+5. V9 contains both a valid V8-derived world envelope and canonical Personhood payload.
+6. V9 restore reproduces exact Persons without bootstrap RNG usage.
+7. V8-to-V9 migration materializes residents exactly once.
+8. V7-or-older migration passes through World Foundation migration before Personhood materialization.
+9. Corrupt Person population envelopes fail before partial Person mutation.
+10. Existing V8 World Foundation round-trip tests remain green.
 
 Only after those tests fail for the intended reason should production persistence code be changed.
 
