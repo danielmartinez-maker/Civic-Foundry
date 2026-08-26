@@ -25,7 +25,8 @@ export type MovementServiceState =
   | 'clearance';
 
 export type IntersectionPriority = 'normal' | 'transit' | 'emergency';
-export type PedestrianSignalState = 'dontWalk' | 'walk' | 'change' | 'clearance';
+export type PedestrianInterval = 'hold' | 'walk' | 'change' | 'clearance';
+export type PedestrianSignalState = PedestrianInterval;
 export type SignalPhaseId = string;
 export type PedestrianCrossingId = string;
 export type CoordinationGroupId = string;
@@ -93,13 +94,14 @@ export type PedestrianCrossing = Readonly<{
   junctionId: JunctionId;
   crossedCarriagewayIds: readonly CarriagewayId[];
   conflictingMovementIds: readonly TurnMovementId[];
-  lengthMeters: number;
+  crossingLengthMeters: number;
 }>;
 
 export type PedestrianRuntimeState = Readonly<{
   crossingId: PedestrianCrossingId;
-  state: PedestrianSignalState;
-  stateElapsedTicks: number;
+  interval: PedestrianInterval;
+  elapsedTicks: number;
+  occupancyWeight: number;
 }>;
 
 export type JunctionControlPlan = Readonly<{
