@@ -43,3 +43,22 @@ test('simulation development materializes canonical buildings from cadastral par
   assert.ok(canonicalBuildings.every((building) => building.parcelIds.every((parcelId) => parcelIds.has(parcelId))));
   assert.deepEqual(core.lots.list(), lotViewBefore, 'legacy LotSystem must remain a derived compatibility view');
 });
+
+test('runtime developer awards use one cadastral parcel identity instead of derived frontage lots', () => {
+  const core = buildServicedParcelCore();
+  const parcels = core.cadastre.listParcels();
+  assert.equal(parcels.length, 1, 'the three frontage cells must form one canonical cadastral parcel');
+  const parcel = parcels[0]!;
+
+  let commitments = core.developerMarket.listCommitments();
+  for (let step = 0; step < 600 && commitments.length === 0; step += 1) {
+    core.step(1);
+    commitments = core.developerMarket.listCommitments();
+  }
+
+  assert.equal(commitments.length, 1, 'one canonical parcel must create at most one active development commitment');
+  assert.equal(commitments[0]!.lotId, parcel.id);
+  assert.equal(commitments[0]!.buildingId, `building:${parcel.id}`);
+  const award = core.developerMarket.lastAwards().find((item) => item.buildingId === commitments[0]!.buildingId);
+  assert.ok(award?.physicalCandidateId, 'parcel-authoritative award must retain the winning massing candidate identity');
+});
