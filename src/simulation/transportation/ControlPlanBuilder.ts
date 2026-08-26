@@ -291,9 +291,10 @@ export function reviewControlPlans(input: ControlPlanReviewInput): ControlPlanRe
   const previousByJunction = new Map(previous.map((plan) => [plan.junctionId, plan]));
   const next = canonicalPlans(input.inputs.map((planningInput) => {
     const previousPlan = previousByJunction.get(planningInput.junctionId);
+    const previousControlType = planningInput.previousControlType ?? previousPlan?.controlType;
     return buildJunctionControlPlan({
       ...planningInput,
-      previousControlType: planningInput.previousControlType ?? previousPlan?.controlType,
+      ...(previousControlType === undefined ? {} : { previousControlType }),
     }, input.policy);
   }));
 
