@@ -45,6 +45,8 @@ function phaseDuration(phase: SignalPhase): number {
   return phase.greenTicks + phase.yellowTicks + phase.allRedTicks;
 }
 
+// Executes immutable fixed-time plans only. Coordination and priority/preemption
+// remain separate layers so this controller never becomes a second planning authority.
 export class SignalController {
   private readonly movementsById = new Map<TurnMovementId, TurnMovement>();
   private readonly junctionId: JunctionId;
