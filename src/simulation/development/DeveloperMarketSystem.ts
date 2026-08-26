@@ -113,7 +113,13 @@ function bidComparator(a: DevelopmentBid, b: DevelopmentBid): number {
     || a.requiredEquity - b.requiredEquity
     || a.lotId.localeCompare(b.lotId)
     || a.definitionId.localeCompare(b.definitionId)
+    || (a.physicalCandidateId ?? '').localeCompare(b.physicalCandidateId ?? '')
     || a.developerId.localeCompare(b.developerId);
+}
+
+function physicalCandidateIdentity(opportunity: DevelopmentFeasibilityResult): string | undefined {
+  const physical = opportunity as Partial<PhysicalDevelopmentFeasibilityResult>;
+  return physical.candidateId;
 }
 
 function physicalConstructionTicks(opportunity: DevelopmentFeasibilityResult): number | undefined {
@@ -125,6 +131,9 @@ function physicalConstructionTicks(opportunity: DevelopmentFeasibilityResult): n
   if (!hasPhysicalState) return undefined;
   if (physical.siteId !== opportunity.lotId) {
     throw new Error(`physical site id does not match compatibility lot id: ${physical.siteId ?? 'missing'}`);
+  }
+  if (!physical.candidateId || physical.candidateId.trim().length === 0) {
+    throw new Error('physical candidate id is required');
   }
   if (!physical.typologyId || !BUILDING_TYPOLOGY_BY_ID[physical.typologyId]) {
     throw new Error(`unknown physical building typology: ${physical.typologyId ?? 'missing'}`);
@@ -169,10 +178,13 @@ export class DeveloperMarketSystem {
     const orderedOpportunities = opportunities
       .filter((item) => item.legal && item.feasible && !this.commitments.has(`building:${item.lotId}`))
       .slice()
-      .sort((a, b) => a.lotId.localeCompare(b.lotId) || a.definitionId.localeCompare(b.definitionId));
+      .sort((a, b) => a.lotId.localeCompare(b.lotId)
+        || a.definitionId.localeCompare(b.definitionId)
+        || (physicalCandidateIdentity(a) ?? '').localeCompare(physicalCandidateIdentity(b) ?? ''));
 
     for (const opportunity of orderedOpportunities) {
       const physicalTicks = physicalConstructionTicks(opportunity);
+      const physicalCandidateId = physicalCandidateIdentity(opportunity);
       let constructionTicks: number;
       if (physicalTicks !== undefined) {
         const legacyDefinition = BUILDING_DEFINITION_BY_ID[opportunity.definitionId];
@@ -207,12 +219,15 @@ export class DeveloperMarketSystem {
         const residualValueBonus = clamp(opportunity.residualLandValue / Math.max(1, opportunity.landValue), -1, 2) * 0.01;
         const riskPenalty = Math.max(0, opportunity.riskScore - developer.riskTolerance) * 0.10;
         const rankScore = expectedReturnMargin + preferenceBonus + capitalEfficiencyBonus + residualValueBonus - riskPenalty;
-        const bidId = `bid:${context.tick}:${opportunity.lotId}:${opportunity.definitionId}:${developer.id}`;
+        const bidId = physicalCandidateId
+          ? `bid:${context.tick}:${opportunity.lotId}:${opportunity.definitionId}:${physicalCandidateId}:${developer.id}`
+          : `bid:${context.tick}:${opportunity.lotId}:${opportunity.definitionId}:${developer.id}`;
 
         candidateBids.push(Object.freeze({
           id: bidId,
           lotId: opportunity.lotId,
           definitionId: opportunity.definitionId,
+          ...(physicalCandidateId ? { physicalCandidateId } : {}),
           zone: opportunity.zone,
           developerId: developer.id,
           expectedReturn,
