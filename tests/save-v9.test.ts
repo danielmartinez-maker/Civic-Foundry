@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
+import { hydrateCore, serializeCore } from '../src/save/save.ts';
 import { hydrateCoreV9, serializeCoreV9 } from '../src/save/saveV9.ts';
 import { serializeCoreV8 } from '../src/save/saveV8.ts';
 
@@ -87,4 +89,18 @@ test('Save V8 migrates deterministically into Save V9 Urban Fabric state', () =>
     nextTransactionId: 1,
   });
   assert.equal(serializeCoreV9(first).saveVersion, 9);
+});
+
+test('default save API advances to V9 while explicit V8 remains available', () => {
+  const core = urbanFabricCore();
+  const current = serializeCore(core);
+  assert.equal(current.saveVersion, 9);
+  assert.equal(current.gameVersion, '0.9.0-urban-fabric');
+  const restored = hydrateCore(structuredClone(current));
+  assert.deepEqual(restored.cadastre.snapshot(), core.cadastre.snapshot());
+  assert.deepEqual(restored.propertyMarket.snapshot(), core.propertyMarket.snapshot());
+  assert.equal(serializeCoreV8(core).saveVersion, 8);
+
+  const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version?: unknown };
+  assert.equal(packageJson.version, '0.9.0-urban-fabric');
 });
