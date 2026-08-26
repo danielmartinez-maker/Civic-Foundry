@@ -6,13 +6,26 @@
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "node scripts/lint.mjs",
+    "lint": "eslint src tests",
+    "policy:check": "node scripts/repository-policy.mjs",
+    "architecture:check": "node scripts/check-architecture.mjs",
+    "format": "prettier --write package.json tsconfig.json eslint.config.mjs scripts/**/*.mjs tests/**/*.ts .github/workflows/*.yml README.md CONTRIBUTING.md docs/ENGINEERING_STANDARDS.md docs/adr/**/*.md",
+    "format:check": "prettier --check package.json tsconfig.json eslint.config.mjs scripts/**/*.mjs tests/**/*.ts .github/workflows/*.yml README.md CONTRIBUTING.md docs/ENGINEERING_STANDARDS.md docs/adr/**/*.md",
+    "assets:policy": "node scripts/check-assets.mjs",
     "assets:check": "python tools/render_isometric_atlases.py --check",
     "assets:build": "python tools/render_isometric_atlases.py",
-    "build": "rm -rf dist && tsc -p tsconfig.json && cp index.html dist/index.html && cp src/styles.css dist/styles.css && python tools/render_isometric_atlases.py",
+    "build": "node scripts/build.mjs",
+    "verify": "npm run format:check && npm run lint && npm run policy:check && npm run architecture:check && npm run typecheck && npm test && npm run assets:policy && npm run assets:check && npm run build",
     "dev": "python -m http.server 5173 -d dist",
     "test:smoke": "python tests/smoke/phase6_smoke.py",
     "test:smoke:phase7": "python tests/smoke/phase7_land_housing_smoke.py",
     "test:smoke:isometric": "python tests/smoke/isometric_pass_a_smoke.py"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.34.0",
+    "eslint": "9.34.0",
+    "prettier": "3.6.2",
+    "typescript": "5.8.3",
+    "typescript-eslint": "8.41.0"
   }
 }
