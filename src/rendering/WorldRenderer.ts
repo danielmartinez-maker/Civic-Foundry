@@ -37,6 +37,8 @@ export class WorldRenderer {
   private readonly freightVehicles = new FreightVehicleRenderer(this.assets);
   private dpr = 1;
   private lastWorldSize: RendererWorldSize | null = null;
+  private urbanFabricOverlayMode: UrbanFabricOverlayMode = 'none';
+  private urbanFabricSelectedParcelId: string | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -51,6 +53,13 @@ export class WorldRenderer {
   get tileHeight(): number { return this.camera.tileHeight; }
   get zoom(): number { return this.camera.zoom; }
   get quarterTurns(): number { return this.camera.quarterTurns; }
+  get currentUrbanFabricOverlayMode(): UrbanFabricOverlayMode { return this.urbanFabricOverlayMode; }
+  get currentUrbanFabricSelectedParcelId(): string | null { return this.urbanFabricSelectedParcelId; }
+
+  setUrbanFabricOverlay(mode: UrbanFabricOverlayMode, selectedParcelId: string | null = null): void {
+    this.urbanFabricOverlayMode = mode;
+    this.urbanFabricSelectedParcelId = selectedParcelId;
+  }
 
   resize(): void {
     const rect = this.canvas.getBoundingClientRect();
@@ -107,8 +116,8 @@ export class WorldRenderer {
     serviceOverlayMode: ServiceOverlayMode = 'none',
     transitOverlayMode: TransitOverlayMode = 'none',
     economyOverlayMode: EconomyOverlayMode = 'none',
-    urbanFabricOverlayMode: UrbanFabricOverlayMode = 'none',
-    selectedParcelId: string | null = null,
+    urbanFabricOverlayMode?: UrbanFabricOverlayMode,
+    selectedParcelId?: string | null,
   ): void {
     this.resize();
     const rect = this.canvas.getBoundingClientRect();
@@ -136,8 +145,8 @@ export class WorldRenderer {
       serviceOverlayMode,
       transitOverlayMode,
       economyOverlayMode,
-      urbanFabricOverlayMode,
-      selectedParcelId,
+      urbanFabricOverlayMode ?? this.urbanFabricOverlayMode,
+      selectedParcelId === undefined ? this.urbanFabricSelectedParcelId : selectedParcelId,
     );
     this.selection.draw(this.ctx, core, this.camera, selected, previewPath);
   }
