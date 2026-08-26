@@ -7,12 +7,16 @@ import { PropertyMarketSystem } from '../development/PropertyMarketSystem.ts';
 import { SiteAssemblySystem } from '../development/SiteAssemblySystem.ts';
 import { BuildableEnvelopeSystem } from '../zoning/BuildableEnvelopeSystem.ts';
 import { ZoningComplianceSystem } from '../zoning/ZoningComplianceSystem.ts';
+import { districtForLegacyZone } from '../zoning/ZoningDistrictCatalog.ts';
 import { BuildingMassingSystem } from '../buildings/BuildingMassingSystem.ts';
 import { BuildingLifecycleSystem } from '../buildings/BuildingLifecycleSystem.ts';
 import { RenovationSystem } from '../buildings/RenovationSystem.ts';
+import { NEW_BUILDING_LIFECYCLE, type BuildingV2 } from '../buildings/BuildingTypes.ts';
+import { typologyForLegacyDefinition } from '../../data/buildingTypologies.ts';
 import { WorldFoundation } from '../../world/foundation/WorldFoundation.ts';
 import { CadastralGraph } from '../../world/cadastre/CadastralGraph.ts';
 import { ParcelGenerationSystem } from '../../world/cadastre/ParcelGenerationSystem.ts';
+import { LEGACY_CELL_SIZE_METERS, pointInPolygon } from '../../world/cadastre/Geometry.ts';
 import type { Parcel } from '../../world/cadastre/CadastralTypes.ts';
 import type { WorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
 import { resolveWorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
@@ -184,7 +188,13 @@ export class SimulationCore extends LegacySimulationCore {
   override bulldozeAt(x: number, y: number): { ok: boolean; kind?: 'road' | 'building' | 'zone'; reason?: string } {
     const result = super.bulldozeAt(x, y);
     if (result.ok && (result.kind === 'road' || result.kind === 'zone')) this.rebuildCadastreFromLegacyState();
+    if (result.ok) this.reconcileCanonicalBuildingProjection();
     return result;
+  }
+
+  override step(ticks = 1): void {
+    super.step(ticks);
+    this.reconcileCanonicalBuildingProjection();
   }
 
   runDesignStorm(event: DesignStormEvent): FloodResult {
@@ -209,5 +219,58 @@ export class SimulationCore extends LegacySimulationCore {
   rebuildCadastreFromLegacyState(): void {
     this.cadastre.replaceSnapshot(this.parcelGeneration.rebuild(this.terrain, this.roads, this.zoning));
     this.lots.rebuildFromCadastre(this.cadastre, legacyZoneForParcel);
+    this.reconcileCanonicalBuildingProjection();
+  }
+
+  private reconcileCanonicalBuildingProjection(): void {
+    const canonical: BuildingV2[] = [];
+    const claimedParcels = new Set<string>();
+    const parcels = [...this.cadastre.listParcels()].sort((left, right) => left.id.localeCompare(right.id));
+    const legacyBuildings = this.buildings.list().sort((left, right) => left.id.localeCompare(right.id));
+
+    for (const building of legacyBuildings) {
+      const center = {
+        x: (building.x + 0.5) * LEGACY_CELL_SIZE_METERS,
+        y: (building.y + 0.5) * LEGACY_CELL_SIZE_METERS,
+      };
+      const parcel = parcels.find((candidate) => pointInPolygon(center, this.cadastre.parcelPolygon(candidate.id)));
+      if (!parcel || claimedParcels.has(parcel.id)) continue;
+      const zone = legacyZoneForParcel(parcel);
+      if (!zone) continue;
+      const typology = typologyForLegacyDefinition(building.definitionId);
+      const district = districtForLegacyZone(zone);
+      const envelope = this.buildableEnvelopes.evaluate(parcel.id, this.cadastre, district);
+      const candidate = this.buildingMassing.generate(parcel, envelope, [typology])[0];
+      if (!candidate) continue;
+
+      claimedParcels.add(parcel.id);
+      canonical.push(Object.freeze({
+        id: `building:${parcel.id}`,
+        parcelIds: Object.freeze([parcel.id]),
+        typologyId: typology.id,
+        footprint: candidate.footprint,
+        grossFloorAreaM2: candidate.grossFloorAreaM2,
+        usableFloorAreaM2: candidate.usableFloorAreaM2,
+        heightMeters: candidate.heightMeters,
+        stories: candidate.stories,
+        realizedFAR: candidate.realizedFAR,
+        coverageRatio: candidate.coverageRatio,
+        floors: candidate.floors,
+        status: building.status === 'occupied' ? 'occupied' : 'construction',
+        yearBuilt: building.constructionStartedTick,
+        ...(building.developerId ? { developerId: building.developerId } : {}),
+        projectCost: building.projectCost ?? 0,
+        entitlement: Object.freeze({
+          approvalTick: building.constructionStartedTick,
+          zoningDistrictId: district.id,
+          approvedFAR: envelope.effectiveFAR,
+          approvedHeightMeters: envelope.maxHeightMeters,
+          approvedUses: Object.freeze([...envelope.permittedUses]),
+        }),
+        lifecycle: NEW_BUILDING_LIFECYCLE,
+      }));
+    }
+
+    this.buildings.restoreV2(canonical);
   }
 }
