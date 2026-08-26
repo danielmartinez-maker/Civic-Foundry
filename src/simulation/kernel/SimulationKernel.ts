@@ -1,4 +1,8 @@
+import type { EntityRegistry } from '../../entities/EntityRegistry.ts';
 import { SimulationClock } from '../core/SimulationClock.ts';
+import { validatePersonState } from '../people/PersonInvariantSystem.ts';
+import { buildPersonSnapshot } from '../people/PersonSnapshot.ts';
+import type { PersonStore } from '../people/PersonStore.ts';
 import { CommandBus } from './CommandBus.ts';
 import { DomainEventJournal } from './DomainEventJournal.ts';
 import { InvariantRunner } from './InvariantRunner.ts';
@@ -34,6 +38,8 @@ export class SimulationKernel {
 
   private dirty = true;
   private fault: Error | null = null;
+  private personDiagnosticsStore: PersonStore | null = null;
+  private personDiagnosticsRegistry: EntityRegistry | null = null;
 
   constructor(options: SimulationKernelOptions) {
     this.clock = options.clock;
@@ -54,6 +60,22 @@ export class SimulationKernel {
     if (this.fault) throw new Error(`kernel is faulted: ${this.fault.message}`);
     this.scheduler.register(system);
     this.dirty = true;
+  }
+
+  registerPersonDiagnostics(store: PersonStore, registry: EntityRegistry): void {
+    if (this.personDiagnosticsStore || this.personDiagnosticsRegistry) {
+      if (this.personDiagnosticsStore === store && this.personDiagnosticsRegistry === registry) return;
+      throw new Error('person diagnostics already registered for another authority');
+    }
+
+    this.personDiagnosticsStore = store;
+    this.personDiagnosticsRegistry = registry;
+    this.invariants.register({
+      id: 'person-state-valid',
+      cadence: { every: 1 },
+      check: () => validatePersonState(store, registry),
+    });
+    this.snapshots.register('people', () => buildPersonSnapshot(store));
   }
 
   compile(): void {

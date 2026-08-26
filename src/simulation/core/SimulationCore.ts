@@ -1,6 +1,12 @@
 import { SimulationCore as LegacySimulationCore } from './LegacySimulationCore.ts';
 import { RandomStreamRegistry } from '../kernel/RandomStreamRegistry.ts';
 import { DevelopmentFeasibilitySystem } from '../development/DevelopmentFeasibilitySystem.ts';
+import { PersonBootstrapSystem } from '../people/PersonBootstrapSystem.ts';
+import { PersonEntityBridge } from '../people/PersonEntityBridge.ts';
+import { parsePersonSavePayload, serializePeople, type PersonSavePayload } from '../people/PersonPersistence.ts';
+import { PersonPopulationProjection } from '../people/PersonPopulationProjection.ts';
+import { buildPersonSnapshot, type PersonSnapshot } from '../people/PersonSnapshot.ts';
+import { PersonStore } from '../people/PersonStore.ts';
 import { WorldFoundation } from '../../world/foundation/WorldFoundation.ts';
 import type { WorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
 import { resolveWorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
@@ -71,6 +77,10 @@ export class SimulationCore extends LegacySimulationCore {
   readonly entityRegistry: EntityRegistry;
   readonly entityReferences: EntityReferenceGraph;
   private readonly entityProjector: LegacyV7EntityProjector;
+  private readonly personStore: PersonStore;
+  private readonly personEntityBridge: PersonEntityBridge;
+  private readonly personPopulationProjection: PersonPopulationProjection;
+  private personhoodAuthorityEnabled = false;
   private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;
   private lastSyncedEntitySourceRevisionKey: string | undefined;
   private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);
@@ -117,6 +127,9 @@ export class SimulationCore extends LegacySimulationCore {
     super({ seed, terrain: world.legacyTerrain(), ...(options.startingFunds !== undefined ? { startingFunds: options.startingFunds } : {}) });
     this.world = world;
     this.entityRegistry = new EntityRegistry();
+    this.personStore = new PersonStore();
+    this.personEntityBridge = new PersonEntityBridge(this.personStore, this.entityRegistry);
+    this.personPopulationProjection = new PersonPopulationProjection(this.personStore);
     this.entityReferences = new EntityReferenceGraph();
     this.entityProjector = new LegacyV7EntityProjector();
     const preparationMultiplierAt = (x: number, y: number): number => this.world.preparationMultiplierAt(x, y);
@@ -160,6 +173,54 @@ export class SimulationCore extends LegacySimulationCore {
       };
       this.kernel.events.append(this.clock.tick, { type: 'WorldGenerated', source: 'world', payload });
     }
+  }
+
+  enablePersonhoodAuthority(): void {
+    if (this.personhoodAuthorityEnabled) return;
+
+    const legacyPopulation = this.population.population;
+    const bootstrapSeed = this.kernel.random.stream('demographics/person-bootstrap').getState();
+    const people = new PersonBootstrapSystem(bootstrapSeed).bootstrapPopulation({
+      population: legacyPopulation,
+      simulationStartTick: this.clock.tick,
+    });
+
+    this.personEntityBridge.createPeople(people);
+    this.kernel.registerPersonDiagnostics(this.personStore, this.entityRegistry);
+    this.population.attachPersonProjection(this.personPopulationProjection);
+    this.personhoodAuthorityEnabled = true;
+  }
+
+  isPersonhoodAuthorityEnabled(): boolean {
+    return this.personhoodAuthorityEnabled;
+  }
+
+  getPersonSnapshot(): PersonSnapshot {
+    return buildPersonSnapshot(this.personStore);
+  }
+
+  getPersonSavePayload(): PersonSavePayload {
+    if (!this.personhoodAuthorityEnabled) throw new Error('personhood authority is not enabled');
+    return serializePeople(this.personStore);
+  }
+
+  restorePersonhoodAuthority(input: unknown): void {
+    if (this.personhoodAuthorityEnabled) throw new Error('personhood authority is already enabled');
+
+    const payload = parsePersonSavePayload(input);
+    const expectedPopulation = this.population.population;
+    const personPopulation = payload.people.reduce(
+      (count, person) => count + (person.alive && person.resident ? 1 : 0),
+      0,
+    );
+    if (personPopulation !== expectedPopulation) {
+      throw new Error(`person population mismatch: expected ${expectedPopulation}, received ${personPopulation}`);
+    }
+
+    this.personEntityBridge.createPeople(payload.people);
+    this.kernel.registerPersonDiagnostics(this.personStore, this.entityRegistry);
+    this.population.attachPersonProjection(this.personPopulationProjection);
+    this.personhoodAuthorityEnabled = true;
   }
 
   rebuildEntityProjection(): void {

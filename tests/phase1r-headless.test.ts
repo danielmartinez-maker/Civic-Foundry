@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
-import { hydrateCore, serializeCore } from '../src/save/save.ts';
+import { hydrateCoreV8, serializeCoreV8 } from '../src/save/save.ts';
 
 type Cell = Readonly<{ x: number; y: number }>;
 type AcceptancePlacement = Readonly<{
@@ -95,17 +95,17 @@ test('Phase 1R generates, plays, floods, saves, restores, and continues determin
   assert.ok(flood.depthMeters.every((depth) => Number.isFinite(depth) && depth >= 0));
   assert.ok(Math.abs(flood.balanceError) <= Math.max(1e-9, flood.rainfallVolume * 1e-9));
 
-  const saved = serializeCore(core);
+  const saved = serializeCoreV8(core);
   assert.equal(saved.saveVersion, 8);
   assert.equal(saved.gameVersion, '0.8.0-world-foundation');
 
-  const loaded = hydrateCore(structuredClone(saved));
+  const loaded = hydrateCoreV8(structuredClone(saved));
   assert.deepEqual(loaded.world.snapshotAuthoritative(), core.world.snapshotAuthoritative());
-  assert.deepEqual(serializeCore(loaded), saved);
+  assert.deepEqual(serializeCoreV8(loaded), saved);
 
   core.step(300);
   loaded.step(300);
-  assert.deepEqual(serializeCore(loaded), serializeCore(core));
+  assert.deepEqual(serializeCoreV8(loaded), serializeCoreV8(core));
 
   console.log('PHASE1R_HEADLESS_ACCEPTANCE', {
     road: placement.road,
