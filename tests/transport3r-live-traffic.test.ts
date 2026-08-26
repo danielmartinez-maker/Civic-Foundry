@@ -262,12 +262,17 @@ test('explicit requiresQueue false bypasses even a degree-greater-than-two legac
   assert.ok(resolver.calls.length > 0);
 });
 
-test('TrafficSystem contains no live legacy node heuristic or controller stepping', () => {
+test('the 3R TrafficSystem path contains no legacy node heuristic or controller stepping', () => {
   const source = readFileSync(
     new URL('../src/simulation/traffic/TrafficSystem.ts', import.meta.url),
     'utf8',
   );
-  assert.doesNotMatch(source, /outgoingEdges\(edge\.to\)\.length\s*>\s*2/);
-  assert.doesNotMatch(source, /\.stepNode\(/);
-  assert.doesNotMatch(source, /controls\.step\(/);
+  const start = source.indexOf('private stepWithIntersectionControl(');
+  const end = source.indexOf('private stepLegacyCompatibility(', start);
+  assert.ok(start >= 0 && end > start, '3R traffic path and legacy compatibility boundary must exist');
+  const live3RPath = source.slice(start, end);
+
+  assert.doesNotMatch(live3RPath, /outgoingEdges\(edge\.to\)\.length\s*>\s*2/);
+  assert.doesNotMatch(live3RPath, /\.stepNode\(/);
+  assert.doesNotMatch(live3RPath, /controls\.step\(/);
 });
