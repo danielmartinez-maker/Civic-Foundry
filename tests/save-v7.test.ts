@@ -56,11 +56,11 @@ test('explicit Save V7 serializer projects canonical developer identity to legac
   assert.equal(Object.prototype.hasOwnProperty.call(save, 'world'), false);
 });
 
-test('current save resumes developer capital commitments, housing state, and future awards identically', () => {
+test('current Save V9 resumes developer capital commitments, housing state, and future awards identically', () => {
   const uninterrupted = buildDevelopmentCity();
   advanceUntilCommitment(uninterrupted);
   const save = serializeCore(uninterrupted);
-  assert.equal(save.saveVersion, 8);
+  assert.equal(save.saveVersion, 9);
   const loaded = hydrateCore(structuredClone(save));
   assert.deepEqual(serializeCore(loaded), save);
   assert.deepEqual(loaded.housingRelocation.snapshotState(), uninterrupted.housingRelocation.snapshotState());
