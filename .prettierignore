@@ -1,0 +1,6 @@
+dist/
+node_modules/
+.worktrees/
+test-artifacts/
+assets/source/
+docs/superpowers/
