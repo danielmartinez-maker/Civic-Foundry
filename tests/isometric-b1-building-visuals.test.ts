@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import type { Building } from '../src/simulation/buildings/BuildingSystem.ts';
 import { NEW_BUILDING_LIFECYCLE, type BuildingV2 } from '../src/simulation/buildings/BuildingTypes.ts';
-import { PASS_A_BUILDING_VARIANTS } from '../src/rendering/assets/PassAAssetManifest.ts';
+import { PASS_A_ASSET_MANIFEST, PASS_A_BUILDING_VARIANTS } from '../src/rendering/assets/PassAAssetManifest.ts';
 import { PASS_B1_MIXED_USE_FAMILIES } from '../src/rendering/assets/PassB1AssetManifest.ts';
+import { selectBuildingVariantEntry } from '../src/rendering/assets/VariantSelector.ts';
 
 async function loadResolver() {
   return import('../src/rendering/assets/BuildingVisualResolver.ts');
@@ -92,6 +94,27 @@ test('maintained legacy buildings retain Pass A variant keys', async () => {
       .map(([family]) => family);
     const key = buildingVariantKey(building(75, { id: `building:${typologyId}`, typologyId }));
     assert.ok(allowed.includes(key as never), `${typologyId} resolved ${key}`);
+  }
+});
+
+test('legacy family selection exactly preserves Pass A deterministic identity', async () => {
+  const { buildingVisualFamily } = await loadResolver();
+  const mappings = [
+    ['residential_cottage', 'residential'], ['residential_rowhouse', 'residential'], ['residential_apartment', 'residential'],
+    ['commercial_shop', 'commercial'], ['commercial_block', 'commercial'], ['commercial_office', 'commercial'],
+    ['industrial_workshop', 'industrial'], ['industrial_warehouse', 'industrial'], ['industrial_plant', 'industrial'],
+  ] as const;
+  const passABuildings = PASS_A_ASSET_MANIFEST.entries.filter((entry) => entry.category === 'building');
+  for (const [definitionId, zone] of mappings) {
+    for (const id of [`building:${definitionId}:a`, `building:${definitionId}:b`, `building:${definitionId}:c`]) {
+      const legacy: Building = {
+        id, lotId: `lot:${id}`, x: 0, y: 0, zone, definitionId, status: 'occupied',
+        constructionStartedTick: 0, completionTick: 1,
+      };
+      const expected = selectBuildingVariantEntry(legacy, 0, passABuildings)?.variantKey;
+      const actual = buildingVisualFamily({ id, typologyId: `typology:${definitionId}` });
+      assert.equal(actual, expected, `${definitionId}/${id}`);
+    }
   }
 });
 
