@@ -64,7 +64,7 @@ test('10,000 mobility requests scale with the two registered providers and stabl
   assert.equal(car.executes, 10_000);
   assert.equal(transit.executes, 0);
 
-  const terrain = TerrainGrid.generate(12, 5, 77);
+  const terrain = TerrainGrid.generate(12, 5, 44);
   const roads = new RoadSystem(terrain);
   const treasury = new TreasurySystem(1_000_000);
   roads.placePath(Array.from({ length: 10 }, (_, i) => ({ x: i + 1, y: 2 })), 'local', treasury);
