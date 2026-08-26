@@ -5,6 +5,7 @@ import {
   isControlledAccessRoadClass,
   validateIntersectionPolicy,
   validateMovementQueueEntry,
+  type IntersectionControlSnapshot,
 } from '../src/simulation/transportation/IntersectionControlTypes.ts';
 
 test('3R-B U.S. intersection policy defaults are locked', () => {
@@ -62,4 +63,23 @@ test('movement queue validator rejects invalid timing and traveler weight', () =
   assert.throws(() => validateMovementQueueEntry({ ...valid, travelerWeight: Number.NaN }), /travelerWeight/);
   assert.throws(() => validateMovementQueueEntry({ ...valid, queuedTick: -1 }), /queuedTick/);
   assert.throws(() => validateMovementQueueEntry({ ...valid, stoppedSinceTick: Number.POSITIVE_INFINITY }), /stoppedSinceTick/);
+});
+
+test('intersection snapshot carries canonical plan/runtime revision epochs', () => {
+  const snapshot = {
+    controlPlanRevision: 3,
+    controlRuntimeEpoch: 7,
+    lastPlanReviewTick: 6000,
+    plans: [],
+    queues: [],
+    signalStates: [],
+    pedestrianStates: [],
+    priorityRequests: [],
+    coordinationGroups: [],
+    overrides: [],
+  } satisfies IntersectionControlSnapshot;
+
+  assert.equal(snapshot.controlPlanRevision, 3);
+  assert.equal(snapshot.controlRuntimeEpoch, 7);
+  assert.equal(snapshot.lastPlanReviewTick, 6000);
 });
