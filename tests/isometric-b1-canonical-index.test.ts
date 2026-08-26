@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { NEW_BUILDING_LIFECYCLE, type BuildingV2 } from '../src/simulation/buildings/BuildingTypes.ts';
 import { indexCanonicalBuildingsByLegacyCell, legacyCellKey } from '../src/rendering/assets/CanonicalBuildingVisualIndex.ts';
 
@@ -80,5 +81,11 @@ test('canonical visual index is independent of input order', () => {
 
   assert.equal(forward.get(legacyCellKey(0, 0))?.id, reverse.get(legacyCellKey(0, 0))?.id);
   assert.equal(forward.get(legacyCellKey(1, 0))?.id, reverse.get(legacyCellKey(1, 0))?.id);
-}
-);
+});
+
+test('ObjectRenderPass consumes the canonical cell index instead of getV2At per building', async () => {
+  const source = await readFile(new URL('../src/rendering/passes/ObjectRenderPass.ts', import.meta.url), 'utf8');
+
+  assert.match(source, /indexCanonicalBuildingsByLegacyCell/);
+  assert.doesNotMatch(source, /\.getV2At\s*\(/);
+});
