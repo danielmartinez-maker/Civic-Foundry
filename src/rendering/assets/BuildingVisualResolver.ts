@@ -2,35 +2,28 @@ import type { BuildingV2 } from '../../simulation/buildings/BuildingTypes.ts';
 import type { AssetManifestEntry } from './AssetTypes.ts';
 import { PASS_A_BUILDING_VARIANTS } from './PassAAssetManifest.ts';
 import { PASS_B1_MIXED_USE_FAMILIES } from './PassB1AssetManifest.ts';
+import { selectWeightedVariantKey } from './VariantSelector.ts';
 
 type BuildingCondition = NonNullable<AssetManifestEntry['condition']>;
 type LegacyZone = 'residential' | 'commercial' | 'industrial';
 type LegacyIntensity = 'low' | 'medium' | 'high';
+type LegacyPresentation = readonly [LegacyZone, LegacyIntensity, string];
 
-const LEGACY_TYPOLOGY_PRESENTATION: Readonly<Record<string, readonly [LegacyZone, LegacyIntensity]>> = Object.freeze({
-  'typology:residential_cottage': ['residential', 'low'],
-  'typology:residential_rowhouse': ['residential', 'medium'],
-  'typology:residential_apartment': ['residential', 'high'],
-  'typology:commercial_shop': ['commercial', 'low'],
-  'typology:commercial_block': ['commercial', 'medium'],
-  'typology:commercial_office': ['commercial', 'high'],
-  'typology:industrial_workshop': ['industrial', 'low'],
-  'typology:industrial_warehouse': ['industrial', 'medium'],
-  'typology:industrial_plant': ['industrial', 'high'],
+const LEGACY_TYPOLOGY_PRESENTATION: Readonly<Record<string, LegacyPresentation>> = Object.freeze({
+  'typology:residential_cottage': ['residential', 'low', 'residential_cottage'],
+  'typology:residential_rowhouse': ['residential', 'medium', 'residential_rowhouse'],
+  'typology:residential_apartment': ['residential', 'high', 'residential_apartment'],
+  'typology:commercial_shop': ['commercial', 'low', 'commercial_shop'],
+  'typology:commercial_block': ['commercial', 'medium', 'commercial_block'],
+  'typology:commercial_office': ['commercial', 'high', 'commercial_office'],
+  'typology:industrial_workshop': ['industrial', 'low', 'industrial_workshop'],
+  'typology:industrial_warehouse': ['industrial', 'medium', 'industrial_warehouse'],
+  'typology:industrial_plant': ['industrial', 'high', 'industrial_plant'],
 });
 
-function stableHash(value: string): number {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function selectStableFamily(id: string, candidates: readonly string[]): string {
+function selectStableFamily(stableKey: string, candidates: readonly string[]): string {
   if (candidates.length === 0) return PASS_A_BUILDING_VARIANTS[0][0];
-  return candidates[stableHash(id) % candidates.length]!;
+  return selectWeightedVariantKey(stableKey, candidates.map((variantKey) => ({ variantKey, weight: 1 })));
 }
 
 function isMixedUseTypology(typologyId: string): boolean {
@@ -61,11 +54,11 @@ export function buildingVisualFamily(
 
   const legacy = LEGACY_TYPOLOGY_PRESENTATION[building.typologyId];
   if (!legacy) return selectStableFamily(building.id, PASS_A_BUILDING_VARIANTS.map(([family]) => family));
-  const [zone, intensity] = legacy;
+  const [zone, intensity, definitionId] = legacy;
   const candidates = PASS_A_BUILDING_VARIANTS
     .filter(([, candidateZone, candidateIntensity]) => candidateZone === zone && candidateIntensity === intensity)
     .map(([family]) => family);
-  return selectStableFamily(building.id, candidates);
+  return selectStableFamily(`${building.id}|${definitionId}`, candidates);
 }
 
 export function buildingVariantKey(
