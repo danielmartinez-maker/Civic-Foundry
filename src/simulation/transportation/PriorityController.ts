@@ -107,7 +107,7 @@ export class PriorityController {
     );
 
     if (selected.kind === 'emergencyPreemption') {
-      if (conflictingActive) {
+      if (conflictingActive || (context.activeMovementIds.size === 0 && !context.clearanceComplete)) {
         return Object.freeze({ action: 'transition', request: selected });
       }
       return Object.freeze({ action: 'grant', request: selected });
