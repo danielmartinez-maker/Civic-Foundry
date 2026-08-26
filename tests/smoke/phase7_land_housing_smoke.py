@@ -42,6 +42,20 @@ def main() -> None:
         assert page.locator('[data-testid="land-housing-overlay"]').is_visible()
         assert page.locator('[data-testid="land-housing-overlay-canvas"]').is_visible()
         assert page.locator('[data-testid="development-policy-controls"]').is_visible()
+        assert page.locator('[data-testid="urban-fabric-overlay"]').is_visible()
+
+        page.locator('[data-testid="urban-fabric-overlay"]').select_option("cadastre")
+        assert page.locator('[data-testid="urban-fabric-overlay"]').input_value() == "cadastre"
+        assert page.evaluate("window.__civicApp.urbanFabricOverlayMode") == "cadastre"
+        assert page.locator('[data-testid="traffic-overlay"]').input_value() == "none"
+        assert page.locator('[data-testid="service-overlay"]').input_value() == "none"
+        assert page.locator('[data-testid="transit-overlay"]').input_value() == "none"
+        assert page.locator('[data-testid="economy-overlay"]').input_value() == "none"
+        assert page.locator('[data-testid="land-housing-overlay"]').input_value() == "none"
+        assert "Cadastre" in page.locator('#overlay-legend').inner_text()
+
+        page.locator('[data-testid="traffic-overlay"]').select_option("congestion")
+        assert page.locator('[data-testid="urban-fabric-overlay"]').input_value() == "none"
 
         setup = page.evaluate("""
         async () => {
