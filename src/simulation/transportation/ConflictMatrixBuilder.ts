@@ -140,15 +140,13 @@ export function buildConflictMatrices(
     const conflicts = new Set<string>();
 
     for (let i = 0; i < movements.length; i += 1) {
+      const a = movements[i];
+      if (!a) continue;
       for (let j = i + 1; j < movements.length; j += 1) {
-        if (vehicleMovementsConflict(
-          movements[i],
-          movements[j],
-          junction,
-          carriagewayById,
-          junctionById,
-        )) {
-          conflicts.add(pairKey(movements[i].id, movements[j].id));
+        const b = movements[j];
+        if (!b) continue;
+        if (vehicleMovementsConflict(a, b, junction, carriagewayById, junctionById)) {
+          conflicts.add(pairKey(a.id, b.id));
         }
       }
     }
