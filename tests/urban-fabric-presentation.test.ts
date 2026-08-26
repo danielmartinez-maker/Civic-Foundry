@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
+import { mapCadastralOverlay } from '../src/rendering/CadastralOverlayLayer.ts';
+import { mapZoningEnvelope } from '../src/rendering/ZoningEnvelopeLayer.ts';
 import { WorldRenderer } from '../src/rendering/WorldRenderer.ts';
 import { ParcelInspector } from '../src/ui/ParcelInspector.ts';
+import { ToolController } from '../src/ui/ToolController.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 
 function flatTerrain(width = 8, height = 8): TerrainGrid {
@@ -88,4 +91,38 @@ test('parcel inspector escapes dynamic ownership text', () => {
   const html = new ParcelInspector().render(parcel.id, core);
   assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+});
+
+test('inspect tool resolves the canonical parcel beneath a legacy cell', () => {
+  const core = coreFixture();
+  const parcel = core.cadastre.listParcels()[0]!;
+  const tools = new ToolController();
+
+  assert.equal(tools.parcelIdAt(core, 3, 3), parcel.id);
+  assert.equal(tools.parcelIdAt(core, 0, 0), null);
+});
+
+test('cadastral overlay exposes deterministic parcel boundaries and frontage', () => {
+  const core = coreFixture();
+  const parcel = core.cadastre.listParcels()[0]!;
+  const snapshot = mapCadastralOverlay(core);
+  const presented = snapshot.parcels.find((item) => item.parcelId === parcel.id);
+
+  assert.ok(presented);
+  assert.deepEqual(presented.boundary, core.cadastre.parcelPolygon(parcel.id));
+  assert.equal(presented.frontage.length, parcel.frontageEdgeIds.length);
+  assert.equal(snapshot.parcels[0]?.parcelId, parcel.id);
+});
+
+test('zoning envelope overlay exposes legal footprint and dimensional capacity', () => {
+  const core = coreFixture();
+  const parcel = core.cadastre.listParcels()[0]!;
+  const snapshot = mapZoningEnvelope(core, parcel.id);
+
+  assert.equal(snapshot.parcelId, parcel.id);
+  assert.equal(snapshot.districtId, 'R2');
+  assert.deepEqual(snapshot.parcelBoundary, core.cadastre.parcelPolygon(parcel.id));
+  assert.ok(snapshot.buildableFootprint.length > 0);
+  assert.ok(snapshot.maxHeightMeters > 0);
+  assert.ok(snapshot.effectiveFAR > 0);
 });
