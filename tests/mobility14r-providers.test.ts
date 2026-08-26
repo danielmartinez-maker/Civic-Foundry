@@ -9,6 +9,8 @@ import { TransitNetworkSystem } from '../src/simulation/transit/TransitNetworkSy
 import { MultimodalRoutingGraph } from '../src/simulation/transit/MultimodalRoutingGraph.ts';
 import { JourneyPlanner } from '../src/simulation/transit/JourneyPlanner.ts';
 import { PassengerQueueSystem } from '../src/simulation/transit/PassengerQueueSystem.ts';
+import { MobilityScheduler } from '../src/simulation/mobility/MobilityScheduler.ts';
+import { listMobilityModes } from '../src/simulation/mobility/MobilityModeRegistry.ts';
 import { LegacyCarMobilityProvider } from '../src/simulation/mobility/providers/LegacyCarMobilityProvider.ts';
 import { LegacyTransitMobilityProvider } from '../src/simulation/mobility/providers/LegacyTransitMobilityProvider.ts';
 import type { MobilityRuntimeContext } from '../src/simulation/mobility/MobilityProvider.ts';
@@ -107,4 +109,26 @@ test('legacy transit provider exposes the actual canonical bus mode and queues t
   assert.equal(queued.length, 1);
   assert.equal(queued[0]?.lineId, fixture.lineId);
   assert.equal(queued[0]?.stopId, fixture.firstStop);
+});
+
+test('future canonical modes stay registered but unavailable until a live provider owns them', () => {
+  const canonical = listMobilityModes().map((mode) => mode.id);
+  assert.ok(canonical.includes('ferry'));
+  assert.ok(canonical.includes('trolleybus'));
+  assert.ok(canonical.includes('regional_rail'));
+
+  const scheduler = new MobilityScheduler();
+  const ownedModes = scheduler.providers.list().flatMap((provider) => [...provider.modes]).sort();
+  assert.deepEqual(ownedModes, ['brt', 'bus', 'car', 'metro', 'tram']);
+
+  const fixture = providerFixture();
+  fixture.transit.setEnabled(fixture.lineId, false);
+  fixture.context.multimodalGraph.rebuild(fixture.roadGraph, fixture.transit, () => 30, fixture.context.costEpoch);
+  const noCar = mobilityRequest({
+    ...fixture.request,
+    capabilities: mobilityCapabilities({ privateVehicleAccess: false, licensedDriver: false }),
+  });
+  const alternatives = scheduler.providers.list().flatMap((provider) => provider.buildAlternatives(noCar, fixture.context));
+  assert.deepEqual(alternatives, []);
+  assert.deepEqual(scheduler.orchestrator.resolveAndExecute(noCar, fixture.context), { outcome: 'unmet', alternative: null });
 });
