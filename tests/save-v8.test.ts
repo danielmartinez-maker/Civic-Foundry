@@ -66,6 +66,20 @@ test('V7 current-load migration creates deterministic neutral legacy-flat world 
   assert.deepEqual(serializeCore(first), serializeCore(second));
 });
 
+test('V8 and V7 hydration rebuild canonical cadastre from restored legacy land state', () => {
+  const core = legacyCity();
+  const expectedParcels = core.cadastre.listParcels();
+  const expectedLots = core.lots.list();
+  assert.deepEqual(expectedParcels.map((parcel) => parcel.id), ['parcel:3,4']);
+  assert.deepEqual(expectedLots.map((lot) => lot.id), ['lot:3,4']);
+
+  for (const save of [serializeCore(core), serializeCoreV7(core)]) {
+    const loaded = hydrateCore(structuredClone(save));
+    assert.deepEqual(loaded.cadastre.listParcels(), expectedParcels);
+    assert.deepEqual(loaded.lots.list(), expectedLots);
+  }
+});
+
 test('V8 rejects corrupt world terrain length and compatibility divergence', () => {
   const save = structuredClone(serializeCore(new SimulationCore({ width: 12, height: 8, seed: 33 })));
   const badTerrain = structuredClone(save);
