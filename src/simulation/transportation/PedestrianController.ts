@@ -101,8 +101,9 @@ export class PedestrianController {
       const walk = input.walkCrossingIds.has(crossingId);
       const demand = input.demandByCrossing[crossingId] ?? 0;
       if (walk) {
+        const continuingWalk = current.interval === 'walk';
         current.interval = 'walk';
-        current.elapsedTicks = current.interval === 'walk' ? current.elapsedTicks + 1 : 1;
+        current.elapsedTicks = continuingWalk ? current.elapsedTicks + 1 : 1;
         current.occupancyWeight += demand;
         continue;
       }
