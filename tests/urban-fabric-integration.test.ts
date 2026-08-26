@@ -14,7 +14,7 @@ function flatTerrain(width = 12, height = 8): TerrainGrid {
   return new TerrainGrid(width, height, cells);
 }
 
-test('simulation development enumerates cadastral parcels and keeps lot view derived', () => {
+test('simulation owns cadastral parcels while legacy lot view preserves cell identity', () => {
   const core = new SimulationCore({ terrain: flatTerrain(), startingFunds: 150_000, seed: 7 });
   core.buildRoad(Array.from({ length: 8 }, (_, index) => ({ x: index + 2, y: 4 })), 'local');
   core.paintZone([
@@ -27,13 +27,11 @@ test('simulation development enumerates cadastral parcels and keeps lot view der
   const cadastre = (core as SimulationCore & { readonly cadastre?: CadastralGraph }).cadastre;
   assert.ok(cadastre, 'SimulationCore must expose the canonical cadastral graph');
 
-  const parcels = cadastre.listParcels();
-  assert.ok(parcels.length > 0);
+  const frontageParcels = cadastre.listParcels().filter((parcel) => parcel.frontageEdgeIds.length > 0);
+  assert.equal(frontageParcels.length, 2, 'three compatible legacy cells should be represented by two canonical parcels');
   assert.deepEqual(
-    core.lots.list().map((lot) => lot.id).sort(),
-    parcels
-      .filter((parcel) => parcel.frontageEdgeIds.length > 0)
-      .map((parcel) => parcel.id)
-      .sort(),
+    core.lots.list().map((lot) => lot.id),
+    ['lot:3,3', 'lot:4,3', 'lot:5,3'],
+    'legacy lot facade must preserve V7/V8 cell IDs while deriving from cadastral frontage',
   );
 });
