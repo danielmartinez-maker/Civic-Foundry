@@ -94,7 +94,7 @@ test('four-leg surface junction derives one stable pedestrian crossing per leg w
   );
   for (const crossing of crossings) {
     assert.equal(crossing.crossedCarriagewayIds.length, 2);
-    assert.equal(crossing.lengthMeters, 7.2);
+    assert.equal(crossing.crossingLengthMeters, 7.2);
   }
 });
 
