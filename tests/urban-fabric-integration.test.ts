@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 import type { CadastralGraph } from '../src/world/cadastre/CadastralGraph.ts';
+import { LEGACY_CELL_SIZE_METERS, pointInPolygon } from '../src/world/cadastre/Geometry.ts';
 import { districtForLegacyZone } from '../src/simulation/zoning/ZoningDistrictCatalog.ts';
 import { BUILDING_TYPOLOGIES } from '../src/data/buildingTypologies.ts';
 
@@ -31,16 +32,28 @@ test('simulation owns cadastral parcels while legacy lot view preserves cell ide
 
   const frontageParcels = cadastre.listParcels().filter((parcel) => parcel.frontageEdgeIds.length > 0);
   assert.equal(frontageParcels.length, 1, 'three contiguous compatible frontage cells should form one canonical parcel');
+  const legacyLots = core.lots.list();
   assert.deepEqual(
-    core.lots.list().map((lot) => lot.id),
+    legacyLots.map((lot) => lot.id),
     ['lot:3,3', 'lot:4,3', 'lot:5,3'],
     'legacy lot facade must preserve V7/V8 cell IDs while deriving from cadastral frontage',
   );
-  assert.deepEqual(
-    core.lots.list().map((lot) => lot.parcelId),
-    [frontageParcels[0]!.id, frontageParcels[0]!.id, frontageParcels[0]!.id],
-    'all legacy frontage lots should resolve to the same canonical parcel',
+  assert.equal(
+    legacyLots.some((lot) => Object.prototype.hasOwnProperty.call(lot, 'parcelId')),
+    false,
+    'legacy lot facade must not gain a Task 13-only identity field',
   );
+  const canonicalPolygon = cadastre.parcelPolygon(frontageParcels[0]!.id);
+  for (const lot of legacyLots) {
+    assert.equal(
+      pointInPolygon({
+        x: (lot.x + 0.5) * LEGACY_CELL_SIZE_METERS,
+        y: (lot.y + 0.5) * LEGACY_CELL_SIZE_METERS,
+      }, canonicalPolygon),
+      true,
+      `${lot.id} should resolve geometrically inside ${frontageParcels[0]!.id}`,
+    );
+  }
 });
 
 test('SimulationCore exposes the parcel envelope and massing runtime pipeline', () => {
