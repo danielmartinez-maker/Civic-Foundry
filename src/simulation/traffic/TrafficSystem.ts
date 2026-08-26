@@ -279,25 +279,13 @@ export class TrafficSystem {
       if (vehicle.status === 'queued') vehicle.accumulatedDelayTicks++;
     }
 
-    const queuedNodes = Object.keys(intersections.snapshot()).sort();
-    for (const nodeId of queuedNodes) {
-      const released = intersections.stepNode(graph, nodeId, tick);
-      for (const vehicleId of released) {
-        const vehicle = this.vehicles.get(vehicleId);
-        if (!vehicle || vehicle.status !== 'queued') continue;
-        vehicle.currentEdgeIndex++;
-        vehicle.edgeProgressTicks = 0;
-        vehicle.status = 'moving';
-        delete vehicle.queuedNodeId;
-        intersections.removeVehicle(vehicleId);
-      }
-    }
-
     this.edgeMetrics = this.calculateEdgeMetrics(graph, extraEdgeLoads);
     if (tick % 10 === 0) this.congestionEpoch++;
     const metricByEdge = new Map(this.edgeMetrics.map((metric) => [metric.edgeId, metric]));
 
-    const moving = [...this.vehicles.values()].filter((vehicle) => vehicle.status === 'moving').sort((a, b) => a.id.localeCompare(b.id));
+    const moving = [...this.vehicles.values()]
+      .filter((vehicle) => vehicle.status === 'moving')
+      .sort((a, b) => a.id.localeCompare(b.id));
     for (const vehicle of moving) {
       const edgeId = vehicle.edgeIds[vehicle.currentEdgeIndex];
       if (!edgeId) {
