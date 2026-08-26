@@ -189,20 +189,24 @@ function groupParcelCells(component: readonly Cell[], roads: RoadSystem): readon
   const byKey = new Map(component.map((cell) => [cellKey(cell.x, cell.y), cell]));
   const assigned = new Set<string>();
   const groups: Cell[][] = [];
-  for (const cell of component) {
-    const key = cellKey(cell.x, cell.y);
-    if (assigned.has(key)) continue;
-    assigned.add(key);
-    const group = [cell];
-    const frontage = frontageSides(cell, roads);
-    for (const direction of CARDINAL) {
-      const neighborKey = cellKey(cell.x + direction.dx, cell.y + direction.dy);
-      const neighbor = byKey.get(neighborKey);
-      if (!neighbor || assigned.has(neighborKey) || neighbor.zone !== cell.zone) continue;
-      if (!compatibleFrontage(frontage, frontageSides(neighbor, roads))) continue;
-      assigned.add(neighborKey);
-      group.push(neighbor);
-      break;
+  for (const start of component) {
+    const startKey = cellKey(start.x, start.y);
+    if (assigned.has(startKey)) continue;
+    assigned.add(startKey);
+    const queue: Cell[] = [start];
+    const group: Cell[] = [];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      group.push(current);
+      const frontage = frontageSides(current, roads);
+      for (const direction of CARDINAL) {
+        const neighborKey = cellKey(current.x + direction.dx, current.y + direction.dy);
+        const neighbor = byKey.get(neighborKey);
+        if (!neighbor || assigned.has(neighborKey) || neighbor.zone !== current.zone) continue;
+        if (!compatibleFrontage(frontage, frontageSides(neighbor, roads))) continue;
+        assigned.add(neighborKey);
+        queue.push(neighbor);
+      }
     }
     group.sort(compareCells);
     groups.push(group);

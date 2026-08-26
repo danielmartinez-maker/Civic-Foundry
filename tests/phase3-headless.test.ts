@@ -14,15 +14,16 @@ function flatTerrain(width = 40, height = 24): TerrainGrid {
 function buildComparisonCity(roadType: RoadType, seed = 123): SimulationCore {
   const core = new SimulationCore({ terrain: flatTerrain(), startingFunds: 1_000_000, seed });
   assert.equal(core.buildRoad(Array.from({ length: 40 }, (_, x) => ({ x, y: 12 })), roadType).ok, true);
-  for (let x = 3; x <= 12; x++) core.paintZone([{ x, y: 11 }], 'residential');
-  for (let x = 24; x <= 28; x++) core.paintZone([{ x, y: 11 }], 'commercial');
-  for (let x = 29; x <= 33; x++) core.paintZone([{ x, y: 11 }], 'industrial');
+  for (const x of [3, 5, 7, 9, 11]) core.paintZone([{ x, y: 11 }], 'residential');
+  for (const x of [24, 26, 28]) core.paintZone([{ x, y: 11 }], 'commercial');
+  for (const x of [29, 31, 33]) core.paintZone([{ x, y: 11 }], 'industrial');
   for (const [x, y] of [[5, 13], [8, 13], [11, 13]] as const) assert.equal(core.placeUtility('power', x, y).ok, true);
   for (const [x, y] of [[14, 13], [17, 13], [20, 13]] as const) assert.equal(core.placeUtility('water', x, y).ok, true);
   for (const [x, y] of [[23, 13], [26, 13], [29, 13]] as const) assert.equal(core.placeUtility('landfill', x, y).ok, true);
   core.taxes.setRate('residential', 0.12);
   core.taxes.setRate('commercial', 0.12);
   core.taxes.setRate('industrial', 0.12);
+  assert.equal(core.cadastre.listParcels().length, 11, 'comparison fixture must represent eleven independent canonical development sites');
   return core;
 }
 

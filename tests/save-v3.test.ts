@@ -12,14 +12,16 @@ function flatTerrain(width = 24, height = 14): TerrainGrid {
 function managedCore(): SimulationCore {
   const core = new SimulationCore({ terrain: flatTerrain(), startingFunds: 300_000, seed: 91 });
   core.buildRoad(Array.from({ length: 18 }, (_, i) => ({ x: i + 2, y: 7 })), 'collector');
-  core.paintZone([{ x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 }], 'residential');
-  core.paintZone([{ x: 10, y: 6 }, { x: 11, y: 6 }], 'commercial');
-  core.paintZone([{ x: 15, y: 6 }, { x: 16, y: 6 }], 'industrial');
+  core.paintZone([{ x: 3, y: 6 }, { x: 5, y: 6 }, { x: 7, y: 6 }], 'residential');
+  core.paintZone([{ x: 10, y: 6 }, { x: 12, y: 6 }], 'commercial');
+  core.paintZone([{ x: 15, y: 6 }, { x: 17, y: 6 }], 'industrial');
   assert.equal(core.placeUtility('power', 4, 8).ok, true);
   assert.equal(core.placeUtility('water', 9, 8).ok, true);
   assert.equal(core.placeUtility('landfill', 14, 8).ok, true);
   core.taxes.setRate('residential', 0.12);
   core.step(200);
+  for (let i = 0; i < 1_000 && core.traffic.activeVehicles.length === 0; i++) core.step(1);
+  assert.ok(core.cadastre.listParcels().length >= 7, 'save fixture must retain distinct canonical trip origins and destinations');
   return core;
 }
 

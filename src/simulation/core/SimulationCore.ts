@@ -2,6 +2,7 @@ import { SimulationCore as LegacySimulationCore } from './LegacySimulationCore.t
 import type { CellCoord, ZoneType } from './types.ts';
 import { RandomStreamRegistry } from '../kernel/RandomStreamRegistry.ts';
 import { DevelopmentFeasibilitySystem } from '../development/DevelopmentFeasibilitySystem.ts';
+import type { DevelopmentAward, DevelopmentFeasibilityResult, PhysicalDevelopmentContext } from '../development/DevelopmentTypes.ts';
 import { HighestBestUseSystem } from '../development/HighestBestUseSystem.ts';
 import { PropertyMarketSystem } from '../development/PropertyMarketSystem.ts';
 import { SiteAssemblySystem } from '../development/SiteAssemblySystem.ts';
@@ -12,7 +13,9 @@ import { BuildingMassingSystem } from '../buildings/BuildingMassingSystem.ts';
 import { BuildingLifecycleSystem } from '../buildings/BuildingLifecycleSystem.ts';
 import { RenovationSystem } from '../buildings/RenovationSystem.ts';
 import { NEW_BUILDING_LIFECYCLE, type BuildingV2 } from '../buildings/BuildingTypes.ts';
+import { BUILDING_VARIANTS, getBuildingDefinition } from '../../data/buildings.ts';
 import { typologyForLegacyDefinition } from '../../data/buildingTypologies.ts';
+import type { Lot } from '../../world/lots/LotSystem.ts';
 import { WorldFoundation } from '../../world/foundation/WorldFoundation.ts';
 import { CadastralGraph } from '../../world/cadastre/CadastralGraph.ts';
 import { ParcelGenerationSystem } from '../../world/cadastre/ParcelGenerationSystem.ts';
@@ -44,6 +47,7 @@ type HydrationOverride = Readonly<{
 }>;
 
 const hydrationOverrides: HydrationOverride[] = [];
+const LEGACY_CELL_AREA_M2 = LEGACY_CELL_SIZE_METERS * LEGACY_CELL_SIZE_METERS;
 
 export function withSimulationCoreHydrationOverride<T>(override: HydrationOverride, operation: () => T): T {
   hydrationOverrides.push(override);
@@ -197,6 +201,110 @@ export class SimulationCore extends LegacySimulationCore {
     this.reconcileCanonicalBuildingProjection();
   }
 
+  protected override collectVacantDevelopmentOpportunities(
+    lots: readonly Lot[],
+    occupiedLots: ReadonlySet<string>,
+  ): DevelopmentFeasibilityResult[] {
+    const opportunities: DevelopmentFeasibilityResult[] = [];
+    const parcels = [...this.cadastre.listParcels()].sort((left, right) => left.id.localeCompare(right.id));
+
+    for (const parcel of parcels) {
+      const zone = legacyZoneForParcel(parcel);
+      if (!zone || this.demandSnapshot[zone] <= 0.05) continue;
+      const parcelLots = this.compatibilityLotsForParcel(parcel, lots);
+      if (parcelLots.length === 0 || parcelLots.some((lot) => occupiedLots.has(lot.id))) continue;
+      const compatibilityLot = parcelLots[0]!;
+      const legacyEvaluations = super.collectVacantDevelopmentOpportunities([compatibilityLot], occupiedLots);
+      if (legacyEvaluations.length === 0) continue;
+
+      const legalDefinitionIds = new Set(
+        legacyEvaluations.filter((evaluation) => evaluation.legal).map((evaluation) => evaluation.definitionId),
+      );
+      const typologies = BUILDING_VARIANTS[zone]
+        .filter((definition) => legalDefinitionIds.has(definition.id))
+        .map((definition) => typologyForLegacyDefinition(definition.id));
+      if (typologies.length === 0) continue;
+
+      const district = districtForLegacyZone(zone);
+      const envelope = this.buildableEnvelopes.evaluate(parcel.id, this.cadastre, district);
+      const candidates = this.buildingMassing.generate(parcel, envelope, typologies);
+      const legacyByDefinitionId = new Map(legacyEvaluations.map((evaluation) => [evaluation.definitionId, evaluation] as const));
+      const marketContext = this.developmentContextForLot(compatibilityLot);
+      const siteScale = parcel.areaM2 / LEGACY_CELL_AREA_M2;
+
+      for (const candidate of candidates) {
+        const typology = typologies.find((item) => item.id === candidate.typologyId);
+        const legacyDefinitionId = typology?.legacyDefinitionId;
+        if (!typology || !legacyDefinitionId) continue;
+        const legacyEvaluation = legacyByDefinitionId.get(legacyDefinitionId);
+        if (!legacyEvaluation) continue;
+        const definition = getBuildingDefinition(legacyDefinitionId);
+        const rentableCapacity = Math.max(1, definition.residentCapacity + definition.jobCapacity);
+        const prePolicyGrossPotentialRent = definition.baseRent
+          * marketContext.marketRentMultiplier
+          * rentableCapacity
+          * siteScale;
+        const averageMarketRentPerM2 = prePolicyGrossPotentialRent / candidate.usableFloorAreaM2;
+        const marketRentPerM2ByUse = Object.freeze(Object.fromEntries(
+          candidate.uses.map((use) => [use, averageMarketRentPerM2]),
+        )) as PhysicalDevelopmentContext['marketRentPerM2ByUse'];
+        const constructionCostIndex = legacyEvaluation.hardConstructionCost
+          / Math.max(1, definition.baseConstructionCost * definition.complexityFactor);
+        const physicalContext: PhysicalDevelopmentContext = {
+          taxRate: marketContext.taxRate,
+          personAccessibility: marketContext.personAccessibility,
+          freightAccessibility: marketContext.freightAccessibility,
+          serviceQuality: marketContext.serviceQuality,
+          neighborhoodQuality: marketContext.neighborhoodQuality,
+          utilityRatio: marketContext.utilityRatio,
+          constructionCostIndex,
+          marketInterestRate: marketContext.marketInterestRate,
+          marketVacancyRate: marketContext.marketVacancyRate,
+          landValuePerM2: legacyEvaluation.landValue / LEGACY_CELL_AREA_M2,
+          marketRentPerM2ByUse,
+          demolitionCost: 0,
+          relocationCost: 0,
+          sitePreparationCost: legacyEvaluation.sitePreparationCost * siteScale,
+          developerLeverage: 0.55,
+          financingSpread: 0,
+          policyAffordableHousingShare: marketContext.policyAffordableHousingShare,
+          policyDevelopmentFeeRate: marketContext.policyDevelopmentFeeRate,
+          policyPermittingCostReduction: marketContext.policyPermittingCostReduction,
+        };
+        opportunities.push(this.developmentFeasibility.evaluateCandidate(candidate, parcel, physicalContext));
+      }
+    }
+
+    return opportunities;
+  }
+
+  protected override developmentLotForAward(
+    award: DevelopmentAward,
+    lotsById: ReadonlyMap<string, Lot>,
+  ): Lot | undefined {
+    const direct = super.developmentLotForAward(award, lotsById);
+    if (direct) return direct;
+    if (!award.physicalCandidateId) return undefined;
+    const parcel = this.cadastre.getParcel(award.lotId);
+    if (!parcel) return undefined;
+    return this.compatibilityLotsForParcel(parcel, [...lotsById.values()])[0];
+  }
+
+  protected override compatibilityAwardForLot(award: DevelopmentAward, lot: Lot): DevelopmentAward {
+    if (award.lotId === lot.id) return award;
+    if (!award.physicalCandidateId || !this.cadastre.getParcel(award.lotId)) return award;
+    const definition = getBuildingDefinition(award.definitionId);
+    if (definition.zone !== lot.zone) throw new Error(`canonical award zone does not match compatibility lot: ${award.lotId}`);
+    const completionTick = this.clock.tick + definition.constructionTicks;
+    return Object.freeze({
+      ...award,
+      lotId: lot.id,
+      buildingId: `building:${lot.id}`,
+      completionTick,
+      releaseTick: completionTick + 100,
+    });
+  }
+
   runDesignStorm(event: DesignStormEvent): FloodResult {
     const started: FloodEventStartedPayload = { eventId: event.id, rainfallMm: event.rainfallMm, durationHours: event.durationHours };
     this.kernel.events.append(this.clock.tick, { type: 'FloodEventStarted', source: 'world', payload: started });
@@ -220,6 +328,16 @@ export class SimulationCore extends LegacySimulationCore {
     this.cadastre.replaceSnapshot(this.parcelGeneration.rebuild(this.terrain, this.roads, this.zoning));
     this.lots.rebuildFromCadastre(this.cadastre, legacyZoneForParcel);
     this.reconcileCanonicalBuildingProjection();
+  }
+
+  private compatibilityLotsForParcel(parcel: Parcel, lots: readonly Lot[]): Lot[] {
+    const polygon = this.cadastre.parcelPolygon(parcel.id);
+    return lots
+      .filter((lot) => pointInPolygon({
+        x: (lot.x + 0.5) * LEGACY_CELL_SIZE_METERS,
+        y: (lot.y + 0.5) * LEGACY_CELL_SIZE_METERS,
+      }, polygon))
+      .sort((left, right) => left.id.localeCompare(right.id));
   }
 
   private reconcileCanonicalBuildingProjection(): void {

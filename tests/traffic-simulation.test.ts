@@ -136,13 +136,14 @@ import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 test('SimulationCore generates, routes, and advances traffic from the managed city loop', () => {
   const core = new SimulationCore({ terrain: flatTerrain(22, 14), startingFunds: 250_000, seed: 33 });
   assert.equal(core.buildRoad(Array.from({ length: 16 }, (_, i) => ({ x: i + 2, y: 7 })), 'collector').ok, true);
-  core.paintZone([{ x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 }], 'residential');
-  core.paintZone([{ x: 10, y: 6 }, { x: 11, y: 6 }], 'commercial');
-  core.paintZone([{ x: 14, y: 6 }, { x: 15, y: 6 }], 'industrial');
+  core.paintZone([{ x: 3, y: 6 }, { x: 5, y: 6 }, { x: 7, y: 6 }], 'residential');
+  core.paintZone([{ x: 10, y: 6 }, { x: 12, y: 6 }], 'commercial');
+  core.paintZone([{ x: 14, y: 6 }, { x: 16, y: 6 }], 'industrial');
   assert.equal(core.placeUtility('power', 4, 8).ok, true);
   assert.equal(core.placeUtility('water', 8, 8).ok, true);
   assert.equal(core.placeUtility('landfill', 13, 8).ok, true);
   core.step(1600);
+  assert.ok(core.cadastre.listParcels().length >= 7, 'fixture must retain distinct canonical trip origins and destinations');
   assert.ok(core.transportationGraph.edges.length > 0);
   assert.ok(core.pathfinding.diagnostics.requests > 0);
   assert.ok(core.traffic.completedTrips + core.traffic.activeVehicles.length > 0);

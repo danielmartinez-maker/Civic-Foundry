@@ -138,7 +138,8 @@ test('SimulationCore integrates roads, zoning, lots, development, and population
   assert.equal(core.placeUtility('water', 3, 5).ok, true);
   assert.equal(core.placeUtility('landfill', 4, 5).ok, true);
   core.step(120);
+  assert.equal(core.cadastre.listParcels().length, 1, 'contiguous same-zone frontage is one canonical development site');
   assert.deepEqual(core.lots.list().map((lot) => lot.id), ['lot:2,3', 'lot:3,3']);
-  assert.equal(core.buildings.occupied().length, 2);
+  assert.equal(core.buildings.occupied().length, 1, 'development materializes once per canonical parcel');
   assert.ok(core.population.population > 0);
 });
