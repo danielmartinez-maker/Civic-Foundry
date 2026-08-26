@@ -4,7 +4,7 @@
 
 **Goal:** Re-stack PR #72 onto the current Phase 0B forward-port, preserve World Foundation Save V8, and ship Personhood as the next persistence layer, expected Save V9.
 
-**Architecture:** PR #89 is the dependency spine. Port only the isolated Person domain wholesale; reconcile runtime and persistence surgically against the newer wrapper-based `SimulationCore`. Direct V8 APIs stay pure; the canonical `hydrateCore` router upgrades V8/older runtime state into Personhood exactly once, while V9 restores exact Person identity without bootstrap.
+**Architecture:** PR #89 is the dependency spine. Port only the isolated Person domain wholesale; reconcile runtime and persistence surgically against the newer wrapper-based `SimulationCore`. Direct V8 APIs stay pure; canonical `hydrateCore` upgrades V8 and older runtime state into Personhood exactly once, while V9 restores exact Person identity without bootstrap.
 
 **Tech Stack:** TypeScript 5.x ES modules, Node 22 built-in test runner with `--experimental-strip-types`, `SimulationKernel`, Phase 0B `EntityRegistry`, World Foundation Save V8, deterministic named RNG streams.
 
@@ -23,7 +23,7 @@
 - World Foundation remains the physical/geographic authority.
 - Preserve the forward-port kernel fault behavior and newer mainline simulation code.
 - Do not modify `main`, PR #20, or PR #63.
-- Do not implement later Human Simulation systems.
+- Do not implement families, schedules, jobs, education, health, memory, motivations, inheritance, UI person workflows, or person-level travel.
 
 ---
 
@@ -97,10 +97,7 @@ Expected: exit 0.
 - [ ] **Step 1: Restore tests only**
 
 ```bash
-git checkout archive/phase-3r-personhood-core-pre-v9 -- \
- tests/person-types.test.ts tests/person-store.test.ts tests/person-entity-registry.test.ts \
- tests/person-bootstrap.test.ts tests/person-population-projection.test.ts tests/person-invariants.test.ts \
- tests/person-persistence.test.ts
+git checkout archive/phase-3r-personhood-core-pre-v9 -- tests/person-types.test.ts tests/person-store.test.ts tests/person-entity-registry.test.ts tests/person-bootstrap.test.ts tests/person-population-projection.test.ts tests/person-invariants.test.ts tests/person-persistence.test.ts
 ```
 
 - [ ] **Step 2: Verify RED**
@@ -150,8 +147,8 @@ git commit -m "feat: port personhood domain onto forward-port"
 - `SimulationCore.getPersonSnapshot(): PersonSnapshot`
 - `SimulationCore.getPersonSavePayload(): PersonSavePayload`
 - `SimulationCore.restorePersonhoodAuthority(input: unknown): void`
-- `SimulationKernel.registerPersonDiagnostics(store, registry): void`
-- `PopulationSystem.attachPersonProjection(projection): void`
+- `SimulationKernel.registerPersonDiagnostics(store: PersonStore, registry: EntityRegistry): void`
+- `PopulationSystem.attachPersonProjection(projection: PersonPopulationProjection): void`
 
 - [ ] **Step 1: Restore the runtime contract test and verify RED**
 
@@ -183,7 +180,7 @@ attachPersonProjection(projection: PersonPopulationProjection): void {
 }
 ```
 
-Preserve the current legacy scalar field as `legacyPopulation`. At the start of `update` and `restore`, add:
+Preserve the current scalar as `legacyPopulation`. At the start of `update` and `restore`, add:
 
 ```ts
 if (this.personProjection) throw new Error('population is person-derived');
@@ -220,9 +217,9 @@ registerPersonDiagnostics(store: PersonStore, registry: EntityRegistry): void {
 }
 ```
 
-Do not copy the archived kernel implementation wholesale; keep the forward-port `fault` field and all existing fault guards/catch behavior.
+Do not copy the archived kernel wholesale; keep the forward-port `fault` field and fault guards/catch behavior.
 
-- [ ] **Step 4: Add Person authority fields to the wrapper `SimulationCore`**
+- [ ] **Step 4: Add Person authority to the wrapper `SimulationCore`**
 
 Add imports:
 
@@ -294,7 +291,7 @@ restorePersonhoodAuthority(input: unknown): void {
 }
 ```
 
-Do not call `rebuildEntityProjection()` as part of Person creation/restore: `PersonEntityBridge` owns the `person` partition directly and legacy projection owns its separate kinds.
+Do not call `rebuildEntityProjection()` here; `PersonEntityBridge` owns the separate `person` partition directly.
 
 - [ ] **Step 5: Verify GREEN and commit**
 
@@ -315,10 +312,10 @@ git commit -m "feat: integrate personhood authority with current runtime"
 - Preserve unchanged: `src/save/saveV8.ts`
 
 **Interfaces:**
-- Produces: `SaveV9`, `serializeCoreV9`, `hydrateCoreV9`.
+- Produces: `SaveV9`, `serializeCoreV9(core, baseV8?)`, `hydrateCoreV9(input)`.
 - Canonical `hydrateCore` migrates V8/older to Personhood; direct `hydrateCoreV8` remains Personhood-free.
 
-- [ ] **Step 1: Write the failing V9 contract test**
+- [ ] **Step 1: Write the failing V9 contracts**
 
 Create `tests/save-v9-personhood.test.ts`:
 
@@ -326,7 +323,7 @@ Create `tests/save-v9-personhood.test.ts`:
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  hydrateCore, hydrateCoreV8, serializeCore, serializeCoreV8, serializeCoreV9,
+  hydrateCore, hydrateCoreV8, serializeCore, serializeCoreV7, serializeCoreV8, serializeCoreV9,
 } from '../src/save/save.ts';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { flatTerrain } from './support/kernelParity.ts';
@@ -367,6 +364,16 @@ test('canonical hydration migrates V8 to Personhood exactly once', () => {
   assert.equal(restored.kernel.random.listNames().includes('demographics/person-bootstrap'), false);
 });
 
+test('canonical V7 migration passes through World Foundation before Personhood', () => {
+  const v7 = serializeCoreV7(coreWithPopulation(13));
+  const migrated = hydrateCore(structuredClone(v7));
+  assert.equal(migrated.isPersonhoodAuthorityEnabled(), true);
+  assert.equal(migrated.world.diagnosticSnapshot().migrationMode, 'legacy-flat');
+  assert.equal(migrated.getPersonSnapshot().population, 13);
+  assert.equal(migrated.getPersonSnapshot().people.every((person) => person.provenance === 'bootstrap_background'), true);
+  assert.equal(serializeCore(migrated).saveVersion, 9);
+});
+
 test('enabled Personhood serializes as V9 with the V8 world envelope', () => {
   const core = coreWithPopulation(25);
   core.enablePersonhoodAuthority();
@@ -385,6 +392,8 @@ test('V9 exact restore rejects population mismatch before authority activation',
   assert.throws(() => hydrateCore(corrupt), /person.*population|population.*person/i);
 });
 ```
+
+If `WorldFoundation.diagnosticSnapshot()` exposes the legacy migration mode under a different existing field, assert the existing `WorldMigratedTo1R` diagnostic/event instead; do not invent a new production field solely for this test.
 
 - [ ] **Step 2: Verify RED**
 
@@ -422,11 +431,7 @@ export function hydrateCoreV9(input: unknown): SimulationCore {
   if (!isRecord(input.personhood)) throw new Error('personhood must be an object');
   const save = input as unknown as SaveV9;
   const { personhood, ...withoutPersonhood } = save;
-  const v8: SaveV8 = {
-    ...withoutPersonhood,
-    saveVersion: 8,
-    gameVersion: '0.8.0-world-foundation',
-  };
+  const v8: SaveV8 = { ...withoutPersonhood, saveVersion: 8, gameVersion: '0.8.0-world-foundation' };
   const core = hydrateCoreV8(v8);
   core.restorePersonhoodAuthority(personhood);
   return core;
@@ -453,9 +458,9 @@ export function hydrateCore(input: unknown): SimulationCore {
 }
 ```
 
-This is deliberate: `hydrateCoreV9` delegates V8/older input to `hydrateCoreV8` and then performs the one-time Personhood cutover. Callers that explicitly need a pure V8 compatibility load continue to call `hydrateCoreV8` directly.
+This is deliberate: canonical hydration owns migration policy. Direct `hydrateCoreV8` callers retain a pure compatibility load.
 
-- [ ] **Step 5: Verify V9 and V8 contracts**
+- [ ] **Step 5: Verify V9, V8, and lower-version contracts**
 
 ```bash
 node --experimental-strip-types --test tests/save-v9-personhood.test.ts tests/person-persistence.test.ts tests/person-core-integration.test.ts
@@ -473,16 +478,16 @@ git commit -m "feat: extend world saves with personhood v9"
 
 ---
 
-### Task 5: Add the 100k determinism/correctness gate
+### Task 5: Add 100k CI determinism and 1M architecture stress gates
 
 **Files:**
 - Create: `tests/person-performance.test.ts`
+- Create: `tools/personhood_stress.ts`
 
 **Interfaces:**
-- Consumes: deterministic bootstrap, PersonStore, EntityRegistry, Person snapshots.
-- Produces: 100,000-resident CI correctness/determinism gate.
+- Produces: 100,000-resident CI correctness/determinism gate and a manual 1,000,000-resident architecture stress probe.
 
-- [ ] **Step 1: Write the gate**
+- [ ] **Step 1: Create the 100k CI gate**
 
 ```ts
 import assert from 'node:assert/strict';
@@ -507,20 +512,50 @@ test('100k Personhood bootstrap is deterministic and population-conserving', () 
 });
 ```
 
-- [ ] **Step 2: Run the gate twice**
+- [ ] **Step 2: Run the 100k gate twice**
 
 ```bash
 node --experimental-strip-types --test tests/person-performance.test.ts
 node --experimental-strip-types --test tests/person-performance.test.ts
 ```
 
-Expected: both PASS. If it fails on runtime cost, profile the exact Person bootstrap/store/registry path before optimizing; do not reduce population or disable invariants to pass.
+Expected: both PASS. If runtime cost fails the existing CI budget, profile Person bootstrap/store/registry before optimizing; do not reduce population or disable invariants.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 3: Create a manual 1M stress probe outside `tests/*.test.ts`**
+
+Create `tools/personhood_stress.ts`:
+
+```ts
+import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
+import { TerrainGrid } from '../src/world/terrain/TerrainGrid.ts';
+
+const population = 1_000_000;
+const terrain = TerrainGrid.flat(16, 10);
+const core = new SimulationCore({ terrain, seed: 1907, startingFunds: 1_000_000 });
+core.population.restore(population);
+const started = performance.now();
+core.enablePersonhoodAuthority();
+const elapsedMs = performance.now() - started;
+if (core.population.population !== population) throw new Error('1M population conservation failed');
+if (core.entityRegistry.listActive('person').length !== population) throw new Error('1M entity registration failed');
+console.log(JSON.stringify({ population, elapsedMs, people: core.getPersonSnapshot().people.length }));
+```
+
+If the existing `TerrainGrid` flat factory has a different name, use the existing flat-terrain constructor from current World Foundation tests; do not add a new terrain API for this probe.
+
+Run manually:
 
 ```bash
-git add tests/person-performance.test.ts src/simulation/people
-git commit -m "test: gate personhood at 100k residents"
+node --experimental-strip-types tools/personhood_stress.ts
+```
+
+This is an architecture stress tier, not part of normal `npm test`.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add tests/person-performance.test.ts tools/personhood_stress.ts src/simulation/people
+git commit -m "test: gate personhood scale and determinism"
 ```
 
 ---
@@ -570,7 +605,7 @@ git merge-base --is-ancestor origin/civic-2.0-phase-0b-forward-port HEAD
 git diff --name-only origin/civic-2.0-phase-0b-forward-port...HEAD
 ```
 
-Expected: only Phase 3R Personhood, its runtime/save integration, tests, and approved docs.
+Expected: only Phase 3R Personhood, runtime/save integration, tests, tools, and approved docs.
 
 - [ ] **Step 5: Push and verify the exact GitHub Actions run for HEAD**
 
@@ -586,9 +621,10 @@ Do not declare completion until GitHub Actions for that exact SHA is green.
 - PR #72 targets `civic-2.0-phase-0b-forward-port`.
 - Archive branch preserves the old Phase 3R head.
 - V8 remains World Foundation-only.
-- Canonical V8/older hydration performs one-time deterministic Personhood migration.
+- Canonical V8 and V7/older hydration performs one-time deterministic Personhood migration through existing World Foundation migration.
 - Direct `hydrateCoreV8` stays Personhood-free.
 - V9 exact restore reproduces people without bootstrap RNG.
 - Person-derived population and EntityRegistry identity invariants hold.
-- 100k deterministic gate passes.
+- 100k deterministic CI gate passes.
+- 1M architecture stress probe runs without violating identity/population conservation.
 - Tests, typecheck, lint, build, and GitHub Actions are green.
