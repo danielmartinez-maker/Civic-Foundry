@@ -2,15 +2,19 @@
 
 ## Status
 
-**Implementation is re-stacked on the latest Urban Fabric 2.0 parent; final head verification is in progress.**
+**Implementation and acceptance verification are complete on the current green Urban Fabric 2.0 parent.**
 
 Branch: `feature/isometric-pass-b1-urban-depth`
 
 Pull request: #91, stacked on `feature/urban-fabric-2.0` / PR #63.
 
-Re-stack parent: `4005b7fa63707b753cc45fdd4ccc97711a249f58`.
+Verified implementation head: `1f758914af80a7777914d66486a6cfdd8f9fa269`.
 
-The original approved Pass B1 scope is implemented without changing simulation authority or save semantics. Pass A remains an immutable compatibility baseline at 161 entries; Pass B1 adds 138 building presentation entries for a composed runtime total of 299 entries across 9 atlases.
+Stacked parent: `16bfc6731b1ba9ead0aa093d8f132c6608aea790`.
+
+No merge to `main` has been performed.
+
+The approved Pass B1 scope is implemented without changing simulation authority or save semantics. Pass A remains an immutable compatibility baseline at 161 entries; Pass B1 adds 138 building presentation entries for a composed runtime total of 299 entries across 9 atlases.
 
 ## Delivered scope
 
@@ -18,10 +22,14 @@ The original approved Pass B1 scope is implemented without changing simulation a
 
 Pass B1 adds six deterministic mixed-use architectural families:
 
-- three Main Street mixed-use families for `main_street_mixed_use`
-- three podium mixed-use families for `podium_mixed_use`
+- `mix_mainstreet_corner_01`
+- `mix_mainstreet_row_01`
+- `mix_mainstreet_courtyard_01`
+- `mix_podium_slab_01`
+- `mix_podium_tower_01`
+- `mix_podium_courtyard_01`
 
-Each family has five authored condition frames: `new`, `maintained`, `aging`, `neglected`, and `abandoned`.
+The three Main Street families serve `main_street_mixed_use`; the three podium families serve `podium_mixed_use`. Each family has five authored condition frames: `new`, `maintained`, `aging`, `neglected`, and `abandoned`.
 
 ### Existing-building condition depth
 
@@ -49,65 +57,97 @@ The resolver does not create simulation state, modify authoritative state, or al
 
 ### Pass A identity compatibility
 
-A regression discovered during implementation showed that selecting legacy architectural families from the V2 building ID alone could change historical Pass A visual identity. The resolver was corrected to reuse Pass A's existing deterministic selection key and weighted-family behavior for legacy buildings.
+A regression discovered during implementation showed that selecting legacy architectural families from the V2 building ID alone could change historical Pass A visual identity. The resolver was corrected to reuse Pass A's existing deterministic weighted selection key for legacy buildings.
 
-The resulting regression test verifies exact Pass A family parity. Camera rotation is excluded from architectural identity selection, and lifecycle deterioration changes only the condition frame, not the selected architectural family.
+The regression suite verifies exact Pass A family parity. Camera rotation is excluded from architectural identity selection, and lifecycle deterioration changes only the condition frame, not the selected architectural family.
 
 ### Asset pipeline
 
 Pass B1 adds `urban_depth_buildings` as a ninth deterministic source atlas. It is generated through the existing procedural isometric art pipeline and rasterized by the existing atlas build tool. The eight Pass A atlas coordinate contracts remain unchanged.
 
-## Verification evidence
+### Rendering performance hardening
 
-The latest fully isolated Pass B1 head verification before parent re-stack was GitHub Actions run **32924247866**.
+The first runtime integration called `BuildingSystem.getV2At()` once for every legacy building in the object-render loop. Because `getV2At()` spatially scans canonical buildings and tests polygon intersections, this repeated canonical reconciliation work could scale toward quadratic behavior as city building counts increased.
 
-That run passed:
+B1 now builds a read-only `CanonicalBuildingVisualIndex` once per object-render pass from authoritative canonical footprints, then performs constant-time keyed lookups by legacy cell while drawing buildings. The index is a presentation projection only: `BuildingV2` remains the simulation authority, and no save or simulation ownership semantics move into rendering.
 
-- 27/27 targeted Pass A + Pass B1 unit tests
-- TypeScript typecheck
+The performance correction followed an explicit TDD sequence:
+
+- RED `9fe422d`: canonical-index test committed before the module existed; targeted CI failed with `ERR_MODULE_NOT_FOUND`.
+- mechanism GREEN `dc988cc`: positive-intersection, overlap-precedence, and input-order tests passed while the renderer integration guard intentionally remained red.
+- integration GREEN `b7967a3`: `ObjectRenderPass` consumed the new index and the guard confirmed the per-building `.getV2At(` hot-loop path was removed.
+
+Regression coverage locks positive footprint-intersection semantics, deterministic lowest-ID precedence when canonical footprints overlap a legacy cell, input-order independence, and renderer use of the index.
+
+## Final verification evidence
+
+### Dedicated Pass B1 gate
+
+GitHub Actions run **32998569395** on verified implementation head `1f758914af80a7777914d66486a6cfdd8f9fa269` completed successfully.
+
+It passed:
+
+- **31/31** Pass A + Pass B1 focused tests
+- B1 TypeScript diagnostic delta against the exact stacked parent
+- repository-wide TypeScript typecheck
 - lint
-- validation of all 9 isometric atlas contracts and procedural source sheets
-- production build and rasterization of all 9 PNG atlases
+- validation of all **9** isometric atlas contracts and procedural source sheets
+- production build and rasterization of all **9** PNG atlases
 - existing Pass A interaction regression smoke
 - Pass B1 browser visual smoke
 
-The Pass B1 browser smoke verified three presentation scenes:
+The B1 visual smoke verifies mixed-use Main Street, podium mixed-use district, and building-condition progression scenes. It also verifies the 299-entry / 9-atlas runtime manifest and no asset diagnostics.
 
-1. mixed-use Main Street
-2. podium mixed-use district
-3. building-condition progression
+### Full repository gate
 
-It also verified at runtime that the composed manifest contains 299 entries and 9 atlases with no asset diagnostics.
+GitHub Actions run **32998569398** on the same B1 implementation head completed successfully.
 
-A fresh verification run is required on the re-stacked head before Pass B1 can be treated as accepted against the latest parent.
+The repository suite reported **580/580 tests passed** with **0 failures**, followed by successful:
+
+- typecheck
+- lint
+- asset-source validation
+- production build
+- Phase 6 browser smoke
+- Phase 7 browser smoke
+- Pass A interaction/browser smoke
+- Pass A eight-scene visual smoke
+
+### Parent gate
+
+Urban Fabric parent `16bfc6731b1ba9ead0aa093d8f132c6608aea790` passed its full repository CI in run **32998374761**. That parent includes the fix preserving multiple grandfathered legacy buildings when frontage cells share one cadastral parcel, clearing the inherited authority regression that previously blocked the stacked full suite.
+
+There is therefore no outstanding inherited CI blocker in the accepted B1 baseline.
 
 ## RED/GREEN defects caught during implementation
 
-The TDD cycle caught and corrected several defects before acceptance:
+The TDD cycle caught and corrected five material defects before acceptance:
 
 1. `AssetRegistry` initially ignored `condition` and `qualityTier` query dimensions.
 2. the Pass B1 atlas contract did not yet exist when first required by tests.
 3. the first legacy visual resolver path could drift from Pass A deterministic building identity.
-4. the first browser visual-smoke fixture depended on sparse cadastral reconstruction and lost one synthetic canonical building; the fixture was corrected to use explicit non-overlapping canonical V2 footprints rather than weakening the smoke assertion.
+4. the first browser visual-smoke fixture depended on sparse cadastral reconstruction and lost one synthetic canonical building; the fixture was corrected to use explicit non-overlapping canonical V2 footprints rather than weakening the assertion.
+5. the first runtime renderer path performed a canonical full scan for each legacy building; the presentation-only canonical visual index removed that hot-loop scaling defect while retaining deterministic spatial semantics.
 
 ## Compatibility and authority invariants
 
 Pass B1 preserves the following invariants:
 
-- Pass A remains a stable presentation baseline.
+- Pass A remains a stable presentation baseline at 161 entries.
 - no `Math.random()` or camera-dependent identity selection is introduced for persistent building art.
 - `BuildingV2` remains authoritative for lifecycle and typology state.
 - presentation code does not manufacture simulation outcomes.
+- the canonical visual index is read-only and does not become a second land/building authority.
 - construction buildings continue to use the existing construction-stage rendering path.
 - no new save-state fields or save-version changes are introduced by Pass B1.
 - the Urban Fabric parent remains the owner of cadastral/building authority work.
 
 ## Parent integration status
 
-PR #91 has been mechanically re-stacked onto Urban Fabric head `4005b7fa63707b753cc45fdd4ccc97711a249f58` without rewriting its existing B1 history. Relative to that parent, the PR contains only the 19-file Pass B1 rendering/art/test/documentation/CI delta.
+PR #91 is stacked on Urban Fabric head `16bfc6731b1ba9ead0aa093d8f132c6608aea790` without rewriting B1 history. Relative to that parent, the PR contains exactly the intended **21-file** Pass B1 rendering, asset, test, documentation, and branch-scoped CI delta. No `SimulationCore` or other Urban Fabric authority implementation file is part of the B1 PR delta.
 
-The parent repository-wide CI baseline is already red before B1 integration: 549 of 555 tests pass and 6 simulation/parity/traffic/cadastre tests fail. Those failures do not touch the Pass B1 rendering or asset paths. The B1 acceptance criterion therefore remains: its head-pinned targeted gate must be green after the re-stack, and the repository-wide workflow must not introduce additional B1-specific failures beyond the inherited parent baseline.
+Both the parent full CI and the B1 targeted/full CI baselines are green. Pass B1 is therefore implementation-complete and verification-complete on its current parent. PR #91 remains draft pending the repository's normal review/integration decision; no merge is implied by this report.
 
 ## Recommended next asset tranche
 
-After B1 is integrated, the next asset-library tranche remains **Pass B2 — Parking & Public Realm**, but gameplay-linked parking presentation should stay subordinate to the authoritative parking model planned in the Civic Foundry 2.0 roadmap. B2 can begin with non-authoritative public-realm depth—sidewalk character, streetscape, parking-lot presentation, curb/public-space variants—while avoiding presentation state that invents parking supply, price, or occupancy.
+After B1 integration, the next asset-library tranche remains **Pass B2 — Parking & Public Realm**. Gameplay-linked parking presentation must stay subordinate to the authoritative parking model planned in the Civic Foundry 2.0 roadmap. B2 can begin with non-authoritative public-realm depth—sidewalk character, streetscape, parking-lot presentation, curb/public-space variants—without inventing parking supply, price, or occupancy in presentation state.
