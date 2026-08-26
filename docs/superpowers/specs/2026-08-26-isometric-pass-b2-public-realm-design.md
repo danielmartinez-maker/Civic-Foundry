@@ -194,8 +194,8 @@ The following rules are fixed B2 presentation constants and are tested at their 
 1. If `uses` contains `civic`, resolve `civic-public-space`.
 2. If `uses` contains `light-industrial`, `heavy-industrial`, or `logistics`, resolve `industrial-logistics`.
 3. If `typologyId` is `main_street_mixed_use` or `typology:commercial_block`, resolve `main-street`.
-4. Otherwise, if `uses` contains `retail`, the building has at least 2 stories, and `coverageRatio > 0.35`, resolve `main-street`.
-5. If `typologyId` is `podium_mixed_use` or `typology:commercial_office`, resolve `urban-core`.
+4. If `typologyId` is `podium_mixed_use` or `typology:commercial_office`, resolve `urban-core`.
+5. Otherwise, if `uses` contains `retail`, `stories` is between 2 and 7 inclusive, and `coverageRatio > 0.35`, resolve `main-street`.
 6. Otherwise, if `stories >= 8` or `realizedFAR >= 3.0`, resolve `urban-core`.
 7. If `typologyId` is `typology:residential_cottage` or `typology:residential_rowhouse`, resolve `residential-green`.
 8. Otherwise, if all authoritative floor uses are residential and `stories <= 4`, resolve `residential-green`.
@@ -474,7 +474,7 @@ Cover:
 - deterministic output for identical state;
 - input-order independence;
 - camera rotation changes orientation only;
-- all exact profile-precedence rules and numerical boundaries (`0.35`, 2 stories, 4 stories, 8 stories, FAR `3.0`);
+- all exact profile-precedence rules and numerical boundaries (`0.35`, 2 stories, 4 stories, 7 stories, 8 stories, FAR `3.0`);
 - ambiguous/no-compatible-use behavior;
 - stable independent channel selection;
 - semantic profile does not change because an unrelated asset family is added;
