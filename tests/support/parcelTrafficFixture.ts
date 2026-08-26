@@ -38,6 +38,16 @@ export function seedOccupiedParcelSites(
 
   core.buildings.restore(buildings);
   core.rebuildCadastreFromLegacyState();
+
+  const canonicalBuildings = core.buildings.listV2();
+  if (canonicalBuildings.length !== buildings.length) {
+    throw new Error(`fixture expected ${buildings.length} canonical buildings, received ${canonicalBuildings.length}`);
+  }
+  const claimedParcelIds = new Set(canonicalBuildings.flatMap((building) => building.parcelIds));
+  if (claimedParcelIds.size !== sites.length) {
+    throw new Error(`fixture expected ${sites.length} independently claimed parcels, received ${claimedParcelIds.size}`);
+  }
+
   core.population.restore(population);
   core.restoreHousingState();
   core.employmentSnapshot = core.employment.evaluate(core.population.population, core.buildings.jobCapacity());
