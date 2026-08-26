@@ -13,10 +13,16 @@ import type {
 const unmet = (): MobilityChoiceOutcome => Object.freeze({ outcome: 'unmet', alternative: null });
 
 export class MobilityOrchestrator {
+  readonly providers: MobilityProviderRegistry;
+  private readonly choice: MobilityChoiceSystem;
+
   constructor(
-    readonly providers: MobilityProviderRegistry,
-    private readonly choice = new MobilityChoiceSystem(),
-  ) {}
+    providers: MobilityProviderRegistry,
+    choice: MobilityChoiceSystem = new MobilityChoiceSystem(),
+  ) {
+    this.providers = providers;
+    this.choice = choice;
+  }
 
   resolveAndExecute(request: MobilityJourneyRequest, context: MobilityRuntimeContext): MobilityChoiceOutcome {
     for (let attempt = 0; attempt < 2; attempt++) {
