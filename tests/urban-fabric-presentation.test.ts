@@ -4,6 +4,8 @@ import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { mapCadastralOverlay } from '../src/rendering/CadastralOverlayLayer.ts';
 import { mapZoningEnvelope } from '../src/rendering/ZoningEnvelopeLayer.ts';
 import { WorldRenderer } from '../src/rendering/WorldRenderer.ts';
+import { OverlayRenderPass } from '../src/rendering/passes/OverlayRenderPass.ts';
+import { IsometricCamera } from '../src/rendering/isometric/IsometricCamera.ts';
 import { ParcelInspector } from '../src/ui/ParcelInspector.ts';
 import { ToolController } from '../src/ui/ToolController.ts';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
@@ -43,6 +45,45 @@ function canvasStub(): HTMLCanvasElement {
       toJSON: () => ({}),
     }),
   } as unknown as HTMLCanvasElement;
+}
+
+function recordingContext(): Readonly<{
+  ctx: CanvasRenderingContext2D;
+  strokes: () => number;
+  fills: () => number;
+  labels: () => readonly string[];
+}> {
+  let strokeCount = 0;
+  let fillCount = 0;
+  const text: string[] = [];
+  const ctx = {
+    save: () => undefined,
+    restore: () => undefined,
+    beginPath: () => undefined,
+    closePath: () => undefined,
+    moveTo: () => undefined,
+    lineTo: () => undefined,
+    arc: () => undefined,
+    stroke: () => { strokeCount += 1; },
+    fill: () => { fillCount += 1; },
+    fillRect: () => { fillCount += 1; },
+    strokeRect: () => { strokeCount += 1; },
+    fillText: (value: string) => { text.push(value); },
+    setLineDash: () => undefined,
+    globalAlpha: 1,
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
+    font: '',
+    textAlign: 'center',
+    textBaseline: 'middle',
+  } as unknown as CanvasRenderingContext2D;
+  return {
+    ctx,
+    strokes: () => strokeCount,
+    fills: () => fillCount,
+    labels: () => text,
+  };
 }
 
 test('meter coordinates project consistently with legacy cell coordinates', () => {
@@ -125,4 +166,21 @@ test('zoning envelope overlay exposes legal footprint and dimensional capacity',
   assert.ok(snapshot.buildableFootprint.length > 0);
   assert.ok(snapshot.maxHeightMeters > 0);
   assert.ok(snapshot.effectiveFAR > 0);
+});
+
+test('urban fabric overlay pass draws canonical cadastre and selected zoning envelope', () => {
+  const core = coreFixture();
+  const parcel = core.cadastre.listParcels()[0]!;
+  const pass = new OverlayRenderPass();
+  const camera = new IsometricCamera();
+
+  const cadastre = recordingContext();
+  pass.draw(cadastre.ctx, core, camera, 'none', 'none', 'none', 'none', 'cadastre', parcel.id);
+  assert.ok(cadastre.strokes() > 0, 'cadastre mode should stroke canonical parcel/frontage geometry');
+
+  const zoning = recordingContext();
+  pass.draw(zoning.ctx, core, camera, 'none', 'none', 'none', 'none', 'zoning-envelope', parcel.id);
+  assert.ok(zoning.strokes() > 0, 'zoning envelope should stroke parcel and legal footprint');
+  assert.ok(zoning.fills() > 0, 'zoning envelope should fill setback/buildable areas');
+  assert.ok(zoning.labels().some((label) => /m$/.test(label)), 'zoning envelope should label legal height');
 });
