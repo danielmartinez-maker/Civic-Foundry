@@ -2,12 +2,17 @@ import type { TransitMode } from '../../data/transit.ts';
 import type { TransportationEdge, TransportationGraph } from '../traffic/TransportationGraph.ts';
 import type { PathfindingSystem, RouteResult } from '../traffic/PathfindingSystem.ts';
 import { MultimodalRoutingGraph } from '../transit/MultimodalRoutingGraph.ts';
-import { JourneyPlanner, type JourneyPlan } from '../transit/JourneyPlanner.ts';
+import { JourneyPlanner } from '../transit/JourneyPlanner.ts';
 import type { TransitNetworkSystem } from '../transit/TransitNetworkSystem.ts';
-import { PassengerQueueSystem, type TransitPassengerCohort, type TransitTransferLeg, type PassengerQueueSnapshot } from '../transit/PassengerQueueSystem.ts';
+import { PassengerQueueSystem, type PassengerQueueSnapshot } from '../transit/PassengerQueueSystem.ts';
 import { TransitVehicleSystem, type TransitVehicleStateSnapshot } from '../transit/TransitVehicleSystem.ts';
 import { TransitOperationsSystem, type TransitOperationsStateSnapshot } from '../transit/TransitOperationsSystem.ts';
-import { ModeChoiceSystem } from './ModeChoiceSystem.ts';
+import { listMobilityModes } from './MobilityModeRegistry.ts';
+import { MobilityOrchestrator } from './MobilityOrchestrator.ts';
+import { MobilityProviderRegistry, type MobilityRuntimeContext } from './MobilityProvider.ts';
+import type { MobilityJourneyRequest, MobilityModeId } from './MobilityTypes.ts';
+import { LegacyCarMobilityProvider } from './providers/LegacyCarMobilityProvider.ts';
+import { LegacyTransitMobilityProvider } from './providers/LegacyTransitMobilityProvider.ts';
 
 export type MobilityPersonTrip = Readonly<{
   id: string;
@@ -36,6 +41,7 @@ export type MobilitySnapshot = Readonly<{
   carModeShare: number;
   transitModeShare: number;
   unmetShare: number;
+  modeShares: Readonly<Record<MobilityModeId, number>>;
   personAccessibility: number;
   ridership: number;
   meanWaitTicks: number;
@@ -64,19 +70,28 @@ export type MobilitySchedulerStateSnapshot = Readonly<{
   operations: TransitOperationsStateSnapshot;
 }>;
 
+type DerivedCanonicalDecision = Readonly<{ mode: MobilityModeId | null; travelerWeight: number }>;
+
 const MAX_ACCEPTABLE: Readonly<Record<MobilityPersonTrip['purpose'], number>> = Object.freeze({ commute: 240, shopping: 180 });
 const QUEUE_PRESSURE_TICKS_PER_VEHICLE_LOAD = 60;
 const CARDINAL = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
+const LEGACY_TRANSIT_MODES = new Set<MobilityModeId>(['bus', 'brt', 'tram', 'metro']);
 
 export class MobilityScheduler {
   readonly multimodalGraph = new MultimodalRoutingGraph();
   readonly journeyPlanner = new JourneyPlanner();
-  readonly modeChoice = new ModeChoiceSystem();
   readonly passengers = new PassengerQueueSystem();
   readonly vehicles = new TransitVehicleSystem();
   readonly operations = new TransitOperationsSystem();
+  readonly providers = new MobilityProviderRegistry([
+    new LegacyCarMobilityProvider(),
+    new LegacyTransitMobilityProvider(),
+  ]);
+  readonly orchestrator = new MobilityOrchestrator(this.providers);
 
   private readonly decisions: MobilityDecision[] = [];
+  private readonly canonicalModeWeights = new Map<MobilityModeId, number>();
+  private readonly canonicalDecisionWindow: DerivedCanonicalDecision[] = [];
   private crowdingPenaltyTicks = 0;
   private fiscalOperatingCursor = 0;
   private fiscalFareCursor = 0;
@@ -87,11 +102,12 @@ export class MobilityScheduler {
   }
 
   tick(context: MobilityTickContext): MobilitySnapshot {
+    const costEpoch = context.costEpoch ?? Math.floor(context.tick / 10);
     this.multimodalGraph.rebuild(
       context.roadGraph,
       context.transit,
       (lineId, fromStopId, toStopId, mode) => this.segmentTicks(lineId, fromStopId, toStopId, mode, context),
-      context.costEpoch ?? Math.floor(context.tick / 10),
+      costEpoch,
     );
 
     this.operations.step(
@@ -104,13 +120,38 @@ export class MobilityScheduler {
       context.roadTravelTime,
     );
 
-    for (const trip of context.generateTrips()) this.routeTrip(trip, context);
+    const trips = [...context.generateTrips()];
+    const tripsBySource = new Map<string, MobilityPersonTrip>();
+    for (const trip of trips) tripsBySource.set(trip.sourceTripId, trip);
+    const runtime: MobilityRuntimeContext = Object.freeze({
+      tick: context.tick,
+      costEpoch,
+      roadGraph: context.roadGraph,
+      transit: context.transit,
+      pathfinding: context.pathfinding,
+      roadTravelTime: context.roadTravelTime,
+      multimodalGraph: this.multimodalGraph,
+      journeyPlanner: this.journeyPlanner,
+      passengers: this.passengers,
+      crowdingPenaltyTicks: this.crowdingPenaltyTicks + this.capacityPressureTicks(),
+      submitLegacyCarTrip: (sourceTripId, travelerWeight, route) => {
+        const trip = tripsBySource.get(sourceTripId);
+        if (!trip) throw new Error(`unknown legacy mobility source trip: ${sourceTripId}`);
+        context.submitCarTrip(trip, travelerWeight, route);
+      },
+    });
+
+    for (const trip of trips) this.routeTrip(trip, runtime);
     return this.snapshot();
   }
 
   snapshot(): MobilitySnapshot {
     const totalDecisionWeight = this.decisions.reduce((sum, decision) => sum + decision.travelerWeight, 0);
     const modeWeight = (mode: MobilityDecision['mode']): number => this.decisions.filter((decision) => decision.mode === mode).reduce((sum, decision) => sum + decision.travelerWeight, 0);
+    const modeShares = Object.freeze(Object.fromEntries(listMobilityModes().map(({ id }) => [
+      id,
+      totalDecisionWeight <= 0 ? 0 : (this.canonicalModeWeights.get(id) ?? 0) / totalDecisionWeight,
+    ])) as Record<MobilityModeId, number>);
     const successful = this.decisions.filter((decision) => decision.mode !== 'unmet' && Number.isFinite(decision.chosenCost));
     const successfulWeight = successful.reduce((sum, decision) => sum + decision.travelerWeight, 0);
     const weightedAccessibility = successful.reduce((sum, decision) => {
@@ -146,6 +187,7 @@ export class MobilityScheduler {
       carModeShare: totalDecisionWeight <= 0 ? 0 : modeWeight('car') / totalDecisionWeight,
       transitModeShare: totalDecisionWeight <= 0 ? 0 : modeWeight('transit') / totalDecisionWeight,
       unmetShare: totalDecisionWeight <= 0 ? 0 : modeWeight('unmet') / totalDecisionWeight,
+      modeShares,
       personAccessibility: totalDecisionWeight <= 0 ? 1 : (successfulWeight <= 0 ? 0 : weightedAccessibility / totalDecisionWeight),
       ridership,
       meanWaitTicks,
@@ -185,6 +227,8 @@ export class MobilityScheduler {
     }
     this.decisions.length = 0;
     this.decisions.push(...state.decisions.map((decision) => Object.freeze({ ...decision })));
+    this.canonicalModeWeights.clear();
+    this.canonicalDecisionWindow.length = 0;
     this.crowdingPenaltyTicks = state.crowdingPenaltyTicks;
     this.fiscalOperatingCursor = state.fiscalOperatingCursor;
     this.fiscalFareCursor = state.fiscalFareCursor;
@@ -197,116 +241,41 @@ export class MobilityScheduler {
     this.multimodalGraph.sourceCostEpoch = -1;
   }
 
-  private routeTrip(trip: MobilityPersonTrip, context: MobilityTickContext): void {
-    const start = trip.originRoadNodeId;
-    const end = trip.destinationRoadNodeId;
-    if (!start || !end) {
-      this.record({ mode: 'unmet', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: Number.POSITIVE_INFINITY, expectedWaitTicks: 0 });
-      return;
-    }
-    if (start === end) {
-      this.record({ mode: 'car', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: 0, expectedWaitTicks: 0 });
-      return;
-    }
-
-    const carRoute = context.pathfinding.findRoute(context.roadGraph, start, end, {
-      edgeCost: context.roadTravelTime,
-      costKey: `mobility-car:${context.costEpoch ?? Math.floor(context.tick / 10)}`,
-    });
-    const carPlan = this.carJourneyPlan(carRoute);
-    const transitPlan = this.journeyPlanner.plan(this.multimodalGraph, start, end, {
-      mode: 'transit',
-      transferPenaltyTicks: 20,
-      fareWeightTicksPerCurrency: 4,
-      costKey: `mobility-transit:${context.costEpoch ?? Math.floor(context.tick / 10)}`,
-    });
-    const choice = this.modeChoice.choose(carPlan, transitPlan, { crowdingPenaltyTicks: this.crowdingPenaltyTicks + this.capacityPressureTicks() });
-
-    if (choice.mode === 'car' && carRoute) {
-      context.submitCarTrip(trip, trip.travelerWeight, carRoute);
-      this.record({ mode: 'car', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: choice.chosenCost, expectedWaitTicks: 0 });
-      return;
-    }
-    if (choice.mode === 'transit' && transitPlan && this.enqueueTransitTrip(trip, transitPlan, context.transit)) {
-      this.record({ mode: 'transit', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: choice.chosenCost, expectedWaitTicks: transitPlan.expectedWaitTicks });
-      return;
-    }
-    this.record({ mode: 'unmet', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: Number.POSITIVE_INFINITY, expectedWaitTicks: 0 });
-  }
-
-  private carJourneyPlan(route: RouteResult | null): JourneyPlan | null {
-    if (!route) return null;
-    return Object.freeze({
-      mode: 'car',
-      nodeIds: Object.freeze([...route.nodeIds]),
-      legs: Object.freeze([]),
-      totalGeneralizedCost: route.totalCost,
-      walkingTicks: 0,
-      expectedWaitTicks: 0,
-      inVehicleTicks: route.totalCost,
-      transferPenaltyTicks: 0,
-      fare: 0,
-      boardings: 0,
-      transfers: 0,
-    });
-  }
-
-  private enqueueTransitTrip(trip: MobilityPersonTrip, plan: JourneyPlan, transit: TransitNetworkSystem): boolean {
-    const boardingLegs = plan.legs.filter((leg) => leg.kind === 'board' && leg.lineId);
-    const alightLegs = plan.legs.filter((leg) => leg.kind === 'alight' && leg.lineId);
-    if (boardingLegs.length === 0 || boardingLegs.length !== alightLegs.length) return false;
-
-    const transfers: TransitTransferLeg[] = [];
-    for (let i = 1; i < boardingLegs.length; i++) {
-      const board = boardingLegs[i];
-      const alight = alightLegs[i];
-      if (!board?.lineId || !alight?.lineId || board.lineId !== alight.lineId) return false;
-      transfers.push({
-        lineId: board.lineId,
-        directionKey: this.directionForPlan(plan, transit, board.lineId, board.to),
-        boardingStopId: this.stopIdFromNode(board.from),
-        alightingStopId: this.stopIdFromNode(alight.to),
-      });
-    }
-
-    const firstBoard = boardingLegs[0];
-    const firstAlight = alightLegs[0];
-    if (!firstBoard?.lineId || !firstAlight?.lineId || firstBoard.lineId !== firstAlight.lineId || !trip.destinationRoadNodeId) return false;
-    const cohort: TransitPassengerCohort = Object.freeze({
-      id: `transit-passenger:${trip.id}`,
-      personTripId: trip.id,
-      travelerWeight: trip.travelerWeight,
-      lineId: firstBoard.lineId,
-      directionKey: this.directionForPlan(plan, transit, firstBoard.lineId, firstBoard.to),
-      boardingStopId: this.stopIdFromNode(firstBoard.from),
-      alightingStopId: this.stopIdFromNode(firstAlight.to),
+  private routeTrip(trip: MobilityPersonTrip, runtime: MobilityRuntimeContext): void {
+    const request: MobilityJourneyRequest = Object.freeze({
+      id: trip.id,
+      sourceTripId: trip.sourceTripId,
+      provenance: 'legacy_cohort',
+      originRoadNodeId: trip.originRoadNodeId,
       destinationRoadNodeId: trip.destinationRoadNodeId,
-      enqueuedTick: trip.departureTick,
-      transferLegs: Object.freeze(transfers),
+      departureTick: trip.departureTick,
+      travelerWeight: trip.travelerWeight,
+      purpose: trip.purpose,
+      capabilities: Object.freeze({
+        privateVehicleAccess: true,
+        licensedDriver: true,
+        bicycleAccess: false,
+        rideHailAvailable: false,
+        mobilityLimited: false,
+        farePaymentAccess: true,
+      }),
+      costEpoch: runtime.costEpoch,
     });
-    return this.passengers.enqueue(cohort.boardingStopId, cohort.lineId, cohort.directionKey, cohort);
-  }
-
-  private directionForPlan(plan: JourneyPlan, transit: TransitNetworkSystem, lineId: string, platformFrom: string): 'forward' | 'reverse' {
-    const ride = plan.legs.find((leg) => leg.kind === 'ride' && leg.lineId === lineId && leg.from === platformFrom);
-    if (!ride) return 'forward';
-    const line = transit.getLine(lineId);
-    if (!line) return 'forward';
-    const fromStop = this.stopIdFromPlatform(ride.from);
-    const toStop = this.stopIdFromPlatform(ride.to);
-    const fromIndex = line.stopIds.indexOf(fromStop);
-    const toIndex = line.stopIds.indexOf(toStop);
-    if (fromIndex < 0 || toIndex < 0) return 'forward';
-    return toIndex >= fromIndex ? 'forward' : 'reverse';
-  }
-
-  private stopIdFromNode(nodeId: string): string {
-    return nodeId.startsWith('stop:') ? nodeId.slice(5) : nodeId;
-  }
-
-  private stopIdFromPlatform(nodeId: string): string {
-    const parts = nodeId.split(':');
-    return parts.slice(2).join(':');
+    const outcome = this.orchestrator.resolveAndExecute(request, runtime);
+    const alternative = outcome.alternative;
+    if (!alternative || outcome.outcome === 'unmet') {
+      this.record({ mode: 'unmet', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: Number.POSITIVE_INFINITY, expectedWaitTicks: 0 }, null);
+      return;
+    }
+    if (outcome.outcome === 'car') {
+      this.record({ mode: 'car', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: alternative.cost.generalizedCost, expectedWaitTicks: 0 }, 'car');
+      return;
+    }
+    if (LEGACY_TRANSIT_MODES.has(outcome.outcome)) {
+      this.record({ mode: 'transit', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: alternative.cost.generalizedCost, expectedWaitTicks: alternative.cost.expectedWaitTicks }, outcome.outcome);
+      return;
+    }
+    throw new Error(`unsupported live mobility mode: ${outcome.outcome}`);
   }
 
   private segmentTicks(_lineId: string, fromStopId: string, toStopId: string, mode: TransitMode, context: MobilityTickContext): number {
@@ -369,8 +338,19 @@ export class MobilityScheduler {
     return totalWaiting <= 0 ? 0 : weightedPenalty / totalWaiting;
   }
 
-  private record(decision: MobilityDecision): void {
-    this.decisions.push(Object.freeze({ ...decision }));
+  private record(decision: MobilityDecision, canonicalMode: MobilityModeId | null): void {
+    const frozen = Object.freeze({ ...decision });
+    this.decisions.push(frozen);
+    this.canonicalDecisionWindow.push(Object.freeze({ mode: canonicalMode, travelerWeight: decision.travelerWeight }));
+    if (canonicalMode) this.canonicalModeWeights.set(canonicalMode, (this.canonicalModeWeights.get(canonicalMode) ?? 0) + decision.travelerWeight);
+
     while (this.decisions.length > 128) this.decisions.shift();
+    while (this.canonicalDecisionWindow.length > 128) {
+      const removed = this.canonicalDecisionWindow.shift();
+      if (!removed?.mode) continue;
+      const next = Math.max(0, (this.canonicalModeWeights.get(removed.mode) ?? 0) - removed.travelerWeight);
+      if (next <= 1e-9) this.canonicalModeWeights.delete(removed.mode);
+      else this.canonicalModeWeights.set(removed.mode, next);
+    }
   }
 }
