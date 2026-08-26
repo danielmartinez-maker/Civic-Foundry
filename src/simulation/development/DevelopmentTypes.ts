@@ -114,6 +114,7 @@ export type DevelopmentBid = Readonly<{
   id: string;
   lotId: string;
   definitionId: string;
+  physicalCandidateId?: string;
   zone: ZoneType;
   developerId: string;
   expectedReturn: number;
