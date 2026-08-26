@@ -85,8 +85,8 @@ function frontageLength(parcel: Parcel, core: SimulationCore): number {
   return parcel.frontageEdgeIds.reduce((sum, edgeId) => {
     const edge = core.cadastre.getEdge(edgeId);
     if (!edge) return sum;
-    const start = core.cadastre.getNode(edge.startNodeId)?.point;
-    const end = core.cadastre.getNode(edge.endNodeId)?.point;
+    const start = core.cadastre.getNode(edge.fromNodeId)?.point;
+    const end = core.cadastre.getNode(edge.toNodeId)?.point;
     if (!start || !end) return sum;
     return sum + Math.hypot(end.x - start.x, end.y - start.y);
   }, 0);
@@ -115,7 +115,7 @@ function lineageSummary(
   return events.map((event) => {
     const direction = event.resultingParcelIds.includes(parcelId) ? 'from' : 'to';
     const related = direction === 'from' ? event.sourceParcelIds : event.resultingParcelIds;
-    return `${event.operation} ${direction} ${related.join(', ')}`;
+    return `${event.kind} ${direction} ${related.join(', ')}`;
   }).join('; ');
 }
 
