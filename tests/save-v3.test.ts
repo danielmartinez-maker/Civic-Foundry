@@ -52,11 +52,11 @@ function managedCore(): SimulationCore {
   return core;
 }
 
-test('current Save V8 round-trips authoritative city and active traffic state', () => {
+test('current Save V9 round-trips authoritative city and active traffic state', () => {
   const core = managedCore();
   assert.ok(core.traffic.activeVehicles.length > 0);
   const save = serializeCore(core);
-  assert.equal(save.saveVersion, 8);
+  assert.equal(save.saveVersion, 9);
   const hydrated = hydrateCore(JSON.parse(JSON.stringify(save)));
   assert.deepEqual(serializeCore(hydrated), save);
 });

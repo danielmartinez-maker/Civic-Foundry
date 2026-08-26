@@ -89,7 +89,7 @@ function assertHousingInvariants(core: SimulationCore): void {
   }
 }
 
-test('Phase 7 tenure and relocation remain conserved and bounded through long-run city cycles, displacement, policy changes, and current Save V8', () => {
+test('Phase 7 tenure and relocation remain conserved and bounded through long-run city cycles, displacement, policy changes, and current Save V9', () => {
   const core = buildHousingCity();
   assertHousingInvariants(core);
 
@@ -123,7 +123,7 @@ test('Phase 7 tenure and relocation remain conserved and bounded through long-ru
   assert.equal(displaced, true);
 
   const save = serializeCore(core);
-  assert.equal(save.saveVersion, 8);
+  assert.equal(save.saveVersion, 9);
   assert.deepEqual(save.housingState, core.housingRelocation.snapshotState());
   const loaded = hydrateCore(structuredClone(save));
   assertHousingInvariants(loaded);

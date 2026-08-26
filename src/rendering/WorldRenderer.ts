@@ -1,8 +1,10 @@
 import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
+import { LEGACY_CELL_SIZE_METERS, type WorldPoint } from '../world/cadastre/Geometry.ts';
 import type { TrafficOverlayMode } from './TrafficOverlayLayer.ts';
 import type { ServiceOverlayMode } from './ServiceOverlayLayer.ts';
 import type { TransitOverlayMode } from './TransitOverlayLayer.ts';
 import type { EconomyOverlayMode } from './EconomyOverlayLayer.ts';
+import type { UrbanFabricOverlayMode } from './CadastralOverlayLayer.ts';
 import { VehicleRenderer } from './VehicleRenderer.ts';
 import { ServiceVehicleRenderer } from './ServiceVehicleRenderer.ts';
 import { TransitVehicleRenderer } from './TransitVehicleRenderer.ts';
@@ -35,6 +37,8 @@ export class WorldRenderer {
   private readonly freightVehicles = new FreightVehicleRenderer(this.assets);
   private dpr = 1;
   private lastWorldSize: RendererWorldSize | null = null;
+  private urbanFabricOverlayMode: UrbanFabricOverlayMode = 'none';
+  private urbanFabricSelectedParcelId: string | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -49,6 +53,13 @@ export class WorldRenderer {
   get tileHeight(): number { return this.camera.tileHeight; }
   get zoom(): number { return this.camera.zoom; }
   get quarterTurns(): number { return this.camera.quarterTurns; }
+  get currentUrbanFabricOverlayMode(): UrbanFabricOverlayMode { return this.urbanFabricOverlayMode; }
+  get currentUrbanFabricSelectedParcelId(): string | null { return this.urbanFabricSelectedParcelId; }
+
+  setUrbanFabricOverlay(mode: UrbanFabricOverlayMode, selectedParcelId: string | null = null): void {
+    this.urbanFabricOverlayMode = mode;
+    this.urbanFabricSelectedParcelId = selectedParcelId;
+  }
 
   resize(): void {
     const rect = this.canvas.getBoundingClientRect();
@@ -77,6 +88,14 @@ export class WorldRenderer {
     return this.camera.worldToCanvas(x, y, this.worldSize(core));
   }
 
+  worldMetersToCanvas(point: WorldPoint, core: SimulationCore): CanvasPoint {
+    return this.worldToCanvas(
+      point.x / LEGACY_CELL_SIZE_METERS,
+      point.y / LEGACY_CELL_SIZE_METERS,
+      core,
+    );
+  }
+
   canvasToCell(clientX: number, clientY: number, core: SimulationCore): { x: number; y: number } | null {
     const rect = this.canvas.getBoundingClientRect();
     return this.camera.canvasToCell(clientX - rect.left, clientY - rect.top, this.worldSize(core));
@@ -97,6 +116,8 @@ export class WorldRenderer {
     serviceOverlayMode: ServiceOverlayMode = 'none',
     transitOverlayMode: TransitOverlayMode = 'none',
     economyOverlayMode: EconomyOverlayMode = 'none',
+    urbanFabricOverlayMode?: UrbanFabricOverlayMode,
+    selectedParcelId?: string | null,
   ): void {
     this.resize();
     const rect = this.canvas.getBoundingClientRect();
@@ -116,7 +137,17 @@ export class WorldRenderer {
     this.transitVehicles.draw(this.ctx, core.transit, core.transportationGraph, core.mobility.vehicles, travelTicks, this.camera, worldSize);
     this.freightVehicles.draw(this.ctx, core.transportationGraph, core.economyDomain.freightVehicles, travelTicks, this.camera, worldSize);
 
-    this.overlays.draw(this.ctx, core, this.camera, overlayMode, serviceOverlayMode, transitOverlayMode, economyOverlayMode);
+    this.overlays.draw(
+      this.ctx,
+      core,
+      this.camera,
+      overlayMode,
+      serviceOverlayMode,
+      transitOverlayMode,
+      economyOverlayMode,
+      urbanFabricOverlayMode ?? this.urbanFabricOverlayMode,
+      selectedParcelId === undefined ? this.urbanFabricSelectedParcelId : selectedParcelId,
+    );
     this.selection.draw(this.ctx, core, this.camera, selected, previewPath);
   }
 

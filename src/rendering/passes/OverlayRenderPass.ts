@@ -1,8 +1,11 @@
 import type { SimulationCore } from '../../simulation/core/SimulationCore.ts';
+import { LEGACY_CELL_SIZE_METERS, type PolygonRing, type WorldPoint } from '../../world/cadastre/Geometry.ts';
+import { mapCadastralOverlay, type UrbanFabricOverlayMode } from '../CadastralOverlayLayer.ts';
 import { mapEconomyOverlay, type EconomyOverlayMode } from '../EconomyOverlayLayer.ts';
 import { mapServiceOverlay, type ServiceOverlayMode } from '../ServiceOverlayLayer.ts';
 import { mapTrafficOverlay, type TrafficOverlayMode } from '../TrafficOverlayLayer.ts';
 import { mapTransitOverlay, type TransitOverlayMode } from '../TransitOverlayLayer.ts';
+import { mapZoningEnvelope } from '../ZoningEnvelopeLayer.ts';
 import { IsometricCamera } from '../isometric/IsometricCamera.ts';
 import { drawLabelAtCell, fillCell, strokeWorldSegment } from '../isometric/IsometricOverlayPainter.ts';
 
@@ -15,11 +18,128 @@ export class OverlayRenderPass {
     serviceMode: ServiceOverlayMode,
     transitMode: TransitOverlayMode,
     economyMode: EconomyOverlayMode,
+    urbanFabricMode: UrbanFabricOverlayMode = 'none',
+    selectedParcelId: string | null = null,
   ): void {
     this.drawTransit(ctx, core, camera, transitMode);
     if (serviceMode !== 'none') this.drawService(ctx, core, camera, serviceMode);
     if (trafficMode !== 'none') this.drawTraffic(ctx, core, camera, trafficMode);
     if (economyMode !== 'none') this.drawEconomy(ctx, core, camera, economyMode);
+    if (urbanFabricMode !== 'none') this.drawUrbanFabric(ctx, core, camera, urbanFabricMode, selectedParcelId);
+  }
+
+  private drawUrbanFabric(
+    ctx: CanvasRenderingContext2D,
+    core: SimulationCore,
+    camera: IsometricCamera,
+    mode: Exclude<UrbanFabricOverlayMode, 'none'>,
+    selectedParcelId: string | null,
+  ): void {
+    if (mode === 'cadastre') {
+      const snapshot = mapCadastralOverlay(core);
+      for (const block of snapshot.blocks) this.strokeMeterRing(ctx, camera, core, block.boundary, '#7d8990', 1.2);
+      for (const parcel of snapshot.parcels) {
+        this.strokeMeterRing(ctx, camera, core, parcel.boundary, parcel.parcelId === selectedParcelId ? '#ffffff' : '#c5d0d5', 1.6);
+        for (const segment of parcel.frontage) this.strokeMeterSegment(ctx, camera, core, segment.from, segment.to, '#59d8c4', 3);
+        for (const segment of parcel.access) this.strokeMeterSegment(ctx, camera, core, segment.from, segment.to, '#f1c36e', 2, [5, 3]);
+      }
+      return;
+    }
+
+    if (mode === 'zoning-envelope' && selectedParcelId) {
+      const snapshot = mapZoningEnvelope(core, selectedParcelId);
+      this.fillMeterRing(ctx, camera, core, snapshot.parcelBoundary, 'rgba(223, 92, 92, 0.22)');
+      this.strokeMeterRing(ctx, camera, core, snapshot.parcelBoundary, '#f08b8b', 1.6);
+      this.fillMeterRing(ctx, camera, core, snapshot.buildableFootprint, 'rgba(89, 216, 196, 0.32)');
+      this.strokeMeterRing(ctx, camera, core, snapshot.buildableFootprint, '#59d8c4', 2.2);
+      const center = ringCenter(snapshot.buildableFootprint);
+      const projected = this.projectMeters(camera, core, center);
+      ctx.save();
+      ctx.fillStyle = '#f4fbff';
+      ctx.font = `700 ${Math.max(10, camera.tileWidth * 0.16)}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${Math.round(snapshot.maxHeightMeters)}m`, projected.x, projected.y);
+      ctx.restore();
+    }
+  }
+
+  private strokeMeterRing(
+    ctx: CanvasRenderingContext2D,
+    camera: IsometricCamera,
+    core: SimulationCore,
+    ring: PolygonRing,
+    color: string,
+    lineWidth: number,
+  ): void {
+    if (ring.length < 2) return;
+    const first = this.projectMeters(camera, core, ring[0]!);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(first.x, first.y);
+    for (let index = 1; index < ring.length; index += 1) {
+      const point = this.projectMeters(camera, core, ring[index]!);
+      ctx.lineTo(point.x, point.y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private fillMeterRing(
+    ctx: CanvasRenderingContext2D,
+    camera: IsometricCamera,
+    core: SimulationCore,
+    ring: PolygonRing,
+    color: string,
+  ): void {
+    if (ring.length < 3) return;
+    const first = this.projectMeters(camera, core, ring[0]!);
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(first.x, first.y);
+    for (let index = 1; index < ring.length; index += 1) {
+      const point = this.projectMeters(camera, core, ring[index]!);
+      ctx.lineTo(point.x, point.y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private strokeMeterSegment(
+    ctx: CanvasRenderingContext2D,
+    camera: IsometricCamera,
+    core: SimulationCore,
+    from: WorldPoint,
+    to: WorldPoint,
+    color: string,
+    lineWidth: number,
+    dash: readonly number[] = [],
+  ): void {
+    const a = this.projectMeters(camera, core, from);
+    const b = this.projectMeters(camera, core, to);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.setLineDash([...dash]);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private projectMeters(camera: IsometricCamera, core: SimulationCore, point: WorldPoint): Readonly<{ x: number; y: number }> {
+    return camera.worldToCanvas(
+      point.x / LEGACY_CELL_SIZE_METERS,
+      point.y / LEGACY_CELL_SIZE_METERS,
+      { width: core.terrain.width, height: core.terrain.height },
+    );
   }
 
   private drawTransit(ctx: CanvasRenderingContext2D, core: SimulationCore, camera: IsometricCamera, mode: TransitOverlayMode): void {
@@ -91,4 +211,10 @@ export class OverlayRenderPass {
       ctx.save();ctx.fillStyle='#f1c36e';ctx.strokeStyle='#151b1f';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(p.x,p.y-r);ctx.lineTo(p.x+r,p.y);ctx.lineTo(p.x,p.y+r);ctx.lineTo(p.x-r,p.y);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
     }
   }
+}
+
+function ringCenter(ring: PolygonRing): WorldPoint {
+  if (ring.length === 0) return { x: 0, y: 0 };
+  const total = ring.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
+  return { x: total.x / ring.length, y: total.y / ring.length };
 }

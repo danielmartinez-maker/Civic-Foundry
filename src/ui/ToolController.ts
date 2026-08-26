@@ -3,6 +3,7 @@ import type { CellCoord, ZoneType } from '../simulation/core/types.ts';
 import type { RoadType } from '../data/roads.ts';
 import type { UtilityFacilityType } from '../data/utilities.ts';
 import type { ServiceFacilityType } from '../data/services.ts';
+import { LEGACY_CELL_SIZE_METERS, pointInPolygon } from '../world/cadastre/Geometry.ts';
 
 export type ToolId =
   | 'inspect'
@@ -28,6 +29,17 @@ export class ToolController {
 
   setTool(tool: ToolId): void {
     this.activeTool = tool;
+  }
+
+  parcelIdAt(core: SimulationCore, x: number, y: number): string | null {
+    const point = {
+      x: (x + 0.5) * LEGACY_CELL_SIZE_METERS,
+      y: (y + 0.5) * LEGACY_CELL_SIZE_METERS,
+    };
+    for (const parcel of core.cadastre.listParcels()) {
+      if (pointInPolygon(point, core.cadastre.parcelPolygon(parcel.id))) return parcel.id;
+    }
+    return null;
   }
 
   applyPath(core: SimulationCore, cells: readonly CellCoord[]): ToolApplyResult {

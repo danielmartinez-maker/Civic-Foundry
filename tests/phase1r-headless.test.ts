@@ -96,8 +96,8 @@ test('Phase 1R generates, plays, floods, saves, restores, and continues determin
   assert.ok(Math.abs(flood.balanceError) <= Math.max(1e-9, flood.rainfallVolume * 1e-9));
 
   const saved = serializeCore(core);
-  assert.equal(saved.saveVersion, 8);
-  assert.equal(saved.gameVersion, '0.8.0-world-foundation');
+  assert.equal(saved.saveVersion, 9);
+  assert.equal(saved.gameVersion, '0.9.0-urban-fabric');
 
   const loaded = hydrateCore(structuredClone(saved));
   assert.deepEqual(loaded.world.snapshotAuthoritative(), core.world.snapshotAuthoritative());

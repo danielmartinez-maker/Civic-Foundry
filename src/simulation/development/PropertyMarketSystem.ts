@@ -29,6 +29,12 @@ export type PropertyTransaction = Readonly<{
   improvementValue: number;
 }>;
 
+export type PropertyMarketSnapshot = Readonly<{
+  holdings: readonly PropertyHoldingSeed[];
+  transactions: readonly PropertyTransaction[];
+  nextTransactionId: number;
+}>;
+
 type PropertyHolding = {
   parcelId: string;
   ownerId: string;
@@ -48,17 +54,8 @@ export class PropertyMarketSystem {
   private nextTransactionId = 1;
 
   constructor(seeds: readonly PropertyHoldingSeed[] = []) {
-    for (const seed of seeds) {
-      validateEntityId('parcelId', seed.parcelId);
-      validateEntityId('ownerId', seed.ownerId);
-      validateNonNegative('reservationValue', seed.reservationValue);
-      if (this.holdings.has(seed.parcelId)) throw new Error(`duplicate property holding: ${seed.parcelId}`);
-      this.holdings.set(seed.parcelId, {
-        parcelId: seed.parcelId,
-        ownerId: seed.ownerId,
-        reservationValue: seed.reservationValue,
-      });
-    }
+    const normalized = validateHoldings(seeds);
+    for (const seed of normalized) this.holdings.set(seed.parcelId, { ...seed });
   }
 
   ownerOf(parcelId: string): string | undefined {
@@ -95,8 +92,86 @@ export class PropertyMarketSystem {
   }
 
   listTransactions(): readonly PropertyTransaction[] {
-    return Object.freeze([...this.transactions]);
+    return Object.freeze(this.transactions.map(cloneTransaction));
   }
+
+  snapshot(): PropertyMarketSnapshot {
+    const holdings = [...this.holdings.values()]
+      .sort((left, right) => left.parcelId.localeCompare(right.parcelId))
+      .map((holding) => Object.freeze({ ...holding }));
+    return Object.freeze({
+      holdings: Object.freeze(holdings),
+      transactions: Object.freeze(this.transactions.map(cloneTransaction)),
+      nextTransactionId: this.nextTransactionId,
+    });
+  }
+
+  restore(snapshot: PropertyMarketSnapshot): void {
+    if (!snapshot || typeof snapshot !== 'object') throw new Error('property market snapshot must be an object');
+    const holdings = validateHoldings(snapshot.holdings);
+    const transactions = validateTransactionHistory(snapshot.transactions, holdings);
+    if (!Number.isInteger(snapshot.nextTransactionId) || snapshot.nextTransactionId !== transactions.length + 1) {
+      throw new Error('property market next transaction id must follow transaction history');
+    }
+
+    this.holdings.clear();
+    for (const holding of holdings) this.holdings.set(holding.parcelId, { ...holding });
+    this.transactions.splice(0, this.transactions.length, ...transactions);
+    this.nextTransactionId = snapshot.nextTransactionId;
+  }
+}
+
+function validateHoldings(input: readonly PropertyHoldingSeed[]): PropertyHoldingSeed[] {
+  if (!Array.isArray(input)) throw new Error('property holdings must be an array');
+  const seen = new Set<string>();
+  const holdings = input.map((seed) => {
+    if (!seed || typeof seed !== 'object') throw new Error('property holding must be an object');
+    validateEntityId('parcelId', seed.parcelId);
+    validateEntityId('ownerId', seed.ownerId);
+    validateNonNegative('reservationValue', seed.reservationValue);
+    if (seen.has(seed.parcelId)) throw new Error(`duplicate property holding: ${seed.parcelId}`);
+    seen.add(seed.parcelId);
+    return Object.freeze({ ...seed });
+  });
+  holdings.sort((left, right) => left.parcelId.localeCompare(right.parcelId));
+  return holdings;
+}
+
+function validateTransactionHistory(
+  input: readonly PropertyTransaction[],
+  holdings: readonly PropertyHoldingSeed[],
+): PropertyTransaction[] {
+  if (!Array.isArray(input)) throw new Error('property transactions must be an array');
+  const liveParcelIds = new Set(holdings.map((holding) => holding.parcelId));
+  return input.map((transaction, index) => {
+    if (!transaction || typeof transaction !== 'object') throw new Error('property transaction must be an object');
+    const expectedId = `property:tx:${index + 1}`;
+    if (transaction.id !== expectedId) throw new Error(`invalid property transaction id: ${transaction.id}`);
+    if (!Number.isInteger(transaction.tick) || transaction.tick < 0) throw new Error('transaction tick must be a non-negative integer');
+    validateEntityId('buyerId', transaction.buyerId);
+    validateEntityId('sellerId', transaction.sellerId);
+    if (transaction.buyerId === transaction.sellerId) throw new Error('buyer and seller must be different');
+    if (!TRANSACTION_PURPOSES.includes(transaction.purpose)) throw new Error(`invalid property transaction purpose: ${transaction.purpose}`);
+    validateNonNegative('price', transaction.price);
+    validateNonNegative('landValue', transaction.landValue);
+    validateNonNegative('improvementValue', transaction.improvementValue);
+    if (Math.abs(transaction.price - (transaction.landValue + transaction.improvementValue)) > 0.01) {
+      throw new Error('transaction price must equal land value plus improvement value');
+    }
+    if (!Array.isArray(transaction.parcelIds) || transaction.parcelIds.length === 0) {
+      throw new Error('property transaction requires at least one parcel');
+    }
+    const seen = new Set<string>();
+    const parcelIds = [...transaction.parcelIds];
+    for (const parcelId of parcelIds) {
+      validateEntityId('parcelId', parcelId);
+      if (seen.has(parcelId)) throw new Error(`duplicate parcel in property transaction: ${parcelId}`);
+      seen.add(parcelId);
+      if (!liveParcelIds.has(parcelId)) throw new Error(`property transaction references missing holding: ${parcelId}`);
+    }
+    parcelIds.sort((left, right) => left.localeCompare(right));
+    return Object.freeze({ ...transaction, parcelIds: Object.freeze(parcelIds) });
+  });
 }
 
 function validateTransaction(
@@ -133,6 +208,10 @@ function validateTransaction(
 
   parcelIds.sort((a, b) => a.localeCompare(b));
   return parcelIds;
+}
+
+function cloneTransaction(transaction: PropertyTransaction): PropertyTransaction {
+  return Object.freeze({ ...transaction, parcelIds: Object.freeze([...transaction.parcelIds]) });
 }
 
 function validateEntityId(name: string, value: string): void {

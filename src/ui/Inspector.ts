@@ -2,6 +2,8 @@ import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import { ROAD_DEFINITIONS } from '../data/roads.ts';
 import { BUILDING_DEFINITIONS, BUILDING_DEFINITION_BY_ID } from '../data/buildings.ts';
 import { SERVICE_DEFINITIONS } from '../data/services.ts';
+import { LEGACY_CELL_SIZE_METERS, pointInPolygon } from '../world/cadastre/Geometry.ts';
+import { ParcelInspector } from './ParcelInspector.ts';
 
 
 export type FirmInspectionDto = Readonly<{
@@ -31,6 +33,17 @@ export type Inspection = Readonly<{
   title: string;
   lines: readonly string[];
 }>;
+
+export function inspectParcelAt(core: SimulationCore, x: number, y: number): string | null {
+  const point = {
+    x: (x + 0.5) * LEGACY_CELL_SIZE_METERS,
+    y: (y + 0.5) * LEGACY_CELL_SIZE_METERS,
+  };
+  const parcel = core.cadastre.listParcels()
+    .filter((candidate) => pointInPolygon(point, core.cadastre.parcelPolygon(candidate.id)))
+    .sort((a, b) => a.id.localeCompare(b.id))[0];
+  return parcel ? new ParcelInspector().render(parcel.id, core) : null;
+}
 
 export function inspectCell(core: SimulationCore, x: number, y: number): Inspection {
   const transitStop = core.transit.getStopAt(x, y);

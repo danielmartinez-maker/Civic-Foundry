@@ -3,7 +3,7 @@ import { mapLandHousingOverlay, type LandHousingOverlayMode } from '../rendering
 import { DevelopmentPolicyPanel } from './DevelopmentPolicyPanel.ts';
 import { LandHousingPanel } from './LandHousingPanel.ts';
 
-const EXISTING_OVERLAY_SELECTORS = ['#overlay', '#service-overlay', '#transit-overlay', '#economy-overlay'] as const;
+const EXISTING_OVERLAY_SELECTORS = ['#overlay', '#service-overlay', '#transit-overlay', '#economy-overlay', '#urban-fabric-overlay'] as const;
 
 export class LandHousingUiController {
   private readonly panel: HTMLElement;
