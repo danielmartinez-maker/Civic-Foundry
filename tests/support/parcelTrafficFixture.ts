@@ -50,5 +50,4 @@ export function seedOccupiedParcelSites(
 
   core.population.restore(population);
   core.restoreHousingState();
-  core.employmentSnapshot = core.employment.evaluate(core.population.population, core.buildings.jobCapacity());
 }
