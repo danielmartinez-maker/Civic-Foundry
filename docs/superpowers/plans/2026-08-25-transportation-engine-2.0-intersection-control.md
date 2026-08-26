@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace Civic Foundry's live generic node-capacity intersection behavior with a deterministic U.S.-style movement-aware intersection-control engine for ordinary and service traffic, then make Save V9 canonical without breaking V3–V8 loading.
+**Goal:** Replace Civic Foundry's live generic node-capacity intersection behavior with deterministic U.S.-style movement-aware intersection control for ordinary and service traffic, then make Save V9 canonical without breaking V3–V8 loading.
 
-**Architecture:** 3R-B builds on 3R-A `TransportNetworkAuthority`, explicit `TurnMovementId`s, and derived `LaneGroup`s. Focused pure builders derive crossings, conflicts, control plans, fixed-time signals, and coordination; focused runtime units own queues, unsignalized right-of-way, signal/pedestrian state, and priority requests; `IntersectionControlSystem` orchestrates them and is stepped exactly once per simulation tick. Legacy route planning remains edge-based through an indexed edge-to-movement resolver. `LegacySimulationCore.intersections` remains an inert `IntersectionSystem` only as a V3–V8 hydration compatibility container; **all live vehicle movement uses `intersectionControl`**, so there is still one live authority.
+**Architecture:** 3R-B builds on 3R-A `TransportNetworkAuthority`, explicit `TurnMovementId`s, and derived `LaneGroup`s. Pure builders derive crossings, conflicts, hierarchy-based plans, fixed-time signals, and arterial coordination; focused runtime units own movement queues, right-of-way, signal/pedestrian continuation, and priority requests; `IntersectionControlSystem` orchestrates those pieces and is stepped exactly once per simulation tick. Legacy route planning remains edge-based through an indexed edge-to-movement resolver. `LegacySimulationCore.intersections` remains an inert old `IntersectionSystem` only while V3–V8 hydration needs somewhere to restore its historical queue snapshot; **all live vehicle movement uses `intersectionControl`**.
 
 **Tech Stack:** TypeScript ES modules, Node 22 built-in test runner, existing 3R-A transportation modules, deterministic simulation kernel, GitHub Actions CI.
 
@@ -14,65 +14,45 @@
 
 ## Global Constraints
 
-- U.S. right-hand-traffic semantics; FHWA MUTCD 11th Edition with Revision 1 is the engineering reference, not a jurisdiction-by-jurisdiction legal database.
-- `expressway` and `highway` are controlled-access mainline classes; ordinary at-grade STOP/YIELD/signal control is invalid on those mainlines.
+- U.S. right-hand traffic; FHWA MUTCD 11th Edition with Revision 1 is the engineering reference, not a state-by-state legal database.
+- `expressway` and `highway` are controlled-access mainline classes; ordinary at-grade STOP/YIELD/signal control is invalid there.
 - `IntersectionControlSystem` is the sole **live** intersection authority for ordinary and service vehicles.
-- The old `IntersectionSystem` may remain instantiated only for historical V3–V8 serialization/hydration compatibility and must never be stepped by live simulation after the cutover.
-- Legacy edge-based route planning remains supported in 3R-B; do not force a full migration to `MovementAwarePathfindingSystem`.
-- Automatic control assignment is deterministic, hierarchy/demand based, reviewed only at fixed epochs, and uses hysteresis to prevent plan flapping.
-- Protected/permissive left turns are the normal signal treatment; protected-only operation remains explicit and enforceable.
-- RTOR is policy-driven, default enabled in the U.S. ruleset, and requires stop compliance, acceptable conflict gap, no pedestrian conflict, and no local prohibition.
-- Pedestrian WALK/change/clearance is explicit controller state; no full pedestrian-agent simulation in 3R-B.
-- Emergency preemption outranks transit priority but cannot bypass yellow/all-red or physical conflict clearance.
-- Adaptive optimization, crashes, parking search, weather control, reversible-lane scheduling, and microscopic lane changing are out of scope.
-- Save V9 is canonical: `saveVersion: 9`, `gameVersion: '0.9.0-intersection-control'`; V8 and older remain supported load inputs.
-- TDD for every task: RED test → minimal GREEN implementation → focused regression → commit.
-- New production coordinators stay focused and normally below the repository architecture-warning threshold; split responsibilities rather than suppressing warnings.
+- Old `IntersectionSystem` may exist only as a historical V3–V8 hydration/serialization compatibility container and must never be stepped live after cutover.
+- Legacy edge routes remain supported; do not force native 3R route migration in this tranche.
+- Automatic control assignment is deterministic, hierarchy/demand based, reviewed only at fixed epochs, and hysteretic.
+- Protected/permissive lefts are normal; protected-only remains explicit.
+- RTOR defaults enabled under U.S. policy but still requires stop compliance, a safe gap, no active pedestrian conflict, and no prohibition.
+- Pedestrian WALK/change/clearance is explicit runtime state; no pedestrian microsimulation.
+- Emergency preemption outranks transit priority but cannot bypass safe clearance.
+- Adaptive optimization, crashes, parking search, weather control, reversible-lane scheduling, and microscopic lane changing are deferred.
+- Save V9 canonical values: `saveVersion: 9`, `gameVersion: '0.9.0-intersection-control'`; V8 and older remain supported load inputs.
+- TDD every task: failing test → verify RED → minimal implementation → verify GREEN/regressions → commit.
+- Hot paths use indexes. Never add per-vehicle whole-authority `.find()`/`.filter()` scans.
+- A lane group has one per-tick discharge budget shared by every movement that uses it; compatible movements may not multiply that capacity.
 - Final gate: `npm test`, `npm run typecheck`, `npm run lint`, `npm run assets:check`, `npm run build`, `npm run test:smoke`, `npm run test:smoke:phase7`, `npm run test:smoke:isometric`.
 
 ---
 
-## Locked File Structure
+## File Structure
 
-### New production files
+**Create** under `src/simulation/transportation/`:
+`IntersectionControlTypes.ts`, `LegacyRouteMovementResolver.ts`, `PedestrianCrossingBuilder.ts`, `ConflictMatrixBuilder.ts`, `ControlPlanBuilder.ts`, `SignalPlanBuilder.ts`, `MovementQueueStore.ts`, `UnsignalizedController.ts`, `PedestrianController.ts`, `SignalController.ts`, `SignalCoordinationBuilder.ts`, `PriorityController.ts`, `IntersectionControlSystem.ts`, `IntersectionControlMigration.ts`.
 
-- `src/simulation/transportation/IntersectionControlTypes.ts` — stable control, queue, crossing, signal, policy, demand, revision, and snapshot types.
-- `src/simulation/transportation/LegacyRouteMovementResolver.ts` — indexed legacy edge pair → explicit movement/lane groups.
-- `src/simulation/transportation/PedestrianCrossingBuilder.ts` — deterministic derived surface-street crossings.
-- `src/simulation/transportation/ConflictMatrixBuilder.ts` — deterministic vehicle/pedestrian conflicts.
-- `src/simulation/transportation/ControlPlanBuilder.ts` — hierarchy/demand assignment, review cadence/hysteresis, overrides, controlled-access validation.
-- `src/simulation/transportation/SignalPlanBuilder.ts` — deterministic fixed-time U.S.-style phase construction and clearance timing.
-- `src/simulation/transportation/MovementQueueStore.ts` — authoritative movement queue + pending-release state.
-- `src/simulation/transportation/UnsignalizedController.ts` — STOP/YIELD/all-way-stop/gap logic.
-- `src/simulation/transportation/PedestrianController.ts` — aggregate WALK/change/clearance runtime.
-- `src/simulation/transportation/SignalController.ts` — fixed-time signal runtime and movement states.
-- `src/simulation/transportation/SignalCoordinationBuilder.ts` — deterministic arterial groups/offsets.
-- `src/simulation/transportation/PriorityController.ts` — emergency/transit requests.
-- `src/simulation/transportation/IntersectionControlSystem.ts` — sole live control orchestration API.
-- `src/simulation/transportation/IntersectionControlMigration.ts` — V3–V8 legacy queue → 3R-B control snapshot migration.
-- `src/save/saveV9.ts` — canonical V9 envelope/hydration.
+**Create** `src/save/saveV9.ts`.
 
-### Existing production files modified
+**Modify:** `src/simulation/traffic/TrafficSystem.ts`, `src/simulation/services/ServiceVehicleSystem.ts`, `src/simulation/core/LegacySimulationCore.ts`, `src/save/save.ts`, `docs/SAVE_FORMAT.md`, `docs/ARCHITECTURE.md`, `docs/SIMULATION.md`.
 
-- `src/simulation/traffic/TrafficSystem.ts`
-- `src/simulation/services/ServiceVehicleSystem.ts`
-- `src/simulation/core/LegacySimulationCore.ts`
-- `src/save/save.ts`
-- `docs/SAVE_FORMAT.md`
-- `docs/ARCHITECTURE.md`
-- `docs/SIMULATION.md`
-
-`src/simulation/traffic/IntersectionSystem.ts` remains unchanged unless a narrowly scoped compatibility fix is required by a historical-save regression. It is not a live 3R-B controller.
+Do not repurpose `src/simulation/traffic/IntersectionSystem.ts`; it remains historical compatibility code unless a narrowly scoped regression fix is required.
 
 ---
 
-### Task 1: Define 3R-B public control types and U.S. defaults
+### Task 1: Define public control, queue, signal, pedestrian, policy, demand, and snapshot types
 
 **Files:**
 - Create: `src/simulation/transportation/IntersectionControlTypes.ts`
 - Test: `tests/transport3r-intersection-types.test.ts`
 
-**Interfaces produced:**
+**Produces:**
 
 ```ts
 export type PedestrianCrossingId = string;
@@ -85,7 +65,7 @@ export type MovementQueueEntry = Readonly<{
   vehicleId: string;
   movementId: TurnMovementId;
   laneGroupIds: readonly LaneGroupId[];
-  travelerWeight: number;
+  travelerWeight: number; // remaining queued weight
   queuedTick: number;
   priority: QueuePriority;
   stoppedSinceTick?: number;
@@ -103,15 +83,19 @@ export const US_INTERSECTION_POLICY = Object.freeze({
   pedestrianWalkTicks: 70,
   pedestrianWalkingSpeedMps: 1.1,
 });
+
+export function isControlledAccessRoadClass(value: RoadClass): boolean {
+  return value === 'expressway' || value === 'highway';
+}
 ```
 
-`IntersectionControlSnapshot` must contain canonical sorted arrays for `plans`, `queues`, `signalRuntime`, `pedestrianRuntime`, `priorityRequests`, `coordinationGroups`, `overrides`, plus `controlPlanRevision`, `controlRuntimeEpoch`, and `lastPlanReviewTick`.
+`IntersectionControlSnapshot` is canonical sorted readonly arrays of plans, queues, signal runtime, pedestrian runtime, priority requests, coordination groups, overrides plus `controlPlanRevision`, `controlRuntimeEpoch`, and `lastPlanReviewTick`.
 
-- [ ] **Step 1: Write RED runtime-default tests** for RTOR, 10-tick minimum stop, 6000-tick review cadence, and controlled-access classification (`expressway`/`highway` true; `arterial` false).
-- [ ] **Step 2: Run:** `node --experimental-strip-types --test tests/transport3r-intersection-types.test.ts` → expected FAIL because module is absent.
-- [ ] **Step 3: Implement the exact unions, immutable snapshots/policies, validation helpers, and `isControlledAccessRoadClass(roadClass)` shown above.** Reject non-finite/negative timing and capacity values in snapshot validators.
-- [ ] **Step 4: Run focused test + `npm run typecheck`** → PASS.
-- [ ] **Step 5: Commit:** `git commit -am` is not allowed for new files; use `git add ... && git commit -m "feat: define 3R-B intersection control types"`.
+- [ ] **Step 1:** Write tests asserting the exact defaults above, controlled-access classification, and validator rejection of negative/non-finite timing/weight values.
+- [ ] **Step 2:** Run `node --experimental-strip-types --test tests/transport3r-intersection-types.test.ts`; verify module-not-found/undefined-symbol RED.
+- [ ] **Step 3:** Implement the types/defaults and validation functions exactly as specified; use readonly arrays in persisted types, never `Map`/`Set`.
+- [ ] **Step 4:** Run focused test and `npm run typecheck`; require PASS.
+- [ ] **Step 5:** `git add src/simulation/transportation/IntersectionControlTypes.ts tests/transport3r-intersection-types.test.ts && git commit -m "feat: define 3R-B intersection control types"`.
 
 ---
 
@@ -138,21 +122,25 @@ export class LegacyRouteMovementResolver {
 }
 ```
 
-- [ ] **Step 1: RED tests:** build a plus-shaped `RoadSystem`; project with `LegacyRoadNetworkAdapter`; derive `buildLaneGroups`; verify straight/right/left edge pairs resolve to the correct explicit `TurnMovement`; malformed, U-turn-without-movement, and non-contiguous pairs return `undefined`.
-- [ ] **Step 2: Run focused test** → FAIL.
-- [ ] **Step 3: Implement indexed parsing** using only canonical edge IDs:
+- [ ] **Step 1:** RED tests on a plus-shaped projected `RoadSystem`: straight/right/left resolve; malformed, non-contiguous, and default-prohibited U-turn pairs return `undefined`; returned lane groups are incoming groups whose `movementIds` contain the movement.
+- [ ] **Step 2:** Run focused test; verify RED.
+- [ ] **Step 3:** Implement canonical parser/indexes:
 
 ```ts
 const EDGE = /^e:n:(-?\d+),(-?\d+)>n:(-?\d+),(-?\d+)$/;
+// constructor builds:
+// junctionPair -> carriageway
+// fromCarriageway>toCarriageway -> movement
+// movementId -> incoming lane groups
 ```
 
-Build maps for junction-pair→carriageway, carriageway-pair→movement, and movement→incoming lane groups. Reuse `legacyJunctionId`; do not use repeated authority-array scans in `resolve()`.
-- [ ] **Step 4: Run focused test + `tests/transport2-compatibility.test.ts` + `tests/transport2-turn-movements.test.ts`** → PASS.
-- [ ] **Step 5: Commit:** `feat: resolve legacy routes to 3R movements`.
+Reuse `legacyJunctionId(x,y)`. `resolve()` is parsing + map lookups only.
+- [ ] **Step 4:** Run focused test, `tests/transport2-compatibility.test.ts`, `tests/transport2-turn-movements.test.ts`; require PASS.
+- [ ] **Step 5:** Commit `feat: resolve legacy routes to 3R movements`.
 
 ---
 
-### Task 3: Derive pedestrian crossings and physical conflict matrices
+### Task 3: Derive pedestrian crossings and deterministic physical conflicts
 
 **Files:**
 - Create: `src/simulation/transportation/PedestrianCrossingBuilder.ts`
@@ -162,10 +150,7 @@ Build maps for junction-pair→carriageway, carriageway-pair→movement, and mov
 **Interfaces:**
 
 ```ts
-export function buildPedestrianCrossings(
-  authority: TransportNetworkAuthority,
-  laneGroups: readonly LaneGroup[],
-): readonly PedestrianCrossing[];
+export function buildPedestrianCrossings(authority: TransportNetworkAuthority, laneGroups: readonly LaneGroup[]): readonly PedestrianCrossing[];
 
 export type ConflictParticipantId = TurnMovementId | PedestrianCrossingId;
 export type JunctionConflictMatrix = Readonly<{
@@ -174,42 +159,51 @@ export type JunctionConflictMatrix = Readonly<{
   conflicts(a: ConflictParticipantId, b: ConflictParticipantId): boolean;
 }>;
 
-export function buildConflictMatrices(
-  authority: TransportNetworkAuthority,
-  crossings: readonly PedestrianCrossing[],
-): readonly JunctionConflictMatrix[];
+export function buildConflictMatrices(authority: TransportNetworkAuthority, crossings: readonly PedestrianCrossing[]): readonly JunctionConflictMatrix[];
 ```
 
-- [ ] **Step 1: RED crossing tests:** a cardinal four-leg surface intersection yields one stable crossing per leg, IDs are geometry-derived (`pc:<junctionId>:<stable-signature>`), crossing length is `max(7, crossedTravelLaneCount * 3.6)` meters, and controlled-access mainlines do not fabricate ordinary crossings.
-- [ ] **Step 2: RED conflict tests:** opposing through compatible; left vs opposing through conflict; perpendicular through conflict; distinct-departure rights compatible; shared constrained departure lane-group conflict; vehicle/pedestrian path conflict; symmetry; no self-conflict; output stable under shuffled input.
-- [ ] **Step 3: Run focused test** → FAIL.
-- [ ] **Step 4: Implement crossings as pure derived state and cardinal movement paths behind private geometry helpers.** Keep public conflict API geometry-neutral for later non-cardinal roads.
-- [ ] **Step 5: Run focused test twice** and compare canonical serialized conflict pairs → identical/PASS.
-- [ ] **Step 6: Commit:** `feat: derive intersection crossings and conflicts`.
+- [ ] **Step 1:** RED crossing tests: one stable candidate crossing per leg at a cardinal four-leg surface junction; ID `pc:<junctionId>:<stable-leg-signature>`; length `Math.max(7, crossedTravelLaneCount * 3.6)` meters; do not fabricate ordinary mainline crossings across controlled-access classes.
+- [ ] **Step 2:** RED conflict tests: opposing through compatible; left/opposing-through conflict; perpendicular-through conflict; distinct-departure rights compatible; same constrained departure group conflicts; crossing pedestrian conflicts; symmetric; no self-conflict; shuffled input gives same serialized matrix.
+- [ ] **Step 3:** Run focused test; verify RED.
+- [ ] **Step 4:** Implement stable crossing derivation and private cardinal path geometry:
+
+```ts
+for (const junction of sortedJunctions) {
+  const incoming = incomingByJunction.get(junction.id) ?? [];
+  // derive surface crossing definitions from stable leg headings/lane counts
+  // derive movement path as incoming endpoint -> junction center -> outgoing endpoint
+  // segment-intersection + same-departure checks populate a symmetric Set<string>
+}
+```
+
+Keep cardinal math private so public APIs can support later non-cardinal geometry.
+- [ ] **Step 5:** Run focused test twice; require identical results/PASS.
+- [ ] **Step 6:** Commit `feat: derive intersection crossings and conflicts`.
 
 ---
 
-### Task 4: Build hierarchy-based U.S. control plans and fixed-time signal plans
+### Task 4: Build deterministic U.S. control plans and fixed-time signal plans
 
 **Files:**
 - Create: `src/simulation/transportation/ControlPlanBuilder.ts`
 - Create: `src/simulation/transportation/SignalPlanBuilder.ts`
 - Test: `tests/transport3r-control-plans.test.ts`
 
-**Interfaces:**
+**Exact automatic rules:**
 
 ```ts
-export type ControlPlanBuildResult = Readonly<{
-  plans: readonly JunctionControlPlan[];
-  changed: boolean;
-  reviewedAtTick: number;
-}>;
-
-export function buildControlPlans(input: ControlPlanBuildInput): ControlPlanBuildResult;
-export function buildSignalTimingPlan(input: SignalPlanBuildInput): SignalTimingPlan;
+// before overrides/signal escalation
+local x local: total demand < 20/min => uncontrolled; otherwise yield on stable lower-priority approach
+local x collector: minor local => yield if minor demand < 20/min, otherwise twoWayStop
+local x arterial: minor local => twoWayStop
+collector x collector: twoWayStop; allWayStop when allWayStop score >= 70
+collector x arterial: twoWayStop until signal score >= 100
+arterial x arterial: twoWayStop until signal score >= 100
 ```
 
-**Deterministic signal score:**
+For equal hierarchy, major approach is greater demand; stable carriageway ID breaks exact demand ties.
+
+**Signal score:**
 
 ```ts
 score = hierarchyBase
@@ -220,19 +214,34 @@ score = hierarchyBase
   + Math.min(20, crashRiskScore * 20);
 ```
 
-Hierarchy bases: local/local 20, local/collector 35, collector/collector 50, collector/arterial 65, arterial/arterial 80.
+Bases: 20 local/local, 35 local/collector, 50 collector/collector, 65 collector/arterial, 80 arterial/arterial. Only collector/arterial and arterial/arterial are signal-eligible by this first automatic policy. Existing signal exits only below score 80 at a review epoch. Existing all-way STOP exits only below score 55.
 
-- [ ] **Step 1: RED control tests:** low-demand local/local→`uncontrolled`; local→collector/arterial lower road controlled; collector×collector→`twoWayStop`; score ≥100 on signal-eligible major intersection→`signal`; existing signal stays while score 80–99 and exits below 80 only at review epoch; no plan change before 6000 ticks; valid override survives rebuild; illegal freeway/highway `signal`/`allWayStop` override throws; controlled-access merge/diverge/ramp-terminal topology accepts only compatible types.
-- [ ] **Step 2: Run focused test** → FAIL.
-- [ ] **Step 3: Implement deterministic automatic assignment, override validation, review cadence, and hysteresis.** No-op rebuild sets `changed: false` and does not increment structural revision in callers.
-- [ ] **Step 4: Implement signal plan generation:** opposing non-conflicting through/right groups; lefts permissive by default; protected-left phase only for `protectedOnly` policy/override; reject conflicting protected movements.
-- [ ] **Step 5: Use exact clearance formulas:** yellow `clamp(round((3 + speedKph / 80) * 10), 30, 50)` ticks; all-red `clamp(round((junctionClearanceMeters / max(speedKph / 3.6, 1)) * 10), 10, 30)`; minimum protected green 80 ticks; deterministic demand split thereafter.
-- [ ] **Step 6: Run focused test + typecheck** → PASS.
-- [ ] **Step 7: Commit:** `feat: build U.S. intersection control plans`.
+- [ ] **Step 1:** RED tests for every rule above, 6000-tick review cadence, hysteresis, valid override persistence, invalid freeway/highway at-grade override rejection, and merge/diverge/ramp-terminal controlled-access validity.
+- [ ] **Step 2:** Run focused test; verify RED.
+- [ ] **Step 3:** Implement automatic selection/override validation with deterministic sorted inputs and no-op comparison:
+
+```ts
+if (!topologyChanged && !overrideChanged && tick - lastPlanReviewTick < policy.controlReviewTicks) return previous;
+const next = buildCandidatePlans(...);
+return { plans: canonical(next), changed: !samePlans(previous, next), reviewedAtTick: tick };
+```
+
+- [ ] **Step 4:** Implement fixed signal plan generation: opposite compatible through/right groups; lefts permissive by default; protected-left phase only when policy/override flags `protectedOnly`; throw if any protected pair conflicts.
+- [ ] **Step 5:** Use exact timing:
+
+```ts
+const yellowTicks = clamp(Math.round((3 + speedKph / 80) * 10), 30, 50);
+const allRedTicks = clamp(Math.round((junctionClearanceMeters / Math.max(speedKph / 3.6, 1)) * 10), 10, 30);
+const minimumGreenTicks = 80;
+```
+
+Distribute green above minimum deterministically by phase demand; stable phase ID breaks ties.
+- [ ] **Step 6:** Run focused test + typecheck; require PASS.
+- [ ] **Step 7:** Commit `feat: build U.S. intersection control plans`.
 
 ---
 
-### Task 5: Implement authoritative movement queues and pending-release accounting
+### Task 5: Implement authoritative movement queues and pending releases
 
 **Files:**
 - Create: `src/simulation/transportation/MovementQueueStore.ts`
@@ -255,41 +264,46 @@ export class MovementQueueStore {
 }
 ```
 
-- [ ] **Step 1: RED tests:** one queue per vehicle; deterministic queue order; partial weighted service; pending release not served twice; acknowledge/remove; duplicate/unknown restore rejection; stable snapshot order.
-- [ ] **Step 2: Run focused test** → FAIL.
-- [ ] **Step 3: Implement `queuesByMovement`, `vehicleLocation`, and `pendingReleased` indexes.** `serve()` decrements head remaining weight until zero, then moves the vehicle to pending release. Emergency/transit labels are stored but controller policy—not the queue store—decides right-of-way.
-- [ ] **Step 4: Run focused test twice** → PASS and identical snapshots.
-- [ ] **Step 5: Commit:** `feat: add movement-aware intersection queues`.
+- [ ] **Step 1:** RED tests: one active queue location per vehicle; deterministic head order; partial weighted service; pending release returned but not charged twice; acknowledge/remove; duplicate/unknown restore rejection; canonical snapshot order.
+- [ ] **Step 2:** Run focused test; verify RED.
+- [ ] **Step 3:** Implement three indexes:
+
+```ts
+private readonly queuesByMovement = new Map<TurnMovementId, MutableEntry[]>();
+private readonly vehicleLocation = new Map<string, TurnMovementId>();
+private readonly pendingReleased = new Map<string, PendingRelease>();
+```
+
+`serve()` reduces remaining `travelerWeight`; at zero it removes queue membership and inserts pending release. Queue store never itself grants emergency right-of-way.
+- [ ] **Step 4:** Run focused test twice; require PASS/identical snapshots.
+- [ ] **Step 5:** Commit `feat: add movement-aware intersection queues`.
 
 ---
 
-### Task 6: Implement deterministic unsignalized U.S. right-of-way
+### Task 6: Implement unsignalized STOP/YIELD/all-way-stop/gap acceptance
 
 **Files:**
 - Create: `src/simulation/transportation/UnsignalizedController.ts`
 - Test: `tests/transport3r-unsignalized.test.ts`
 
-**Interface:**
+- [ ] **Step 1:** RED tests: minimum 10-tick STOP dwell; clear YIELD gap; blocked YIELD; major-street priority; all-way STOP completed-stop arrival ordering; simultaneous arrivals resolved by geometric priority, then movement ID, then vehicle ID; active pedestrian conflict blocks service.
+- [ ] **Step 2:** Run focused test; verify RED.
+- [ ] **Step 3:** Implement exact gap rule:
 
 ```ts
-export function requiredGapTicks(
-  movement: TurnMovement,
-  approachSpeedKph: number,
-  vehiclePermissionMask?: number,
-): number;
-
-export function unsignalizedServiceState(context: UnsignalizedDecisionContext): MovementServiceState;
+const base = movement.turnKind === 'right' ? 20 : movement.turnKind === 'through' ? 30 : 40;
+const speedPenalty = Math.round(Math.max(0, approachSpeedKph - 40) / 10) * 5;
+const heavyPenalty = isHeavyFreight ? 10 : 0;
+return base + speedPenalty + heavyPenalty;
 ```
 
-- [ ] **Step 1: RED tests:** 10-tick STOP dwell; YIELD clear gap; YIELD blocked by higher-priority conflict; major-street priority; all-way STOP completed-stop arrival order; simultaneous arrivals resolved by geometric priority then stable movement ID then vehicle ID; pedestrian occupancy blocks conflicting movement.
-- [ ] **Step 2: Run focused test** → FAIL.
-- [ ] **Step 3: Implement exact deterministic gap baseline:** right 20 ticks, through 30, left 40; add `round(max(0, speedKph - 40) / 10) * 5`; heavy freight adds 10. A queued higher-priority conflict blocks entry; otherwise require `tick - lastConflictReleaseTick >= requiredGapTicks`. No RNG.
-- [ ] **Step 4: Run focused test + turn-movement regression** → PASS.
-- [ ] **Step 5: Commit:** `feat: add U.S. unsignalized right of way`.
+A waiting higher-priority conflicting head blocks entry; otherwise `tick - lastConflictReleaseTick` must meet required gap. No RNG.
+- [ ] **Step 4:** Run focused test + `tests/transport2-turn-movements.test.ts`; require PASS.
+- [ ] **Step 5:** Commit `feat: add U.S. unsignalized right of way`.
 
 ---
 
-### Task 7: Implement aggregate pedestrian runtime and fixed-time signal execution
+### Task 7: Implement pedestrian runtime and fixed-time signal execution
 
 **Files:**
 - Create: `src/simulation/transportation/PedestrianController.ts`
@@ -297,43 +311,66 @@ export function unsignalizedServiceState(context: UnsignalizedDecisionContext): 
 - Test: `tests/transport3r-pedestrians.test.ts`
 - Test: `tests/transport3r-signals.test.ts`
 
-- [ ] **Step 1: RED pedestrian tests:** WALK accepts aggregate crossing demand; change interval stops new entry; residual clearance occupancy lasts `ceil(crossingLengthMeters / 1.1 * 10)` ticks; conflicting permissive turns observe occupancy; snapshot/restore mid-clearance is exact.
-- [ ] **Step 2: Implement `PedestrianController`** with immutable derived crossing definitions and persisted runtime only; run pedestrian test → PASS.
-- [ ] **Step 3: RED signal tests:** phase progression; protected through; protected/permissive left; protected-only left; yellow; all-red; RTOR allowed only after stop+gap; RTOR policy prohibition; pedestrian conflict; exact mid-phase snapshot/restore.
-- [ ] **Step 4: Implement `SignalController`.** Timing plan is immutable until control-plan revision changes. Yellow/all-red are explicit modes. `permissive` never bypasses conflict checks. RTOR returns `stop` before stop dwell and `yield` afterward, never `protected`.
-- [ ] **Step 5: Run both focused tests + typecheck** → PASS.
-- [ ] **Step 6: Commit:** `feat: execute pedestrian and signal control`.
+- [ ] **Step 1:** RED pedestrian tests: WALK admits aggregate demand; change interval admits no new crossing demand; residual occupancy lasts `Math.ceil(crossingLengthMeters / 1.1 * 10)` ticks; conflicting permissive turn observes occupancy; snapshot/restore mid-clearance exact.
+- [ ] **Step 2:** Implement pedestrian runtime state machine:
+
+```ts
+type PedestrianInterval = 'hold' | 'walk' | 'change' | 'clearance';
+// derived crossing definitions are immutable; persist interval/elapsed/occupancy only
+```
+
+Run pedestrian tests; require PASS.
+- [ ] **Step 3:** RED signal tests: protected through, protected/permissive left, protected-only left, yellow, all-red, RTOR stop→yield behavior, RTOR disabled, pedestrian blocking, mid-phase snapshot/restore.
+- [ ] **Step 4:** Implement signal runtime:
+
+```ts
+type SignalRuntimeMode = 'green' | 'yellow' | 'allRed';
+// plan intervals remain fixed until plan revision changes
+// permissive returns permissive, never protected
+// RTOR returns stop before dwell and yield afterward
+```
+
+- [ ] **Step 5:** Run both focused files + typecheck; require PASS.
+- [ ] **Step 6:** Commit `feat: execute pedestrian and signal control`.
 
 ---
 
-### Task 8: Add deterministic arterial coordination and priority/preemption
+### Task 8: Add arterial coordination and priority/preemption
 
 **Files:**
 - Create: `src/simulation/transportation/SignalCoordinationBuilder.ts`
 - Create: `src/simulation/transportation/PriorityController.ts`
 - Test: `tests/transport3r-priority-coordination.test.ts`
 
-- [ ] **Step 1: RED coordination tests:** three contiguous arterial signals form one stable group; compatible common cycle; offsets equal cumulative free-flow travel ticks modulo cycle; shuffled source arrays yield same group/order; unrelated local signals stay out.
-- [ ] **Step 2: Implement coordination builder** using stable corridor signature and dominant direction; run coordination tests → PASS.
-- [ ] **Step 3: RED priority tests:** emergency outranks transit; expired request removed; incompatible emergency request first asks signal controller for safe yellow/all-red transition; transit priority can boundedly extend/advance compatible phase only; request order is kind, requested tick, stable request ID.
-- [ ] **Step 4: Implement `PriorityController`** with snapshot/restore and idempotent same-ID refresh.
-- [ ] **Step 5: Run focused test** → PASS.
-- [ ] **Step 6: Commit:** `feat: coordinate signals and priority requests`.
+- [ ] **Step 1:** RED coordination fixture: three contiguous arterial signals form one stable group; common compatible cycle; each offset is cumulative free-flow travel ticks modulo cycle; shuffled input unchanged; unrelated local signal excluded.
+- [ ] **Step 2:** Implement stable corridor grouping:
+
+```ts
+const offsetTicks = cumulativeTravelTicks % cycleTicks;
+const id = `scg:${stableCorridorSignature}`;
+```
+
+Run coordination tests; require PASS.
+- [ ] **Step 3:** RED priority tests: emergency outranks transit; expiry works; incompatible emergency request demands safe transition before grant; transit priority only boundedly advances/extends compatible phase; ordering is kind → requestedTick → requestId.
+- [ ] **Step 4:** Implement request store/selection with same-ID refresh, canonical snapshot/restore, and no topology mutation.
+- [ ] **Step 5:** Run focused test; require PASS.
+- [ ] **Step 6:** Commit `feat: coordinate signals and priority requests`.
 
 ---
 
-### Task 9: Assemble the authoritative `IntersectionControlSystem`
+### Task 9: Assemble the sole live `IntersectionControlSystem`
 
 **Files:**
 - Create: `src/simulation/transportation/IntersectionControlSystem.ts`
 - Test: `tests/transport3r-intersection-control.test.ts`
 
-**Public API:**
+**API:**
 
 ```ts
 export class IntersectionControlSystem {
   syncNetwork(authority: TransportNetworkAuthority, laneGroups: readonly LaneGroup[], demand: IntersectionControlDemandSnapshot, tick: number): void;
   enqueue(entry: MovementQueueEntry): boolean;
+  requiresQueue(movementId: TurnMovementId): boolean;
   step(tick: number): readonly string[];
   acknowledge(vehicleId: string): void;
   removeVehicle(vehicleId: string): void;
@@ -347,22 +384,32 @@ export class IntersectionControlSystem {
 }
 ```
 
-- [ ] **Step 1: RED orchestration tests:** movement release; conflicts cannot double-release; lane-group service `capacityPerMinute / 600` weight per simulation tick; signal gates service; same-tick repeated `step()` returns same pending IDs without spending capacity again; topology rebuilds matrices/plans; no-op sync keeps `controlPlanRevision`; valid override persists; invalid controlled-access override rejected.
-- [ ] **Step 2: Run focused test** → FAIL.
-- [ ] **Step 3: Implement indexed orchestration.** Index movement→junction, movement→incoming groups, carriageway→speed, junction→matrix, junction→plan. Step only active queued/pedestrian/signal/priority junctions. Track last conflicting release tick for gap acceptance. `step()` returns all pending-released IDs sorted; it does not know which vehicle subsystem owns them.
-- [ ] **Step 4: Run all 3R-B focused tests so far** → PASS.
-- [ ] **Step 5: Commit:** `feat: add authoritative intersection control system`.
+- [ ] **Step 1:** RED orchestration tests: control gates movement; conflict prevents incompatible same-window release; same-tick `step()` cannot double-spend; topology rebuild/no-op revision semantics; override behavior; simple degree-2 non-conflicting `uncontrolled` continuation makes `requiresQueue()` false.
+- [ ] **Step 2:** RED capacity-conservation test: two otherwise compatible movements sharing one incoming lane group may collectively consume at most that group's `capacityPerMinute / 600` weight in a simulation tick.
+- [ ] **Step 3:** Run focused test; verify RED.
+- [ ] **Step 4:** Implement indexes and shared lane-group budgets:
+
+```ts
+const laneBudget = new Map<LaneGroupId, number>();
+for (const group of activeGroups) laneBudget.set(group.id, group.capacityPerMinute / 600);
+const movementBudget = Math.min(...entry.laneGroupIds.map(id => laneBudget.get(id) ?? 0));
+// after service, subtract consumed weight from every lane group used by that queue entry
+```
+
+Index movement→junction, movement→incoming groups, carriageway→speed, junction→matrix, junction→plan. Step only active queued/pedestrian/signal/priority junctions. Track last conflict release tick. Return all pending-released IDs sorted; controller does not know owning subsystem.
+- [ ] **Step 5:** Run all focused 3R-B tests to date; require PASS.
+- [ ] **Step 6:** Commit `feat: add authoritative intersection control system`.
 
 ---
 
-### Task 10: Cut ordinary `TrafficSystem` to movement-aware queues without stepping the controller
+### Task 10: Cut ordinary `TrafficSystem` to the new controller without stepping it
 
 **Files:**
 - Modify: `src/simulation/traffic/TrafficSystem.ts`
 - Test: `tests/transport3r-live-traffic.test.ts`
 - Regression: `tests/traffic-simulation.test.ts`, `tests/traffic-routing.test.ts`
 
-**New step shape:**
+**New signature:**
 
 ```ts
 step(
@@ -375,23 +422,42 @@ step(
 ): void;
 ```
 
-- [ ] **Step 1: RED tests:** queued vehicle maps current+next edge to one movement; remains on current edge; delay increments; a released ID owned by traffic advances exactly one edge and calls `controls.acknowledge(id)`; IDs belonging to another subsystem are ignored/not acknowledged; illegal route movement fails cleanly; degree>2 heuristic is no longer used.
-- [ ] **Step 2: Run focused test** → FAIL.
-- [ ] **Step 3: Implement queueing:** resolve current/next edge and call `controls.enqueue({ vehicleId, movementId, laneGroupIds, travelerWeight, queuedTick: tick, priority: 'normal' })`. Do **not** call `controls.step()` from `TrafficSystem`.
-- [ ] **Step 4: Process `releasedVehicleIds` before movement advancement:** only acknowledge IDs found in `this.vehicles` and status `queued`; advance exactly one edge; reset progress/status.
-- [ ] **Step 5: Run new + legacy traffic tests** → PASS; update only assertions tied to obsolete node-capacity behavior.
-- [ ] **Step 6: Commit:** `feat: route live traffic through 3R intersection control`.
+- [ ] **Step 1:** RED tests: current+next edge resolves exact movement; queued vehicle remains on current edge and accumulates delay; owned released ID advances one edge and acknowledges; foreign released ID ignored; invalid movement fails cleanly; degree>2 heuristic gone; simple `requiresQueue() === false` continuation advances without intersection queue delay.
+- [ ] **Step 2:** Run focused test; verify RED.
+- [ ] **Step 3:** Implement release handling before moving vehicles:
+
+```ts
+for (const id of releasedVehicleIds) {
+  const vehicle = this.vehicles.get(id);
+  if (!vehicle || vehicle.status !== 'queued') continue;
+  vehicle.currentEdgeIndex++;
+  vehicle.edgeProgressTicks = 0;
+  vehicle.status = 'moving';
+  delete vehicle.queuedNodeId;
+  controls.acknowledge(id);
+}
+```
+
+- [ ] **Step 4:** At a non-terminal edge, resolve current+next. If `!resolved`, fail. If `!controls.requiresQueue(resolved.movementId)`, advance directly. Otherwise enqueue:
+
+```ts
+controls.enqueue({ vehicleId: vehicle.id, movementId: resolved.movementId, laneGroupIds: resolved.laneGroupIds, travelerWeight: vehicle.travelerWeight, queuedTick: tick, priority: 'normal' });
+```
+
+Never call `controls.step()` here.
+- [ ] **Step 5:** Run new + legacy traffic tests; require PASS.
+- [ ] **Step 6:** Commit `feat: route live traffic through 3R intersection control`.
 
 ---
 
-### Task 11: Cut service/emergency vehicles to the same live controller
+### Task 11: Cut service/emergency vehicles to the same controller
 
 **Files:**
 - Modify: `src/simulation/services/ServiceVehicleSystem.ts`
 - Test: `tests/transport3r-live-service-vehicles.test.ts`
 - Regression: `tests/service-core-integration.test.ts`, `tests/service-dispatch.test.ts`
 
-**New step shape:**
+**New signature:**
 
 ```ts
 step(
@@ -405,73 +471,87 @@ step(
 ): ServiceVehicleEvent[];
 ```
 
-- [ ] **Step 1: RED tests:** garbage truck queues with weight 2; emergency vehicle weight 1; fire/police/medical submits `emergencyPreemption`; released service ID advances exactly once and acknowledges; ordinary-traffic IDs are ignored; missing-edge reroute still works before re-resolution; failure removes controller membership.
-- [ ] **Step 2: Run focused test** → FAIL.
-- [ ] **Step 3: Implement movement queueing and deterministic request ID** `ipr:${vehicle.id}:${movementId}` with expiry `tick + 100`; same ID refreshes instead of duplicates. Preserve `queuedNodeId` only as vehicle presentation/save metadata.
-- [ ] **Step 4: Do not call `controls.step()` here.** Process only owned IDs from central release set.
-- [ ] **Step 5: Run new + service regressions** → PASS.
-- [ ] **Step 6: Commit:** `feat: route service vehicles through 3R control`.
+- [ ] **Step 1:** RED tests: garbage truck queues weight 2; emergency type weight 1 + preemption request; service-owned release advances once/acknowledges; traffic-owned release ignored; missing-edge reroute still resolves a new movement; failure removes queue membership; simple non-conflicting continuation bypasses queue.
+- [ ] **Step 2:** Run focused test; verify RED.
+- [ ] **Step 3:** Implement owned release logic equivalent to TrafficSystem, then route resolution/`requiresQueue()`.
+- [ ] **Step 4:** Emergency queueing submits:
+
+```ts
+controls.submitPriorityRequest({
+  id: `ipr:${vehicle.id}:${resolved.movementId}`,
+  junctionId: resolved.junctionId,
+  movementId: resolved.movementId,
+  kind: 'emergencyPreemption',
+  requestedTick: tick,
+  expiresTick: tick + 100,
+});
+```
+
+Same ID refreshes; never call `controls.step()` here.
+- [ ] **Step 5:** Run new + service regressions; require PASS.
+- [ ] **Step 6:** Commit `feat: route service vehicles through 3R control`.
 
 ---
 
-### Task 12: Make 3R-B live in `LegacySimulationCore` while preserving an inert legacy save container
+### Task 12: Make 3R-B live in `LegacySimulationCore` with one controller step per tick
 
 **Files:**
 - Modify: `src/simulation/core/LegacySimulationCore.ts`
 - Test: `tests/transport3r-core-control.test.ts`
 - Regression: `tests/core-city-loop.test.ts`, `tests/phase6-headless.test.ts`
 
-**Core fields:**
+**Core ownership:**
 
 ```ts
-readonly intersections: IntersectionSystem; // compatibility-only; never stepped live after 3R-B
+readonly intersections: IntersectionSystem; // V3-V8 compatibility container only
 readonly intersectionControl: IntersectionControlSystem; // sole live authority
 private readonly transportNetworkAdapter: LegacyRoadNetworkAdapter;
-private controlResolver?: LegacyRouteMovementResolver;
-private controlResolverRoadRevision = -1;
+private controlRuntimeRoadRevision = -1;
 ```
 
-- [ ] **Step 1: RED core test:** central road junction receives a 3R control plan; `intersectionControl` exists; compatibility `intersections` stays empty during new live queueing; ordinary and service vehicles use the same `intersectionControl` instance.
-- [ ] **Step 2: Run focused test** → FAIL.
-- [ ] **Step 3: Instantiate 3R-A projection + 3R-B controller.** Cache projected authority, lane groups, and resolver by `roads.revision`; rebuild only when revision changes.
-- [ ] **Step 4: Use this exact per-tick control order:**
+- [ ] **Step 1:** RED test: central road junction has a 3R plan; `intersectionControl` is used by both road-vehicle systems; old `intersections` stays empty during new live queueing.
+- [ ] **Step 2:** Run focused test; verify RED.
+- [ ] **Step 3:** Instantiate adapter/controller and cache `{authority, laneGroups, resolver}` by `roads.revision`:
+
+```ts
+if (this.controlRuntimeRoadRevision !== this.roads.revision) {
+  const projection = this.transportNetworkAdapter.projectAuthorityIfNeeded(this.roads);
+  const laneGroups = buildLaneGroups(projection.authority);
+  this.controlRuntime = { authority: projection.authority, laneGroups, resolver: new LegacyRouteMovementResolver(projection.authority, laneGroups) };
+  this.controlRuntimeRoadRevision = this.roads.revision;
+}
+```
+
+- [ ] **Step 4:** Replace the old live order with **exactly one** controller step before both vehicle consumers:
 
 ```ts
 this.transportationGraph.rebuildIfNeeded(this.roads);
 const runtime = this.syncTransportControlRuntime();
-this.intersectionControl.syncNetwork(runtime.authority, runtime.laneGroups, runtime.demand, this.clock.tick);
+this.intersectionControl.syncNetwork(runtime.authority, runtime.laneGroups, this.buildIntersectionDemand(runtime), this.clock.tick);
 const released = new Set(this.intersectionControl.step(this.clock.tick));
 
 const serviceEvents = this.serviceVehicles.step(
-  this.transportationGraph,
-  this.intersectionControl,
-  runtime.resolver,
-  released,
-  this.pathfinding,
-  (edge) => this.traffic.getEdgeTravelTime(edge),
-  this.clock.tick,
+  this.transportationGraph, this.intersectionControl, runtime.resolver, released,
+  this.pathfinding, (edge) => this.traffic.getEdgeTravelTime(edge), this.clock.tick,
 );
 
-// existing mobility/economy work...
+// Keep the existing economy/mobility scheduling in its current relative order.
+// After edgeLoads is computed, call:
 this.traffic.step(
-  this.transportationGraph,
-  this.intersectionControl,
-  runtime.resolver,
-  released,
-  this.clock.tick,
-  edgeLoads,
+  this.transportationGraph, this.intersectionControl, runtime.resolver, released,
+  this.clock.tick, edgeLoads,
 );
 ```
 
-This guarantees **one** controller capacity spend per tick. Vehicles enqueued later in the tick become eligible on the next tick, matching the existing queue cadence.
-- [ ] **Step 5: Build demand snapshots deterministically** from controller-observed movement arrivals/queues plus available traffic metrics. Use zero pedestrian demand when no aggregate mobility source exists; pedestrian APIs/runtime remain operational and testable, and future mobility can supply demand without changing controller interfaces.
-- [ ] **Step 6: Verify no live call to `this.intersections.stepNode()` remains in core/traffic/service code.** Keep `this.intersections` only so old save hydrators can populate a legacy snapshot before V9 migration.
-- [ ] **Step 7: Run focused + core regressions + typecheck** → PASS.
-- [ ] **Step 8: Commit:** `feat: make 3R intersection control live authority`.
+The implementation must preserve every existing statement between `serviceEvents` and `edgeLoads` from the current `runLegacyV7Tick()`; only its intersection-control arguments/order change. Vehicles queued during this tick become service candidates next tick.
+- [ ] **Step 5:** Demand snapshot uses deterministic observed movement arrivals/queue rates and available traffic metrics. If no current pedestrian aggregate exists, pass zero pedestrian demand; do not fabricate pedestrian agents.
+- [ ] **Step 6:** Search `TrafficSystem.ts`, `ServiceVehicleSystem.ts`, and `LegacySimulationCore.ts` for `stepNode(`; expected zero live occurrences.
+- [ ] **Step 7:** Run focused/core regressions + typecheck; require PASS.
+- [ ] **Step 8:** Commit `feat: make 3R intersection control live authority`.
 
 ---
 
-### Task 13: Implement Save V9 and migrate V8 legacy queue state exactly once
+### Task 13: Implement Save V9 and deterministic V8→V9 queue migration
 
 **Files:**
 - Create: `src/simulation/transportation/IntersectionControlMigration.ts`
@@ -490,90 +570,116 @@ export type SaveV9 = Omit<SaveV8, 'saveVersion' | 'gameVersion' | 'intersections
 }>;
 ```
 
-**Migration API:**
+- [ ] **Step 1:** RED canonical tests: default save is V9; contains `intersectionControl`; omits `intersections`; round-trip exact mid-signal phase, queued STOP state, pending release, pedestrian runtime, override, coordination state, and priority request.
+- [ ] **Step 2:** RED V8 fixtures: (a) no queues, (b) queued ordinary vehicle, (c) queued emergency service vehicle, (d) legacy `released: true` pending entry. For normal queued entries preserve weight, queuedTick, priority. For legacy released entries preserve **vehicle identity, incoming-edge route intent, and exactly-once pending-release status**; do not invent original weight/queue timestamp because V8's pending representation stores `travelerWeight: 0` and `queuedTick: 0`.
+- [ ] **Step 3:** Implement migration helper:
 
 ```ts
-export function migrateLegacyIntersectionSnapshot(
-  core: SimulationCore,
-  legacy: IntersectionSnapshot,
-): IntersectionControlSnapshot;
+export function migrateLegacyIntersectionSnapshot(core: SimulationCore, legacy: IntersectionSnapshot): IntersectionControlSnapshot {
+  // rebuild authority/lane groups/resolver from core.roads
+  // enumerate every legacy entry exactly once
+  // find owner in core.traffic or core.serviceVehicles
+  // derive owner's active currentEdge + nextEdge
+  // resolve explicit movement and incoming lane groups
+  // queued entry -> preserve remaining weight/tick/priority
+  // released entry -> create canonical pending-release marker with zero remaining weight
+  // throw on orphan, duplicate, route mismatch, missing movement
+}
 ```
 
-- [ ] **Step 1: RED canonical tests:** default `serializeCore()` emits V9/game version, includes `intersectionControl`, omits canonical legacy `intersections`, and round-trips mid-signal phase, queued STOP vehicle, pending release, pedestrian runtime, override, coordination state, and priority request.
-- [ ] **Step 2: RED V8 migration fixtures:** no queues; queued ordinary traffic; queued emergency service vehicle; `released: true` pending entry. Each migrated vehicle appears exactly once with movement, weight, queuedTick, and priority preserved; pending release never spends capacity again.
-- [ ] **Step 3: Implement migration from the inert compatibility container:** call existing `hydrateCoreV8(input)` first; read `core.intersections.snapshot()`; rebuild 3R authority/lane groups/resolver from restored roads; locate each queued vehicle in `core.traffic` or `core.serviceVehicles`; resolve its current+next active route edges; build movement queue entries; initialize signal runtime from restored tick + deterministic timing offset; initialize pedestrian occupancy empty; throw on orphan/duplicate/route mismatch.
-- [ ] **Step 4: Clear the compatibility container after migration** with `core.intersections.restore({})`; all subsequent live continuation is in `core.intersectionControl`.
-- [ ] **Step 5: Implement V9 hydration without round-tripping V9 control state through legacy queues:** construct an inherited V8 payload from V9 fields with `saveVersion: 8`, `gameVersion: '0.8.0-world-foundation'`, and `intersections: {}` solely to hydrate inherited world/city fields; then rebuild authority and call `core.intersectionControl.restore(save.intersectionControl, authority, laneGroups)`.
-- [ ] **Step 6: Implement V9 serialization:** get inherited V8 fields, discard its `intersections`, and attach `core.intersectionControl.snapshot()`. Canonical V9 has no second persisted live queue authority.
-- [ ] **Step 7: Make `save.ts` default to `serializeCoreV9`/`hydrateCoreV9` and retain named legacy exports.** V3–V8 loading must continue. Historical explicit serializers remain available but are not required to downgrade V9-only controller continuation faithfully; document this rather than silently claiming round-trip equivalence.
-- [ ] **Step 8: Run V9 + V8 + V7 + V6 tests** → PASS.
-- [ ] **Step 9: Commit:** `feat: add Save V9 intersection control persistence`.
+Initialize migrated signal cycle from restored simulation tick + canonical offset; pedestrian occupancy empty because V8 has no equivalent.
+- [ ] **Step 4:** Non-V9 input flow:
+
+```ts
+const core = hydrateCoreV8(input);
+const migrated = migrateLegacyIntersectionSnapshot(core, core.intersections.snapshot());
+core.intersections.restore({});
+const runtime = rebuild3RRuntime(core.roads);
+core.intersectionControl.restore(migrated, runtime.authority, runtime.laneGroups);
+return core;
+```
+
+- [ ] **Step 5:** V9 input flow must not project V9 queues backward. Build inherited V8 object with V9's inherited fields plus `saveVersion: 8`, `gameVersion: '0.8.0-world-foundation'`, `intersections: {}`; hydrate inherited state; rebuild authority/lane groups; restore saved `intersectionControl` directly.
+- [ ] **Step 6:** V9 serialization obtains inherited V8 fields, removes `intersections`, and attaches `core.intersectionControl.snapshot()`. Make `save.ts` default to V9 while retaining named legacy exports. Document explicit older serializers as historical formats, not faithful downgrade exporters of V9-only controller state.
+- [ ] **Step 7:** Run V9/V8/V7/V6 tests; require PASS.
+- [ ] **Step 8:** Commit `feat: add Save V9 intersection control persistence`.
 
 ---
 
-### Task 14: Add structural scale and determinism acceptance
+### Task 14: Add metropolitan structural scale/determinism acceptance
 
 **Files:**
 - Create: `tests/transport3r-intersection-scale.test.ts`
-- Modify: `src/simulation/transportation/IntersectionControlSystem.ts` only if diagnostics/index fixes are required.
+- Modify `IntersectionControlSystem.ts` only if read-only diagnostics/index fixes are needed.
 
-- [ ] **Step 1: Build 100×100 road-cell fixture** and a high-active-queue fixture across many intersections.
-- [ ] **Step 2: RED structural assertions:** no per-vehicle full authority `.find()` scans; resolver uses indexes; controller reports only active junctions stepped; unchanged road revision does not rebuild authority/lane groups/resolver/control topology.
-- [ ] **Step 3: Add minimal read-only diagnostics** if absent: `networkRebuilds`, `activeJunctionsStepped`, `movementLookups`, `conflictLookups`, `queueHeadsExamined`.
-- [ ] **Step 4: Log but do not assert wall-clock diagnostics:** `roadCells`, `junctions`, `movements`, `plans`, `queuedVehicles`, diagnostics, `buildMs`, `stepMs`.
-- [ ] **Step 5: Run focused scale test twice** → identical structural counts/PASS.
-- [ ] **Step 6: Commit:** `test: add 3R-B intersection scale acceptance`.
+- [ ] **Step 1:** Build 100×100 road-cell projection plus high-active-queue fixture.
+- [ ] **Step 2:** Assert structural properties: no per-vehicle authority scans; unchanged road revision does not rebuild authority/lane groups/resolver/control topology; only active junctions step; shared lane-group budget is not multiplied by movement count.
+- [ ] **Step 3:** If needed, expose diagnostics:
+
+```ts
+type IntersectionControlDiagnostics = Readonly<{
+  networkRebuilds: number;
+  activeJunctionsStepped: number;
+  movementLookups: number;
+  conflictLookups: number;
+  queueHeadsExamined: number;
+}>;
+```
+
+- [ ] **Step 4:** Log wall-clock values without assertions:
+
+```ts
+console.log('TRANSPORT3R_INTERSECTION_SCALE', { roadCells, junctions, movements, plans, queuedVehicles, ...diagnostics, buildMs, stepMs });
+```
+
+- [ ] **Step 5:** Run twice; structural counts identical/PASS.
+- [ ] **Step 6:** Commit `test: add 3R-B intersection scale acceptance`.
 
 ---
 
-### Task 15: Update authoritative documentation to V9/3R-B
+### Task 15: Update current authoritative documentation
 
-**Files:**
-- Modify: `docs/SAVE_FORMAT.md`
-- Modify: `docs/ARCHITECTURE.md`
-- Modify: `docs/SIMULATION.md`
+**Files:** `docs/SAVE_FORMAT.md`, `docs/ARCHITECTURE.md`, `docs/SIMULATION.md`.
 
-- [ ] **Step 1: `SAVE_FORMAT.md`:** canonical V9, game version, inherited V8 World Foundation, authoritative `intersectionControl`, derived conflict/lane indexes, V8→V9 migration, V3–V8 legacy loads.
-- [ ] **Step 2: `ARCHITECTURE.md`:** 3R-A owns physical/legal transport topology; 3R-B owns live control/queue state; inert `IntersectionSystem` exists only as historical-save compatibility during old hydration.
-- [ ] **Step 3: `SIMULATION.md`:** movement queues, U.S. STOP/YIELD/all-way STOP, fixed signals, protected/permissive lefts, RTOR, pedestrian clearance, coordination, controlled-access semantics, emergency/transit hooks, one central controller step per tick.
-- [ ] **Step 4: Search current authoritative docs/source comments for stale claims that V7/V8 is canonical or legacy `IntersectionSystem` is live.** Do not rewrite historical specs/plans except the already committed V9 amendment.
-- [ ] **Step 5: Commit:** `docs: document 3R-B and Save V9`.
+- [ ] **Step 1:** `SAVE_FORMAT.md`: V9 canonical, inherited V8 World Foundation, `intersectionControl` authority, derived indexes, V8→V9 migration, V3–V8 legacy loading.
+- [ ] **Step 2:** `ARCHITECTURE.md`: 3R-A owns physical/legal topology; 3R-B owns live control/queue state; old `IntersectionSystem` is hydration compatibility only.
+- [ ] **Step 3:** `SIMULATION.md`: movement queues; STOP/YIELD/all-way STOP; fixed signals; protected/permissive/protected-only lefts; RTOR; pedestrian clearance; coordination; controlled access; emergency/transit hooks; one controller step/tick.
+- [ ] **Step 4:** Search current docs/source comments for stale claims that V7/V8 is canonical or old `IntersectionSystem` is live. Preserve historical plan/spec documents except the committed V9 amendment.
+- [ ] **Step 5:** Commit `docs: document 3R-B and Save V9`.
 
 ---
 
-### Task 16: Full regression, architecture review, and PR completion gate
+### Task 16: Full regression, review, and PR completion gate
 
-**Files:** modify only files required by failures/review findings.
-
-- [ ] **Step 1: Run `npm test`** → 0 failures.
-- [ ] **Step 2: Run `npm run typecheck`, `npm run lint`, `npm run assets:check`, `npm run build`** → all exit 0.
-- [ ] **Step 3: Run `npm run test:smoke`, `npm run test:smoke:phase7`, `npm run test:smoke:isometric`** → all pass.
-- [ ] **Step 4: Architecture checklist:** no live `IntersectionSystem.stepNode` use in core/traffic/service; one central `intersectionControl.step` per tick; ordinary + service release sets share one capacity spend; legacy object only compatibility; expressway/highway at-grade controls rejected; all signal/STOP/RTOR/pedestrian/coordination/priority behaviors tested; V9 default and V8 load green; no placeholder markers in new production code; production coordinators remain focused.
-- [ ] **Step 5: Invoke `superpowers:requesting-code-review`** against branch base/head. For every valid Critical/Important finding: first add a RED regression, then fix, rerun focused gates, and commit.
-- [ ] **Step 6: After the final code change, rerun Steps 1–3 fresh.** Do not make completion claims from earlier CI.
-- [ ] **Step 7: Update draft PR body** with exact test count, static/build/smoke results, Save V9 migration evidence, scale diagnostics, and explicit deferrals. Do not mark ready or merge without user authorization.
+- [ ] **Step 1:** `npm test`; require 0 failures.
+- [ ] **Step 2:** `npm run typecheck && npm run lint && npm run assets:check && npm run build`; require exit 0.
+- [ ] **Step 3:** `npm run test:smoke && npm run test:smoke:phase7 && npm run test:smoke:isometric`; require PASS.
+- [ ] **Step 4:** Architecture audit: no live old `stepNode`; exactly one `intersectionControl.step` per tick; shared release set cannot double-spend; old object compatibility-only; shared lane capacity conserved; controlled-access at-grade control rejected; signal/STOP/RTOR/pedestrian/coordination/priority behaviors covered; V9 default/V8 load green; no placeholder markers in new production code; focused source files.
+- [ ] **Step 5:** Invoke `superpowers:requesting-code-review` against branch base/head. Every valid Critical/Important finding gets a RED regression before its fix, focused verification, and commit.
+- [ ] **Step 6:** After the final code change, rerun Steps 1–3 fresh. Completion claims must cite this fresh evidence.
+- [ ] **Step 7:** Update the draft PR body with exact test count, build/static/smoke results, V9 migration evidence, structural scale diagnostics, live-authority cutover, and explicit deferrals. Do not mark ready or merge without user authorization.
 
 ---
 
 ## Acceptance Traceability
 
-- Stable public control semantics: Task 1.
+- Public U.S. control semantics: Task 1.
 - Legacy route compatibility: Task 2.
-- Explicit pedestrian crossings + physical conflicts: Task 3.
-- Hierarchy control, warrants/hysteresis, controlled access, fixed signal plans: Task 4.
+- Pedestrian crossings/conflicts: Task 3.
+- Hierarchy, warrants, hysteresis, controlled access, fixed signal plans: Task 4.
 - Movement queues/pending releases: Task 5.
-- STOP/YIELD/all-way STOP/gap acceptance: Task 6.
-- Pedestrian runtime, protected/permissive/protected-only turns, RTOR, yellow/all-red: Task 7.
-- Coordination, emergency preemption, transit-priority hooks: Task 8.
-- Sole runtime controller API and lane-group discharge: Task 9.
-- Ordinary live traffic cutover: Task 10.
-- Service/emergency live cutover: Task 11.
-- Exactly one live controller step + inert historical-save container: Task 12.
-- Save V9 canonical, V8→V9 migration, V3–V8 loading: Task 13.
-- Metropolitan structural performance/determinism: Task 14.
-- Current documentation: Task 15.
-- Full CI/review gate: Task 16.
+- STOP/YIELD/all-way STOP/gaps: Task 6.
+- Pedestrian runtime, left-turn modes, RTOR, clearance: Task 7.
+- Coordination/preemption/transit hooks: Task 8.
+- Sole controller API, simple-junction bypass, shared lane capacity: Task 9.
+- Ordinary traffic cutover: Task 10.
+- Service/emergency cutover: Task 11.
+- Exactly one live controller step and inert legacy hydration container: Task 12.
+- Save V9 + V8 migration + V3–V8 loading: Task 13.
+- Structural scale/determinism: Task 14.
+- Current docs: Task 15.
+- Full verification/review: Task 16.
 
 ## Execution Rule
 
-No implementation code precedes Task 1's RED test. Complete tasks in order because later tasks consume exact interfaces defined earlier. Commit each independently green task. Never merge 3R-B without explicit user authorization.
+No implementation code precedes Task 1's RED test. Execute tasks in order because later tasks consume earlier interfaces. Each task ends green and committed. Never merge 3R-B without explicit user authorization.
