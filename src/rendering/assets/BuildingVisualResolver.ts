@@ -1,8 +1,8 @@
 import type { BuildingV2 } from '../../simulation/buildings/BuildingTypes.ts';
-import type { AssetManifestEntry } from './AssetTypes.ts';
+import type { AssetManifestEntry, AssetOrientation } from './AssetTypes.ts';
 import { PASS_A_BUILDING_VARIANTS } from './PassAAssetManifest.ts';
 import { PASS_B1_MIXED_USE_FAMILIES } from './PassB1AssetManifest.ts';
-import { selectWeightedVariantKey } from './VariantSelector.ts';
+import { resolveVariantEntry, selectWeightedVariantKey } from './VariantSelector.ts';
 
 type BuildingCondition = NonNullable<AssetManifestEntry['condition']>;
 type LegacyZone = 'residential' | 'commercial' | 'industrial';
@@ -68,4 +68,12 @@ export function buildingVariantKey(
   const condition = buildingConditionFor(building);
   if (!isMixedUseTypology(building.typologyId) && condition === 'maintained') return family;
   return `${family}__${condition}`;
+}
+
+export function selectBuildingVisualEntry(
+  building: Pick<BuildingV2, 'id' | 'typologyId' | 'status' | 'lifecycle'>,
+  orientation: AssetOrientation,
+  entries: readonly AssetManifestEntry[],
+): AssetManifestEntry | undefined {
+  return resolveVariantEntry(entries, buildingVariantKey(building), orientation);
 }
