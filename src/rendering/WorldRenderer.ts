@@ -8,7 +8,7 @@ import { ServiceVehicleRenderer } from './ServiceVehicleRenderer.ts';
 import { TransitVehicleRenderer } from './TransitVehicleRenderer.ts';
 import { FreightVehicleRenderer } from './FreightVehicleRenderer.ts';
 import { AssetRegistry } from './assets/AssetRegistry.ts';
-import { PASS_A_ASSET_MANIFEST } from './assets/PassAAssetManifest.ts';
+import { RUNTIME_ASSET_MANIFEST } from './assets/RuntimeAssetManifest.ts';
 import { IsometricCamera } from './isometric/IsometricCamera.ts';
 import { GroundRenderPass } from './passes/GroundRenderPass.ts';
 import { ObjectRenderPass } from './passes/ObjectRenderPass.ts';
@@ -24,7 +24,7 @@ export class WorldRenderer {
   readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly camera = new IsometricCamera();
-  private readonly assets = new AssetRegistry(PASS_A_ASSET_MANIFEST);
+  private readonly assets = new AssetRegistry(RUNTIME_ASSET_MANIFEST);
   private readonly ground = new GroundRenderPass(this.assets);
   private readonly objects = new ObjectRenderPass(this.assets);
   private readonly overlays = new OverlayRenderPass();
