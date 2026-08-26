@@ -148,6 +148,7 @@ export class IntersectionControlSystem {
   private readonly queueStore = new MovementQueueStore();
   private readonly overridesByJunction = new Map<JunctionId, JunctionControlOverride>();
   private readonly plansByJunction = new Map<JunctionId, JunctionControlPlan>();
+  private readonly junctionsById = new Map<JunctionId, Junction>();
   private readonly movementsById = new Map<TurnMovementId, TurnMovement>();
   private readonly movementsByJunction = new Map<JunctionId, TurnMovement[]>();
   private readonly carriagewaysById = new Map<CarriagewayId, Carriageway>();
@@ -306,7 +307,7 @@ export class IntersectionControlSystem {
       this.overridesByJunction.set(override.junctionId, override);
       return;
     }
-    if (!this.authority.junctions.some((junction) => junction.id === override.junctionId)) {
+    if (!this.junctionsById.has(override.junctionId)) {
       throw new Error(`unknown override junction ${override.junctionId}`);
     }
     const previous = this.overridesByJunction.get(override.junctionId);
@@ -374,7 +375,7 @@ export class IntersectionControlSystem {
 
     this.plansByJunction.clear();
     for (const plan of canonicalPlans(snapshot.plans)) {
-      if (!authority.junctions.some((junction) => junction.id === plan.junctionId)) {
+      if (!this.junctionsById.has(plan.junctionId)) {
         throw new Error(`persisted plan references unknown junction ${plan.junctionId}`);
       }
       this.validatePersistedPlan(plan);
@@ -450,6 +451,7 @@ export class IntersectionControlSystem {
   }
 
   private reindex(authority: TransportNetworkAuthority, laneGroups: readonly LaneGroup[]): void {
+    this.junctionsById.clear();
     this.movementsById.clear();
     this.movementsByJunction.clear();
     this.carriagewaysById.clear();
@@ -457,6 +459,11 @@ export class IntersectionControlSystem {
     this.laneGroupsById.clear();
     this.conflictByJunction.clear();
     this.crossingById.clear();
+
+    for (const junction of authority.junctions) {
+      if (this.junctionsById.has(junction.id)) throw new Error(`duplicate junction ${junction.id}`);
+      this.junctionsById.set(junction.id, junction);
+    }
 
     for (const carriageway of authority.carriageways) {
       if (this.carriagewaysById.has(carriageway.id)) throw new Error(`duplicate carriageway ${carriageway.id}`);
@@ -489,7 +496,7 @@ export class IntersectionControlSystem {
     }
 
     for (const junctionId of [...this.priorityByJunction.keys()]) {
-      if (!authority.junctions.some((junction) => junction.id === junctionId)) {
+      if (!this.junctionsById.has(junctionId)) {
         this.priorityByJunction.delete(junctionId);
       }
     }
@@ -688,10 +695,10 @@ export class IntersectionControlSystem {
         const movement = this.movementsById.get(entry.movementId);
         if (!movement) continue;
         const carriageway = this.carriagewaysById.get(movement.fromCarriagewayId);
-        const junction = this.authority?.junctions.find((value) => value.id === junctionId);
+        const junction = this.junctionsById.get(junctionId);
         const origin = carriageway === undefined
           ? undefined
-          : this.authority?.junctions.find((value) => value.id === carriageway.fromJunctionId);
+          : this.junctionsById.get(carriageway.fromJunctionId);
         if (!carriageway || !junction || !origin) continue;
         const groupSpeeds = entry.laneGroupIds
           .map((id) => this.laneGroupsById.get(id)?.freeFlowSpeedKph)
