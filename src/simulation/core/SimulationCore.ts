@@ -2,6 +2,14 @@ import { SimulationCore as LegacySimulationCore } from './LegacySimulationCore.t
 import type { CellCoord, ZoneType } from './types.ts';
 import { RandomStreamRegistry } from '../kernel/RandomStreamRegistry.ts';
 import { DevelopmentFeasibilitySystem } from '../development/DevelopmentFeasibilitySystem.ts';
+import { HighestBestUseSystem } from '../development/HighestBestUseSystem.ts';
+import { PropertyMarketSystem } from '../development/PropertyMarketSystem.ts';
+import { SiteAssemblySystem } from '../development/SiteAssemblySystem.ts';
+import { BuildableEnvelopeSystem } from '../zoning/BuildableEnvelopeSystem.ts';
+import { ZoningComplianceSystem } from '../zoning/ZoningComplianceSystem.ts';
+import { BuildingMassingSystem } from '../buildings/BuildingMassingSystem.ts';
+import { BuildingLifecycleSystem } from '../buildings/BuildingLifecycleSystem.ts';
+import { RenovationSystem } from '../buildings/RenovationSystem.ts';
 import { WorldFoundation } from '../../world/foundation/WorldFoundation.ts';
 import { CadastralGraph } from '../../world/cadastre/CadastralGraph.ts';
 import { ParcelGenerationSystem } from '../../world/cadastre/ParcelGenerationSystem.ts';
@@ -74,6 +82,14 @@ export class SimulationCore extends LegacySimulationCore {
   readonly world: WorldFoundation;
   readonly cadastre: CadastralGraph;
   readonly parcelGeneration: ParcelGenerationSystem;
+  readonly buildableEnvelopes: BuildableEnvelopeSystem;
+  readonly zoningCompliance: ZoningComplianceSystem;
+  readonly buildingMassing: BuildingMassingSystem;
+  readonly buildingLifecycle: BuildingLifecycleSystem;
+  readonly renovation: RenovationSystem;
+  readonly highestBestUse: HighestBestUseSystem;
+  readonly propertyMarket: PropertyMarketSystem;
+  readonly siteAssembly: SiteAssemblySystem;
 
   constructor(options: SimulationCoreOptions = {}) {
     const hydration = activeHydrationOverride();
@@ -114,6 +130,14 @@ export class SimulationCore extends LegacySimulationCore {
     this.world = world;
     this.parcelGeneration = new ParcelGenerationSystem();
     this.cadastre = new CadastralGraph();
+    this.buildableEnvelopes = new BuildableEnvelopeSystem();
+    this.zoningCompliance = new ZoningComplianceSystem();
+    this.buildingMassing = new BuildingMassingSystem();
+    this.buildingLifecycle = new BuildingLifecycleSystem();
+    this.renovation = new RenovationSystem();
+    this.highestBestUse = new HighestBestUseSystem();
+    this.propertyMarket = new PropertyMarketSystem();
+    this.siteAssembly = new SiteAssemblySystem();
     this.rebuildCadastreFromLegacyState();
 
     const preparationMultiplierAt = (x: number, y: number): number => this.world.preparationMultiplierAt(x, y);
