@@ -4,7 +4,7 @@ import test from "node:test";
 import { inspectSourcePolicy } from "../scripts/repository-policy.mjs";
 
 test("repository policy rejects eval", () => {
-  const prohibitedSource = ["ev", "al", '("1 + 1")'].join("");
+  const prohibitedSource = ["ev", "al", "(1)"].join("");
   const failures = inspectSourcePolicy("src/example.ts", prohibitedSource);
 
   assert.ok(
@@ -13,11 +13,7 @@ test("repository policy rejects eval", () => {
 });
 
 test("repository policy rejects Function constructor", () => {
-  const prohibitedSource = [
-    "const fn = new",
-    " Function",
-    '("return 1")',
-  ].join("");
+  const prohibitedSource = ["const fn = new", " Function", "(1)"].join("");
   const failures = inspectSourcePolicy("src/example.ts", prohibitedSource);
 
   assert.ok(
