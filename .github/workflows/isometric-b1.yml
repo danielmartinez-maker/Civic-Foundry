@@ -33,7 +33,7 @@ jobs:
             if [ -f "$candidate" ]; then files+=("$candidate"); fi
           done
           node --experimental-strip-types --test "${files[@]}"
-      - name: B1 typecheck delta against parent
+      - name: B1 typecheck delta against stacked parent
         shell: bash
         run: |
           set +e
@@ -41,10 +41,13 @@ jobs:
           head_status=$?
           set -e
 
-          base_ref="${{ github.event.pull_request.base.sha }}"
-          if [ -z "$base_ref" ]; then
-            base_ref="origin/feature/urban-fabric-2.0"
+          stack_merge="$(git rev-list --merges --first-parent -n 1 HEAD)"
+          if [ -z "$stack_merge" ]; then
+            echo "Unable to locate the B1 parent merge commit."
+            exit 1
           fi
+          base_ref="$(git rev-parse "${stack_merge}^2")"
+          echo "Pinned stacked parent: $base_ref"
 
           parent_dir="$(mktemp -d)"
           git worktree add --detach "$parent_dir" "$base_ref"
@@ -70,11 +73,11 @@ jobs:
           fi
 
           if ! diff -u /tmp/b1-parent-typecheck.log /tmp/b1-head-typecheck.log; then
-            echo "B1 changes the parent TypeScript diagnostic set."
+            echo "B1 changes the stacked parent TypeScript diagnostic set."
             exit 1
           fi
 
-          echo "B1 introduces no TypeScript diagnostics beyond the parent baseline."
+          echo "B1 introduces no TypeScript diagnostics beyond the stacked parent baseline."
       - name: Repository-wide typecheck status
         continue-on-error: true
         run: npm run typecheck
