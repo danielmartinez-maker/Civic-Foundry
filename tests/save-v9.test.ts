@@ -75,6 +75,33 @@ test('Save V9 round-trip preserves Urban Fabric authority exactly', () => {
   assert.deepEqual(restored.propertyMarket.snapshot(), core.propertyMarket.snapshot());
 });
 
+test('Save V9 continuation preserves canonical building lifecycle state after hydration', () => {
+  const core = urbanFabricCore();
+  const building = core.buildings.listV2()[0];
+  assert.ok(building);
+  const lifecycle = {
+    ...building.lifecycle,
+    ageTicks: 4_500,
+    condition: 42,
+    structuralCondition: 55,
+    systemsCondition: 44,
+    exteriorCondition: 33,
+    maintenanceBacklog: 1_234,
+    deferredMaintenanceTicks: 77,
+    effectiveAge: 18,
+    vacancyDurationTicks: 12,
+    distressScore: 61,
+    lastMajorRenovationTick: 321,
+  };
+  core.buildings.restoreV2([{ ...building, lifecycle }]);
+
+  const restored = hydrateCoreV9(structuredClone(serializeCoreV9(core)));
+  assert.deepEqual(restored.buildings.listV2()[0]?.lifecycle, lifecycle);
+
+  restored.step(1);
+  assert.deepEqual(restored.buildings.listV2()[0]?.lifecycle, lifecycle);
+});
+
 test('Save V9 hydration rebuilds legacy lots from persisted cadastral topology', () => {
   const core = new SimulationCore({ terrain: flatTerrain(), seed: 92, startingFunds: 500_000 });
   assert.equal(core.buildRoad([{ x: 2, y: 3 }], 'local').ok, true);
