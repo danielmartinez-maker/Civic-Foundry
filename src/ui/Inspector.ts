@@ -52,7 +52,7 @@ export function inspectCell(core: SimulationCore, x: number, y: number): Inspect
     const queues = core.mobility.passengers.snapshot().queues.filter((queue) => queue.stopId === transitStop.id);
     const waiting = queues.reduce((sum, queue) => sum + queue.cohorts.reduce((inner, cohort) => inner + cohort.travelerWeight, 0), 0);
     const waitNumerator = queues.reduce((sum, queue) => sum + queue.cohorts.reduce((inner, cohort) => inner + Math.max(0, core.clock.tick - cohort.enqueuedTick) * cohort.travelerWeight, 0), 0);
-    const transferWeight = queues.reduce((sum, queue) => sum + queue.cohorts.reduce((inner, cohort) => inner + (cohort.transferLegs.length > 0 ? cohort.travelerWeight : 0), 0);
+    const transferWeight = queues.reduce((sum, queue) => sum + queue.cohorts.reduce((inner, cohort) => inner + (cohort.transferLegs.length > 0 ? cohort.travelerWeight : 0), 0), 0);
     const nearbyVehicles = core.mobility.vehicles.listVehicles().filter((vehicle) => {
       const line = core.transit.getLine(vehicle.lineId);
       return line?.stopIds[vehicle.stopIndex] === transitStop.id;
