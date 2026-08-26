@@ -4,7 +4,7 @@
 
 Approved in chat on 2026-08-26. This specification defines Isometric Pass B2 after accepted Pass A and verified Pass B1.
 
-Pass B2 is an architectural presentation tranche. It expands the visible city fabric around roads, parcels, and buildings while preserving simulation authority boundaries. B2 may read authoritative state, but it may not own, persist, or mutate transportation, parking, zoning, land, building, economic, or save-game outcomes.
+Pass B2 is an architectural presentation tranche. It expands the visible city fabric around roads, parcels, buildings, and existing civic facilities while preserving simulation authority boundaries. B2 may read authoritative state, but it may not own, persist, or mutate transportation, parking, zoning, land, building, service, economic, or save-game outcomes.
 
 ## Goal
 
@@ -32,7 +32,7 @@ Pass B2 preserves all of the following:
 - Pass B1 remains exactly 138 additional entries.
 - Existing Pass A and B1 asset IDs, variant keys, atlas rectangles, building-family selection, condition framing, and camera-orientation behavior remain stable.
 - `WorldFoundation` and the cadastral model remain authoritative for physical/geographic state.
-- Buildings, roads, zoning, transport, traffic, economy, services, utilities, and saves remain authoritative in their existing simulation owners.
+- Buildings, roads, zoning, services, transport, traffic, economy, utilities, and saves remain authoritative in their existing simulation owners.
 - Presentation cannot manufacture simulation outcomes.
 - Rendering cannot affect simulation RNG.
 - No save-format change is introduced by B2.
@@ -48,24 +48,24 @@ Conceptual data flow:
 
 ```text
 authoritative simulation state
-  roads + parcels + buildings + zoning + terrain + stable IDs
-                |
-                v
-      PublicRealmContextIndex
-                |
-                v
-     PublicRealmVisualResolver
-                |
-                v
-  deterministic visual descriptors
-                |
-        +-------+-------+
-        |               |
-        v               v
-  surface commands   vertical sprite commands
-        |               |
-        v               v
-   ground rendering   shared scene depth sort
+  roads + parcels + buildings + service facilities + zoning + terrain + stable IDs
+                               |
+                               v
+                     PublicRealmContextIndex
+                               |
+                               v
+                    PublicRealmVisualResolver
+                               |
+                               v
+                 deterministic visual descriptors
+                               |
+                       +-------+-------+
+                       |               |
+                       v               v
+                 surface commands   vertical sprite commands
+                       |               |
+                       v               v
+                  ground rendering   shared scene depth sort
 ```
 
 No B2 descriptor is persisted as authoritative gameplay state. All B2 outputs must be reconstructible from current authoritative state and deterministic selection rules.
@@ -101,7 +101,7 @@ When 3R.6 becomes authoritative, its parking descriptors must be able to replace
 
 ## Public-realm profiles
 
-Every eligible frontage/site context resolves to one of six presentation profiles.
+Every eligible frontage/site/facility context resolves to one of six presentation profiles.
 
 ### Urban core
 
@@ -167,7 +167,7 @@ Characteristics:
 - civic forecourts;
 - generic fountain/sculpture-plinth accents where appropriate.
 
-B2 does not convert arbitrary undeveloped land into implied public property. Civic plazas and forecourts require a defensible civic, frontage, setback, or public-realm context.
+B2 does not convert arbitrary undeveloped land into implied public property. Civic plazas and forecourts require an authoritative civic facility or compatible civic building use.
 
 ## Canonical profile inputs
 
@@ -178,18 +178,33 @@ Profile resolution uses only state that exists in the current canonical models:
 - `BuildingV2.realizedFAR`;
 - `BuildingV2.coverageRatio`;
 - authoritative floor-use allocations in `BuildingV2.floors`;
-- cadastral parcel frontage/access edges and road references;
+- authoritative `ServiceFacilityType` for existing service facilities;
+- service-facility cell location and stable facility ID;
+- cadastral parcel frontage/access edges and road references where parcel state exists;
 - authoritative road class (`local`, `collector`, `arterial`);
 - zoning/terrain geometry only when needed to validate physical compatibility;
 - stable entity IDs for visual selection.
 
 B2 does not invent or persist a separate building intensity field. It does not use lifecycle/condition to change the public-realm profile in this tranche.
 
-For profile classification, `uses` means the set of authoritative `FloorUseAllocation.use` values present in the building floors.
+For building profile classification, `uses` means the set of authoritative `FloorUseAllocation.use` values present in the building floors.
 
 ## Exact profile-resolution precedence
 
-The following rules are fixed B2 presentation constants and are tested at their boundaries. They are not simulation parameters and do not affect development feasibility or economics.
+The following rules are fixed B2 presentation constants and are tested at their boundaries. They are not simulation parameters and do not affect development feasibility, facility capacity, service coverage, or economics.
+
+### Existing service facilities
+
+Service-facility authority is explicit and takes precedence over generic site inference:
+
+1. `fire_station`, `police_station`, `clinic`, and `elementary_school` resolve `civic-public-space`.
+2. `landfill` and `recycling_center` resolve `industrial-logistics`.
+
+Facility-derived public realm may use road adjacency and facility location for visual placement, but it may not reinterpret service capacity, staffing, dispatch, or coverage.
+
+### Buildings
+
+For canonical buildings:
 
 1. If `uses` contains `civic`, resolve `civic-public-space`.
 2. If `uses` contains `light-industrial`, `heavy-industrial`, or `logistics`, resolve `industrial-logistics`.
@@ -219,7 +234,7 @@ Channels are:
 - parking-form dressing;
 - accent objects.
 
-Each channel uses its own stable selection key derived from authoritative identity, for example:
+Parcel/frontage channels use stable keys such as:
 
 ```text
 parcelId|frontageEdgeId|surface
@@ -228,7 +243,15 @@ parcelId|frontageEdgeId|furniture
 parcelId|frontageEdgeId|parking
 ```
 
-Changing one asset family therefore cannot silently reselect trees, furniture, or parking dressing in another channel.
+Facility channels use the same isolation principle with facility identity, for example:
+
+```text
+facilityId|surface
+facilityId|trees
+facilityId|furniture
+```
+
+Changing one asset family therefore cannot silently reselect unrelated channels.
 
 Input ordering must not affect selection. Camera rotation may change orientation resolution only; it may not select a different semantic profile or visual family.
 
@@ -322,16 +345,17 @@ It may cache/index:
 - parcel frontage/access edges;
 - building-to-parcel relationships;
 - building typology, floor-use set, stories, realized FAR, and coverage ratio;
+- service facility ID, type, department, and cell location;
 - zoning/terrain geometry needed only for physical compatibility checks;
 - stable IDs used for deterministic selection.
 
 The index must rebuild only when relevant authoritative revisions change. It must not become a second source of truth.
 
-No render loop may perform a whole-city parcel/building scan independently for every frontage or decoration.
+No render loop may perform a whole-city parcel/building/facility scan independently for every frontage or decoration.
 
 ## Parking-form derivation
 
-Parking form is selected only after the site profile is resolved.
+Parking form is selected only for building/parcel contexts after the site profile is resolved. Existing civic service facilities do not receive B2 parking-form dressing; their parking state remains visually unspecified until authoritative parking exists.
 
 Exact B2 rules are:
 
@@ -362,7 +386,7 @@ overlays
 selection
 ```
 
-B2 uses the existing `low-props` concept and introduces one targeted renderer improvement so dimensional public-realm props depth-sort correctly with buildings.
+B2 uses the existing `low-props` concept and introduces one targeted renderer improvement so dimensional public-realm props depth-sort correctly with buildings and existing facility sprites.
 
 ### Surface rendering
 
@@ -385,6 +409,7 @@ Buildings, civic/utility structures, construction sprites, and vertical B2 props
 Conceptual contributors include:
 
 - existing object/building commands;
+- existing civic/service and utility structure commands;
 - B2 trees;
 - lamps;
 - benches;
@@ -396,7 +421,7 @@ Conceptual contributors include:
 
 A focused shared type, conceptually `SceneSpriteCommand`, carries the existing depth key plus sprite resolution information. The final buffer is sorted once with the existing `RenderOrder` contract.
 
-This allows foreground trees or lamps to occlude buildings correctly while props behind buildings remain hidden. B2 must not implement special-case z-index hacks for individual asset families.
+This allows foreground trees or lamps to occlude buildings/facilities correctly while props behind them remain hidden. B2 must not implement special-case z-index hacks for individual asset families.
 
 ### WorldRenderer order
 
@@ -406,7 +431,7 @@ The intended high-level frame flow is:
 GroundRenderPass
 PublicRealm surface commands
 Shared SceneSpriteCommandBuffer collection
-  <- existing object/building commands
+  <- existing building/object/facility commands
   <- B2 vertical public-realm commands
 one deterministic depth sort + paint
 vehicles
@@ -461,6 +486,10 @@ B2 does not modify:
 - Save V9 semantics;
 - urban-fabric overlays.
 
+### Services
+
+B2 may read facility type/location to choose public-realm presentation, but it does not modify facility capacity, staffing, vehicles, dispatch, service quality, construction cost, operating cost, or coverage.
+
 ### Transportation 3R.6
 
 B2 does not create a competing parking model. Parking-form presentation is deliberately replaceable by future authoritative parking descriptors.
@@ -474,7 +503,8 @@ Cover:
 - deterministic output for identical state;
 - input-order independence;
 - camera rotation changes orientation only;
-- all exact profile-precedence rules and numerical boundaries (`0.35`, 2 stories, 4 stories, 7 stories, 8 stories, FAR `3.0`);
+- exact service-facility profile mapping;
+- all exact building profile-precedence rules and numerical boundaries (`0.35`, 2 stories, 4 stories, 7 stories, 8 stories, FAR `3.0`);
 - ambiguous/no-compatible-use behavior;
 - stable independent channel selection;
 - semantic profile does not change because an unrelated asset family is added;
@@ -484,6 +514,7 @@ Cover:
 
 Cover:
 
+- no parking-form dressing for current service facilities;
 - garage-entry eligibility and access-edge requirement;
 - surface-lot-edge coverage boundary;
 - driveway access-edge requirement;
@@ -502,9 +533,10 @@ Capture authoritative state before and after B2 resolution/render collection and
 - cadastre;
 - zoning;
 - buildings;
+- services/facilities;
 - treasury;
 - transportation/traffic;
-- services/utilities/economy;
+- utilities/economy;
 - save snapshots.
 
 Presentation tests must continue to prove that authoritative HUD/inspector/overlay values originate from simulation owners rather than art descriptors.
@@ -514,9 +546,9 @@ Presentation tests must continue to prove that authoritative HUD/inspector/overl
 Cover:
 
 - flat public-realm surfaces render before vertical sprites;
-- buildings and B2 vertical props share deterministic depth ordering;
-- foreground tree/lamp can sort in front of a building;
-- rear tree/lamp can sort behind a building;
+- buildings, facilities, and B2 vertical props share deterministic depth ordering;
+- foreground tree/lamp can sort in front of a building/facility;
+- rear tree/lamp can sort behind a building/facility;
 - rotation preserves stable identity;
 - shuffled contributor input order produces the same command order.
 
@@ -543,6 +575,8 @@ Create a deterministic B2 fixture that visibly includes all six profiles and rep
 - furniture;
 - public-space treatment;
 - qualitative parking presentation.
+
+The civic profile fixture must use an authoritative current service facility so the profile is runtime-reachable on the implementation baseline.
 
 Capture multiple camera rotations to expose anchoring, orientation, and occlusion defects.
 
@@ -572,12 +606,12 @@ Inherited parent diagnostics must be separated from B2-introduced diagnostics; B
 Pass B2 is complete only when all of the following hold:
 
 1. The B2 public-realm atlas and manifest are generated and validated.
-2. All six approved public-realm profiles are represented.
+2. All six approved public-realm profiles are represented by runtime-reachable authoritative contexts.
 3. Every approved asset family is represented at the orientation coverage it actually requires.
 4. Context resolution is deterministic and tested.
 5. The parking authority firewall is enforced by types/tests and no authoritative parking data originates in B2.
 6. Surface and vertical draw ordering works across camera rotations.
-7. The shared scene command seam does not regress existing B1 building rendering.
+7. The shared scene command seam does not regress existing B1 building or facility rendering.
 8. No O(N^2)-style presentation hot path is introduced.
 9. Pass A and B1 targeted regressions remain green.
 10. B2 targeted CI is green.
@@ -602,6 +636,7 @@ B2 does not implement:
 - generalized-cost effects;
 - pedestrian simulation;
 - public-space simulation;
+- service simulation changes;
 - a new land-use model;
 - a new save version;
 - a general renderer rewrite.
@@ -610,4 +645,4 @@ B2 does not implement:
 
 Transportation 3R.6 will later replace qualitative parking-form inputs with authoritative parking state. B2 deliberately leaves that seam open.
 
-Future public-space systems may also replace deterministic public-realm profile derivation with explicit authoritative entities. Until then, B2 provides a deterministic visual interpretation of the authoritative city geometry without creating new gameplay state.
+Future public-space systems may also replace deterministic public-realm profile derivation with explicit authoritative entities. Until then, B2 provides a deterministic visual interpretation of authoritative city geometry and service-facility context without creating new gameplay state.
