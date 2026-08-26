@@ -67,7 +67,7 @@ test('road placement validates terrain, charges exact cost, and increments revis
   assert.equal(treasury.balance, 880);
 });
 
-test('zoning only paints buildable non-road cells and cadastral compatibility lots require road frontage', () => {
+test('cadastral compatibility lots preserve legacy frontage cells while deriving from one parcel', () => {
   const terrain = flatTerrain();
   const treasury = new TreasurySystem(1000);
   const roads = new RoadSystem(terrain);
@@ -78,10 +78,19 @@ test('zoning only paints buildable non-road cells and cadastral compatibility lo
   assert.equal(zoning.paint([{ x: 8, y: 1 }], 'industrial').painted, 1);
 
   const graph = new CadastralGraph(new ParcelGenerationSystem().rebuild(terrain, roads, zoning));
+  assert.equal(graph.listParcels().length, 2, 'frontage pair plus isolated zoned cell should remain canonical parcels');
+  const frontageParcels = graph.listParcels().filter((parcel) => parcel.frontageEdgeIds.length > 0);
+  assert.equal(frontageParcels.length, 1, 'two compatible frontage cells should become one canonical cadastral parcel');
+
   const lots = new LotSystem();
   lots.rebuildFromCadastre(graph, (parcel) => parcel.zoningDistrictId as ZoneType);
-  assert.equal(lots.list().length, 1, 'two compatible frontage cells should become one cadastral parcel');
-  assert.deepEqual(lots.list().map((lot) => lot.zone), ['residential']);
+  assert.deepEqual(
+    lots.list(),
+    [
+      { id: 'lot:2,2', x: 2, y: 2, zone: 'residential', frontageRoadKey: '2,3' },
+      { id: 'lot:3,2', x: 3, y: 2, zone: 'residential', frontageRoadKey: '3,3' },
+    ],
+  );
 });
 
 test('buildings move from construction to occupied and expose real capacities', () => {
@@ -129,7 +138,7 @@ test('SimulationCore integrates roads, zoning, lots, development, and population
   assert.equal(core.placeUtility('water', 3, 5).ok, true);
   assert.equal(core.placeUtility('landfill', 4, 5).ok, true);
   core.step(120);
-  assert.equal(core.lots.list().length, 2);
+  assert.deepEqual(core.lots.list().map((lot) => lot.id), ['lot:2,3', 'lot:3,3']);
   assert.equal(core.buildings.occupied().length, 2);
   assert.ok(core.population.population > 0);
 });
