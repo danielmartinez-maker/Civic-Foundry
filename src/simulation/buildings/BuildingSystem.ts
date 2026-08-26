@@ -149,7 +149,7 @@ export class BuildingSystem {
     ];
     for (const building of [...this.buildingsV2.values()].sort((left, right) => left.id.localeCompare(right.id))) {
       const overlap = polygonIntersection(building.footprint, cell);
-      if (overlap.length >= 3 && polygonArea(overlap) > SPATIAL_OVERLAP_EPSILON_M2) return cloneBuildingV2(building);
+      if (overlap.some((ring) => polygonArea(ring) > SPATIAL_OVERLAP_EPSILON_M2)) return cloneBuildingV2(building);
     }
     return undefined;
   }
