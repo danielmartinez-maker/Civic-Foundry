@@ -21,7 +21,7 @@ export class PopulationSystem {
   }
 
   update(residentialCapacity: number, attractiveness: number): void {
-    if (this.personProjection) throw new Error('population is person-derived');
+    if (this.personProjection) return;
 
     const capacity = Math.max(0, Math.floor(residentialCapacity));
     if (this.legacyPopulation > capacity) this.legacyPopulation = capacity;
