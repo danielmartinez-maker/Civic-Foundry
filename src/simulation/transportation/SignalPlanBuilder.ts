@@ -16,7 +16,7 @@ export type FixedSignalPlanInput = Readonly<{
   conflicts: JunctionConflictMatrix;
   pedestrianCrossingIds: readonly PedestrianCrossingId[];
   movementDemandPerMinute: Readonly<Record<TurnMovementId, number>>;
-  protectedOnlyMovementIds?: readonly TurnMovementId[];
+  protectedOnlyMovementIds?: readonly TurnMovementId[] | undefined;
   speedKph: number;
   junctionClearanceMeters: number;
   cycleTicks: number;
