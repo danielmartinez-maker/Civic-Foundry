@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { hydrateCore, serializeCore, type SaveV3 } from '../src/save/save.ts';
+import { fixtureBuildingId, seedOccupiedParcelSites } from './support/parcelTrafficFixture.ts';
 
 function flatTerrain(width = 24, height = 14): TerrainGrid {
   const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({ elevation: 0.5, water: false, buildable: true, biome: 'grass' as const }));
@@ -19,9 +20,35 @@ function managedCore(): SimulationCore {
   assert.equal(core.placeUtility('water', 9, 8).ok, true);
   assert.equal(core.placeUtility('landfill', 14, 8).ok, true);
   core.taxes.setRate('residential', 0.12);
-  core.step(200);
-  for (let i = 0; i < 1_000 && core.traffic.activeVehicles.length === 0; i++) core.step(1);
   assert.ok(core.cadastre.listParcels().length >= 7, 'save fixture must retain distinct canonical trip origins and destinations');
+
+  seedOccupiedParcelSites(core, [
+    { x: 3, y: 6, zone: 'residential' },
+    { x: 5, y: 6, zone: 'residential' },
+    { x: 7, y: 6, zone: 'residential' },
+    { x: 10, y: 6, zone: 'commercial' },
+    { x: 12, y: 6, zone: 'commercial' },
+    { x: 15, y: 6, zone: 'industrial' },
+    { x: 17, y: 6, zone: 'industrial' },
+  ], 24);
+  core.step(200);
+
+  core.transportationGraph.rebuildIfNeeded(core.roads);
+  const start = core.transportationGraph.findNodeAt(3, 7);
+  const end = core.transportationGraph.findNodeAt(17, 7);
+  assert.ok(start, 'save fixture origin must resolve to the road graph');
+  assert.ok(end, 'save fixture destination must resolve to the road graph');
+  const route = core.pathfinding.findRoute(core.transportationGraph, start.id, end.id);
+  assert.ok(route, 'save fixture must have a routable active traffic path');
+  const vehicleId = core.traffic.submitTrip({
+    id: 'save-fixture-active-trip',
+    originBuildingId: fixtureBuildingId(3, 6),
+    destinationBuildingId: fixtureBuildingId(17, 6),
+    departureTick: core.clock.tick,
+    travelerWeight: 3,
+    purpose: 'commute',
+  }, route, core.clock.tick);
+  assert.ok(vehicleId, 'save fixture must contain an explicit in-flight traffic vehicle');
   return core;
 }
 
