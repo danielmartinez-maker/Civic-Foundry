@@ -30,11 +30,16 @@ test('simulation owns cadastral parcels while legacy lot view preserves cell ide
   assert.ok(cadastre, 'SimulationCore must expose the canonical cadastral graph');
 
   const frontageParcels = cadastre.listParcels().filter((parcel) => parcel.frontageEdgeIds.length > 0);
-  assert.equal(frontageParcels.length, 2, 'three compatible legacy cells should be represented by two canonical parcels');
+  assert.equal(frontageParcels.length, 1, 'three contiguous compatible frontage cells should form one canonical parcel');
   assert.deepEqual(
     core.lots.list().map((lot) => lot.id),
     ['lot:3,3', 'lot:4,3', 'lot:5,3'],
     'legacy lot facade must preserve V7/V8 cell IDs while deriving from cadastral frontage',
+  );
+  assert.deepEqual(
+    core.lots.list().map((lot) => lot.parcelId),
+    [frontageParcels[0]!.id, frontageParcels[0]!.id, frontageParcels[0]!.id],
+    'all legacy frontage lots should resolve to the same canonical parcel',
   );
 });
 
