@@ -13,8 +13,10 @@ jobs:
   b1-targeted:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout B1 head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - name: Node 22
         uses: actions/setup-node@v4
         with:
