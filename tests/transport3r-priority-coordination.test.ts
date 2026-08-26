@@ -175,7 +175,15 @@ test('incompatible emergency preemption requires safe clearance before grant', a
   assert.equal(transition.action, 'transition');
   assert.equal(transition.request?.id, 'ems');
 
-  const grant = controller.decide(21, {
+  const stillClearing = controller.decide(21, {
+    activeMovementIds: new Set(),
+    conflicts: () => false,
+    clearanceComplete: false,
+  });
+  assert.equal(stillClearing.action, 'transition');
+  assert.equal(stillClearing.request?.id, 'ems');
+
+  const grant = controller.decide(22, {
     activeMovementIds: new Set(),
     conflicts: () => false,
     clearanceComplete: true,
