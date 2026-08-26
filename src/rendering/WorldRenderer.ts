@@ -1,4 +1,5 @@
 import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
+import { LEGACY_CELL_SIZE_METERS, type WorldPoint } from '../world/cadastre/Geometry.ts';
 import type { TrafficOverlayMode } from './TrafficOverlayLayer.ts';
 import type { ServiceOverlayMode } from './ServiceOverlayLayer.ts';
 import type { TransitOverlayMode } from './TransitOverlayLayer.ts';
@@ -75,6 +76,14 @@ export class WorldRenderer {
 
   worldToCanvas(x: number, y: number, core: SimulationCore): CanvasPoint {
     return this.camera.worldToCanvas(x, y, this.worldSize(core));
+  }
+
+  worldMetersToCanvas(point: WorldPoint, core: SimulationCore): CanvasPoint {
+    return this.worldToCanvas(
+      point.x / LEGACY_CELL_SIZE_METERS,
+      point.y / LEGACY_CELL_SIZE_METERS,
+      core,
+    );
   }
 
   canvasToCell(clientX: number, clientY: number, core: SimulationCore): { x: number; y: number } | null {
