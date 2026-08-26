@@ -45,7 +45,7 @@ test('population compatibility facade remains scalar before person authority is 
   assert.equal(population.population, 7);
 });
 
-test('attached person projection becomes the population authority and rejects scalar mutation', () => {
+test('attached person projection becomes authoritative while legacy tick updates are inert', () => {
   const store = new PersonStore();
   add(store, 1);
   add(store, 2);
@@ -54,9 +54,10 @@ test('attached person projection becomes the population authority and rejects sc
 
   population.attachPersonProjection(projection);
   assert.equal(population.population, 2);
-  assert.throws(() => population.update(500, 1), /person-derived/i);
-  assert.throws(() => population.restore(500), /person-derived/i);
+
+  population.update(500, 1);
   assert.equal(population.population, 2);
+  assert.throws(() => population.restore(500), /person-derived/i);
 
   store.markDead(createPersonId(2));
   assert.equal(population.population, 1);
