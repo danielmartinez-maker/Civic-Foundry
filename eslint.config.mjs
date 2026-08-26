@@ -25,6 +25,7 @@ export default [
       "no-undef": "off",
       "no-unused-vars": "off",
       "no-empty": "warn",
+      "no-useless-assignment": "warn",
       "no-debugger": "error",
       "no-eval": "error",
       "no-new-func": "error",
