@@ -2,13 +2,13 @@ import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import { districtForLegacyZone, getZoningDistrict } from '../simulation/zoning/ZoningDistrictCatalog.ts';
 import type { ZoningDistrict } from '../simulation/zoning/ZoningTypes.ts';
 import type { Parcel } from '../world/cadastre/CadastralTypes.ts';
-import type { MultiPolygon, PolygonRing } from '../world/cadastre/Geometry.ts';
+import type { PolygonRing } from '../world/cadastre/Geometry.ts';
 
 export type ZoningEnvelopeSnapshot = Readonly<{
   parcelId: string;
   districtId: string;
   parcelBoundary: PolygonRing;
-  buildableFootprint: MultiPolygon;
+  buildableFootprint: PolygonRing;
   maxHeightMeters: number;
   effectiveFAR: number;
   effectiveCoverageRatio: number;
