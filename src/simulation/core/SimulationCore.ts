@@ -343,6 +343,7 @@ export class SimulationCore extends LegacySimulationCore {
 
   private reconcileCanonicalBuildingProjection(): void {
     const canonical: BuildingV2[] = [];
+    const existingById = new Map(this.buildings.listV2().map((building) => [building.id, building] as const));
     const parcels = [...this.cadastre.listParcels()].sort((left, right) => left.id.localeCompare(right.id));
     const legacyBuildings = this.buildings.list().sort((left, right) => left.id.localeCompare(right.id));
     const compatibilityLots = this.lots.list();
@@ -374,6 +375,16 @@ export class SimulationCore extends LegacySimulationCore {
         ? `building:${parcel.id}`
         : `building:${parcel.id}:legacy:${building.lotId}`;
       if (isPrimary) primaryAssignedParcels.add(parcel.id);
+
+      const existing = existingById.get(canonicalBuildingId);
+      if (existing) {
+        const legacyStatus = building.status === 'occupied' ? 'occupied' : 'construction';
+        const status = existing.status === 'construction' && legacyStatus === 'occupied'
+          ? 'occupied'
+          : existing.status;
+        canonical.push(Object.freeze({ ...existing, status }));
+        continue;
+      }
 
       canonical.push(Object.freeze({
         id: canonicalBuildingId,
