@@ -4,6 +4,7 @@ import type { TrafficOverlayMode } from './TrafficOverlayLayer.ts';
 import type { ServiceOverlayMode } from './ServiceOverlayLayer.ts';
 import type { TransitOverlayMode } from './TransitOverlayLayer.ts';
 import type { EconomyOverlayMode } from './EconomyOverlayLayer.ts';
+import type { UrbanFabricOverlayMode } from './CadastralOverlayLayer.ts';
 import { VehicleRenderer } from './VehicleRenderer.ts';
 import { ServiceVehicleRenderer } from './ServiceVehicleRenderer.ts';
 import { TransitVehicleRenderer } from './TransitVehicleRenderer.ts';
@@ -106,6 +107,8 @@ export class WorldRenderer {
     serviceOverlayMode: ServiceOverlayMode = 'none',
     transitOverlayMode: TransitOverlayMode = 'none',
     economyOverlayMode: EconomyOverlayMode = 'none',
+    urbanFabricOverlayMode: UrbanFabricOverlayMode = 'none',
+    selectedParcelId: string | null = null,
   ): void {
     this.resize();
     const rect = this.canvas.getBoundingClientRect();
@@ -125,7 +128,17 @@ export class WorldRenderer {
     this.transitVehicles.draw(this.ctx, core.transit, core.transportationGraph, core.mobility.vehicles, travelTicks, this.camera, worldSize);
     this.freightVehicles.draw(this.ctx, core.transportationGraph, core.economyDomain.freightVehicles, travelTicks, this.camera, worldSize);
 
-    this.overlays.draw(this.ctx, core, this.camera, overlayMode, serviceOverlayMode, transitOverlayMode, economyOverlayMode);
+    this.overlays.draw(
+      this.ctx,
+      core,
+      this.camera,
+      overlayMode,
+      serviceOverlayMode,
+      transitOverlayMode,
+      economyOverlayMode,
+      urbanFabricOverlayMode,
+      selectedParcelId,
+    );
     this.selection.draw(this.ctx, core, this.camera, selected, previewPath);
   }
 
