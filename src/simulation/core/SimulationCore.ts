@@ -114,7 +114,7 @@ export class SimulationCore extends LegacySimulationCore {
     this.world = world;
     this.parcelGeneration = new ParcelGenerationSystem();
     this.cadastre = new CadastralGraph();
-    this.rebuildCadastreFromLegacyGrid();
+    this.rebuildCadastreFromLegacyState();
 
     const preparationMultiplierAt = (x: number, y: number): number => this.world.preparationMultiplierAt(x, y);
     this.roads.setCostMultiplierProvider(preparationMultiplierAt);
@@ -147,19 +147,19 @@ export class SimulationCore extends LegacySimulationCore {
 
   override buildRoad(cells: readonly CellCoord[], type: RoadType) {
     const result = super.buildRoad(cells, type);
-    if (result.ok) this.rebuildCadastreFromLegacyGrid();
+    if (result.ok) this.rebuildCadastreFromLegacyState();
     return result;
   }
 
   override paintZone(cells: readonly CellCoord[], zone: ZoneType): { painted: number } {
     const result = super.paintZone(cells, zone);
-    if (result.painted > 0) this.rebuildCadastreFromLegacyGrid();
+    if (result.painted > 0) this.rebuildCadastreFromLegacyState();
     return result;
   }
 
   override bulldozeAt(x: number, y: number): { ok: boolean; kind?: 'road' | 'building' | 'zone'; reason?: string } {
     const result = super.bulldozeAt(x, y);
-    if (result.ok && (result.kind === 'road' || result.kind === 'zone')) this.rebuildCadastreFromLegacyGrid();
+    if (result.ok && (result.kind === 'road' || result.kind === 'zone')) this.rebuildCadastreFromLegacyState();
     return result;
   }
 
@@ -182,7 +182,7 @@ export class SimulationCore extends LegacySimulationCore {
     this.kernel.events.append(this.clock.tick, { type: 'WorldMigratedTo1R', source: 'world', payload });
   }
 
-  private rebuildCadastreFromLegacyGrid(): void {
+  rebuildCadastreFromLegacyState(): void {
     this.cadastre.replaceSnapshot(this.parcelGeneration.rebuild(this.terrain, this.roads, this.zoning));
     this.lots.rebuildFromCadastre(this.cadastre, legacyZoneForParcel);
   }
