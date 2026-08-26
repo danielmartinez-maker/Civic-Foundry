@@ -2,11 +2,13 @@
 
 ## Status
 
-**Implementation complete on the Pass B1 child branch; re-stack verification pending against the latest Urban Fabric 2.0 parent head.**
+**Implementation is re-stacked on the latest Urban Fabric 2.0 parent; final head verification is in progress.**
 
 Branch: `feature/isometric-pass-b1-urban-depth`
 
 Pull request: #91, stacked on `feature/urban-fabric-2.0` / PR #63.
+
+Re-stack parent: `4005b7fa63707b753cc45fdd4ccc97711a249f58`.
 
 The original approved Pass B1 scope is implemented without changing simulation authority or save semantics. Pass A remains an immutable compatibility baseline at 161 entries; Pass B1 adds 138 building presentation entries for a composed runtime total of 299 entries across 9 atlases.
 
@@ -77,6 +79,8 @@ The Pass B1 browser smoke verified three presentation scenes:
 
 It also verified at runtime that the composed manifest contains 299 entries and 9 atlases with no asset diagnostics.
 
+A fresh verification run is required on the re-stacked head before Pass B1 can be treated as accepted against the latest parent.
+
 ## RED/GREEN defects caught during implementation
 
 The TDD cycle caught and corrected several defects before acceptance:
@@ -100,9 +104,9 @@ Pass B1 preserves the following invariants:
 
 ## Parent integration status
 
-During Pass B1 implementation, PR #63 advanced beyond the original stack base. PR #91 is therefore being re-stacked onto the latest `feature/urban-fabric-2.0` head before it can be marked ready for review.
+PR #91 has been mechanically re-stacked onto Urban Fabric head `4005b7fa63707b753cc45fdd4ccc97711a249f58` without rewriting its existing B1 history. Relative to that parent, the PR contains only the 19-file Pass B1 rendering/art/test/documentation/CI delta.
 
-The acceptance criterion after re-stack is the same: the B1 targeted gate must remain green, and the repository-wide PR workflow must be evaluated against the updated parent rather than the stale merge base.
+The parent repository-wide CI baseline is already red before B1 integration: 549 of 555 tests pass and 6 simulation/parity/traffic/cadastre tests fail. Those failures do not touch the Pass B1 rendering or asset paths. The B1 acceptance criterion therefore remains: its head-pinned targeted gate must be green after the re-stack, and the repository-wide workflow must not introduce additional B1-specific failures beyond the inherited parent baseline.
 
 ## Recommended next asset tranche
 
