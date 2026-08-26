@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { validateAssetManifest } from '../src/rendering/assets/AssetManifestValidation.ts';
 import { PASS_A_ASSET_MANIFEST, PASS_A_BUILDING_VARIANTS } from '../src/rendering/assets/PassAAssetManifest.ts';
 import type { AssetManifest } from '../src/rendering/assets/AssetTypes.ts';
@@ -62,6 +63,17 @@ test('Pass B1 asset and atlas IDs are unique after composition', async () => {
   const atlasIds = PASS_B1_COMPOSED_ASSET_MANIFEST.atlases.map((atlas) => atlas.atlasId);
   assert.equal(new Set(assetIds).size, assetIds.length);
   assert.equal(new Set(atlasIds).size, atlasIds.length);
+});
+
+test('Pass B1 source atlas contract exists at exact manifest dimensions', async () => {
+  const { PASS_B1_ASSET_MANIFEST } = await loadB1();
+  const atlas = PASS_B1_ASSET_MANIFEST.atlases[0]!;
+  const source = readFileSync('assets/source/urban_depth_buildings.svg', 'utf8');
+  assert.match(source, new RegExp(`<svg\\b[^>]*width=["']${atlas.width}["'][^>]*height=["']${atlas.height}["']`, 'i'));
+  for (const entry of PASS_B1_ASSET_MANIFEST.entries) {
+    assert.ok(entry.sourceRect.x + entry.sourceRect.width <= atlas.width, entry.assetId);
+    assert.ok(entry.sourceRect.y + entry.sourceRect.height <= atlas.height, entry.assetId);
+  }
 });
 
 test('manifest composer rejects duplicate atlas and asset identities', async () => {
