@@ -10,6 +10,7 @@ import { BuildableEnvelopeSystem } from '../zoning/BuildableEnvelopeSystem.ts';
 import { ZoningComplianceSystem } from '../zoning/ZoningComplianceSystem.ts';
 import { districtForLegacyZone } from '../zoning/ZoningDistrictCatalog.ts';
 import { BuildingMassingSystem } from '../buildings/BuildingMassingSystem.ts';
+import { projectLegacyBuildingCandidate } from '../buildings/LegacyBuildingProjection.ts';
 import { BuildingLifecycleSystem } from '../buildings/BuildingLifecycleSystem.ts';
 import { RenovationSystem } from '../buildings/RenovationSystem.ts';
 import { NEW_BUILDING_LIFECYCLE, type BuildingV2 } from '../buildings/BuildingTypes.ts';
@@ -358,22 +359,22 @@ export class SimulationCore extends LegacySimulationCore {
       const typology = typologyForLegacyDefinition(building.definitionId);
       const district = districtForLegacyZone(zone);
       const envelope = this.buildableEnvelopes.evaluate(parcel.id, this.cadastre, district);
-      const candidate = this.buildingMassing.generate(parcel, envelope, [typology])[0];
-      if (!candidate) continue;
+      const projection = projectLegacyBuildingCandidate(building, parcel, typology);
+      const compliance = this.zoningCompliance.evaluate(projection, envelope);
 
       claimedParcels.add(parcel.id);
       canonical.push(Object.freeze({
         id: `building:${parcel.id}`,
         parcelIds: Object.freeze([parcel.id]),
         typologyId: typology.id,
-        footprint: candidate.footprint,
-        grossFloorAreaM2: candidate.grossFloorAreaM2,
-        usableFloorAreaM2: candidate.usableFloorAreaM2,
-        heightMeters: candidate.heightMeters,
-        stories: candidate.stories,
-        realizedFAR: candidate.realizedFAR,
-        coverageRatio: candidate.coverageRatio,
-        floors: candidate.floors,
+        footprint: projection.footprint,
+        grossFloorAreaM2: projection.grossFloorAreaM2,
+        usableFloorAreaM2: projection.usableFloorAreaM2,
+        heightMeters: projection.heightMeters,
+        stories: projection.stories,
+        realizedFAR: projection.realizedFAR,
+        coverageRatio: projection.coverageRatio,
+        floors: projection.floors,
         status: building.status === 'occupied' ? 'occupied' : 'construction',
         yearBuilt: building.constructionStartedTick,
         ...(building.developerId ? { developerId: building.developerId } : {}),
@@ -381,9 +382,10 @@ export class SimulationCore extends LegacySimulationCore {
         entitlement: Object.freeze({
           approvalTick: building.constructionStartedTick,
           zoningDistrictId: district.id,
-          approvedFAR: envelope.effectiveFAR,
-          approvedHeightMeters: envelope.maxHeightMeters,
-          approvedUses: Object.freeze([...envelope.permittedUses]),
+          approvedFAR: compliance.legal ? envelope.effectiveFAR : projection.realizedFAR,
+          approvedHeightMeters: compliance.legal ? envelope.maxHeightMeters : projection.heightMeters,
+          approvedUses: Object.freeze([...(compliance.legal ? envelope.permittedUses : projection.uses)]),
+          ...(compliance.legal ? {} : { legalNonconforming: true }),
         }),
         lifecycle: NEW_BUILDING_LIFECYCLE,
       }));
