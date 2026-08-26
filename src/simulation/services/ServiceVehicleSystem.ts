@@ -317,22 +317,11 @@ export class ServiceVehicleSystem {
 
     for (const vehicle of this.vehicles.values()) {
       if (vehicle.queuedNodeId) vehicle.accumulatedDelayTicks++;
-      if ((vehicle.state === 'outbound' || vehicle.state === 'returning') && !this.ensureValidRoute(vehicle, graph, pathfinding, edgeCost, tick)) {
+      if ((vehicle.state === 'outbound' || vehicle.state === 'returning')
+        && !this.ensureValidRoute(vehicle, graph, pathfinding, edgeCost, tick)) {
         if (vehicle.currentJobId) events.push({ type: 'failed', vehicleId: vehicle.id, jobId: vehicle.currentJobId });
         intersections.removeVehicle(vehicle.id);
         this.resetIdle(vehicle);
-      }
-    }
-
-    for (const nodeId of Object.keys(intersections.snapshot()).sort()) {
-      for (const vehicleId of intersections.stepNode(graph, nodeId, tick)) {
-        const vehicle = this.vehicles.get(vehicleId);
-        if (!vehicle || !vehicle.queuedNodeId) continue;
-        vehicle.currentEdgeIndex++;
-        vehicle.edgeProgressTicks = 0;
-        vehicle.currentNodeId = vehicle.queuedNodeId;
-        delete vehicle.queuedNodeId;
-        intersections.removeVehicle(vehicleId);
       }
     }
 
