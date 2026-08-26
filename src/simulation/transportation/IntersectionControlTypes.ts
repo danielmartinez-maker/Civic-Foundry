@@ -136,20 +136,28 @@ export type JunctionControlOverride = Readonly<{
   rightTurnOnRed?: boolean;
 }>;
 
-export type CoordinationGroup = Readonly<{
+export type SignalCoordinationGroup = Readonly<{
   id: CoordinationGroupId;
   junctionIds: readonly JunctionId[];
   cycleTicks: number;
   offsetsByJunction: Readonly<Record<JunctionId, number>>;
+  progressionFromJunctionId: JunctionId;
+  progressionToJunctionId: JunctionId;
+  planRevision: number;
 }>;
 
-export type PriorityRequest = Readonly<{
-  vehicleId: string;
+export type CoordinationGroup = SignalCoordinationGroup;
+
+export type IntersectionPriorityRequest = Readonly<{
+  id: string;
   junctionId: JunctionId;
   movementId: TurnMovementId;
-  priority: 'transit' | 'emergency';
+  kind: 'emergencyPreemption' | 'transitPriority';
   requestedTick: number;
+  expiresTick: number;
 }>;
+
+export type PriorityRequest = IntersectionPriorityRequest;
 
 export type IntersectionControlSnapshot = Readonly<{
   controlPlanRevision: number;
@@ -159,8 +167,8 @@ export type IntersectionControlSnapshot = Readonly<{
   queues: readonly MovementQueueEntry[];
   signalStates: readonly SignalRuntimeState[];
   pedestrianStates: readonly PedestrianRuntimeState[];
-  priorityRequests: readonly PriorityRequest[];
-  coordinationGroups: readonly CoordinationGroup[];
+  priorityRequests: readonly IntersectionPriorityRequest[];
+  coordinationGroups: readonly SignalCoordinationGroup[];
   overrides: readonly JunctionControlOverride[];
 }>;
 
