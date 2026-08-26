@@ -6,6 +6,8 @@ import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.
 import { hydrateCore, serializeCore } from '../src/save/save.ts';
 import { hydrateCoreV9, serializeCoreV9 } from '../src/save/saveV9.ts';
 import { serializeCoreV8 } from '../src/save/saveV8.ts';
+import { CadastralGraph } from '../src/world/cadastre/CadastralGraph.ts';
+import { CadastralMutationSystem } from '../src/world/cadastre/CadastralMutationSystem.ts';
 
 function flatTerrain(width = 8, height = 6): TerrainGrid {
   const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({
@@ -71,6 +73,46 @@ test('Save V9 round-trip preserves Urban Fabric authority exactly', () => {
   assert.deepEqual(restored.zoning.listParcelAssignments(), core.zoning.listParcelAssignments());
   assert.deepEqual(restored.buildings.listV2(), core.buildings.listV2());
   assert.deepEqual(restored.propertyMarket.snapshot(), core.propertyMarket.snapshot());
+});
+
+test('Save V9 hydration rebuilds legacy lots from persisted cadastral topology', () => {
+  const core = new SimulationCore({ terrain: flatTerrain(), seed: 92, startingFunds: 500_000 });
+  assert.equal(core.buildRoad([{ x: 2, y: 3 }], 'local').ok, true);
+  assert.equal(core.paintZone([{ x: 2, y: 2 }], 'residential').painted, 1);
+  assert.deepEqual(core.lots.list().map((lot) => lot.id), ['lot:2,2']);
+
+  const save = serializeCoreV9(core);
+  const graph = new CadastralGraph(save.urbanFabric);
+  const parcel = graph.listParcels()[0];
+  assert.ok(parcel);
+  const frontageEdgeId = parcel.frontageEdgeIds[0];
+  assert.ok(frontageEdgeId);
+  const frontage = graph.getEdge(frontageEdgeId);
+  assert.ok(frontage);
+  const from = graph.getNode(frontage.fromNodeId)?.point;
+  const to = graph.getNode(frontage.toNodeId)?.point;
+  assert.ok(from);
+  assert.ok(to);
+
+  const midpoint = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+  const inward = {
+    x: (parcel.centroid.x - midpoint.x) * 0.5,
+    y: (parcel.centroid.y - midpoint.y) * 0.5,
+  };
+  const mutation = new CadastralMutationSystem(graph).dedicateRightOfWay(parcel.id, [
+    from,
+    to,
+    { x: to.x + inward.x, y: to.y + inward.y },
+    { x: from.x + inward.x, y: from.y + inward.y },
+  ]);
+  assert.equal(mutation.committed, true, mutation.rejectionReasons.join('; '));
+  const residual = graph.getParcel(mutation.resultingParcelIds[0]!);
+  assert.ok(residual);
+  assert.equal(residual.frontageEdgeIds.length, 0);
+
+  const restored = hydrateCoreV9({ ...structuredClone(save), urbanFabric: graph.snapshot() });
+  assert.deepEqual(restored.cadastre.snapshot(), graph.snapshot());
+  assert.deepEqual(restored.lots.list(), []);
 });
 
 test('Save V8 migrates deterministically into Save V9 Urban Fabric state', () => {
