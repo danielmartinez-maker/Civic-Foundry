@@ -112,8 +112,8 @@ def main() -> None:
         saved_raw = page.evaluate("() => localStorage.getItem('civic-foundry-save-v7')")
         assert saved_raw
         saved_obj = json.loads(saved_raw)
-        assert saved_obj["saveVersion"] == 8
-        assert saved_obj["gameVersion"] == "0.8.0-world-foundation"
+        assert saved_obj["saveVersion"] == 9
+        assert saved_obj["gameVersion"] == "0.9.0-urban-fabric"
         assert len(saved_obj["economyDomain"]["firms"]["firms"]) > 0
         assert len(saved_obj["economyDomain"]["freightVehicles"]["vehicles"]) > 0
 
@@ -145,7 +145,7 @@ def main() -> None:
         assert restored["roads"] == setup["roads"]
         assert restored["activeFirms"] == setup["activeFirms"]
         assert restored["freight"] == setup["freight"]
-        assert restored["saveVersion"] == 8
+        assert restored["saveVersion"] == 9
 
         page.screenshot(path=str(SCREENSHOT), full_page=True)
         assert SCREENSHOT.is_file() and SCREENSHOT.stat().st_size > 20_000
