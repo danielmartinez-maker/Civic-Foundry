@@ -169,21 +169,42 @@ Characteristics:
 
 B2 does not convert arbitrary undeveloped land into implied public property. Civic plazas and forecourts require a defensible civic, frontage, setback, or public-realm context.
 
-## Profile-resolution precedence
+## Canonical profile inputs
 
-The resolver uses authoritative use, typology, intensity, parcel geometry, frontage/access information, road class, and terrain compatibility. It does not infer simulation values that do not exist.
+Profile resolution uses only state that exists in the current canonical models:
 
-Precedence is deterministic:
+- `BuildingV2.typologyId`;
+- `BuildingV2.stories`;
+- `BuildingV2.realizedFAR`;
+- `BuildingV2.coverageRatio`;
+- authoritative floor-use allocations in `BuildingV2.floors`;
+- cadastral parcel frontage/access edges and road references;
+- authoritative road class (`local`, `collector`, `arterial`);
+- zoning/terrain geometry only when needed to validate physical compatibility;
+- stable entity IDs for visual selection.
 
-1. Civic/public use resolves to `civic-public-space`.
-2. Industrial, logistics, or heavy-industrial use resolves to `industrial-logistics`.
-3. Retail or mixed-use frontage with medium/high intensity resolves to `main-street`.
-4. High-FAR/high-story office, residential, hospitality, or mixed-use context resolves to `urban-core`.
-5. Low-rise residential frontage resolves to `residential-green`.
-6. Low-coverage commercial/residential context with larger apparent setbacks resolves to `suburban-auto-oriented`.
-7. Ambiguous contexts fall back to the least-assumptive compatible profile rather than fabricating a stronger urban condition.
+B2 does not invent or persist a separate building intensity field. It does not use lifecycle/condition to change the public-realm profile in this tranche.
 
-The exact thresholds used for terms such as high-FAR, high-story, low-rise, and low-coverage must be derived in the implementation plan from existing authoritative zoning/building conventions. They must be fixed constants with tests, not tunable runtime simulation variables.
+For profile classification, `uses` means the set of authoritative `FloorUseAllocation.use` values present in the building floors.
+
+## Exact profile-resolution precedence
+
+The following rules are fixed B2 presentation constants and are tested at their boundaries. They are not simulation parameters and do not affect development feasibility or economics.
+
+1. If `uses` contains `civic`, resolve `civic-public-space`.
+2. If `uses` contains `light-industrial`, `heavy-industrial`, or `logistics`, resolve `industrial-logistics`.
+3. If `typologyId` is `main_street_mixed_use` or `typology:commercial_block`, resolve `main-street`.
+4. Otherwise, if `uses` contains `retail`, the building has at least 2 stories, and `coverageRatio > 0.35`, resolve `main-street`.
+5. If `typologyId` is `podium_mixed_use` or `typology:commercial_office`, resolve `urban-core`.
+6. Otherwise, if `stories >= 8` or `realizedFAR >= 3.0`, resolve `urban-core`.
+7. If `typologyId` is `typology:residential_cottage` or `typology:residential_rowhouse`, resolve `residential-green`.
+8. Otherwise, if all authoritative floor uses are residential and `stories <= 4`, resolve `residential-green`.
+9. If the context is non-civic/non-industrial and either `coverageRatio <= 0.35` or `typologyId` is `typology:commercial_shop`, resolve `suburban-auto-oriented`.
+10. Remaining residential-only contexts fall back to `residential-green`.
+11. Remaining retail/office/hospitality contexts fall back to `suburban-auto-oriented`.
+12. Contexts with no recognized compatible building use produce no B2 site profile rather than fabricating one.
+
+The explicit thresholds align with the current typology catalog: low-rise cottage/rowhouse stock tops out at four stories, apartment stock is centered around eight stories, and the higher-intensity office/podium families extend above that range. These thresholds are presentation classifications only.
 
 ## Deterministic visual channels
 
@@ -300,9 +321,8 @@ It may cache/index:
 - cadastral parcels by ID;
 - parcel frontage/access edges;
 - building-to-parcel relationships;
-- building use/typology/intensity/lifecycle presentation inputs;
-- zoning district/envelope inputs needed only for visual classification;
-- terrain/buildability context;
+- building typology, floor-use set, stories, realized FAR, and coverage ratio;
+- zoning/terrain geometry needed only for physical compatibility checks;
 - stable IDs used for deterministic selection.
 
 The index must rebuild only when relevant authoritative revisions change. It must not become a second source of truth.
@@ -311,25 +331,19 @@ No render loop may perform a whole-city parcel/building scan independently for e
 
 ## Parking-form derivation
 
-B2 may use only authoritative form/context inputs such as:
+Parking form is selected only after the site profile is resolved.
 
-- parcel frontage/access geometry;
-- building coverage;
-- building stories/height;
-- building use/typology;
-- road class;
-- deterministic stable identity.
+Exact B2 rules are:
 
-Examples:
-
-- a low-coverage suburban commercial context may receive a landscaped `surface-lot-edge` presentation;
-- a dense mixed-use or office building may receive a `garage-entry` treatment;
-- a low-rise residential parcel with access may receive `driveway` presentation;
-- compatible urban/main-street frontage may receive sparse `curbside-dressing`.
+1. `garage-entry` is eligible only for `podium_mixed_use`, `typology:commercial_office`, or a building with `stories >= 8`, and only where the parcel has an authoritative access edge.
+2. `surface-lot-edge` is eligible only for `suburban-auto-oriented` contexts with `coverageRatio <= 0.35`.
+3. `driveway` is eligible for `residential-green` contexts with an authoritative parcel access edge.
+4. `curbside-dressing` is eligible only on `local` or `collector` frontage in `main-street` or `residential-green` profiles.
+5. `arterial` frontage never receives B2 curbside parked-car dressing.
+6. Curbside dressing is suppressed at parcel access edges, service/loading aprons, civic forecourts, and road cells treated as intersections by existing connectivity data.
+7. When more than one parking form is eligible, precedence is `garage-entry` > `surface-lot-edge` > `driveway` > `curbside-dressing` > `none`.
 
 B2 must not derive exact parking-space quantities from lot area, stall dimensions, zoning, building floor area, or any hidden ratio. Such calculations would cross the 3R.6 authority boundary.
-
-Curbside parked-car dressing must be suppressed at incompatible access points, obvious intersections, civic forecourts, service/loading aprons, and other contexts where decoration would visually contradict authoritative geometry.
 
 ## Render architecture
 
@@ -460,11 +474,24 @@ Cover:
 - deterministic output for identical state;
 - input-order independence;
 - camera rotation changes orientation only;
-- all six profile precedence rules;
-- ambiguous fallback behavior;
+- all exact profile-precedence rules and numerical boundaries (`0.35`, 2 stories, 4 stories, 8 stories, FAR `3.0`);
+- ambiguous/no-compatible-use behavior;
 - stable independent channel selection;
 - semantic profile does not change because an unrelated asset family is added;
 - parking form never exposes capacity/occupancy/pricing fields.
+
+### Parking-rule unit tests
+
+Cover:
+
+- garage-entry eligibility and access-edge requirement;
+- surface-lot-edge coverage boundary;
+- driveway access-edge requirement;
+- curbside dressing on local/collector only;
+- arterial suppression;
+- intersection/access/service/civic suppression;
+- parking-form precedence;
+- no space-count calculation or exported occupancy field.
 
 ### Authority-firewall tests
 
