@@ -14,6 +14,11 @@ const CARDINAL = [[0,-1],[1,0],[0,1],[-1,0]] as const;
 
 export class LotSystem {
   private lots: Lot[] = [];
+  private _entityRevision = 0;
+
+  get entityRevision(): number {
+    return this._entityRevision;
+  }
 
   rebuild(roads: RoadSystem, zoning: ZoningSystem): void {
     const next: Lot[] = [];
@@ -29,6 +34,7 @@ export class LotSystem {
       if (frontage) next.push({ id: `lot:${cell.x},${cell.y}`, x: cell.x, y: cell.y, zone: cell.zone, frontageRoadKey: frontage });
     }
     this.lots = next.sort((a, b) => a.y - b.y || a.x - b.x);
+    this._entityRevision++;
   }
 
   list(): Lot[] {
