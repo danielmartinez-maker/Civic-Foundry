@@ -80,14 +80,7 @@ test('physical mixed-use opportunity enters developer market with physical const
     parcel,
     context,
   );
-  const opportunity = {
-    ...feasibility,
-    feasible: true,
-    rejectionReasons: [],
-    stabilizedValue: feasibility.preFinanceDevelopmentCost * 2.5,
-    residualLandValue: feasibility.landValue * 2,
-    riskScore: 0.1,
-  };
+  const opportunity = profitable(feasibility);
   const market = new DeveloperMarketSystem({ developers: [physicalDeveloper] });
   const tick = 100;
   const [award] = market.allocate([opportunity], { tick, marketInterestRate: 0.04 });
@@ -98,6 +91,38 @@ test('physical mixed-use opportunity enters developer market with physical const
   assert.equal(award.completionTick, tick + feasibility.constructionTicks);
   assert.equal(market.listCommitments()[0]?.lotId, parcel.id);
 });
+
+test('physical massing variants retain distinct candidate identity through bids and the winning award', () => {
+  const system = new DevelopmentFeasibilitySystem();
+  const smallCandidate = candidateFixture(2_000, 1_600);
+  const largeCandidate = candidateFixture(4_000, 3_200);
+  const small = profitable(system.evaluateCandidate(smallCandidate, parcel, context));
+  const large = profitable(system.evaluateCandidate(largeCandidate, parcel, context));
+  const market = new DeveloperMarketSystem({ developers: [physicalDeveloper] });
+
+  const [award] = market.allocate([small, large], { tick: 100, marketInterestRate: 0.04 });
+  const bids = market.lastBids();
+
+  assert.equal(bids.length, 2);
+  assert.equal(new Set(bids.map((bid) => bid.id)).size, 2, 'physical candidate variants need unique bid ids');
+  assert.deepEqual(
+    new Set(bids.map((bid) => bid.physicalCandidateId)),
+    new Set([smallCandidate.id, largeCandidate.id]),
+  );
+  assert.ok(award?.physicalCandidateId);
+  assert.ok([smallCandidate.id, largeCandidate.id].includes(award.physicalCandidateId));
+});
+
+function profitable<T extends ReturnType<DevelopmentFeasibilitySystem['evaluateCandidate']>>(feasibility: T): T {
+  return {
+    ...feasibility,
+    feasible: true,
+    rejectionReasons: [],
+    stabilizedValue: feasibility.preFinanceDevelopmentCost * 2.5,
+    residualLandValue: feasibility.landValue * 2,
+    riskScore: 0.1,
+  } as T;
+}
 
 function candidateFixture(grossFloorAreaM2: number, usableFloorAreaM2: number): DevelopmentCandidate {
   const residentialArea = usableFloorAreaM2 * 0.75;
