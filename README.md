@@ -57,7 +57,7 @@ These domains continue through the Phase 0A deterministic kernel compatibility s
 
 Phase 1R does **not** claim ownership of later systems simply because they can consume world data:
 
-- legal parcels, FAR, setbacks, height/coverage zoning, parcel splitting/assembly, mixed use, deterioration, renovation, and redevelopment geometry belong to **2R — Urban Fabric 2.0**;
+- legal parcels, FAR, setbacks/height/coverage zoning, parcel splitting/assembly, mixed use, deterioration, renovation, and redevelopment geometry belong to **2R — Urban Fabric 2.0**;
 - lane-level road authority, signals, turn movements, explicit parking, crashes, and the final transportation replacement belong to **3R — Transportation Engine 2.0**;
 - current V7 `LotSystem` remains cell/frontage based;
 - current rendering remains presentation-only and derives map size/ground art from `core.terrain`;
@@ -85,7 +85,7 @@ Civic Foundry remains browser-native while using a pinned local engineering tool
 - Node.js 22;
 - TypeScript 5.8.3 ES modules with strict compiler settings;
 - Node 22 built-in test runner with TypeScript strip-types;
-- ESLint 9 plus TypeScript ESLint for static analysis;
+- ESLint 10 plus TypeScript ESLint for static analysis;
 - Prettier 3 for deterministic repository/tooling/test/document formatting;
 - browser-native Canvas 2D;
 - Python Playwright + Chromium for compiled browser smoke tests;
