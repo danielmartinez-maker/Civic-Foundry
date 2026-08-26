@@ -17,12 +17,12 @@ function legacyCity(): SimulationCore {
   return core;
 }
 
-test('default generated Save V8 round-trips exactly with authoritative world state', () => {
+test('default generated Save V9 round-trips exactly with authoritative world state', () => {
   const core = new SimulationCore({ width: 18, height: 12, seed: 42 });
   core.step(25);
   const save = serializeCore(core);
-  assert.equal(save.saveVersion, 8);
-  assert.equal(save.gameVersion, '0.8.0-world-foundation');
+  assert.equal(save.saveVersion, 9);
+  assert.equal(save.gameVersion, '0.9.0-urban-fabric');
   assert.equal(save.world.mode, 'generated-1r');
   const loaded = hydrateCore(structuredClone(save));
   assert.deepEqual(serializeCore(loaded), save);
