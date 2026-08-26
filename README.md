@@ -80,20 +80,34 @@ Explicit older serializers/hydrators remain available for migration and parity t
 
 ## Toolchain
 
-The project remains dependency-light and browser-native:
+Civic Foundry remains browser-native while using a pinned local engineering toolchain:
 
-- TypeScript 5.x ES modules;
+- Node.js 22;
+- TypeScript 5.8.3 ES modules with strict compiler settings;
 - Node 22 built-in test runner with TypeScript strip-types;
+- ESLint 9 plus TypeScript ESLint for static analysis;
+- Prettier 3 for deterministic repository/tooling/test/document formatting;
 - browser-native Canvas 2D;
 - Python Playwright + Chromium for compiled browser smoke tests;
-- procedural isometric atlas generation/validation.
+- deterministic procedural isometric atlas generation/validation.
+
+Install JavaScript dependencies from the committed lockfile:
+
+```bash
+npm ci
+```
 
 ## Commands
 
 ```bash
+npm run verify
 npm test
 npm run typecheck
 npm run lint
+npm run policy:check
+npm run architecture:check
+npm run format:check
+npm run assets:policy
 npm run assets:check
 npm run build
 npm run test:smoke
@@ -102,7 +116,11 @@ npm run test:smoke:isometric
 npm run dev
 ```
 
-`npm run build` produces `dist/`. `npm run dev` serves the compiled build on port 5173 where local navigation is permitted.
+`npm run verify` is the canonical core gate used by contributors and CI: formatting, static analysis, repository/architecture policy, strict typechecking, tests, asset policy/validation, and the production build. CI then runs the established browser and visual smoke suites.
+
+`npm run build` produces `dist/` using cross-platform Node orchestration. `npm run dev` serves the compiled build on port 5173 where local navigation is permitted.
+
+Engineering and contribution policy is documented in [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TESTING.md](docs/TESTING.md), and [docs/adr/](docs/adr/).
 
 ## Phase 1R acceptance evidence
 
