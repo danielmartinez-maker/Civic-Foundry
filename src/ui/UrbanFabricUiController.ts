@@ -1,5 +1,6 @@
 import type { GameApp } from '../app/GameApp.ts';
 import type { UrbanFabricOverlayMode } from '../rendering/CadastralOverlayLayer.ts';
+import { inspectParcelAt } from './Inspector.ts';
 
 const EXCLUSIVE_OVERLAY_SELECTORS = ['#overlay', '#service-overlay', '#transit-overlay', '#economy-overlay'] as const;
 
@@ -14,6 +15,7 @@ export class UrbanFabricUiController {
   private readonly select: HTMLSelectElement;
   private readonly legend: HTMLElement;
   private readonly worldCanvas: HTMLCanvasElement;
+  private readonly inspector: HTMLElement;
   private mode: UrbanFabricOverlayMode = 'none';
   private synchronizing = false;
   private selectedParcelId: string | null = null;
@@ -37,6 +39,7 @@ export class UrbanFabricUiController {
     this.select = this.required<HTMLSelectElement>('#urban-fabric-overlay');
     this.legend = this.required('#overlay-legend');
     this.worldCanvas = this.required<HTMLCanvasElement>('#world');
+    this.inspector = this.required<HTMLElement>('#inspector-content');
     Object.defineProperty(this.app, 'urbanFabricOverlayMode', {
       configurable: true,
       enumerable: true,
@@ -73,6 +76,9 @@ export class UrbanFabricUiController {
       const cell = this.app.renderer.canvasToCell(event.clientX, event.clientY, this.app.core);
       this.selectedParcelId = cell ? this.app.tools.parcelIdAt(this.app.core, cell.x, cell.y) : null;
       this.app.renderer.setUrbanFabricOverlay(this.mode, this.selectedParcelId);
+      if (!cell || !this.selectedParcelId || this.app.tools.activeTool !== 'inspect') return;
+      const html = inspectParcelAt(this.app.core, cell.x, cell.y);
+      if (html) this.inspector.innerHTML = html;
     });
   }
 
