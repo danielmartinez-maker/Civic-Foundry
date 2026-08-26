@@ -150,14 +150,16 @@ export type PriorityRequest = Readonly<{
 }>;
 
 export type IntersectionControlSnapshot = Readonly<{
-  lastReviewTick: number;
+  controlPlanRevision: number;
+  controlRuntimeEpoch: number;
+  lastPlanReviewTick: number;
   plans: readonly JunctionControlPlan[];
   queues: readonly MovementQueueEntry[];
   signalStates: readonly SignalRuntimeState[];
   pedestrianStates: readonly PedestrianRuntimeState[];
-  overrides: readonly JunctionControlOverride[];
-  coordinationGroups: readonly CoordinationGroup[];
   priorityRequests: readonly PriorityRequest[];
+  coordinationGroups: readonly CoordinationGroup[];
+  overrides: readonly JunctionControlOverride[];
 }>;
 
 export function isControlledAccessRoadClass(roadClass: RoadClass): boolean {
