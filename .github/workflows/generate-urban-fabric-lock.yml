@@ -1,0 +1,31 @@
+name: Generate Urban Fabric Lock
+
+on:
+  push:
+    branches: [sync/urban-fabric-lock]
+    paths:
+      - package.json
+      - .github/workflows/generate-urban-fabric-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Node 22
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+      - name: Generate package lock
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit generated lock
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git diff --cached --quiet || git commit -m "chore: regenerate urban fabric package lock"
+          git push
