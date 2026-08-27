@@ -23,7 +23,7 @@
     "test:smoke:isometric": "python tests/smoke/isometric_pass_a_smoke.py"
   },
   "dependencies": {
-    "clipper2-ts": "1.5.4"
+    "clipper2-ts": "^1.5.4"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
