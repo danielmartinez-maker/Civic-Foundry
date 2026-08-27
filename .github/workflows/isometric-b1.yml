@@ -103,7 +103,6 @@ jobs:
           fi
           test -f dist/src/main.js
           cp index.html dist/index.html
-          cp src/styles.css dist/index.html
           cp src/styles.css dist/styles.css
           mkdir -p dist/vendor
           cp node_modules/clipper2-ts/dist/clipper2.min.mjs dist/vendor/clipper2.min.mjs
