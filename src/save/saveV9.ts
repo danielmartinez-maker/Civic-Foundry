@@ -60,11 +60,20 @@ export function hydrateCoreV9(input: unknown): SimulationCore {
     const zone = parcel.zoningDistrictId;
     return zone === 'residential' || zone === 'commercial' || zone === 'industrial' ? zone : undefined;
   });
-  validateUrbanFabricReferences(core, save.zoningV2.parcelAssignments, save.buildingsV2, save.propertyMarket);
+  const historicalParcelIds = new Set(
+    core.cadastre.listLineage().flatMap((event) => event.sourceParcelIds),
+  );
+  validateUrbanFabricReferences(
+    core,
+    save.zoningV2.parcelAssignments,
+    save.buildingsV2,
+    save.propertyMarket,
+    historicalParcelIds,
+  );
   core.zoning.restoreParcelAssignments(save.zoningV2.parcelAssignments);
   core.buildings.restoreV2(save.buildingsV2);
   core.propertyMarket.restore(save.propertyMarket, {
-    isHistoricalParcelId: (parcelId) => isKnownHistoricalParcelId(core, parcelId),
+    isHistoricalParcelId: (parcelId) => historicalParcelIds.has(parcelId),
   });
   return core;
 }
@@ -74,12 +83,13 @@ function validateUrbanFabricReferences(
   assignments: readonly ParcelZoningAssignment[],
   buildings: readonly BuildingV2[],
   propertyMarket: PropertyMarketSnapshot,
+  historicalParcelIds: ReadonlySet<string>,
 ): void {
   const requireParcel = (parcelId: string, source: string): void => {
     if (!core.cadastre.getParcel(parcelId)) throw new Error(`${source} references missing parcel: ${parcelId}`);
   };
   const requireHistoricalParcel = (parcelId: string, source: string): void => {
-    if (!isKnownHistoricalParcelId(core, parcelId)) {
+    if (!core.cadastre.getParcel(parcelId) && !historicalParcelIds.has(parcelId)) {
       throw new Error(`${source} references unknown parcel history: ${parcelId}`);
     }
   };
@@ -92,10 +102,6 @@ function validateUrbanFabricReferences(
   for (const transaction of propertyMarket.transactions) {
     for (const parcelId of transaction.parcelIds) requireHistoricalParcel(parcelId, `property transaction ${transaction.id}`);
   }
-}
-
-function isKnownHistoricalParcelId(core: SimulationCore, parcelId: string): boolean {
-  return core.cadastre.getParcel(parcelId) !== undefined || core.cadastre.lineageFor(parcelId) !== undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
