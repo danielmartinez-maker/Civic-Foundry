@@ -102,24 +102,38 @@ Friction can include:
 
 A project cannot enter demolition while canonical household displacement requirements remain unresolved. Existing housing relocation conservation rules continue to govern occupied residential redevelopment.
 
-## Cadastral mutations
+## Cadastral runtime mutations
 
-Legal land operations are executed through `CadastralMutationSystem` against candidate snapshots:
+`SimulationCore.cadastralMutations` exposes `CadastralRuntimeMutationService` as the safe runtime boundary for:
 
-- split;
-- assembly;
+- parcel split;
+- parcel assembly;
 - easement creation/removal;
 - right-of-way dedication.
 
-The live graph changes only after the complete candidate validates. Failed operations are atomic.
+`CadastralMutationSystem` remains the low-level geometry/topology engine, but it runs against a cloned `CadastralGraph` during runtime mutation staging rather than being exposed as a raw live-graph shortcut.
 
-Area accounting is explicit. Split and assembly conserve private land area; right-of-way dedication transfers area out of private parcels and the combined controlled private + dedicated ROW area must remain conserved within geometry tolerance.
+For a mutation that can retire parcel IDs, the runtime service captures the original cadastre, parcel zoning assignments, canonical `BuildingV2` list, and property-market snapshot before staging. It then:
 
-Lineage records retired and resulting parcel IDs so legal history is deterministic and auditable.
+1. runs the requested cadastral operation on the staged graph;
+2. resolves building parcel references geometrically and preserves surviving building identity/lifecycle state;
+3. rewrites or validates parcel zoning assignments;
+4. rewrites current property holdings while preserving historical transaction rows;
+5. validates historical transaction parcel IDs against staged cadastral lineage;
+6. proves the legacy `LotSystem` projection can be rebuilt;
+7. commits live owners in deterministic fixed order.
+
+The live commit order is cadastre → zoning → canonical buildings → property market → rebuilt legacy lots. If any live commit stage throws, the service restores every original authoritative snapshot and rebuilds the lot facade from the restored cadastre before returning `runtime-commit-rollback`.
+
+Area accounting remains explicit. Split and assembly conserve private land area; right-of-way dedication transfers area out of private parcels and the combined controlled private + dedicated ROW area must remain conserved within geometry tolerance.
+
+Lineage records retired and resulting parcel IDs so legal history is deterministic and auditable. Easement create/remove uses the same transaction boundary even though it does not normally retire parcel IDs.
 
 ## Property market and site assembly
 
-`PropertyMarketSystem` owns canonical parcel holdings and transactions. Multi-parcel transfers validate seller ownership before committing, preventing partial ownership changes.
+`PropertyMarketSystem` owns canonical current parcel holdings and transactions. Multi-parcel transfers validate seller ownership before committing, preventing partial ownership changes.
+
+Current holdings must point to live parcels. Historical property transactions keep the parcel IDs that were legal when the transaction occurred; after a later split, assembly, or right-of-way dedication, those retired IDs remain valid only when `CadastralGraph` lineage recognizes them.
 
 `SiteAssemblySystem` evaluates bounded adjacent parcel sets. Assembly is economically interesting only when geometric/development uplift exceeds acquisition friction; candidate enumeration is deterministic and currently bounded to four parcels.
 
@@ -131,7 +145,7 @@ Road congestion remains based on weighted traffic over real network capacity. Em
 
 Public-service accessibility still derives from reachable network facilities and capacity. Transit choice still uses deterministic generalized cost and finite capacity/queues. Firms and freight remain explicit establishment/cargo systems with conserved inventory and routed vehicles.
 
-Parcel frontage/access may consume transportation information, but cadastral geometry does not manufacture traffic, accessibility, service, or freight outcomes.
+Parcel frontage/access may consume transportation information, but cadastral geometry does not manufacture traffic, accessibility, service, or freight outcomes. Right-of-way dedication in 2R changes legal land only; 3R remains responsible for transportation-network authority.
 
 ## World Foundation interaction
 
@@ -144,11 +158,13 @@ Urban Fabric coordinates are measured in the same physical world coordinate syst
 Current default serialization is Save V9. The continuation sequence restores:
 
 1. inherited V8/World Foundation and legacy city state;
-2. canonical cadastral topology;
+2. canonical cadastral topology and lineage;
 3. legacy lots rebuilt from the restored cadastre;
-4. validated parcel zoning assignments;
+4. validated live parcel zoning assignments;
 5. canonical `BuildingV2` records;
-6. property-market state.
+6. property-market state with historical transaction IDs validated against cadastral lineage.
+
+The Task 13 runtime-mutation work does not introduce Save V10 and does not change the `0.9.0-urban-fabric` schema.
 
 Derived envelopes, massing candidates, overlay state, route caches, and other recomputable diagnostics are rebuilt rather than persisted.
 
@@ -170,9 +186,12 @@ The current Urban Fabric tranche requires:
 - cadastral topology valid after every committed mutation;
 - no overlapping private parcel interiors;
 - valid frontage/access/easement/lineage references;
-- deterministic mutation results for fixed input/order;
+- identical cores plus identical mutation sequences produce deep-equal results and canonical snapshots;
 - failed geometry operations leave state unchanged;
-- canonical building/property/zoning references point to existing parcels;
+- a live commit fault rolls back cadastre, zoning, canonical buildings, property state, and derived lots byte-for-byte;
+- canonical building/property/zoning live references point to existing parcels after runtime mutation and continuation;
+- historical property transactions retain truthful retired parcel IDs through lineage rather than being rewritten;
+- surviving canonical building identity/lifecycle state remains stable through parcel rewrites and later `core.step()` calls;
 - legacy lot compatibility cannot overwrite canonical parcel identity;
 - redevelopment cannot bypass relocation safeguards;
 - Save V9 continuation preserves canonical parcel and building identity;

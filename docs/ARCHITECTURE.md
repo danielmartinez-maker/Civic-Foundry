@@ -12,11 +12,12 @@ GameApp
     → SimulationKernel
     → WorldFoundation                  physical/geographic authority
     → CadastralGraph                   legal-land authority
+    → CadastralRuntimeMutationService  cross-domain land transaction boundary
     → parcel zoning / envelopes / massing / BuildingV2 / property systems
     → legacy city compatibility domains
 ```
 
-`SimulationCore` remains the public gameplay facade. `SimulationKernel` owns deterministic tick execution. `WorldFoundation` remains the sole physical/geographic authority. `CadastralGraph` now owns legal parcels and their topology. Legacy grid lots remain available only as a derived compatibility view.
+`SimulationCore` remains the public gameplay facade. `SimulationKernel` owns deterministic tick execution. `WorldFoundation` remains the sole physical/geographic authority. `CadastralGraph` owns legal parcels and their topology. `CadastralRuntimeMutationService` coordinates runtime geometry changes across the owners that reference parcel IDs. Legacy grid lots remain available only as a derived compatibility view.
 
 ## Authority matrix
 
@@ -56,7 +57,8 @@ Urban Fabric services owned by `SimulationCore` include:
 - `RenovationSystem`;
 - `HighestBestUseSystem`;
 - `PropertyMarketSystem`;
-- `SiteAssemblySystem`.
+- `SiteAssemblySystem`;
+- `CadastralRuntimeMutationService`.
 
 Parcel-level dimensional zoning is stored independently of legacy cell paint. The base district catalog supplies dimensional controls such as permitted uses, FAR, height, coverage, setbacks, and parcel-dimension requirements. Existing legacy R/C/I zoning remains a compatibility input and migration seam.
 
@@ -83,23 +85,34 @@ Key rule:
 
 ## Cadastral mutation model
 
-`CadastralMutationSystem` implements geometry-changing legal operations against a candidate snapshot before commit:
+`CadastralMutationSystem` remains the low-level geometry engine. It implements legal operations against a candidate `CadastralGraph` snapshot:
 
 - split parcel;
 - assemble adjacent compatible parcels;
 - create/remove easements;
 - dedicate right-of-way.
 
-Mutation rules are transactional:
+Low-level mutation rules are transactional within cadastral authority:
 
 1. construct candidate geometry/topology;
 2. validate area conservation, ownership/district constraints, adjacency, geometry, access, and lineage;
 3. validate the entire candidate cadastral snapshot;
-4. replace live graph state only when validation succeeds.
+4. replace graph state only when validation succeeds.
 
-Invalid operations return without partially mutating canonical state.
+Runtime safety requires more than graph validity because canonical buildings, parcel zoning assignments, property holdings, and the legacy lot facade also reference parcel identity. `SimulationCore.cadastralMutations` therefore exposes `CadastralRuntimeMutationService` as the only public cross-domain mutation boundary.
 
-Urban Fabric integration must also preserve references held outside the graph. Raw topology mutation is therefore not treated as a safe public shortcut when dependent building/property/zoning/project references would be left stale.
+For split, assembly, and right-of-way operations the coordinator:
+
+1. snapshots cadastre, parcel zoning, canonical `BuildingV2`, and property-market state;
+2. runs the requested low-level mutation on a cloned graph;
+3. deterministically stages all dependent parcel-reference rewrites;
+4. validates building containment, zoning/property consistency, historical transaction lineage, and a temporary `LotSystem` projection before touching live owners;
+5. commits cadastre → zoning → buildings → property → derived lots in fixed order;
+6. restores every original authoritative snapshot and rebuilds lots if any live commit stage throws.
+
+Easement create/remove follows the same boundary even though no parcel IDs retire. A failed runtime mutation returns `runtime-commit-rollback` when a live commit failure is recovered, and partial cross-domain state is not allowed to escape.
+
+`LotSystem` is never a transaction source of truth. Rollback restores authoritative owners first and derives the lot facade again from the restored cadastre.
 
 ## Development pipeline
 
@@ -130,9 +143,11 @@ Site assembly is evaluated only when the geometric/economic uplift exceeds acqui
 
 ## Property market
 
-`PropertyMarketSystem` owns canonical parcel holdings and recorded property transactions for the Urban Fabric layer. Transactions validate ownership and commit atomically across multi-parcel transfers.
+`PropertyMarketSystem` owns canonical current parcel holdings and recorded property transactions for the Urban Fabric layer. Transactions validate ownership and commit atomically across multi-parcel transfers.
 
-Property state is persisted in Save V9 and every parcel reference is validated during hydration.
+Current holdings must always reference live parcels. Historical transaction rows are intentionally not rewritten when a parcel later splits, assembles, or loses right-of-way area. Save/runtime validation accepts those retired parcel IDs only when `CadastralGraph` lineage proves they are historical legal parcels.
+
+Property state is persisted in Save V9; live parcel references remain strict while historical transaction truth is validated through lineage.
 
 ## World Foundation compatibility
 
@@ -145,6 +160,8 @@ Legal parcels live **inside** the physical world coordinate system; they do not 
 ## Transportation boundary
 
 Urban Fabric 2.0 does not transfer transportation authority. Existing road/traffic/transit systems and the later 3R transportation replacement remain separate. Cadastral frontage can reference road access, but the cadastre does not manufacture transportation outcomes.
+
+Right-of-way dedication in 2R changes legal land topology only. It does not create or mutate 3R lane, carriageway, intersection, routing, parking, signal, or crash authority.
 
 ## Save V9
 
@@ -162,9 +179,9 @@ Save V9 extends the complete V8 World Foundation envelope with:
 - `buildingsV2`;
 - `propertyMarket`.
 
-V9 hydration restores the V8 candidate first, replaces the canonical cadastre, rebuilds legacy lots from that cadastre, validates all Urban Fabric parcel references, then restores parcel zoning, `BuildingV2`, and property-market state.
+V9 hydration restores the V8 candidate first, replaces the canonical cadastre, rebuilds legacy lots from that cadastre, validates all live Urban Fabric parcel references, then restores parcel zoning, `BuildingV2`, and property-market state. Historical property transactions may reference retired parcel IDs only when those IDs are recognized by persisted cadastral lineage.
 
-Save V8 remains an explicit historical compatibility format. Urban Fabric does not repurpose the V8 schema.
+The Task 13 runtime-mutation work does **not** change the schema: Save V9 remains `0.9.0-urban-fabric`, and Save V8 remains an explicit historical compatibility format.
 
 ## Presentation boundary
 
@@ -184,14 +201,16 @@ Analytical overlays are mutually exclusive so presentation state cannot ambiguou
 
 Urban Fabric 2.0 locks these invariants:
 
-- identical authoritative input and mutation order produce identical cadastral state;
+- identical authoritative input and mutation order produce identical runtime mutation results and canonical snapshots;
 - cadastral topology contains no duplicate IDs, orphan nodes, invalid shared boundaries, overlapping private parcels, invalid frontage/access references, or lineage cycles;
 - split/assembly/right-of-way operations conserve controlled land area within tolerance;
-- failed mutations are atomic;
+- failed low-level and cross-domain runtime mutations are atomic;
+- forced commit failure restores cadastre, zoning, canonical buildings, property state, and the derived lot facade byte-for-byte;
 - canonical parcel IDs are distinct from legacy lot IDs;
 - legacy lots are derived from cadastre rather than independently authoritative;
-- canonical buildings reference existing parcels;
-- parcel zoning/property references cannot dangle after hydration;
+- canonical buildings reference existing parcels and preserve surviving identity through parcel rewrites and continued simulation;
+- current parcel zoning/property references cannot dangle after mutation or hydration;
+- historical property transactions preserve retired parcel identity through cadastral lineage;
 - V8 migration to V9 is deterministic and does not fabricate legal history;
 - Save V9 round-trip and continuation preserve canonical identity;
 - `WorldFoundation` remains the only physical/geographic authority;
@@ -204,7 +223,10 @@ Urban Fabric acceptance now includes:
 - cadastral geometry/topology and mutation suites;
 - dimensional zoning, buildable envelope, compliance, massing, mixed-use metrics, lifecycle, renovation, HBU, property, assembly, and redevelopment tests;
 - runtime proof that developer awards and canonical buildings originate from cadastral parcel identity;
-- Save V9 round-trip/migration/reference validation;
+- runtime split/assembly/right-of-way/easement coordination across cadastre, zoning, buildings, property, and derived lots;
+- twin-core deterministic mutation-sequence equivalence;
+- injected live-commit failure with byte-for-byte cross-domain rollback;
+- Save V9 round-trip/migration/reference validation, including historical transaction lineage;
 - deterministic fixed-seed mutation fuzzing with per-step graph validation and controlled-area conservation;
 - compiled browser coverage for Urban Fabric overlays, parcel inspection, `BuildingV2` materialization, Save V9, and post-load canonical ID preservation;
 - all inherited Phase 1R, Phase 6/7, and isometric functional/visual gates.

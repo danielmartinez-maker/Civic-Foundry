@@ -21,11 +21,12 @@ The GitHub Actions `verify` job runs the same stack and treats the dedicated Urb
 
 ## Current verified baseline
 
-The pre-documentation Urban Fabric acceptance head passed:
+Task 13 runtime-mutation implementation head `fa23d77bdaba7f8d260b10ca2d75507f38ed81a6` passed exact-head Civic Foundry CI run **#992** with:
 
-- **583/583 Node tests**;
+- **595/595 Node tests**;
 - strict TypeScript typecheck;
-- source lint;
+- source lint with zero errors;
+- repository and architecture policy checks;
 - isometric asset source validation;
 - production build and atlas generation;
 - Phase 6 compiled browser smoke;
@@ -34,7 +35,7 @@ The pre-documentation Urban Fabric acceptance head passed:
 - Isometric Pass A functional browser smoke;
 - Isometric Pass A visual smoke.
 
-The final documentation head must rerun this complete stack before the tranche is called complete.
+The final documentation/reconciliation head must rerun this complete stack before PR #63 is treated as integration-ready.
 
 ## Regression layers
 
@@ -50,7 +51,15 @@ Dedicated suites cover:
 
 - canonical cadastral graph construction, snapshot restoration, adjacency, area, centroid, frontage/access, and validation;
 - legal parcel generation from legacy roads/zoning while preserving legacy `lot:x,y` identity in the compatibility facade;
-- split, assembly, easement creation/removal, and right-of-way dedication with atomic failure behavior and lineage;
+- low-level split, assembly, easement creation/removal, and right-of-way dedication with atomic failure behavior and lineage;
+- runtime `CadastralRuntimeMutationService` coordination across cadastre, parcel zoning, canonical buildings, property holdings/history, and the derived lot facade;
+- split success with geometry-based building reassignment and stable canonical building identity;
+- split rejection when a canonical building crosses the cut, with no dependent-domain mutation;
+- assembly rewrites plus atomic owner/zoning conflict rejection;
+- right-of-way residual rewrites plus building-intersection rejection;
+- easement create/remove through the public runtime transaction boundary;
+- twin-core deterministic split → assembly sequences with deep-equal results and snapshots;
+- an injected live commit fault that forces `runtime-commit-rollback` and proves byte-for-byte restoration of every dependent domain;
 - dimensional zoning districts and parcel assignments;
 - buildable envelopes from setbacks, coverage, height, FAR, and minimum parcel dimensions;
 - zoning-compliance rejection by dimensional/use reason;
@@ -95,6 +104,22 @@ At the end of every seed, controlled land accounting requires:
 
 This gate specifically targets topology/reference drift that is difficult to expose with only isolated hand-authored mutation tests.
 
+## Runtime cadastral transaction acceptance
+
+`tests/urban-fabric-runtime-mutations.test.ts` is the Task 13 coordinator gate. It requires:
+
+1. property transaction history to accept retired parcel IDs only when cadastral lineage recognizes them;
+2. runtime split to rewrite canonical building, zoning, and current holding references atomically;
+3. split crossing a building to reject without changing any participating domain;
+4. assembly to conserve one valid owner/zoning state and reject conflicting state atomically;
+5. right-of-way dedication to transfer live references to the residual parcel and preserve area/value rules;
+6. easement create/remove to mutate only legal cadastral state while still using the runtime boundary;
+7. `SimulationCore.cadastralMutations` to preserve surviving building identity through continued simulation;
+8. identical cores plus identical mutation sequences to produce deep-equal results and snapshots;
+9. a forced commit-stage exception to return `runtime-commit-rollback` and restore cadastre, zoning, canonical buildings, property market, and legacy lots byte-for-byte.
+
+The commit fault injector is an optional narrow dependency used only to prove rollback. It does not introduce global mutable test state or a general event framework.
+
 ## Urban Fabric browser smoke
 
 `tests/smoke/urban_fabric_smoke.py` boots the compiled application and verifies the player-facing/runtime integration boundary.
@@ -128,7 +153,9 @@ Current default persistence is Save V9. Tests require:
 - V8 → V9 migration to be deterministic;
 - no fabricated legal/property history during migration;
 - legacy lots rebuilt from persisted cadastral topology;
-- dangling parcel references in parcel zoning, `BuildingV2`, holdings, or property transactions to be rejected;
+- live parcel references in parcel zoning, `BuildingV2`, and current holdings to resolve to live cadastral parcels;
+- historical property transaction parcel IDs to resolve to either a current live parcel or a retired parcel recognized by persisted cadastral lineage;
+- mutation → Save V9 → hydrate → continue to preserve property history and all live cross-domain references;
 - explicit Save V8 compatibility to remain available and unchanged;
 - inherited World Foundation restoration to occur before dependent legacy gameplay construction.
 
@@ -211,4 +238,4 @@ Playwright request routing serves the compiled `dist` tree under the controlled 
 
 A task slice may be called green only after its relevant RED/acceptance test has passed and the full CI gate for the resulting head is successful. A failed downstream browser/visual gate is treated as a real integration defect unless evidence proves infrastructure failure.
 
-`main` is not updated by Task 16 verification. PR #63 remains the isolated integration vehicle until explicit approval to merge.
+Task 13 requires two separate exact-head checkpoints: a green implementation head proving the runtime transaction behavior, followed by a green final documentation/reconciliation head. `main` is not updated by either verification step. PR #63 remains the isolated integration vehicle until explicit approval to merge.

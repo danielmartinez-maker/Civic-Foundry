@@ -64,7 +64,7 @@ Introduced Save V8 (`0.8.0-world-foundation`) so the complete inherited V7 gamep
 
 Phase 1R intentionally stopped at block geography. Legal parcels were reserved for the next reviewed tranche.
 
-## 2026-08-25–26 — Urban Fabric 2.0 / 2R on PR #63
+## 2026-08-25–27 — Urban Fabric 2.0 / 2R on PR #63
 
 Urban Fabric 2.0 was implemented on `feature/urban-fabric-2.0` / draft PR #63 while keeping `main` untouched.
 
@@ -87,7 +87,7 @@ Legacy V7/V8 hydration was also repaired to rebuild the cadastre after restored 
 
 ### Urban Fabric runtime services
 
-`SimulationCore` now owns the parcel-development service set:
+`SimulationCore` owns the parcel-development service set:
 
 - buildable envelopes;
 - zoning compliance;
@@ -96,9 +96,12 @@ Legacy V7/V8 hydration was also repaired to rebuild the cadastre after restored 
 - renovation/adaptive reuse;
 - highest-and-best-use;
 - property market;
-- bounded site assembly.
+- bounded site assembly;
+- the cross-domain `CadastralRuntimeMutationService` exposed as readonly `cadastralMutations`.
 
-Raw cadastral mutation was not exposed as an unsafe shortcut where it could leave external building/property/zoning/project references stale.
+Raw `CadastralMutationSystem` remains the low-level legal-geometry engine. Runtime callers use `CadastralRuntimeMutationService`, which stages the requested graph operation on a cloned cadastre, rewrites and validates dependent canonical building/zoning/current-holding references, validates historical property records through cadastral lineage, proves the legacy lot projection can be rebuilt, and only then commits live owners in fixed order.
+
+If any live commit stage fails, the service restores the original cadastre, zoning, canonical buildings, and property-market snapshot and rebuilds the lot facade from the restored cadastre. Partial cross-domain parcel mutation is not permitted to escape.
 
 ### Canonical BuildingV2 storage
 
@@ -108,18 +111,20 @@ Canonical APIs provide deterministic listing, ID lookup, and compatibility-cell 
 
 Runtime development was then moved to cadastral parcel identity so developer awards and physical massing materialize canonical `BuildingV2` state while legacy lots remain derived compatibility records.
 
-Grandfathered legacy structures sharing a newly grouped parcel are preserved rather than silently discarded.
+Grandfathered legacy structures sharing a newly grouped parcel are preserved rather than silently discarded. Safe runtime parcel rewrites additionally preserve surviving canonical building ID, lifecycle, year built, entitlement timing, and project metadata through later simulation continuation.
 
 ### Legal parcel operations
 
-`CadastralMutationSystem` now supports transactional:
+`CadastralMutationSystem` supports low-level transactional:
 
 - parcel split;
 - compatible parcel assembly;
 - easement creation/removal;
 - right-of-way dedication.
 
-Candidate snapshots are validated before commit. Tests lock area conservation, atomic rejection, shared-boundary behavior, access/frontage state, and lineage.
+Candidate snapshots are validated before graph replacement. Tests lock area conservation, atomic rejection, shared-boundary behavior, access/frontage state, and lineage.
+
+`CadastralRuntimeMutationService` now coordinates those same operations across all participating live parcel-reference owners. Splits resolve buildings geometrically to one child or reject; assemblies reject conflicting explicit zoning/current owners; right-of-way dedication transfers live references only when surviving building geometry remains valid; easements use the same public transaction boundary even though parcel IDs normally remain stable.
 
 ### Dimensional zoning, massing, lifecycle, and redevelopment
 
@@ -152,7 +157,9 @@ Introduced current default **Save V9**:
 - `buildingsV2`;
 - `propertyMarket`.
 
-V9 hydration restores V8/World Foundation first, replaces the cadastre, rebuilds legacy lots from that cadastre, validates every new parcel reference, then restores parcel zoning, canonical buildings, and property state.
+V9 hydration restores V8/World Foundation first, replaces the cadastre, rebuilds legacy lots from that cadastre, validates live parcel references, then restores parcel zoning, canonical buildings, and property state.
+
+Historical property transactions deliberately keep the parcel IDs that existed when the transaction occurred. After runtime split/assembly/right-of-way mutation, retired transaction parcel IDs remain valid only when persisted cadastral lineage recognizes them. Current holdings remain restricted to live parcels. No Save V10 was introduced for Task 13.
 
 Explicit Save V8 remains available unchanged for World Foundation compatibility and migration testing.
 
@@ -184,13 +191,29 @@ Added a dedicated compiled Chromium Urban Fabric smoke that verifies:
 - current Save V9 identity/version;
 - canonical parcel/building IDs unchanged after hydrate.
 
-The smoke is now a required GitHub Actions CI step via `npm run test:smoke:urban-fabric`.
+The smoke is a required GitHub Actions CI step via `npm run test:smoke:urban-fabric`.
 
-### Pre-documentation acceptance evidence
+### Task 13 runtime mutation closure
 
-Before the documentation-only completion commits, CI had reached a fully green **583-test** baseline plus typecheck, lint, assets, production build, Phase 6 smoke, Phase 7 smoke, the new Urban Fabric smoke, Isometric Pass A functional smoke, and Isometric Pass A visual smoke.
+The final Task 13 audit gap is implemented and verified.
 
-A fresh full gate is still required on the final documentation head before the 2R tranche is called complete.
+The closure adds:
+
+- public safe split/assembly/right-of-way/easement mutation through `SimulationCore.cadastralMutations`;
+- deterministic cross-domain staging and fixed-order commit;
+- stable `BuildingV2` identity and lifecycle state across parcel-ID rewrites and continued simulation;
+- lineage-aware preservation of historical property transactions;
+- mutation → Save V9 → hydrate → continue coverage;
+- twin-core split → assembly determinism with deep-equal canonical snapshots;
+- a narrow optional commit fault injector used to force a failure after real live writes and prove byte-for-byte rollback across cadastre, zoning, canonical buildings, property market, and derived lots.
+
+The Task 6 RED checkpoint had **594/595** tests passing, with only the forced rollback contract failing because no commit failpoint existed. The minimal production seam was added in commit `fa23d77bdaba7f8d260b10ca2d75507f38ed81a6`.
+
+Exact-head Civic Foundry CI run **#992** then passed on `fa23d77b`, including **595/595 Node tests**, typecheck, lint/policy/architecture checks, asset validation, production build, Phase 6 browser smoke, Phase 7 browser smoke, Urban Fabric browser smoke, Isometric Pass A functional browser smoke, and Isometric Pass A visual smoke.
+
+### Final documentation gate
+
+The implementation head is green. The documentation/reconciliation checkpoint that records the resolved Task 13 boundary requires its own exact-head CI run before PR #63 is treated as integration-ready.
 
 ### Integration boundary
 
