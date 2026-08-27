@@ -397,3 +397,31 @@ test('runtime easement create and remove mutate only cadastral legal state', () 
   assert.deepEqual(core.propertyMarket.snapshot(), before.propertyMarket);
   assert.deepEqual(core.lots.list(), before.lots);
 });
+
+test('SimulationCore exposes safe cadastral mutations and preserves canonical building identity through continuation', () => {
+  const { core, sourceParcelId } = buildSplitFixture();
+  const buildingBefore = core.buildings.listV2()[0]!;
+  const lifecycleBefore = structuredClone(buildingBefore.lifecycle);
+  const entitlementBefore = structuredClone(buildingBefore.entitlement);
+  const parcelPolygon = core.cadastre.parcelPolygon(sourceParcelId);
+  const buildingMaxX = Math.max(...buildingBefore.footprint.map((point) => point.x));
+  const parcelMaxX = Math.max(...parcelPolygon.map((point) => point.x));
+  assert.ok(parcelMaxX - buildingMaxX > 0.2, 'fixture must leave a safe split corridor beside the building');
+  const safeX = buildingMaxX + (parcelMaxX - buildingMaxX) / 2;
+
+  const result = core.cadastralMutations.splitParcel(
+    sourceParcelId,
+    verticalCutAt(core, sourceParcelId, safeX),
+  );
+
+  assert.equal(result.committed, true);
+  core.step(10);
+
+  const buildingAfter = core.buildings.getV2ById(buildingBefore.id);
+  assert.ok(buildingAfter);
+  assert.equal(buildingAfter.id, buildingBefore.id);
+  assert.deepEqual(buildingAfter.lifecycle, lifecycleBefore);
+  assert.equal(buildingAfter.yearBuilt, buildingBefore.yearBuilt);
+  assert.deepEqual(buildingAfter.entitlement, entitlementBefore);
+  assert.ok(buildingAfter.parcelIds.every((id) => core.cadastre.getParcel(id)));
+});
