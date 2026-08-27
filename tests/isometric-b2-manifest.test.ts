@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { PASS_A_ASSET_MANIFEST } from '../src/rendering/assets/PassAAssetManifest.ts';
 import { PASS_B1_ASSET_MANIFEST, PASS_B1_COMPOSED_ASSET_MANIFEST } from '../src/rendering/assets/PassB1AssetManifest.ts';
 import { PASS_B2_ASSET_MANIFEST, PASS_B2_COMPOSED_ASSET_MANIFEST } from '../src/rendering/assets/PassB2AssetManifest.ts';
@@ -53,4 +54,14 @@ test('B2 symmetric and directional families have exact orientation coverage', ()
     assert.equal(entries[0]?.orientation, 0, family);
     assert.ok(entries[0]?.tags?.includes('symmetric'), family);
   }
+});
+
+test('B2 public realm source and rasterizer integration are declared', () => {
+  const source = readFileSync(new URL('../assets/source/public_realm.svg', import.meta.url), 'utf8');
+  assert.match(source, /<svg\b[^>]*width="2048"[^>]*height="1152"/);
+  const builder = readFileSync(new URL('../tools/isometric_public_realm.py', import.meta.url), 'utf8');
+  assert.ok(builder.includes("'public_realm': (2048, 1152)"));
+  assert.ok(builder.includes('expected 90 frames'));
+  const rasterizer = readFileSync(new URL('../tools/render_isometric_atlases.py', import.meta.url), 'utf8');
+  assert.ok(rasterizer.includes('isometric_public_realm'));
 });
