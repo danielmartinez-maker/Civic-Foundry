@@ -16,6 +16,7 @@ import { GroundRenderPass } from './passes/GroundRenderPass.ts';
 import { ObjectRenderPass } from './passes/ObjectRenderPass.ts';
 import { OverlayRenderPass } from './passes/OverlayRenderPass.ts';
 import { SelectionRenderPass } from './passes/SelectionRenderPass.ts';
+import { SceneSpriteCommandBuffer } from './passes/SceneSpriteCommandBuffer.ts';
 
 export type CanvasPoint = Readonly<{ x: number; y: number }>;
 export type CellSelection = Readonly<{ x: number; y: number }> | null;
@@ -29,6 +30,7 @@ export class WorldRenderer {
   private readonly assets = new AssetRegistry(RUNTIME_ASSET_MANIFEST);
   private readonly ground = new GroundRenderPass(this.assets);
   private readonly objects = new ObjectRenderPass(this.assets);
+  private readonly scene = new SceneSpriteCommandBuffer(this.assets);
   private readonly overlays = new OverlayRenderPass();
   private readonly selection = new SelectionRenderPass();
   private readonly vehicles = new VehicleRenderer(this.assets);
@@ -129,7 +131,7 @@ export class WorldRenderer {
     const viewport = { width: rect.width, height: rect.height };
     const worldSize = this.worldSize(core);
     this.ground.draw(this.ctx, core, this.camera, viewport);
-    this.objects.draw(this.ctx, core, this.camera, viewport);
+    this.scene.draw(this.ctx, this.objects.collect(core, this.camera), this.camera, viewport, worldSize);
 
     this.vehicles.draw(this.ctx, core.transportationGraph, core.traffic, this.camera, worldSize);
     const travelTicks = new Map(core.traffic.edgeMetrics.map((metric) => [metric.edgeId, metric.travelTimeTicks]));
