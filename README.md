@@ -4,7 +4,7 @@ Civic Foundry is an original browser-based city-management, urban-development, t
 
 ## Canonical runtime
 
-**Civic Foundry 2.0 Phase 2R — Urban Fabric 2.0 is now the current land/development/persistence layer on this branch.** The default save envelope is **Save V9** with `saveVersion: 9` and `gameVersion: '0.9.0-urban-fabric'`.
+**Civic Foundry 2.0 Phase 2R — Urban Fabric 2.0 is the current land/development/persistence layer on this branch.** The default save envelope is **Save V9** with `saveVersion: 9` and `gameVersion: '0.9.0-urban-fabric'`.
 
 Phase 2R extends the accepted Phase 1R world foundation instead of replacing it. `WorldFoundation` remains the sole physical/geographic authority; `CadastralGraph` is the canonical legal-land authority. Existing V7/V8 gameplay systems remain behind explicit compatibility seams until later replacement phases assume ownership.
 
@@ -52,10 +52,12 @@ Implemented on `feature/urban-fabric-2.0`:
 - finite deterministic building massing candidates tied to parcel identity;
 - physical development underwriting, highest-and-best-use analysis, property-market state, site assembly, and redevelopment execution;
 - deterministic maintenance, deterioration, renovation, adaptive reuse, distress, demolition, and grandfathered/nonconforming-building behavior;
-- atomic parcel split/assembly/right-of-way/easement mutation with whole-graph validation before commit;
+- deterministic low-level parcel split/assembly/right-of-way/easement mutation with whole-graph validation before commit;
 - cadastral and zoning-envelope overlays, canonical parcel picking, parcel inspection, and Urban Fabric tool controls;
 - fixed-seed cadastral mutation fuzz coverage and a compiled Urban Fabric browser smoke gate;
 - Save V9 persistence for cadastral topology, parcel zoning assignments, canonical buildings, and property-market state.
+
+The final Task 13 integration in PR #63 adds the simulation-layer transaction boundary required to expose those cadastral mutations safely across building, zoning, property, and compatibility references. Raw live-graph mutation remains unavailable until that gate is complete.
 
 ## Existing gameplay compatibility baseline
 
@@ -101,21 +103,35 @@ Save V8 remains the explicit Phase 1R format with `saveVersion: 8` and `gameVers
 
 ## Toolchain
 
-The project remains dependency-light and browser-native:
+Civic Foundry remains browser-native while using the Engineering Baseline v1 pinned local toolchain:
 
-- TypeScript 5.x ES modules;
+- Node.js 22;
+- TypeScript 5.8.3 ES modules with strict compiler settings;
 - Node 22 built-in test runner with TypeScript strip-types;
-- browser-native Canvas 2D;
+- ESLint 10 plus TypeScript ESLint for static analysis;
+- Prettier 3 for deterministic repository/tooling/test/document formatting;
 - `clipper2-ts` for deterministic polygon clipping/offsetting behind the cadastral geometry wrapper;
+- browser-native Canvas 2D;
 - Python Playwright + Chromium for compiled browser smoke tests;
-- procedural isometric atlas generation/validation.
+- deterministic procedural isometric atlas generation/validation.
+
+Install JavaScript dependencies from the committed lockfile:
+
+```bash
+npm ci
+```
 
 ## Commands
 
 ```bash
+npm run verify
 npm test
 npm run typecheck
 npm run lint
+npm run policy:check
+npm run architecture:check
+npm run format:check
+npm run assets:policy
 npm run assets:check
 npm run build
 npm run test:smoke
@@ -125,7 +141,11 @@ npm run test:smoke:isometric
 npm run dev
 ```
 
-`npm run build` produces `dist/`. `npm run dev` serves the compiled build on port 5173 where local navigation is permitted.
+`npm run verify` is the canonical core gate used by contributors and CI: formatting, static analysis, repository/architecture policy, strict typechecking, tests, asset policy/validation, and the production build. CI then runs the browser and visual smoke suites, including the Urban Fabric smoke gate on PR #63.
+
+`npm run build` produces `dist/` using cross-platform Node orchestration. `npm run dev` serves the compiled build on port 5173 where local navigation is permitted.
+
+Engineering and contribution policy is documented in [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TESTING.md](docs/TESTING.md), and [docs/adr/](docs/adr/).
 
 ## Acceptance evidence
 
@@ -133,13 +153,13 @@ Phase 1R acceptance established deterministic world generation, hydrology, spati
 
 Urban Fabric 2.0 adds repository-wide verification for cadastral geometry/topology, parcel mutation, dimensional zoning, envelopes/compliance, mixed-use massing, lifecycle/renovation, HBU/property/site assembly, runtime cadastral authority, Save V9 migration/round-trip/reference validation, deterministic mutation fuzzing, and compiled Urban Fabric browser behavior.
 
-The current PR #63 head is required to pass the inherited repository suite plus the Urban Fabric smoke gate before integration. GitHub remains the durable source of truth for the exact accepted head and CI evidence.
+The current PR #63 head is required to pass the Engineering Baseline core verification contract plus the inherited and Urban Fabric browser/visual smoke gates before integration. GitHub remains the durable source of truth for the exact accepted head and CI evidence.
 
 ## Roadmap
 
 0. Civic Foundry 2.0 Phase 0A — Kernel Skeleton & Deterministic Scheduling ✅
 1. **1R — World Foundation 2.0 ✅** — geography hierarchy, irregular geometry, terrain/soils, hydrology/flooding, deterministic world generation, spatial index, world-aware costs, Save V8, compatibility facade
-2. **2R — Urban Fabric 2.0 ✅ on PR #63** — true cadastral parcels, dimensional zoning, mixed-use `BuildingV2`, deterioration/renovation, HBU/redevelopment, parcel splitting/assembly, Save V9, cadastral diagnostics
+2. **2R — Urban Fabric 2.0 (PR #63, final Task 13 gate in progress)** — true cadastral parcels, dimensional zoning, mixed-use `BuildingV2`, deterioration/renovation, HBU/redevelopment, parcel splitting/assembly, Save V9, cadastral diagnostics
 3. **3R — Transportation Engine 2.0 — next replacement tranche** — lane/turn/signal/parking/crash authority and dynamic routing replacement
 4. Later Civic Foundry 2.0 systems continue under the progressive replacement architecture in `docs/superpowers/specs/2026-08-24-civic-foundry-2.0-master-design.md`.
 
