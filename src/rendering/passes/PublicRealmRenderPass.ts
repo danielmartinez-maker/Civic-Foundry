@@ -34,8 +34,10 @@ export class PublicRealmRenderPass {
   private readonly cache = new PublicRealmPresentationCache();
   private readonly catalog: PublicRealmAssetCatalog;
   private readonly painter = new SpritePainter();
+  private readonly assets: AssetRegistry;
 
-  constructor(private readonly assets: AssetRegistry) {
+  constructor(assets: AssetRegistry) {
+    this.assets = assets;
     this.catalog = buildPublicRealmAssetCatalog(this.assets.query({ category: 'public-realm' }));
   }
 
