@@ -1,0 +1,88 @@
+name: Isometric Pass B2 CI
+
+on:
+  push:
+    branches: [feature/isometric-pass-b2-public-realm]
+  pull_request:
+    branches: [feature/isometric-pass-b1-urban-depth]
+
+permissions:
+  contents: read
+
+jobs:
+  b2-targeted:
+    name: Isometric Pass B2 Targeted CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout B2 head
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install project dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install pinned TypeScript compiler
+        run: npm install --global typescript@5.8.3
+      - name: Focused Pass A/B1/B2 tests
+        shell: bash
+        run: node --experimental-strip-types --test tests/isometric-assets.test.ts tests/isometric-b1-*.test.ts tests/isometric-b2-*.test.ts tests/presentation-contract.test.ts
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Asset source validation
+        run: npm run assets:check
+      - name: Install browser-smoke dependencies
+        run: |
+          python -m pip install playwright==1.55.0 Pillow==11.3.0
+          python -m playwright install --with-deps chromium
+      - name: Production build
+        run: npm run build
+      - name: Pass A interaction smoke
+        run: npm run test:smoke:isometric
+      - name: Pass B1 visual regression
+        run: python tests/smoke/isometric_b1_visual_smoke.py
+      - name: Pass B2 six-profile visual smoke
+        run: python tests/smoke/isometric_b2_visual_smoke.py
+
+  b2-full:
+    name: Isometric Pass B2 Full CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout B2 head
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install project dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install pinned TypeScript compiler
+        run: npm install --global typescript@5.8.3
+      - name: Full unit suite
+        run: npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Asset source validation
+        run: npm run assets:check
+      - name: Install browser-smoke dependencies
+        run: |
+          python -m pip install playwright==1.55.0 Pillow==11.3.0
+          python -m playwright install --with-deps chromium
+      - name: Production build
+        run: npm run build
+      - name: Phase 6 smoke
+        run: npm run test:smoke
+      - name: Phase 7 smoke
+        run: npm run test:smoke:phase7
+      - name: Urban Fabric smoke
+        run: python tests/smoke/urban_fabric_smoke.py
+      - name: Pass A interaction smoke
+        run: npm run test:smoke:isometric
+      - name: Pass B1 visual regression
+        run: python tests/smoke/isometric_b1_visual_smoke.py
+      - name: Pass B2 six-profile visual smoke
+        run: python tests/smoke/isometric_b2_visual_smoke.py

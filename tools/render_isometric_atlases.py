@@ -6,12 +6,21 @@ import re
 import sys
 from pathlib import Path
 
-from isometric_art import DIMS as SHEETS, build_svg_sheet
+from isometric_art import DIMS as BASE_SHEETS, build_svg_sheet as build_base_svg_sheet
+from isometric_public_realm import DIMS as PUBLIC_REALM_SHEETS, build_svg_sheet as build_public_realm_svg_sheet
+
+SHEETS = {**BASE_SHEETS, **PUBLIC_REALM_SHEETS}
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'assets' / 'source'
 OUTPUT = ROOT / 'dist' / 'assets' / 'atlases'
 DIMENSION_RE = re.compile(r'<svg\b[^>]*\bwidth=["\'](\d+)["\'][^>]*\bheight=["\'](\d+)["\']', re.IGNORECASE)
+
+
+def build_svg_sheet(name: str) -> str:
+    if name in PUBLIC_REALM_SHEETS:
+        return build_public_realm_svg_sheet(name)
+    return build_base_svg_sheet(name)
 
 
 def check_sources() -> list[str]:
