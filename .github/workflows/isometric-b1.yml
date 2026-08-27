@@ -39,12 +39,12 @@ jobs:
         run: npm run lint
       - name: Asset source validation
         run: npm run assets:check
-      - name: Production build
-        run: npm run build
-      - name: Install browser smoke runtime
+      - name: Install atlas rasterizer and browser smoke runtime
         run: |
           python -m pip install playwright==1.55.0 Pillow==11.3.0
           python -m playwright install --with-deps chromium
+      - name: Production build
+        run: npm run build
       - name: Pass A interaction regression smoke
         run: npm run test:smoke:isometric
       - name: Pass B1 visual smoke
