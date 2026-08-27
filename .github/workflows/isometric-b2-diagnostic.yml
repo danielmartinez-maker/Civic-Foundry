@@ -1,0 +1,39 @@
+name: Isometric B2 Test Bisect
+
+on:
+  push:
+    branches: [feature/isometric-pass-b2-public-realm]
+
+permissions:
+  contents: read
+
+jobs:
+  test-bisect:
+    name: Full-test bisect ${{ matrix.group }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: a-f
+            globs: 'tests/[a-f]*.test.ts'
+          - group: g-l
+            globs: 'tests/[g-l]*.test.ts'
+          - group: m-r
+            globs: 'tests/[m-r]*.test.ts'
+          - group: s-z
+            globs: 'tests/[s-z]*.test.ts'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Run test group
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(${{ matrix.globs }})
+          printf 'Running %s files\n' "${#files[@]}"
+          printf '%s\n' "${files[@]}"
+          node --experimental-strip-types --test "${files[@]}"
