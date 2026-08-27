@@ -30,7 +30,8 @@ function freeFlowTravelTicks(segment: RoadSegment): number {
   if (!Number.isFinite(segment.speedLimitKph) || segment.speedLimitKph <= 0) {
     throw new Error(`segment ${segment.id} speedLimitKph must be finite and greater than zero`);
   }
-  return (segment.lengthMeters / (segment.speedLimitKph / 3.6)) * SIMULATION_TICKS_PER_SECOND;
+  const exactTicks = (segment.lengthMeters / (segment.speedLimitKph / 3.6)) * SIMULATION_TICKS_PER_SECOND;
+  return Math.max(1, Math.round(exactTicks));
 }
 
 function signalPlansByJunction(
