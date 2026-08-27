@@ -31,3 +31,12 @@ test('context index never uses per-cell canonical BuildingV2 scans', () => {
   const source = readFileSync(new URL('../src/rendering/public-realm/PublicRealmContextIndex.ts', import.meta.url), 'utf8');
   assert.equal(source.includes('.getV2At('), false);
 });
+
+test('render pass never performs whole-city authoritative scans', () => {
+  const source = readFileSync(new URL('../src/rendering/passes/PublicRealmRenderPass.ts', import.meta.url), 'utf8');
+  for (const forbidden of ['core.cadastre.list', 'core.buildings.listV2(', 'core.services.listFacilities(', '.getV2At(']) {
+    assert.equal(source.includes(forbidden), false, forbidden);
+  }
+  const resolver = readFileSync(new URL('../src/rendering/public-realm/PublicRealmAssetResolver.ts', import.meta.url), 'utf8');
+  assert.equal(resolver.includes('.filter((entry) => entry.category'), false, 'resolver must use the pre-indexed catalog');
+});
