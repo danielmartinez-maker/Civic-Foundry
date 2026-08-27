@@ -75,6 +75,7 @@ export function hydrateCoreV9(input: unknown): SimulationCore {
   core.propertyMarket.restore(save.propertyMarket, {
     isHistoricalParcelId: (parcelId) => historicalParcelIds.has(parcelId),
   });
+  core.rebuildEntityProjection();
   return core;
 }
 

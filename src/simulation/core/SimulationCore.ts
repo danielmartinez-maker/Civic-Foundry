@@ -108,6 +108,12 @@ function footprintsMatchWithinTolerance(
 
 export class SimulationCore extends LegacySimulationCore {
   readonly world: WorldFoundation;
+  readonly entityRegistry: EntityRegistry;
+  readonly entityReferences: EntityReferenceGraph;
+  private readonly entityProjector: LegacyV7EntityProjector;
+  private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;
+  private lastSyncedEntitySourceRevisionKey: string | undefined;
+  private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);
   readonly cadastre: CadastralGraph;
   readonly parcelGeneration: ParcelGenerationSystem;
   readonly buildableEnvelopes: BuildableEnvelopeSystem;
@@ -119,6 +125,10 @@ export class SimulationCore extends LegacySimulationCore {
   readonly propertyMarket: PropertyMarketSystem;
   readonly siteAssembly: SiteAssemblySystem;
   readonly cadastralMutations: CadastralRuntimeMutationService;
+
+  get entityDiagnostics(): EntityDiagnosticsSnapshot {
+    return buildEntityDiagnostics(this.entityRegistry, this.entityReferences, this.lastUnresolvedEntityReferences);
+  }
 
   constructor(options: SimulationCoreOptions = {}) {
     const hydration = activeHydrationOverride();
@@ -157,6 +167,9 @@ export class SimulationCore extends LegacySimulationCore {
 
     super({ seed, terrain: world.legacyTerrain(), ...(options.startingFunds !== undefined ? { startingFunds: options.startingFunds } : {}) });
     this.world = world;
+    this.entityRegistry = new EntityRegistry();
+    this.entityReferences = new EntityReferenceGraph();
+    this.entityProjector = new LegacyV7EntityProjector();
     this.parcelGeneration = new ParcelGenerationSystem();
     this.cadastre = new CadastralGraph();
     this.buildableEnvelopes = new BuildableEnvelopeSystem();
@@ -346,6 +359,27 @@ export class SimulationCore extends LegacySimulationCore {
       completionTick,
       releaseTick: completionTick + 100,
     });
+  }
+
+  rebuildEntityProjection(): void {
+    this.lastSyncedEntitySourceRevisionKey = undefined;
+    this.entityProjector.invalidate();
+    this.syncEntityProjection();
+  }
+
+  private syncEntityProjection(): void {
+    const sourceRevisionKey = this.entityProjector.sourceRevisionKey(this);
+    if (sourceRevisionKey !== undefined && sourceRevisionKey === this.lastSyncedEntitySourceRevisionKey) return;
+
+    const partitions = this.entityProjector.projectPartitions(this);
+    if (partitions === this.lastSyncedEntityPartitions) {
+      this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;
+      return;
+    }
+    const result = commitEntityProjectionPartitions(this.entityRegistry, this.entityReferences, partitions);
+    this.lastUnresolvedEntityReferences = result.unresolved;
+    this.lastSyncedEntityPartitions = partitions;
+    this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;
   }
 
   runDesignStorm(event: DesignStormEvent): FloodResult {

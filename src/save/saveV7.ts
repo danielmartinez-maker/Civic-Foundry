@@ -31,6 +31,7 @@ export function hydrateCoreV7(input: unknown): SimulationCore {
     const core = hydrateCoreV6(input);
     core.restoreHousingState();
     core.rebuildCadastreFromLegacyState();
+    core.rebuildEntityProjection();
     return core;
   }
   validateEnvelope(input);
@@ -47,6 +48,7 @@ export function hydrateCoreV7(input: unknown): SimulationCore {
   if (developmentPolicy !== undefined) core.setDevelopmentPolicy(developmentPolicy);
   core.restoreHousingState(housingState);
   core.rebuildCadastreFromLegacyState();
+  core.rebuildEntityProjection();
   return core;
 }
 

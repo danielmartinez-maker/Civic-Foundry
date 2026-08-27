@@ -100,6 +100,7 @@ export class LotSystem {
       });
     }
     this.lots = next;
+    this._entityRevision++;
   }
 
   list(): Lot[] {

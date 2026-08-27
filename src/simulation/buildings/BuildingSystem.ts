@@ -32,6 +32,11 @@ export function definitionForBuilding(building: Pick<Building, 'definitionId' | 
 export class BuildingSystem {
   private readonly buildings = new Map<string, Building>();
   private readonly buildingsV2 = new Map<string, BuildingV2>();
+  private _entityRevision = 0;
+
+  get entityRevision(): number {
+    return this._entityRevision;
+  }
 
   startDevelopment(tick: number, lot: Lot, award: DevelopmentAward): Building {
     if (!Number.isInteger(tick) || tick < 0) throw new Error('tick must be a non-negative integer');
