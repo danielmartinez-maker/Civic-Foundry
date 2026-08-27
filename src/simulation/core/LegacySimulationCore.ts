@@ -37,11 +37,11 @@ function canonicalNumberRecord(values: Readonly<Record<string, number>>): Readon
 }
 
 /**
- * Live SimulationCore entry point.
+ * Compatibility bridge between the frozen legacy simulation and the live 3R-B runtime.
  *
- * The inherited implementation retains the V3-V8 surface and hydration state.
- * This layer replaces its registered tick callback with the 3R-B controller path,
- * leaving `intersections` as compatibility state only.
+ * Direct construction of this class is the committed V7 compatibility oracle and must
+ * retain the inherited tick path. The derived live SimulationCore activates the 3R-B
+ * controller path while leaving `intersections` as compatibility state only.
  */
 export class SimulationCore extends LegacySimulationCoreBase {
   readonly intersectionControl = new IntersectionControlSystem();
@@ -51,8 +51,10 @@ export class SimulationCore extends LegacySimulationCoreBase {
 
   constructor(options: SimulationCoreOptions = {}) {
     super(options);
-    const bridge = this as unknown as LegacyPrivateBridge;
-    bridge.runLegacyV7Tick = () => this.runLive3RTick();
+    if (new.target !== SimulationCore) {
+      const bridge = this as unknown as LegacyPrivateBridge;
+      bridge.runLegacyV7Tick = () => this.runLive3RTick();
+    }
   }
 
   private runLive3RTick(): void {
