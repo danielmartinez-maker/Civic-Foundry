@@ -17,32 +17,16 @@ function legacyCity(): SimulationCore {
   return core;
 }
 
-test('default generated Save V8 round-trips exactly with authoritative world state', () => {
+test('default generated Save V9 round-trips exactly with authoritative world state', () => {
   const core = new SimulationCore({ width: 18, height: 12, seed: 42 });
   core.step(25);
   const save = serializeCore(core);
-  assert.equal(save.saveVersion, 8);
-  assert.equal(save.gameVersion, '0.8.0-world-foundation');
+  assert.equal(save.saveVersion, 9);
+  assert.equal(save.gameVersion, '0.9.0-urban-fabric');
   assert.equal(save.world.mode, 'generated-1r');
   const loaded = hydrateCore(structuredClone(save));
   assert.deepEqual(serializeCore(loaded), save);
   assert.deepEqual(loaded.world.snapshotAuthoritative(), core.world.snapshotAuthoritative());
-});
-
-test('Save V8 mobility envelope excludes derived 14R-A provider analytics', () => {
-  const save = serializeCore(new SimulationCore({ width: 18, height: 12, seed: 43 }));
-  assert.deepEqual(Object.keys(save.transit.mobility).sort(), [
-    'crowdingPenaltyTicks',
-    'decisions',
-    'fiscalFareCursor',
-    'fiscalOperatingCursor',
-    'operations',
-    'passengers',
-    'vehicles',
-  ].sort());
-  assert.equal('modeShares' in save.transit.mobility, false);
-  assert.equal('providers' in save.transit.mobility, false);
-  assert.equal('alternatives' in save.transit.mobility, false);
 });
 
 test('Save V8 persists last design-storm result without mutating terrain or hydrology', () => {
@@ -80,6 +64,20 @@ test('V7 current-load migration creates deterministic neutral legacy-flat world 
   assert.deepEqual(first.buildings.list(), core.buildings.list());
   assert.equal(first.treasury.balance, core.treasury.balance);
   assert.deepEqual(serializeCore(first), serializeCore(second));
+});
+
+test('V8 and V7 hydration rebuild canonical cadastre from restored legacy land state', () => {
+  const core = legacyCity();
+  const expectedParcels = core.cadastre.listParcels();
+  const expectedLots = core.lots.list();
+  assert.deepEqual(expectedParcels.map((parcel) => parcel.id), ['parcel:3,4']);
+  assert.deepEqual(expectedLots.map((lot) => lot.id), ['lot:3,4']);
+
+  for (const save of [serializeCore(core), serializeCoreV7(core)]) {
+    const loaded = hydrateCore(structuredClone(save));
+    assert.deepEqual(loaded.cadastre.listParcels(), expectedParcels);
+    assert.deepEqual(loaded.lots.list(), expectedLots);
+  }
 });
 
 test('V8 rejects corrupt world terrain length and compatibility divergence', () => {

@@ -1,7 +1,9 @@
 import type { ZoneType } from '../core/types.ts';
 import { BUILDING_DEFINITIONS, BUILDING_DEFINITION_BY_ID, type BuildingDefinition, type BuildingIntensity } from '../../data/buildings.ts';
 import type { Lot } from '../../world/lots/LotSystem.ts';
+import { LEGACY_CELL_SIZE_METERS, polygonArea, polygonIntersection } from '../../world/cadastre/Geometry.ts';
 import type { DevelopmentAward } from '../development/DevelopmentTypes.ts';
+import type { BuildingV2 } from './BuildingTypes.ts';
 
 export type BuildingStatus = 'construction' | 'occupied';
 export type Building = {
@@ -21,6 +23,7 @@ export type Building = {
 };
 
 const INTENSITY_RANK: Readonly<Record<BuildingIntensity, number>> = Object.freeze({ low: 0, medium: 1, high: 2 });
+const SPATIAL_OVERLAP_EPSILON_M2 = 1e-6;
 
 export function definitionForBuilding(building: Pick<Building, 'definitionId' | 'zone'>): BuildingDefinition {
   return BUILDING_DEFINITION_BY_ID[building.definitionId] ?? BUILDING_DEFINITIONS[building.zone];
@@ -28,6 +31,7 @@ export function definitionForBuilding(building: Pick<Building, 'definitionId' | 
 
 export class BuildingSystem {
   private readonly buildings = new Map<string, Building>();
+  private readonly buildingsV2 = new Map<string, BuildingV2>();
 
   startDevelopment(tick: number, lot: Lot, award: DevelopmentAward): Building {
     if (!Number.isInteger(tick) || tick < 0) throw new Error('tick must be a non-negative integer');
@@ -111,6 +115,45 @@ export class BuildingSystem {
     for (const building of buildings) this.buildings.set(building.lotId, { ...building });
   }
 
+  restoreV2(buildings: readonly BuildingV2[]): void {
+    const next = new Map<string, BuildingV2>();
+    for (const building of buildings) {
+      if (next.has(building.id)) throw new Error(`duplicate canonical building id: ${building.id}`);
+      next.set(building.id, cloneBuildingV2(building));
+    }
+    this.buildingsV2.clear();
+    for (const [id, building] of next) this.buildingsV2.set(id, building);
+  }
+
+  listV2(): BuildingV2[] {
+    return [...this.buildingsV2.values()]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map(cloneBuildingV2);
+  }
+
+  getV2ById(id: string): BuildingV2 | undefined {
+    const building = this.buildingsV2.get(id);
+    return building ? cloneBuildingV2(building) : undefined;
+  }
+
+  getV2At(x: number, y: number): BuildingV2 | undefined {
+    const minX = x * LEGACY_CELL_SIZE_METERS;
+    const minY = y * LEGACY_CELL_SIZE_METERS;
+    const maxX = minX + LEGACY_CELL_SIZE_METERS;
+    const maxY = minY + LEGACY_CELL_SIZE_METERS;
+    const cell = [
+      { x: minX, y: minY },
+      { x: maxX, y: minY },
+      { x: maxX, y: maxY },
+      { x: minX, y: maxY },
+    ];
+    for (const building of [...this.buildingsV2.values()].sort((left, right) => left.id.localeCompare(right.id))) {
+      const overlap = polygonIntersection(building.footprint, cell);
+      if (overlap.some((ring) => polygonArea(ring) > SPATIAL_OVERLAP_EPSILON_M2)) return cloneBuildingV2(building);
+    }
+    return undefined;
+  }
+
   private validateAwardForLot(tick: number, lot: Lot, award: DevelopmentAward): BuildingDefinition {
     if (award.lotId !== lot.id) throw new Error(`award lot does not match parcel: ${award.lotId}`);
     if (award.zone !== lot.zone) throw new Error(`award zone does not match parcel zone: ${award.zone}`);
@@ -141,4 +184,22 @@ export class BuildingSystem {
       awardScore: award.rankScore,
     };
   }
+}
+
+function cloneBuildingV2(building: BuildingV2): BuildingV2 {
+  return {
+    ...building,
+    parcelIds: [...building.parcelIds],
+    footprint: building.footprint.map((point) => ({ ...point })),
+    floors: building.floors.map((floor) => ({
+      ...floor,
+      uses: floor.uses.map((use) => ({ ...use })),
+    })),
+    entitlement: {
+      ...building.entitlement,
+      approvedUses: [...building.entitlement.approvedUses],
+    },
+    lifecycle: { ...building.lifecycle },
+    ...(building.project ? { project: { ...building.project } } : {}),
+  };
 }

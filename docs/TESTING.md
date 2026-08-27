@@ -1,6 +1,6 @@
-# Testing — Phase 1R World Foundation 2.0
+# Testing — Current Urban Fabric 2.0 Gate
 
-## CI commands
+## Required CI commands
 
 ```bash
 npm test
@@ -10,214 +10,232 @@ npm run assets:check
 npm run build
 npm run test:smoke
 npm run test:smoke:phase7
+npm run test:smoke:urban-fabric
 npm run test:smoke:isometric
 python tests/smoke/isometric_visual_smoke.py
 ```
 
-`npm test` uses Node's built-in runner with TypeScript strip-types. Source typechecking uses strict `tsc`. Browser smoke tests execute the compiled application in Chromium through Playwright.
+`npm test` uses Node's built-in test runner with TypeScript strip-types. Source typechecking uses strict `tsc`. Browser smokes execute the compiled application in Chromium through Playwright.
 
-## Phase 1R coverage groups
+The GitHub Actions `verify` job runs the same stack and treats the dedicated Urban Fabric smoke as a required gate.
 
-The existing deterministic gameplay suites for Phases 1–7 and Phase 0A remain regression coverage. Phase 1R adds dedicated coverage for:
+## Current verified baseline
 
-- canonical polygon/segment geometry, winding, self-intersection rejection, bounds, projection, and frontage overlap;
-- geography hierarchy parent rules, containment, overlap rejection, stable IDs, deterministic irregular generation, and deepest-entity resolution;
-- eight engineering soil classes and directional land-preparation economics;
-- physical `TerrainField` validation, derived buildability, snapshot isolation, and restoration;
-- all six world-generation presets, same-seed determinism, different-seed divergence, named RNG stream isolation, scenario overrides, and zero default contamination;
-- deterministic priority-flood conditioning, D8 tie-breaking, acyclic outlet-reaching receiver graphs, watersheds, accumulation, channels, and static flood susceptibility;
-- design-storm runoff/infiltration behavior, rainfall monotonicity, soil/impervious directionality, nonnegative flood depth, deterministic replay, and explicit water-balance closure;
-- `WorldFoundation` generated/legacy modes, compatibility terrain, static-world behavior, and snapshot restoration;
-- `SimulationCore` world ownership, constructor-time world injection, generation/migration/flood diagnostic events, and no fabricated lifecycle events during V8 load;
-- Save V8 exact world persistence, last-flood persistence, explicit legacy compatibility, neutral V7 migration, deterministic migration, and corruption rejection;
-- generated terrain preparation cost integration into road construction and development underwriting while legacy/direct terrain remains exactly neutral;
-- presentation contract proving world rendering remains read-only and `core.terrain` driven;
-- spatial-index correctness and 10,000-point performance acceptance;
-- all-six-preset 96×64 generation diagnostics;
-- 5,000-tick proof that ordinary simulation stepping does not mutate authoritative static world state;
-- end-to-end Phase 1R headless acceptance: generate → build → zone → utilities → step → flood → Save V8 → hydrate → deterministic continuation.
+Task 13 runtime-mutation implementation head `fa23d77bdaba7f8d260b10ca2d75507f38ed81a6` passed exact-head Civic Foundry CI run **#992** with:
 
-## Current verified acceptance
-
-The Phase 1R acceptance head passed:
-
-- **483/483 Node tests**;
-- TypeScript typecheck;
-- source lint;
+- **595/595 Node tests**;
+- strict TypeScript typecheck;
+- source lint with zero errors;
+- repository and architecture policy checks;
 - isometric asset source validation;
-- production build and procedural atlas generation;
+- production build and atlas generation;
 - Phase 6 compiled browser smoke;
 - Phase 7 compiled browser smoke;
+- dedicated Urban Fabric compiled browser smoke;
 - Isometric Pass A functional browser smoke;
-- eight-scene isometric visual smoke.
+- Isometric Pass A visual smoke.
 
-The CI checkout was the pull-request merge result, so this verification exercised the Phase 1R branch combined with the then-current `main`, not only the isolated feature-branch commit.
+The final documentation/reconciliation head must rerun this complete stack before PR #63 is treated as integration-ready.
 
-## Geometry and hierarchy acceptance
+## Regression layers
 
-Geometry tests lock canonical counter-clockwise polygon winding, finite coordinates, deterministic point containment, segment intersections, and invalid-polygon rejection.
+### Existing city regressions
 
-Hierarchy tests require exactly one region root and the chain:
+All inherited deterministic suites remain mandatory. They cover the simulation kernel, world generation/flooding, roads/transportation, traffic, public services, transit, firms/freight, housing/relocation, developer markets, persistence migrations, and isometric presentation.
 
-`Region → Municipality → District → Neighborhood → Block`
+Urban Fabric is not allowed to clear its own tests by weakening these older gates.
 
-Orphans, wrong parent kinds, cycles, children outside their parents, and invalid sibling overlap are rejected. Generated boundaries are deterministic for a fixed seed/config and use stable IDs.
+### Urban Fabric unit/integration coverage
 
-## Terrain and world-generation acceptance
+Dedicated suites cover:
 
-Generation tests require:
+- canonical cadastral graph construction, snapshot restoration, adjacency, area, centroid, frontage/access, and validation;
+- legal parcel generation from legacy roads/zoning while preserving legacy `lot:x,y` identity in the compatibility facade;
+- low-level split, assembly, easement creation/removal, and right-of-way dedication with atomic failure behavior and lineage;
+- runtime `CadastralRuntimeMutationService` coordination across cadastre, parcel zoning, canonical buildings, property holdings/history, and the derived lot facade;
+- split success with geometry-based building reassignment and stable canonical building identity;
+- split rejection when a canonical building crosses the cut, with no dependent-domain mutation;
+- assembly rewrites plus atomic owner/zoning conflict rejection;
+- right-of-way residual rewrites plus building-intersection rejection;
+- easement create/remove through the public runtime transaction boundary;
+- twin-core deterministic split → assembly sequences with deep-equal results and snapshots;
+- an injected live commit fault that forces `runtime-commit-rollback` and proves byte-for-byte restoration of every dependent domain;
+- dimensional zoning districts and parcel assignments;
+- buildable envelopes from setbacks, coverage, height, FAR, and minimum parcel dimensions;
+- zoning-compliance rejection by dimensional/use reason;
+- deterministic physical massing and mixed-use floor allocation;
+- physical building metrics derived from real floor area;
+- independent canonical `BuildingV2` storage, deterministic ordering, duplicate rejection, and legacy-cell spatial lookup;
+- lifecycle deterioration, maintenance, distress, renovation, adaptive reuse, and relocation gates;
+- property holdings/transactions and atomic multi-parcel transfers;
+- highest-and-best-use and physical redevelopment pressure;
+- deterministic site-assembly enumeration/economics;
+- runtime proof that development awards use cadastral parcel identity and materialize `BuildingV2` state;
+- grandfathered compatibility behavior when multiple legacy structures share one canonical parcel;
+- Urban Fabric renderer overlays and canonical parcel inspector behavior;
+- Save V9 exact round-trip, migration, reference validation, and continuation.
 
-1. same seed/config → byte-equivalent authoritative physical terrain;
-2. different seeds → materially different terrain;
-3. all six presets → finite valid playable physical worlds;
-4. generated contamination remains zero unless authored by scenario data;
-5. named vegetation RNG changes cannot perturb topography, soils, or groundwater;
-6. scenario overrides win over generated physical values;
-7. malformed scenario data fails before a live world is returned.
+## Deterministic cadastral fuzz gate
 
-The six locked presets are:
+`tests/urban-fabric-fuzz.test.ts` runs the fixed seed set:
 
-- `plain`
-- `river_valley`
-- `basin`
-- `rolling_uplands`
-- `ridge_edge`
-- `coastal_lowland`
+```ts
+[3, 7, 11, 19, 31, 47, 73, 101]
+```
 
-## Hydrology and flood acceptance
+For each seed, the test executes **80 deterministic mutation attempts** over a controlled cadastral fixture. The sequence mixes:
 
-Static hydrology tests require:
+- parcel splits;
+- easement creation;
+- easement removal;
+- compatible parcel assembly;
+- right-of-way dedication.
 
-- priority flood fills enclosed depressions to deterministic spill elevation;
-- permanent water and boundaries are explicit outlets;
-- conditioned receiver graphs never climb and contain no cycles;
-- equal D8 downhill candidates use the locked clockwise precedence;
-- every cell resolves to a watershed;
-- accumulation conserves upstream contribution;
-- generated channels follow drainage receivers and include high-accumulation trunks;
-- low/convergent terrain has greater static flood susceptibility than ridge terrain in controlled fixtures.
+After every step the test requires:
 
-Flood tests require:
+1. `validateCadastralGraph(graph).valid === true`;
+2. snapshot reconstruction through `new CadastralGraph(graph.snapshot())` to remain byte-equivalent;
+3. failed operations to leave a coherent graph;
+4. enough committed operations to ensure the sequence is exercising mutations rather than only rejecting inputs.
 
-- zero rainfall → exact zero flood state and zero balance error;
-- more rainfall cannot reduce runoff in an otherwise identical event;
-- clay infiltrates less than gravel under the same storm;
-- impervious surface reduces infiltration;
-- all depths remain finite and nonnegative;
-- repeated identical storms are deterministic;
-- each event closes the explicit rainfall/infiltration/storage/export water balance within tolerance.
+At the end of every seed, controlled land accounting requires:
 
-## Save V8 and migration acceptance
+`private parcel area + successfully dedicated ROW area = original controlled area ± 0.05 m²`
 
-Current default persistence is Save V8.
+This gate specifically targets topology/reference drift that is difficult to expose with only isolated hand-authored mutation tests.
+
+## Runtime cadastral transaction acceptance
+
+`tests/urban-fabric-runtime-mutations.test.ts` is the Task 13 coordinator gate. It requires:
+
+1. property transaction history to accept retired parcel IDs only when cadastral lineage recognizes them;
+2. runtime split to rewrite canonical building, zoning, and current holding references atomically;
+3. split crossing a building to reject without changing any participating domain;
+4. assembly to conserve one valid owner/zoning state and reject conflicting state atomically;
+5. right-of-way dedication to transfer live references to the residual parcel and preserve area/value rules;
+6. easement create/remove to mutate only legal cadastral state while still using the runtime boundary;
+7. `SimulationCore.cadastralMutations` to preserve surviving building identity through continued simulation;
+8. identical cores plus identical mutation sequences to produce deep-equal results and snapshots;
+9. a forced commit-stage exception to return `runtime-commit-rollback` and restore cadastre, zoning, canonical buildings, property market, and legacy lots byte-for-byte.
+
+The commit fault injector is an optional narrow dependency used only to prove rollback. It does not introduce global mutable test state or a general event framework.
+
+## Urban Fabric browser smoke
+
+`tests/smoke/urban_fabric_smoke.py` boots the compiled application and verifies the player-facing/runtime integration boundary.
+
+The smoke:
+
+1. boots with no page or console errors;
+2. replaces the demo city with a deterministic flat test world;
+3. builds a real local road;
+4. paints a small residential district;
+5. places real power/water infrastructure;
+6. advances 600 live simulation ticks;
+7. requires at least one canonical cadastral parcel;
+8. requires at least one runtime-created `BuildingV2`;
+9. requires the legacy lot compatibility projection to remain available;
+10. toggles the cadastre overlay;
+11. toggles the zoning-envelope overlay;
+12. clicks a compatibility cell and requires the inspector/renderer to resolve the exact same canonical parcel ID;
+13. serializes through the current public API and requires `saveVersion: 9` / `gameVersion: "0.9.0-urban-fabric"`;
+14. hydrates the save;
+15. requires sorted canonical parcel IDs and `BuildingV2` IDs to remain identical after reload.
+
+The CI step is named **Urban Fabric browser smoke** and executes `npm run test:smoke:urban-fabric`.
+
+## Save V9 acceptance
+
+Current default persistence is Save V9. Tests require:
+
+- exact Urban Fabric cadastral/zoning/building/property round-trip;
+- deterministic continuation after load;
+- V8 → V9 migration to be deterministic;
+- no fabricated legal/property history during migration;
+- legacy lots rebuilt from persisted cadastral topology;
+- live parcel references in parcel zoning, `BuildingV2`, and current holdings to resolve to live cadastral parcels;
+- historical property transaction parcel IDs to resolve to either a current live parcel or a retired parcel recognized by persisted cadastral lineage;
+- mutation → Save V9 → hydrate → continue to preserve property history and all live cross-domain references;
+- explicit Save V8 compatibility to remain available and unchanged;
+- inherited World Foundation restoration to occur before dependent legacy gameplay construction.
+
+Older serializers/hydrators remain independently covered so backward compatibility is not conflated with current schema behavior.
+
+## Cadastral validation acceptance
+
+`CadastralValidator` rejects or reports:
+
+- duplicate node/edge/block/parcel/easement/lineage IDs;
+- missing nodes, edges, blocks, or parcels;
+- orphan nodes;
+- zero-length or duplicate shared boundaries;
+- invalid parcel boundary chains;
+- parcel area mismatches;
+- invalid frontage/access references;
+- private parcel overlap;
+- invalid easement parcel references;
+- lineage cycles.
+
+Geometry-changing operations are expected to build a complete candidate snapshot and pass this validator before live replacement.
+
+## Development/massing acceptance
+
+Controlled fixtures require:
+
+- legal envelopes to respect actual parcel geometry and dimensional controls;
+- setbacks that disconnect a narrow parcel to report the constraint rather than fabricate a continuous envelope;
+- larger legal massing to produce corresponding real floor area, costs, and revenue;
+- mixed-use allocations to conserve usable floor area;
+- illegal candidates to stop before developer bidding;
+- physical candidate identity to survive through bids/awards;
+- runtime awards to use one canonical parcel identity rather than multiple derived frontage lots.
+
+## Lifecycle/redevelopment acceptance
 
 Tests require:
 
-- generated V8 save → hydrate → serialize is exact;
-- latest design-storm result round-trips exactly;
-- legacy-explicit V8 retains exact compatibility terrain;
-- V7 loaded through the current API creates deterministic `legacy-flat` world state while preserving existing roads, zones, buildings, treasury, and gameplay domains;
-- repeated legacy migration is deterministic;
-- migrated old worlds begin with no fabricated prior flood result;
-- corrupt world terrain length, corrupt hierarchy, or world-vs-compatibility terrain divergence is rejected before returning a live core;
-- restored V8 worlds are injected before terrain-dependent legacy systems are constructed;
-- existing Phase 0A/V7 compatibility parity remains green.
+- maintenance to slow deterioration;
+- chronic vacancy to increase distress;
+- renovation/adaptive reuse to obey zoning and return hurdles;
+- occupied redevelopment to respect canonical relocation state;
+- unresolved households to block demolition;
+- redevelopment stages to progress through explicit acquisition/demolition/construction/lease-up gates;
+- physical redevelopment pressure to remain deterministic and explanatory.
 
-Explicit older serializers remain tested separately so migration compatibility is not conflated with the current default save schema.
+## World Foundation regressions
 
-## Terrain-economics acceptance
+Urban Fabric continues to run the complete 1R physical-world coverage:
 
-`RoadSystem` tests verify that generated terrain multipliers are applied per new cell and total cost is rounded once. A three-cell fixture with multipliers `1`, `1.5`, and `2` produces the expected weighted total and exact treasury debit.
+- polygon/segment geometry;
+- geography hierarchy;
+- engineering terrain/soil classes;
+- six deterministic world presets;
+- priority-flood and D8 hydrology;
+- design-storm water balance;
+- scenario overrides and named RNG isolation;
+- World Foundation snapshot persistence;
+- terrain-preparation economics;
+- spatial-index correctness/performance;
+- long-run proof that ordinary simulation ticks do not mutate static world authority.
 
-Direct/legacy terrain tests retain the historical exact road cost because their world preparation multiplier is exactly `1.0`.
+This is important because legal parcel geometry is layered onto, not substituted for, World Foundation.
 
-Development integration compares otherwise-equivalent sites and requires a more difficult generated site to produce a larger hard construction cost through the existing development-feasibility context. No second hidden construction charge exists inside `DevelopmentFeasibilitySystem`.
+## Browser regression stack
 
-## Spatial performance acceptance
+The compiled browser stack remains mandatory because several important boundaries are not proven by Node-only tests:
 
-`tests/world-performance.test.ts` generates a 96×64 `rolling_uplands` world and constructs 10,000 deterministic query points using modular integer sequences.
+- actual UI event ordering;
+- overlay mutual exclusion;
+- canvas coordinate picking;
+- parcel inspector handoff;
+- save/load through compiled modules;
+- rendering and atlas integration;
+- browser console/page errors.
 
-For each point it resolves block, neighborhood, and district membership, resulting in **30,000 indexed kind lookups**. The acceptance threshold is **< 2,500 ms** for the indexed phase.
+Playwright request routing serves the compiled `dist` tree under the controlled `http://civic.test/` origin.
 
-On the latest verified GitHub Actions run:
+## Completion rule
 
-- 10,000 points / 30,000 indexed kind lookups: **~35.72 ms**;
-- the first 500 points were cross-checked against direct hierarchy lookup for correctness;
-- threshold headroom was therefore very large on that runner.
+A task slice may be called green only after its relevant RED/acceptance test has passed and the full CI gate for the resulting head is successful. A failed downstream browser/visual gate is treated as a real integration defect unless evidence proves infrastructure failure.
 
-This is an acceptance budget, not a cross-hardware performance promise.
-
-## Six-preset generation diagnostics
-
-The same verified runner generated each 96×64 preset successfully:
-
-| Preset | Diagnostic elapsed | Watersheds | Channels |
-| --- | ---: | ---: | ---: |
-| plain | ~114.31 ms | 316 | 278 |
-| river_valley | ~112.85 ms | 316 | 212 |
-| basin | ~87.75 ms | 316 | 153 |
-| rolling_uplands | ~89.13 ms | 316 | 259 |
-| ridge_edge | ~94.63 ms | 316 | 354 |
-| coastal_lowland | ~160.17 ms | 812 | 532 |
-
-Generation timings are diagnostic only. The test asserts finite/valid worlds rather than a machine-specific generation-time threshold.
-
-## Static-world long-run gate
-
-A generated `SimulationCore` authoritative world snapshot is captured, the normal city simulation advances **5,000 ticks without a storm or world mutation**, and the world snapshot must remain byte-equivalent.
-
-This prevents legacy gameplay cadence from accidentally mutating the Phase 1R physical world.
-
-## Phase 1R headless acceptance
-
-`tests/phase1r-headless.test.ts` uses the locked fixture:
-
-```ts
-new SimulationCore({
-  width: 48,
-  height: 32,
-  seed: 20260825,
-  worldConfig: { preset: 'river_valley' },
-})
-```
-
-The test scans generated geography rather than assuming a hand-authored playable coordinate. It deterministically finds three consecutive buildable road cells and adjacent buildable non-road cells for residential zoning, power, and water.
-
-It then:
-
-1. verifies generated 1R mode, hierarchy, and drainage channels;
-2. builds a real local road through `SimulationCore.buildRoad()`;
-3. paints residential zoning through `paintZone()`;
-4. places real power and water infrastructure;
-5. advances 250 live simulation ticks;
-6. runs an 80 mm / 2 h design storm;
-7. validates nonnegative flood depth and water-balance closure;
-8. serializes the current Save V8;
-9. hydrates it and requires exact authoritative world/save equality;
-10. advances both original and loaded simulations another 300 ticks;
-11. requires identical final serialization.
-
-Latest verified diagnostic:
-
-- road: `(1,1) → (3,1)`;
-- zone: `(1,0)`;
-- power: `(2,0)`;
-- water: `(3,0)`;
-- flooded cells: **60**;
-- balance error: approximately **`-5.24e-10`**;
-- final deterministic continuation tick: **550**.
-
-The exact coordinates are diagnostic outputs from the locked seed, not production assumptions.
-
-## Browser regression
-
-Phase 1R intentionally preserves the presentation compatibility seam, so the established browser regression stack remains mandatory.
-
-The latest verified run passed:
-
-- `PHASE6_SMOKE_PASS` with restored current `saveVersion: 8`;
-- `PHASE7_TENURE_RELOCATION_SMOKE_PASS`;
-- `ISOMETRIC_PASS_A_SMOKE_PASS`;
-- `ISOMETRIC_VISUAL_SMOKE_PASS` across eight scenes.
-
-The smoke harness uses compiled ES modules and Playwright request routing because navigable loopback origins may be restricted in the execution environment. The simulation, UI events, serialization, hydration, rendering, and Canvas output remain the real compiled application.
+Task 13 requires two separate exact-head checkpoints: a green implementation head proving the runtime transaction behavior, followed by a green final documentation/reconciliation head. `main` is not updated by either verification step. PR #63 remains the isolated integration vehicle until explicit approval to merge.

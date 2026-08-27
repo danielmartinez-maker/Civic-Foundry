@@ -26,22 +26,41 @@ function advanceUntilCommitment(core: SimulationCore, max = 200): void {
   assert.ok(core.developerMarket.listCommitments().length > 0, 'expected active development commitment before save');
 }
 
-test('explicit Save V7 serializer preserves developer market and housing state without 1R world data', () => {
+test('explicit Save V7 serializer projects canonical developer identity to legacy building references without mutating runtime state', () => {
   const core = buildDevelopmentCity();
   advanceUntilCommitment(core);
+  const runtimeBefore = core.developerMarket.snapshotState();
+  assert.ok(runtimeBefore.commitments.some((commitment) => commitment.lotId.startsWith('parcel:')));
+
   const save = serializeCoreV7(core);
   assert.equal(save.saveVersion, 7);
   assert.equal(save.gameVersion, '0.7.0-metropolitan');
-  assert.deepEqual(save.developmentMarket, core.developerMarket.snapshotState());
+  const legacyBuildings = new Map(core.buildings.list().map((building) => [building.id, building] as const));
+  assert.equal(save.developmentMarket.commitments.length, runtimeBefore.commitments.length);
+  for (const saved of save.developmentMarket.commitments) {
+    const runtime = runtimeBefore.commitments.find((commitment) => commitment.awardId === saved.awardId);
+    assert.ok(runtime, `missing runtime commitment ${saved.awardId}`);
+    const legacyBuilding = legacyBuildings.get(saved.buildingId);
+    assert.ok(legacyBuilding, `Save V7 commitment must reference a legacy building: ${saved.buildingId}`);
+    assert.equal(saved.lotId, legacyBuilding.lotId);
+    assert.equal(saved.definitionId, legacyBuilding.definitionId);
+    assert.equal(saved.developerId, runtime.developerId);
+    assert.equal(saved.equity, runtime.equity);
+    assert.equal(saved.awardTick, runtime.awardTick);
+    assert.equal(saved.completionTick, runtime.completionTick);
+    assert.equal(saved.releaseTick, runtime.releaseTick);
+    assert.equal(saved.expectedReturn, runtime.expectedReturn);
+  }
+  assert.deepEqual(core.developerMarket.snapshotState(), runtimeBefore, 'serialization must not mutate canonical runtime commitments');
   assert.deepEqual(save.housingState, core.housingRelocation.snapshotState());
   assert.equal(Object.prototype.hasOwnProperty.call(save, 'world'), false);
 });
 
-test('current save resumes developer capital commitments, housing state, and future awards identically', () => {
+test('current Save V9 resumes developer capital commitments, housing state, and future awards identically', () => {
   const uninterrupted = buildDevelopmentCity();
   advanceUntilCommitment(uninterrupted);
   const save = serializeCore(uninterrupted);
-  assert.equal(save.saveVersion, 8);
+  assert.equal(save.saveVersion, 9);
   const loaded = hydrateCore(structuredClone(save));
   assert.deepEqual(serializeCore(loaded), save);
   assert.deepEqual(loaded.housingRelocation.snapshotState(), uninterrupted.housingRelocation.snapshotState());

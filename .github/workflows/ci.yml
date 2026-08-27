@@ -31,6 +31,8 @@ jobs:
         run: npm run test:smoke
       - name: Phase 7 browser smoke
         run: npm run test:smoke:phase7
+      - name: Urban Fabric browser smoke
+        run: npm run test:smoke:urban-fabric
       - name: Isometric Pass A browser smoke
         run: npm run test:smoke:isometric
       - name: Isometric Pass A visual smoke

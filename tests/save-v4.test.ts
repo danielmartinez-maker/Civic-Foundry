@@ -32,10 +32,10 @@ function serviceCore(): SimulationCore {
   return core;
 }
 
-test('current Save V8 round-trips authoritative public-service state and active service vehicles', () => {
+test('current Save V9 round-trips authoritative public-service state and active service vehicles', () => {
   const core = serviceCore();
   const save = serializeCore(core);
-  assert.equal(save.saveVersion, 8);
+  assert.equal(save.saveVersion, 9);
   assert.ok(save.services.facilities.length >= 5);
   assert.ok(save.services.jobs.length > 0);
   assert.ok(save.services.vehicles.length > 0);

@@ -42,6 +42,20 @@ def main() -> None:
         assert page.locator('[data-testid="land-housing-overlay"]').is_visible()
         assert page.locator('[data-testid="land-housing-overlay-canvas"]').is_visible()
         assert page.locator('[data-testid="development-policy-controls"]').is_visible()
+        assert page.locator('[data-testid="urban-fabric-overlay"]').is_visible()
+
+        page.locator('[data-testid="urban-fabric-overlay"]').select_option("cadastre")
+        assert page.locator('[data-testid="urban-fabric-overlay"]').input_value() == "cadastre"
+        assert page.evaluate("window.__civicApp.urbanFabricOverlayMode") == "cadastre"
+        assert page.locator('[data-testid="traffic-overlay"]').input_value() == "none"
+        assert page.locator('[data-testid="service-overlay"]').input_value() == "none"
+        assert page.locator('[data-testid="transit-overlay"]').input_value() == "none"
+        assert page.locator('[data-testid="economy-overlay"]').input_value() == "none"
+        assert page.locator('[data-testid="land-housing-overlay"]').input_value() == "none"
+        assert "Cadastre" in page.locator('#overlay-legend').inner_text()
+
+        page.locator('[data-testid="traffic-overlay"]').select_option("congestion")
+        assert page.locator('[data-testid="urban-fabric-overlay"]').input_value() == "none"
 
         setup = page.evaluate("""
         async () => {
@@ -85,6 +99,27 @@ def main() -> None:
             "Redevelopment pressure", "Redevelopment status",
         ]:
             assert label in inspector
+
+        page.locator('[data-testid="urban-fabric-overlay"]').select_option("zoning-envelope")
+        parcel_click = page.evaluate("""
+        () => {
+          const app = window.__civicApp;
+          const lot = app.core.lots.list().filter(item => item.zone === 'residential').sort((a,b)=>a.id.localeCompare(b.id))[0];
+          if (!lot) throw new Error('expected residential lot');
+          const parcelId = app.tools.parcelIdAt(app.core, lot.x, lot.y);
+          if (!parcelId) throw new Error('expected cadastral parcel');
+          const center = app.renderer.worldToCanvas(lot.x, lot.y, app.core);
+          return { parcelId, x: center.x, y: center.y };
+        }
+        """)
+        canvas_box = page.locator('[data-testid="world-canvas"]').bounding_box()
+        assert canvas_box is not None
+        page.mouse.click(canvas_box["x"] + parcel_click["x"], canvas_box["y"] + parcel_click["y"])
+        parcel_inspector = page.locator('#inspector-content').inner_text()
+        assert f"Parcel {parcel_click['parcelId']}" in parcel_inspector
+        for label in ["Area", "Frontage", "District", "Allowed FAR", "Effective FAR", "Height", "Coverage", "Lineage"]:
+            assert label in parcel_inspector
+        assert page.evaluate("window.__civicApp.renderer.currentUrbanFabricSelectedParcelId") == parcel_click["parcelId"]
 
         page.locator('[data-testid="policy-density-bonus"]').select_option("1")
         page.locator('[data-testid="policy-affordable-share"]').fill("20")

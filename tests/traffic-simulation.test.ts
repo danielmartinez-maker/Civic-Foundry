@@ -11,6 +11,7 @@ import { TrafficAnalytics } from '../src/simulation/traffic/TrafficAnalytics.ts'
 import type { TripRequest } from '../src/simulation/traffic/TripGenerationSystem.ts';
 import type { RoadType } from '../src/data/roads.ts';
 import { DemandSystem } from '../src/simulation/demand/DemandSystem.ts';
+import { seedOccupiedParcelSites } from './support/parcelTrafficFixture.ts';
 
 function flatTerrain(width = 20, height = 14): TerrainGrid {
   const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({ elevation: 0.5, water: false, buildable: true, biome: 'grass' as const }));
@@ -136,13 +137,23 @@ import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 test('SimulationCore generates, routes, and advances traffic from the managed city loop', () => {
   const core = new SimulationCore({ terrain: flatTerrain(22, 14), startingFunds: 250_000, seed: 33 });
   assert.equal(core.buildRoad(Array.from({ length: 16 }, (_, i) => ({ x: i + 2, y: 7 })), 'collector').ok, true);
-  core.paintZone([{ x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 }], 'residential');
-  core.paintZone([{ x: 10, y: 6 }, { x: 11, y: 6 }], 'commercial');
-  core.paintZone([{ x: 14, y: 6 }, { x: 15, y: 6 }], 'industrial');
+  core.paintZone([{ x: 3, y: 6 }, { x: 5, y: 6 }, { x: 7, y: 6 }], 'residential');
+  core.paintZone([{ x: 10, y: 6 }, { x: 12, y: 6 }], 'commercial');
+  core.paintZone([{ x: 14, y: 6 }, { x: 16, y: 6 }], 'industrial');
   assert.equal(core.placeUtility('power', 4, 8).ok, true);
   assert.equal(core.placeUtility('water', 8, 8).ok, true);
   assert.equal(core.placeUtility('landfill', 13, 8).ok, true);
+  seedOccupiedParcelSites(core, [
+    { x: 3, y: 6, zone: 'residential' },
+    { x: 5, y: 6, zone: 'residential' },
+    { x: 7, y: 6, zone: 'residential' },
+    { x: 10, y: 6, zone: 'commercial' },
+    { x: 12, y: 6, zone: 'commercial' },
+    { x: 14, y: 6, zone: 'industrial' },
+    { x: 16, y: 6, zone: 'industrial' },
+  ], 24);
   core.step(1600);
+  assert.ok(core.cadastre.listParcels().length >= 7, 'fixture must retain distinct canonical trip origins and destinations');
   assert.ok(core.transportationGraph.edges.length > 0);
   assert.ok(core.pathfinding.diagnostics.requests > 0);
   assert.ok(core.traffic.completedTrips + core.traffic.activeVehicles.length > 0);

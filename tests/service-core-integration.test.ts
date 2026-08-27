@@ -113,14 +113,15 @@ test('SimulationCore advances the full public-service loop and exposes real serv
 test('routed garbage backlog does not hard-stop initial migration before the first collection route can complete', () => {
   const core = new SimulationCore({ terrain: flatTerrain(40, 24), startingFunds: 1_500_000, seed: 2026 });
   core.buildRoad(Array.from({ length: 34 }, (_, i) => ({ x: i + 2, y: 12 })), 'collector');
-  for (let x = 3; x <= 12; x++) core.paintZone([{ x, y: 11 }], 'residential');
-  for (let x = 24; x <= 28; x++) core.paintZone([{ x, y: 11 }], 'commercial');
-  for (let x = 29; x <= 33; x++) core.paintZone([{ x, y: 11 }], 'industrial');
+  for (const x of [3, 5, 7, 9, 11, 13, 15, 17, 19, 21]) core.paintZone([{ x, y: 11 }], 'residential');
+  for (const x of [24, 26, 28]) core.paintZone([{ x, y: 11 }], 'commercial');
+  for (const x of [29, 31, 33]) core.paintZone([{ x, y: 11 }], 'industrial');
   for (const x of [22, 25]) assert.equal(core.placeUtility('power', x, 13).ok, true);
   for (const x of [28, 31]) assert.equal(core.placeUtility('water', x, 13).ok, true);
   for (const [type, x] of [['fire_station', 4], ['police_station', 7], ['clinic', 10], ['elementary_school', 13], ['landfill', 16], ['recycling_center', 19]] as const) {
     assert.equal(core.placeServiceFacility(type, x, 13).ok, true);
   }
+  assert.equal(core.cadastre.listParcels().length, 16, 'garbage fixture must retain independent canonical development sites');
   core.step(250);
   assert.ok(core.buildings.occupied().length >= 10);
   assert.ok(core.garbageSnapshot.backlog > 0, 'collection should have real in-flight backlog');

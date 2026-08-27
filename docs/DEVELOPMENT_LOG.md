@@ -1,191 +1,220 @@
 # Civic Foundry — Development Log
 
-This log records durable phase-level checkpoints. Detailed task-by-task implementation history remains available in Git commits, design specifications, implementation plans, and CI runs.
+This log records durable phase-level checkpoints. Detailed task-by-task history remains available in Git commits, implementation plans, PR discussion, and GitHub Actions runs.
 
 ## 2026-08-21 — Phase 1–3 fresh reimplementation
 
-The earlier temporary execution workspace reached a verified Phase 3 checkpoint but expired before source upload. Phase 1–3 were therefore reimplemented from preserved specifications and reverified in `danielmartinez-maker/Civic-Foundry`, establishing GitHub as the durable canonical source of truth.
+Rebuilt the deterministic playable baseline in the durable GitHub repository after the earlier temporary execution workspace expired.
 
-The rebuilt baseline restored:
+Restored:
 
-- deterministic terrain, treasury, zoning, road-frontage lots, buildings, population, employment, taxes, utilities, garbage, and demand;
-- explicit road hierarchy, derived transportation graph, deterministic A* routing, weighted trip generation, moving traffic, intersection queues, congestion, and accessibility;
-- deterministic save/load and headless parity fixtures.
+- terrain, treasury, zoning, road-frontage lots, buildings, population, employment, taxes, utilities, garbage, and demand;
+- road hierarchy, transportation graph, deterministic routing, weighted trip generation, moving traffic, intersections, congestion, and accessibility;
+- deterministic save/load and headless parity coverage.
 
 ## 2026-08-21 — Phase 4 Public Services
 
-Implemented the public-services vertical slice:
-
-- fire, police, clinics, schools, landfill/recycling infrastructure;
-- department funding, staffing, capacity, fleets, and operating cost;
-- road-network accessibility rather than circular coverage;
-- explicit routed emergency/service/garbage vehicles;
-- incidents, fire growth/spread, routed waste, education, and neighborhood service quality;
-- V4 persistence/migration and browser smoke coverage.
-
-Acceptance work corrected a routed-garbage migration deadlock, restored the inherited waste-generation cadence, and persisted active waste reservations needed for deterministic continuation.
+Implemented fire, police, clinics, schools, landfill/recycling, department funding/staffing/capacity/fleets, network-based service accessibility, explicit routed service vehicles, incidents, fire spread, routed waste, education, neighborhood service quality, V4 persistence, and browser acceptance.
 
 ## 2026-08-21 — Phase 5 Transit Revolution
 
-Implemented bus, BRT, tram, and metro topology with:
-
-- deterministic stops/lines/routes;
-- multimodal generalized-cost journey planning and route caching;
-- weighted person-trip cohorts and mode choice;
-- passenger queues, transfers, partial boarding, and explicit transit vehicles;
-- road-sensitive surface transit, congestion-reduced BRT, and road-insulated metro;
-- headways, fleet limits, operating cost, fares, accessibility, crowding, wait, and reliability;
-- V5 authoritative continuation and V4 migration.
-
-Acceptance work fixed legacy save-continuation drift, added capacity feedback into experienced wait/mode choice, and retained the compiled-browser smoke harness through Playwright request routing.
+Implemented deterministic bus/BRT/tram/metro topology, multimodal generalized-cost planning, person-trip cohorts, mode choice, queues/transfers/partial boarding, explicit transit vehicles, headways/fleet/fare/cost/reliability/crowding feedback, V5 persistence, and compiled browser coverage.
 
 ## 2026-08-22 — Phase 6 Firms, Production & Freight
 
-Implemented the establishment/freight economy:
-
-- deterministic firms and labor allocation;
-- conservation-safe inventories and a compact production chain;
-- stable external freight gateways;
-- generalized-cost supplier matching;
-- imports/exports and explicit weighted freight trucks;
-- freight congestion/logistics costs feeding shortages, production, firm health, and employment;
-- sustained firm formation, distress, recovery, and closure;
-- authoritative dispatch capacity and queue aging;
-- V6 continuation and V5 migration;
-- economy/freight UI diagnostics and browser smoke coverage.
-
-Acceptance work corrected gateway fixtures, made freight dispatch capacity causal, prevented late cargo delivery to demolished firms, rebuilt derived freight access after hydration, and retained revision-stable path caching for acceptable long-horizon performance.
+Implemented deterministic establishments/labor, conserved inventories and production chains, freight gateways, generalized-cost supplier matching, imports/exports, routed freight trucks, logistics-cost feedback, sustained firm lifecycle state, dispatch capacity/queue aging, V6 continuation, and economy/freight UI diagnostics.
 
 ## 2026-08-22 — Phase 7 Land, Housing & Development
 
-Phase 7 progressively added the property/development layer above the existing cell-lot model:
+Added the first economic property/development layer above the legacy cell-lot model:
 
-- derived R/C/I property markets with rent, vacancy, land value, and parcel-local signals;
-- explicit developer pro-forma underwriting using market rent/vacancy, taxes, construction cost, financing, NOI, value, return, and residual land value;
-- deterministic competing developers with differentiated hurdles, financing, capital, preferences, bids, awards, commitments, and capital recycling;
-- aggregate housing affordability/choice followed by persistent renter/owner tenure and relocation state;
-- redevelopment pressure plus safeguarded occupied-residential execution;
-- development-policy controls for density bonus, affordability, fees, permitting, redevelopment affordability, and lower-income relocation protection;
-- V7 persistence for authoritative developer/housing state and deterministic migration from V6;
-- land/housing panels, overlays, building diagnostics, and compiled Phase 7 browser smoke.
+- R/C/I property-market signals;
+- developer pro-forma underwriting and competing capital-constrained developers;
+- persistent housing tenure/relocation;
+- redevelopment pressure and occupied-residential safeguards;
+- development-policy controls;
+- V7 developer/housing continuation;
+- land/housing panels, overlays, and browser smoke.
 
-Acceptance work found and fixed duplicate developer commitments, relocation-floor edge cases, stale derived diagnostics, and save-continuation requirements without introducing a second hidden property market or household simulation.
+This phase intentionally did **not** make legal parcel geometry authoritative yet.
 
 ## 2026-08-24 — Civic Foundry 2.0 Phase 0A Kernel
 
-Inserted the deterministic simulation kernel beneath the existing V7 city model without rewriting gameplay ownership.
-
-The kernel provides:
-
-- one shared authoritative simulation clock;
-- deterministic system scheduling and dependency validation;
-- queued command sequencing;
-- diagnostic domain-event journaling;
-- isolated named RNG streams;
-- cadence-aware invariants;
-- ordered diagnostic snapshot providers;
-- fail-stop behavior on fatal tick errors.
-
-The existing V7 city loop remains the compatibility system while later 2.0 tranches progressively replace subsystems behind parity gates.
+Inserted the deterministic `SimulationKernel` beneath the existing city model without rewriting gameplay ownership. The kernel provides one shared clock, deterministic scheduling/dependency validation, command sequencing, diagnostic event journaling, named RNG streams, invariants, snapshot providers, and fail-stop behavior.
 
 ## 2026-08-24 — Isometric Presentation Pass A
 
-Reworked the visual layer into a deterministic 2:1 isometric presentation system while keeping simulation authority independent from rendering.
-
-The pass established:
-
-- 64×32 tile projection and quarter-turn camera rotation;
-- deterministic sprite identity and road autotiling;
-- generated/validated atlas contracts;
-- explicit object/vehicle/overlay/selection render order;
-- viewport culling and coordinate-correct interaction;
-- compiled functional and visual Chromium smoke coverage.
+Reworked presentation into a deterministic 64×32 2:1 isometric renderer with quarter-turn rotation, deterministic sprite identity/road autotiling, atlas contracts, explicit render order, viewport culling, coordinate-correct interaction, and compiled functional/visual Chromium smoke coverage.
 
 ## 2026-08-25 — Phase 1R World Foundation 2.0
 
-Implemented the first major Civic Foundry 2.0 replacement tranche beneath the V7 gameplay compatibility layer.
+Implemented the authoritative physical-world substrate:
 
-### Architecture delivered
+- `WorldFoundation`;
+- physical terrain and engineering soil properties;
+- geography hierarchy `Region → Municipality → District → Neighborhood → Block`;
+- deterministic world generation with six presets and named RNG streams;
+- priority-flood terrain conditioning and D8 hydrology;
+- watersheds, channels, flood susceptibility, and design storms;
+- scenario overrides and spatial indexing;
+- terrain-preparation economics;
+- legacy terrain compatibility adapter.
 
-- added an authoritative `WorldFoundation` composed of physical terrain, engineering soils, hydrology, geography hierarchy, spatial index, world generation, scenario overrides, flood state, and the legacy terrain adapter;
-- added canonical polygon/segment geometry suitable for later irregular parcel and transportation work;
-- added stable geography hierarchy `Region → Municipality → District → Neighborhood → Block` with deterministic irregular boundaries and validated references/containment;
-- replaced simplistic generated terrain with physical elevation, slope/aspect, soil/bearing, soil depth, bedrock, groundwater, vegetation, contamination, and surface-water fields;
-- locked eight soil classes and six world-form presets;
-- isolated world-generation randomness into named deterministic streams;
-- added priority-flood terrain conditioning and fixed-precedence D8 routing;
-- derived watersheds, accumulation, drainage channels, and flood susceptibility;
-- added deterministic design-storm flooding with explicit rainfall/infiltration/storage/outlet water accounting;
-- added scenario-authored generation/physical overrides while keeping generated contamination zero by default;
-- added spatial indexing for geography/channel lookup;
-- retained `core.terrain` as a compatibility projection so existing roads, zoning, lots, buildings, and rendering continue functioning without a simultaneous 2R/3R rewrite.
+Introduced Save V8 (`0.8.0-world-foundation`) so the complete inherited V7 gameplay envelope could persist alongside authoritative world state. Older saves migrate through deterministic neutral legacy-world semantics without fabricated physical history.
 
-### Economic integration
+Phase 1R intentionally stopped at block geography. Legal parcels were reserved for the next reviewed tranche.
 
-Generated 1R terrain now affects real municipal/developer economics rather than remaining decorative:
+## 2026-08-25–27 — Urban Fabric 2.0 / 2R on PR #63
 
-- road construction cost uses per-cell terrain preparation multipliers;
-- development feasibility multiplies the existing service/utility construction-cost index by local terrain preparation before the existing clamp;
-- legacy/direct worlds return exactly `1.0`, preserving historical road and development costs.
+Urban Fabric 2.0 was implemented on `feature/urban-fabric-2.0` / draft PR #63 while keeping `main` untouched.
 
-### Save V8 and migration
+### Reconciliation with the 1R baseline
 
-Introduced default **Save V8**:
+The 2R branch was reconciled onto the 1R baseline without rewriting its existing history. The key compatibility rules were locked before continuing:
 
-- `saveVersion: 8`;
-- `gameVersion: '0.8.0-world-foundation'`;
-- complete inherited V7 gameplay state plus authoritative `WorldFoundationSnapshot`;
-- latest design-storm result persists exactly;
-- restored V8 worlds are injected before terrain-dependent legacy domains are constructed;
-- world/compatibility terrain divergence and corrupt geography are rejected;
-- V3–V7 current-load migration creates a deterministic neutral `legacy-flat` world without fabricating prior 1R/flood history.
+- `WorldFoundation` remains the sole physical/geographic authority;
+- legal cadastral parcels become the canonical runtime land authority;
+- legacy lot/building identifiers required by V7/V8 compatibility cannot silently change;
+- Urban Fabric persistence extends the chain through **Save V9** instead of repurposing Save V8.
 
-### Diagnostics and presentation boundary
+### Canonical cadastre and legacy lot compatibility
 
-Added typed diagnostic events:
+The first Task 13 integration exposed an authority/identity mismatch: a canonical parcel can group multiple compatible legacy frontage cells, while existing runtime/tests still require stable per-cell `lot:x,y` records.
 
-- `WorldGenerated`;
-- `WorldMigratedTo1R`;
-- `FloodEventStarted`;
-- `FloodEventResolved`.
+The fix made `LotSystem` a projection of cadastral frontage rather than a second authority. One cadastral parcel can therefore project multiple legacy lots while parcel identity remains canonical for new land/development work.
 
-`SimulationCore.runDesignStorm()` is the authoritative storm entry point. Direct `TerrainGrid` construction emits no fabricated lifecycle event and V8 restoration emits no fake generation/migration event.
+Legacy V7/V8 hydration was also repaired to rebuild the cadastre after restored roads/zoning, preventing a loaded core from carrying a stale/empty canonical land model.
 
-A presentation contract test locks `WorldRenderer` and `GroundRenderPass` to read-only use of the compatibility terrain. Rendering cannot run storms or mutate world/save authority.
+### Urban Fabric runtime services
 
-### Acceptance evidence
+`SimulationCore` owns the parcel-development service set:
 
-The final pre-documentation Phase 1R acceptance head passed **483/483 Node tests**, strict typecheck, lint, asset validation, production build, Phase 6 browser smoke, Phase 7 browser smoke, Isometric Pass A functional smoke, and the eight-scene isometric visual smoke.
+- buildable envelopes;
+- zoning compliance;
+- physical massing;
+- building lifecycle;
+- renovation/adaptive reuse;
+- highest-and-best-use;
+- property market;
+- bounded site assembly;
+- the cross-domain `CadastralRuntimeMutationService` exposed as readonly `cadastralMutations`.
 
-Spatial acceptance on the latest GitHub Actions run:
+Raw `CadastralMutationSystem` remains the low-level legal-geometry engine. Runtime callers use `CadastralRuntimeMutationService`, which stages the requested graph operation on a cloned cadastre, rewrites and validates dependent canonical building/zoning/current-holding references, validates historical property records through cadastral lineage, proves the legacy lot projection can be rebuilt, and only then commits live owners in fixed order.
 
-- 96×64 `rolling_uplands` world;
-- 10,000 deterministic query points;
-- block + neighborhood + district membership for each point = 30,000 indexed kind lookups;
-- indexed phase completed in approximately **35.72 ms** against the **2,500 ms** acceptance budget;
-- the first 500 points were cross-checked against direct hierarchy lookup.
+If any live commit stage fails, the service restores the original cadastre, zoning, canonical buildings, and property-market snapshot and rebuilds the lot facade from the restored cadastre. Partial cross-domain parcel mutation is not permitted to escape.
 
-All six 96×64 presets generated finite valid worlds. Observed diagnostic generation times ranged from approximately **87.75 ms** to **160.17 ms** on that CI runner; no cross-hardware generation-time threshold is asserted.
+### Canonical BuildingV2 storage
 
-The 5,000-tick static-world gate proved ordinary simulation stepping leaves the authoritative generated world unchanged.
+`BuildingSystem` gained independent canonical `BuildingV2` storage while retaining the legacy building map.
 
-The locked 48×32 `river_valley` headless fixture (`seed: 20260825`) then executed the complete acceptance chain:
+Canonical APIs provide deterministic listing, ID lookup, and compatibility-cell spatial lookup without changing canonical IDs. Restore validates duplicate IDs transactionally and returns isolated read copies.
 
-`generate → real road/zoning/utilities → 250 ticks → 80 mm / 2 h storm → Save V8 → hydrate → 300-tick matched continuation`
+Runtime development was then moved to cadastral parcel identity so developer awards and physical massing materialize canonical `BuildingV2` state while legacy lots remain derived compatibility records.
 
-Its verified diagnostic output included:
+Grandfathered legacy structures sharing a newly grouped parcel are preserved rather than silently discarded. Safe runtime parcel rewrites additionally preserve surviving canonical building ID, lifecycle, year built, entitlement timing, and project metadata through later simulation continuation.
 
-- 60 flooded cells;
-- water-balance error approximately `-5.24e-10`;
-- exact Save V8 round-trip;
-- identical continuation through tick 550.
+### Legal parcel operations
 
-### Compatibility boundary
+`CadastralMutationSystem` supports low-level transactional:
 
-Phase 1R intentionally does not claim later tranche ownership:
+- parcel split;
+- compatible parcel assembly;
+- easement creation/removal;
+- right-of-way dedication.
 
-- true legal parcels, FAR/setbacks/height/coverage, mixed-use geometry, deterioration/renovation, and parcel split/assembly remain 2R work;
-- the final lane/signal/turn/parking/crash transportation replacement remains a separate 3R responsibility;
-- existing V7 lot and rendering semantics remain available through the Phase 1R compatibility facade until those downstream systems pass their own review and acceptance gates.
+Candidate snapshots are validated before graph replacement. Tests lock area conservation, atomic rejection, shared-boundary behavior, access/frontage state, and lineage.
 
-Draft PR #79 carries the Phase 1R work for review; it is not merged automatically.
+`CadastralRuntimeMutationService` now coordinates those same operations across all participating live parcel-reference owners. Splits resolve buildings geometrically to one child or reject; assemblies reject conflicting explicit zoning/current owners; right-of-way dedication transfers live references only when surviving building geometry remains valid; easements use the same public transaction boundary even though parcel IDs normally remain stable.
+
+### Dimensional zoning, massing, lifecycle, and redevelopment
+
+Urban Fabric added:
+
+- deterministic dimensional zoning districts;
+- parcel-level zoning assignments independent of legacy cell paint;
+- setbacks, FAR, height, coverage, minimum parcel geometry, and use controls;
+- legal buildable envelopes;
+- physical building massing and mixed-use floor allocation;
+- lifecycle condition/effective age/maintenance/distress;
+- renovation/adaptive reuse;
+- explainable physical redevelopment pressure;
+- highest-and-best-use competition among hold/renovate/convert/redevelop;
+- property holdings/transactions;
+- deterministic site-assembly economics;
+- relocation-safe redevelopment sequencing.
+
+Illegal physical candidates are rejected before developer bidding. Unresolved displacement continues to block demolition.
+
+### Save V9
+
+Introduced current default **Save V9**:
+
+- `saveVersion: 9`;
+- `gameVersion: '0.9.0-urban-fabric'`;
+- inherited complete Save V8 state;
+- `urbanFabric` cadastral snapshot;
+- `zoningV2.parcelAssignments`;
+- `buildingsV2`;
+- `propertyMarket`.
+
+V9 hydration restores V8/World Foundation first, replaces the cadastre, rebuilds legacy lots from that cadastre, validates live parcel references, then restores parcel zoning, canonical buildings, and property state.
+
+Historical property transactions deliberately keep the parcel IDs that existed when the transaction occurred. After runtime split/assembly/right-of-way mutation, retired transaction parcel IDs remain valid only when persisted cadastral lineage recognizes them. Current holdings remain restricted to live parcels. No Save V10 was introduced for Task 13.
+
+Explicit Save V8 remains available unchanged for World Foundation compatibility and migration testing.
+
+### Player-facing Urban Fabric UI
+
+Added a mutually exclusive Urban Fabric analytical overlay selector with:
+
+- Cadastre;
+- Zoning envelope;
+- Redevelopment.
+
+The canonical parcel inspector exposes parcel/zoning/building/condition/property/redevelopment information. A browser integration defect in parcel click handling was fixed by rendering from the exact canonical parcel ID already selected by the overlay instead of re-resolving through a legacy cell center.
+
+### Task 16 hardening
+
+Added deterministic cadastral mutation fuzzing using seeds:
+
+`3, 7, 11, 19, 31, 47, 73, 101`
+
+Each seed runs 80 mixed mutation attempts and validates the cadastral graph plus snapshot round-trip after every step. Final controlled private-land + dedicated-right-of-way area must remain conserved within 0.05 m².
+
+Added a dedicated compiled Chromium Urban Fabric smoke that verifies:
+
+- browser boot without page/console errors;
+- real road/zoning/utility setup;
+- runtime cadastral parcel generation;
+- runtime `BuildingV2` materialization;
+- cadastre/zoning-envelope UI behavior and canonical parcel inspection;
+- current Save V9 identity/version;
+- canonical parcel/building IDs unchanged after hydrate.
+
+The smoke is a required GitHub Actions CI step via `npm run test:smoke:urban-fabric`.
+
+### Task 13 runtime mutation closure
+
+The final Task 13 audit gap is implemented and verified.
+
+The closure adds:
+
+- public safe split/assembly/right-of-way/easement mutation through `SimulationCore.cadastralMutations`;
+- deterministic cross-domain staging and fixed-order commit;
+- stable `BuildingV2` identity and lifecycle state across parcel-ID rewrites and continued simulation;
+- lineage-aware preservation of historical property transactions;
+- mutation → Save V9 → hydrate → continue coverage;
+- twin-core split → assembly determinism with deep-equal canonical snapshots;
+- a narrow optional commit fault injector used to force a failure after real live writes and prove byte-for-byte rollback across cadastre, zoning, canonical buildings, property market, and derived lots.
+
+The Task 6 RED checkpoint had **594/595** tests passing, with only the forced rollback contract failing because no commit failpoint existed. The minimal production seam was added in commit `fa23d77bdaba7f8d260b10ca2d75507f38ed81a6`.
+
+Exact-head Civic Foundry CI run **#992** then passed on `fa23d77b`, including **595/595 Node tests**, typecheck, lint/policy/architecture checks, asset validation, production build, Phase 6 browser smoke, Phase 7 browser smoke, Urban Fabric browser smoke, Isometric Pass A functional browser smoke, and Isometric Pass A visual smoke.
+
+### Final documentation gate
+
+The implementation head is green. The documentation/reconciliation checkpoint that records the resolved Task 13 boundary requires its own exact-head CI run before PR #63 is treated as integration-ready.
+
+### Integration boundary
+
+PR #63 remains isolated from `main`. No merge is performed automatically. The tranche should only move to `main` after the final branch verification is green and explicit integration approval is given.

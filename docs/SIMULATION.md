@@ -1,137 +1,198 @@
-# Simulation — Phase 6
+# Simulation — Current 0.9.0 Urban Fabric Runtime
 
-## Deterministic cadence
+## Deterministic execution
 
-Each logical tick:
+`SimulationCore` remains the gameplay facade and advances through the deterministic `SimulationKernel`. The kernel owns the shared clock, command ordering, system scheduling, invariant execution, diagnostic events, and named RNG streams.
 
-1. advance clock
-2. rebuild transportation graph when road revision changes
-3. synchronize service fleets with funding/fiscal availability
-4. reroute or fail service vehicles whose topology became invalid
-5. service emergency/normal intersection queues
-6. advance service vehicles and apply arrivals/returns/completions
-7. update routed garbage pickup/unloading and incident response state
-8. advance commuter traffic including service-vehicle edge load
-9. recompute traffic analytics
-10. advance building construction
+Inherited city systems continue to use their established cadences. At a high level:
 
-Every 10 ticks:
+- every tick: topology refresh when required, service/transit/freight/traffic vehicle progression, intersection service, traffic analytics, and active construction progression;
+- short cadence: public-service demand, incidents, garbage jobs, accessibility, education/neighborhood quality, and development evaluation;
+- 50-tick cadence: utilities, employment, taxes, R/C/I demand, municipal obligations, migration, housing/economic reconciliation;
+- 100-tick cadence: person-trip generation, mobility choice, freight ordering/dispatch windows, and related deterministic demand work;
+- longer lifecycle cadences: establishment formation/distress/closure, developer capital recycling, building lifecycle and redevelopment evaluation.
 
-- synchronize detailed building waste state
-- on the inherited 50-tick waste cadence, generate new building waste
-- derive public-service demand/risk
-- create eligible incidents and garbage jobs
-- assign waiting jobs by graph travel cost/capacity
-- recompute service accessibility
-- recompute education and neighborhood service quality
-- evaluate building development
+The exact subsystem cadence is owned by the corresponding scheduler/system. New Urban Fabric logic does not introduce a second independent clock.
 
-Every 50 ticks:
+## Physical world and land authority
 
-- evaluate power/water, employment, taxes, R/C/I demand, public-service operating obligations and migration
-- update department fiscal-payment effectiveness
+The simulation now distinguishes three coordinate/authority layers:
 
-Every 100 ticks:
+1. `WorldFoundation` — authoritative terrain, hydrology, geography, and physical world composition;
+2. `CadastralGraph` — authoritative legal parcel topology in world-meter coordinates;
+3. legacy grid/lot adapters — compatibility addressing for inherited cell-based gameplay.
 
-- derive weighted commute/shopping requests and route them
-- incident generation may materialize deterministic risk exposure through the incident RNG stream
+A parcel is not required to map one-to-one to a legacy lot. Compatible frontage cells may merge into one cadastral parcel while the legacy facade continues exposing stable `lot:x,y` identifiers.
 
-## Traffic and emergency response
+Legacy road/zoning edits that affect land call `SimulationCore.rebuildCadastreFromLegacyState()`. That rebuild creates the canonical parcel state first and then refreshes the legacy lot projection from the cadastre.
 
-Road classes are `local`, `collector`, and `arterial`. Traffic congestion is derived from weighted occupancy/capacity. Service vehicles add real edge load.
+## Urban Fabric development loop
 
-Emergency vehicles (`fire_engine`, `patrol_car`, `ambulance`) use the same network as commuters. Their congestion penalty is reduced to 55% of the delay above free flow and intersection queues prioritize emergency entries deterministically. Congestion therefore still increases response time.
+Parcel-authoritative development uses the following causal path:
 
-Garbage trucks use normal priority and contribute weight 2 to active edge load.
+```text
+parcel geometry + frontage/access
+  + parcel zoning
+  + physical-world site conditions
+    → buildable envelope
+    → massing candidates
+    → zoning compliance
+    → parcel economics / HBU / redevelopment diagnostics
+    → developer bids and award
+    → canonical BuildingV2
+```
 
-## Public-service accessibility
+### Buildable envelope
 
-For each occupied building and department, accessibility selects the lowest deterministic route-cost eligible facility. Disconnected facilities provide zero coverage.
+`BuildableEnvelopeSystem` applies dimensional controls such as setbacks, coverage, FAR, height, and minimum parcel dimensions to the actual parcel polygon. Setbacks can create disconnected buildable pieces; the deterministic legal result retains the valid dominant geometry and reports constraints rather than inventing floor area.
 
-`serviceAccess = normalizedTravelAccessibility × availableCapacityFactor`
+### Zoning compliance
 
-Useful travel-time bounds:
+`ZoningComplianceSystem` validates physical massing independently across footprint, height, FAR, coverage, setbacks, and use allocation. Illegal candidates do not proceed to developer bidding.
 
-- fire: 180 ticks
-- police: 220
-- healthcare: 240
-- education: 300
-- garbage: 300
+### Building massing
 
-Funding and unpaid obligations reduce effective staffing/capacity and can deactivate fleet slots.
+`BuildingMassingSystem` produces deterministic physical candidates from the legal envelope. Candidate identity remains distinct through underwriting and developer awards, so materially different massings on the same parcel do not collapse into one opportunity.
 
-## Incidents
+Mixed-use candidates allocate usable floor area by permitted use. Residential capacity, jobs, utilities, tax base, project cost, and other downstream values derive from physical floor area rather than a hidden cell-density multiplier.
 
-Fire/police/medical incidents materialize from real demand exposure using a dedicated seeded RNG. Fire grows before response, accumulates damage, can spread only to cardinal adjacent occupied buildings after the intensity threshold, and is suppressed while responders service the incident.
+### Developer market
 
-Outcomes retain response time and success; recent outcome scores feed neighborhood service quality.
+Developer bidding remains capital- and hurdle-constrained. Urban Fabric opportunities use canonical parcel identity even when several legacy frontage lots project over that parcel. Active commitments prevent duplicate simultaneous awards for the same physical opportunity.
 
-## Garbage and education
+Successful runtime development materializes canonical `BuildingV2` state while inherited building records remain available where legacy systems still require them.
 
-Detailed waste is stored per occupied building. The inherited building waste rate is generated every 50 ticks; collection jobs are created once pickup thresholds are crossed. Trucks physically travel, collect cargo, return and unload into finite landfill/recycling processing capacity.
+## BuildingV2 and lifecycle
 
-Education uses aggregate school-age share `0.18`, effective reachable seats, network travel time and education funding. Disconnected seats do not count.
+Canonical buildings persist:
 
-## Neighborhood quality and growth
+- stable building ID;
+- parcel IDs;
+- footprint;
+- typology;
+- gross/usable floor area;
+- stories, height, realized FAR, coverage;
+- floor/use allocations;
+- entitlement;
+- lifecycle state;
+- optional project/developer/owner metadata.
 
-Per-building service quality combines:
+Physical lifecycle state models condition, effective age, maintenance needs/backlog, vacancy/distress influence, renovation, and redevelopment. It is not duplicated as an independent second condition authority on the same building.
 
-`0.22 fire + 0.22 police + 0.22 healthcare + 0.20 education + 0.14 garbage`
+Adequate maintenance slows deterioration. Persistent vacancy increases distress. Major renovation/adaptive reuse must clear economic and zoning constraints, and relocation-dependent work cannot bypass displacement safeguards.
 
-Residential service-demand modifier:
+## Redevelopment and relocation safeguards
 
-`clamp(-0.25, 0.15, (quality - 0.70) * 0.50)`
+Physical redevelopment pressure is an explainable derived signal. Drivers can include:
 
-Commercial service modifier uses police safety and garbage cleanliness.
+- unused legal FAR;
+- building deterioration/effective age;
+- demand and market value;
+- profitable replacement massing;
+- upzoning or higher legal intensity.
 
-Power/water remain instantaneous essential-utility migration gates. Routed garbage is intentionally not treated as an instantaneous utility hard-stop; its consequences flow through garbage service ratio, health demand, cleanliness, neighborhood quality and development attractiveness.
+Friction can include:
 
-## Phase 5 multimodal scheduling
+- demolition cost;
+- acquisition cost;
+- relocation burden;
+- preservation constraints;
+- insufficient developer return;
+- unresolved displacement.
 
-Phase 5 inserts person mobility and transit operations into the deterministic tick order without replacing the Phase 3 road graph:
+A project cannot enter demolition while canonical household displacement requirements remain unresolved. Existing housing relocation conservation rules continue to govern occupied residential redevelopment.
 
-1. rebuild the road graph when road topology changes;
-2. synchronize and advance public-service vehicles;
-3. rebuild the derived multimodal graph when road/transit topology or the cost epoch changes;
-4. dispatch/advance transit vehicles, process alighting, boarding, dwell, and capacity-limited queues;
-5. generate weighted person trips on the existing 100-tick city cadence;
-6. plan car and transit alternatives and choose the lower deterministic generalized cost;
-7. submit car cohorts into road traffic or enqueue transit cohorts at their boarding stop;
-8. merge service and road-running transit edge loads into traffic congestion;
-9. update traffic and mobility analytics;
-10. feed person accessibility and transit fiscal deltas into the existing 50-tick city/economy loop.
+## Cadastral runtime mutations
 
-`MultimodalRoutingGraph` is derived state. It connects road nodes to adjacent transit stops with 8-tick walking connectors and adds deterministic boarding, ride, alighting, and transfer edges. `JourneyPlanner` caches by graph revision, cost key, mode, impedance settings, and endpoints; stable topology therefore reuses plans aggressively.
+`SimulationCore.cadastralMutations` exposes `CadastralRuntimeMutationService` as the safe runtime boundary for:
 
-### Capacity feedback
+- parcel split;
+- parcel assembly;
+- easement creation/removal;
+- right-of-way dedication.
 
-Passenger queues are authoritative weighted cohorts. Vehicles board FIFO up to physical capacity and leave excess weight waiting. Before each new mode-choice decision, `MobilityScheduler` derives queue pressure from waiting weight relative to active capacity. That penalty enters transit generalized cost, so chronically undersupplied service becomes less attractive to later travelers instead of accumulating cost-free queues indefinitely.
+`CadastralMutationSystem` remains the low-level geometry/topology engine, but it runs against a cloned `CadastralGraph` during runtime mutation staging rather than being exposed as a raw live-graph shortcut.
 
-`meanWaitTicks` combines scheduled wait recorded on transit decisions with the current derived capacity-pressure term. `personAccessibility` remains bounded to `0..1` through the existing commute/shopping acceptable-cost thresholds and therefore feeds demand without creating a new unbounded growth channel.
+For a mutation that can retire parcel IDs, the runtime service captures the original cadastre, parcel zoning assignments, canonical `BuildingV2` list, and property-market snapshot before staging. It then:
 
+1. runs the requested cadastral operation on the staged graph;
+2. resolves building parcel references geometrically and preserves surviving building identity/lifecycle state;
+3. rewrites or validates parcel zoning assignments;
+4. rewrites current property holdings while preserving historical transaction rows;
+5. validates historical transaction parcel IDs against staged cadastral lineage;
+6. proves the legacy `LotSystem` projection can be rebuilt;
+7. commits live owners in deterministic fixed order.
 
-## Phase 6 establishment economy
+The live commit order is cadastre → zoning → canonical buildings → property market → rebuilt legacy lots. If any live commit stage throws, the service restores every original authoritative snapshot and rebuilds the lot facade from the restored cadastre before returning `runtime-commit-rollback`.
 
-`EconomyScheduler` is ticked from `SimulationCore` and owns the economic update order. Road topology revision changes first rebuild derived boundary gateways. Active freight vehicles then advance every tick using current road travel times and contribute weighted edge load to the shared traffic calculation.
+Area accounting remains explicit. Split and assembly conserve private land area; right-of-way dedication transfers area out of private parcels and the combined controlled private + dedicated ROW area must remain conserved within geometry tolerance.
 
-Economic work is cadence-gated:
+Lineage records retired and resulting parcel IDs so legal history is deterministic and auditable. Easement create/remove uses the same transaction boundary even though it does not normally retire parcel IDs.
 
-- every **50 ticks**: allocate labor, run manufacturing/wholesale/retail production, accrue wages, utility burden and shortage penalties;
-- every **100 ticks**: create replenishment/export orders, match suppliers/gateways by generalized freight cost and dispatch trucks up to the authoritative freight dispatch capacity;
-- every **250 ticks**: synchronize eligible buildings, score formation, settle accrued firm operating margin, and evaluate sustained distress/recovery/closure.
+## Property market and site assembly
 
-Commercial/industrial buildings are physical shells only. In V6 an occupied shell creates no authoritative jobs until a viable establishment forms. Employment snapshots are then derived from active firm job capacities and filled jobs.
+`PropertyMarketSystem` owns canonical current parcel holdings and transactions. Multi-parcel transfers validate seller ownership before committing, preventing partial ownership changes.
 
-### Goods and freight
+Current holdings must point to live parcels. Historical property transactions keep the parcel IDs that were legal when the transaction occurred; after a later split, assembly, or right-of-way dedication, those retired IDs remain valid only when `CadastralGraph` lineage recognizes them.
 
-The detailed local chain is:
+`SiteAssemblySystem` evaluates bounded adjacent parcel sets. Assembly is economically interesting only when geometric/development uplift exceeds acquisition friction; candidate enumeration is deterministic and currently bounded to four parcels.
 
-`gateway industrial_inputs → industrial manufactured_goods → wholesale consumer_goods → retail household-equivalent consumption`
+## Transportation, services, transit, and freight
 
-`industrial_inputs` have no local producer in Phase 6. Local suppliers can beat imports for locally producible goods only when their generalized logistics cost is lower. Dispatch-limited orders remain waiting; their age contributes `queueDelay`, while delayed replenishment creates real inventory shortages and downstream output/sales pressure.
+Urban Fabric does not replace the existing mobility or service authorities.
 
-Cargo is conserved through shipment ownership. Dispatch removes local source stock or creates an external-import cargo token. Exactly one terminal path receives, exports or cancels that cargo. Closing/bulldozing a firm cancels affected orders and in-flight vehicles/cargo before its inventory records are removed, preventing late deliveries from recreating closed-firm stock.
+Road congestion remains based on weighted traffic over real network capacity. Emergency/service, transit, commuter, and freight vehicles contribute to the shared network according to their established rules.
 
-### Firm finance and lifecycle
+Public-service accessibility still derives from reachable network facilities and capacity. Transit choice still uses deterministic generalized cost and finite capacity/queues. Firms and freight remain explicit establishment/cargo systems with conserved inventory and routed vehicles.
 
-Each production/lifecycle window accrues sales/export revenue, input purchases, wage proxy, utility burden, tax burden, logistics cost and shortage penalties. `cashHealth` is bounded and separate from municipal treasury cash. Distress and closure require sustained bad cycles; recovery likewise requires sustained improvement. No arbitrary random bankruptcy is used.
+Parcel frontage/access may consume transportation information, but cadastral geometry does not manufacture traffic, accessibility, service, or freight outcomes. Right-of-way dedication in 2R changes legal land only; 3R remains responsible for transportation-network authority.
+
+## World Foundation interaction
+
+Generated terrain preparation multipliers continue to affect real construction economics. `WorldFoundation` remains static under ordinary city ticks; explicit operations such as `runDesignStorm()` mutate only the appropriate world/flood authority.
+
+Urban Fabric coordinates are measured in the same physical world coordinate system, but parcels do not duplicate terrain or geography data.
+
+## Persistence and continuation
+
+Current default serialization is Save V9. The continuation sequence restores:
+
+1. inherited V8/World Foundation and legacy city state;
+2. canonical cadastral topology and lineage;
+3. legacy lots rebuilt from the restored cadastre;
+4. validated live parcel zoning assignments;
+5. canonical `BuildingV2` records;
+6. property-market state with historical transaction IDs validated against cadastral lineage.
+
+The Task 13 runtime-mutation work does not introduce Save V10 and does not change the `0.9.0-urban-fabric` schema.
+
+Derived envelopes, massing candidates, overlay state, route caches, and other recomputable diagnostics are rebuilt rather than persisted.
+
+## Presentation
+
+Urban Fabric presentation is analytical and read-only:
+
+- cadastre overlay;
+- zoning-envelope overlay;
+- redevelopment overlay;
+- canonical parcel inspector.
+
+Clicking while an Urban Fabric overlay is active resolves one canonical parcel ID and the inspector renders from that exact ID. Overlay selection never mutates legal or economic authority.
+
+## Simulation invariants
+
+The current Urban Fabric tranche requires:
+
+- cadastral topology valid after every committed mutation;
+- no overlapping private parcel interiors;
+- valid frontage/access/easement/lineage references;
+- identical cores plus identical mutation sequences produce deep-equal results and canonical snapshots;
+- failed geometry operations leave state unchanged;
+- a live commit fault rolls back cadastre, zoning, canonical buildings, property state, and derived lots byte-for-byte;
+- canonical building/property/zoning live references point to existing parcels after runtime mutation and continuation;
+- historical property transactions retain truthful retired parcel IDs through lineage rather than being rewritten;
+- surviving canonical building identity/lifecycle state remains stable through parcel rewrites and later `core.step()` calls;
+- legacy lot compatibility cannot overwrite canonical parcel identity;
+- redevelopment cannot bypass relocation safeguards;
+- Save V9 continuation preserves canonical parcel and building identity;
+- ordinary rendering/UI activity cannot mutate simulation authority.

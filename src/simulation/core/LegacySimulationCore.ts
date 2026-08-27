@@ -45,7 +45,7 @@ import { LandHousingMarketSystem, type LandHousingMarketSnapshot } from '../deve
 import { RedevelopmentPressureSystem, type RedevelopmentPressureSnapshot, type ResidentialRedevelopmentInput } from '../development/RedevelopmentPressureSystem.ts';
 import { RedevelopmentExecutionSystem, type RedevelopmentExecutionInput, type RedevelopmentExecutionSnapshot } from '../development/RedevelopmentExecutionSystem.ts';
 import { DevelopmentPolicySystem, type DevelopmentPolicyPatch, type DevelopmentPolicyState } from '../development/DevelopmentPolicySystem.ts';
-import type { DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';
+import type { DevelopmentAward, DevelopmentFeasibilityResult, DevelopmentParcelContext } from '../development/DevelopmentTypes.ts';
 import { HousingChoiceSystem, type HousingChoiceSnapshot } from '../housing/HousingChoiceSystem.ts';
 import { HousingTenureSystem, type HousingTenureSnapshot } from '../housing/HousingTenureSystem.ts';
 import { HousingRelocationSystem, type HousingRelocationSnapshot, type HousingRelocationState } from '../housing/HousingRelocationSystem.ts';
@@ -579,15 +579,7 @@ export class SimulationCore {
     const redevelopment = this.refreshRedevelopmentExecution();
     const lots = this.lots.list().sort((a, b) => a.id.localeCompare(b.id));
     const occupiedLots = new Set(this.buildings.list().map((building) => building.lotId));
-    const opportunities: DevelopmentFeasibilityResult[] = [];
-    for (const lot of lots) {
-      if (occupiedLots.has(lot.id) || this.demandSnapshot[lot.zone] <= 0.05) continue;
-      opportunities.push(...this.developmentFeasibility.evaluateLot(
-        lot,
-        BUILDING_VARIANTS[lot.zone],
-        this.developmentContextForLot(lot),
-      ));
-    }
+    const opportunities = this.collectVacantDevelopmentOpportunities(lots, occupiedLots);
     opportunities.push(...redevelopment.opportunities);
 
     const marketInterestRate = this.currentDevelopmentInterestRate();
@@ -595,17 +587,18 @@ export class SimulationCore {
     const lotsById = new Map(lots.map((lot) => [lot.id, lot] as const));
     const redevelopmentLotIds = new Set(redevelopment.opportunities.map((item) => item.lotId));
     for (const award of awards) {
-      const lot = lotsById.get(award.lotId);
+      const lot = this.developmentLotForAward(award, lotsById);
       if (!lot) {
         this.developerMarket.cancelProject(award.buildingId, 1);
         continue;
       }
+      const compatibilityAward = this.compatibilityAwardForLot(award, lot);
       const housingBeforeAward = this.housingRelocation.snapshotState();
       try {
         if (redevelopmentLotIds.has(award.lotId)) {
           const existing = this.buildings.occupied().find((building) => building.lotId === award.lotId);
           if (existing?.zone === 'residential') this.housingRelocation.displaceBuilding(existing.id);
-          const { removed } = this.buildings.replaceDevelopment(this.clock.tick, lot, award);
+          const { removed } = this.buildings.replaceDevelopment(this.clock.tick, lot, compatibilityAward);
           this.economyDomain.removeBuilding(removed.id, this.clock.tick);
           if (removed.zone === 'residential') {
             this.refreshLandHousingMarket();
@@ -614,7 +607,7 @@ export class SimulationCore {
             this.refreshHousingChoice();
           }
         } else {
-          this.buildings.startDevelopment(this.clock.tick, lot, award);
+          this.buildings.startDevelopment(this.clock.tick, lot, compatibilityAward);
         }
       } catch (error) {
         this.housingRelocation.restoreState(housingBeforeAward);
@@ -633,6 +626,33 @@ export class SimulationCore {
       this.refreshRedevelopmentPressure();
       this.refreshRedevelopmentExecution();
     }
+  }
+
+  protected collectVacantDevelopmentOpportunities(
+    lots: readonly Lot[],
+    occupiedLots: ReadonlySet<string>,
+  ): DevelopmentFeasibilityResult[] {
+    const opportunities: DevelopmentFeasibilityResult[] = [];
+    for (const lot of lots) {
+      if (occupiedLots.has(lot.id) || this.demandSnapshot[lot.zone] <= 0.05) continue;
+      opportunities.push(...this.developmentFeasibility.evaluateLot(
+        lot,
+        BUILDING_VARIANTS[lot.zone],
+        this.developmentContextForLot(lot),
+      ));
+    }
+    return opportunities;
+  }
+
+  protected developmentLotForAward(
+    award: DevelopmentAward,
+    lotsById: ReadonlyMap<string, Lot>,
+  ): Lot | undefined {
+    return lotsById.get(award.lotId);
+  }
+
+  protected compatibilityAwardForLot(award: DevelopmentAward, _lot: Lot): DevelopmentAward {
+    return award;
   }
 
   private localParcelContextForLot(lot: Lot): LocalParcelContext {
@@ -669,7 +689,7 @@ export class SimulationCore {
     };
   }
 
-  private developmentContextForLot(lot: Lot): DevelopmentParcelContext {
+  protected developmentContextForLot(lot: Lot): DevelopmentParcelContext {
     const local = this.localParcelContextForLot(lot);
     const marketSignal = this.landHousingMarket.parcelSignal(lot.zone, {
       personAccessibility: local.personAccessibility,

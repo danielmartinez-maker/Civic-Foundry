@@ -59,7 +59,7 @@ def main() -> None:
 
         assert page.locator("h1").inner_text() == "CIVIC FOUNDRY"
         assert "PHASE VI" in page.locator(".eyebrow").inner_text()
-        assert page.locator('[data-testid="save"]').inner_text() == "Save V7"
+        assert page.locator('[data-testid="save"]').inner_text() == "Save V9"
         assert page.locator('[data-testid="economy-panel"]').is_visible()
 
         setup = page.evaluate("""
@@ -108,12 +108,12 @@ def main() -> None:
         assert "Freight routes" in legend
 
         page.locator('[data-testid="save"]').click()
-        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Saved V7')")
+        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Saved V9')")
         saved_raw = page.evaluate("() => localStorage.getItem('civic-foundry-save-v7')")
         assert saved_raw
         saved_obj = json.loads(saved_raw)
-        assert saved_obj["saveVersion"] == 8
-        assert saved_obj["gameVersion"] == "0.8.0-world-foundation"
+        assert saved_obj["saveVersion"] == 9
+        assert saved_obj["gameVersion"] == "0.9.0-urban-fabric"
         assert len(saved_obj["economyDomain"]["firms"]["firms"]) > 0
         assert len(saved_obj["economyDomain"]["freightVehicles"]["vehicles"]) > 0
 
@@ -131,7 +131,7 @@ def main() -> None:
         assert mutated["roads"] < setup["roads"]
 
         page.locator('[data-testid="load"]').click()
-        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Loaded V7')")
+        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Loaded V9')")
         restored = page.evaluate("""
         async () => {
           const { serializeCore } = await import('http://civic.test/src/save/save.js');
@@ -145,7 +145,7 @@ def main() -> None:
         assert restored["roads"] == setup["roads"]
         assert restored["activeFirms"] == setup["activeFirms"]
         assert restored["freight"] == setup["freight"]
-        assert restored["saveVersion"] == 8
+        assert restored["saveVersion"] == 9
 
         page.screenshot(path=str(SCREENSHOT), full_page=True)
         assert SCREENSHOT.is_file() and SCREENSHOT.stat().st_size > 20_000

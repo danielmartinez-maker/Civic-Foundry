@@ -1,4 +1,5 @@
 import type { BuildingIntensity } from '../../data/buildings.ts';
+import type { UseType } from '../zoning/ZoningTypes.ts';
 import type { ZoneType } from '../core/types.ts';
 
 export type DevelopmentParcelContext = Readonly<{
@@ -19,6 +20,28 @@ export type DevelopmentParcelContext = Readonly<{
   policyAffordableHousingShare?: number;
   policyDevelopmentFeeRate?: number;
   policyPermittingCostReduction?: number;
+}>;
+
+export type PhysicalDevelopmentContext = Readonly<{
+  taxRate: number;
+  personAccessibility: number;
+  freightAccessibility: number;
+  serviceQuality: number;
+  neighborhoodQuality: number;
+  utilityRatio: number;
+  constructionCostIndex: number;
+  marketInterestRate: number;
+  marketVacancyRate: number;
+  landValuePerM2: number;
+  marketRentPerM2ByUse: Readonly<Partial<Record<UseType, number>>>;
+  demolitionCost: number;
+  relocationCost: number;
+  sitePreparationCost: number;
+  developerLeverage: number;
+  financingSpread: number;
+  policyAffordableHousingShare?: number | undefined;
+  policyDevelopmentFeeRate?: number | undefined;
+  policyPermittingCostReduction?: number | undefined;
 }>;
 
 export type DevelopmentFeasibilityResult = Readonly<{
@@ -52,6 +75,18 @@ export type DevelopmentFeasibilityResult = Readonly<{
   rejectionReasons: readonly string[];
 }>;
 
+export type PhysicalDevelopmentFeasibilityResult = DevelopmentFeasibilityResult & Readonly<{
+  siteId: string;
+  candidateId: string;
+  typologyId: string;
+  grossFloorAreaM2: number;
+  usableFloorAreaM2: number;
+  improvementValue: number;
+  demolitionCost: number;
+  relocationCost: number;
+  constructionTicks: number;
+}>;
+
 export type DeveloperPreferences = Readonly<Record<ZoneType, number>>;
 
 export type DeveloperSeed = Readonly<{
@@ -79,6 +114,7 @@ export type DevelopmentBid = Readonly<{
   id: string;
   lotId: string;
   definitionId: string;
+  physicalCandidateId?: string;
   zone: ZoneType;
   developerId: string;
   expectedReturn: number;

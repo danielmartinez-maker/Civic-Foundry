@@ -5,10 +5,13 @@ import { TreasurySystem } from '../src/simulation/treasury/TreasurySystem.ts';
 import { RoadSystem } from '../src/world/roads/RoadSystem.ts';
 import { ZoningSystem } from '../src/simulation/zoning/ZoningSystem.ts';
 import { LotSystem, type Lot } from '../src/world/lots/LotSystem.ts';
+import { ParcelGenerationSystem } from '../src/world/cadastre/ParcelGenerationSystem.ts';
+import { CadastralGraph } from '../src/world/cadastre/CadastralGraph.ts';
 import { BuildingSystem } from '../src/simulation/buildings/BuildingSystem.ts';
 import { PopulationSystem } from '../src/simulation/population/PopulationSystem.ts';
 import { getBuildingDefinition } from '../src/data/buildings.ts';
 import type { DevelopmentAward } from '../src/simulation/development/DevelopmentTypes.ts';
+import type { ZoneType } from '../src/simulation/core/types.ts';
 
 function flatTerrain(width = 12, height = 8): TerrainGrid {
   const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({
@@ -64,7 +67,7 @@ test('road placement validates terrain, charges exact cost, and increments revis
   assert.equal(treasury.balance, 880);
 });
 
-test('zoning only paints buildable non-road cells and lots require road frontage', () => {
+test('cadastral compatibility lots preserve legacy frontage cells while deriving from one parcel', () => {
   const terrain = flatTerrain();
   const treasury = new TreasurySystem(1000);
   const roads = new RoadSystem(terrain);
@@ -73,10 +76,21 @@ test('zoning only paints buildable non-road cells and lots require road frontage
   assert.equal(zoning.paint([{ x: 2, y: 2 }, { x: 3, y: 2 }], 'residential').painted, 2);
   assert.equal(zoning.paint([{ x: 2, y: 3 }], 'commercial').painted, 0);
   assert.equal(zoning.paint([{ x: 8, y: 1 }], 'industrial').painted, 1);
+
+  const graph = new CadastralGraph(new ParcelGenerationSystem().rebuild(terrain, roads, zoning));
+  assert.equal(graph.listParcels().length, 2, 'frontage pair plus isolated zoned cell should remain canonical parcels');
+  const frontageParcels = graph.listParcels().filter((parcel) => parcel.frontageEdgeIds.length > 0);
+  assert.equal(frontageParcels.length, 1, 'two compatible frontage cells should become one canonical cadastral parcel');
+
   const lots = new LotSystem();
-  lots.rebuild(roads, zoning);
-  assert.equal(lots.list().length, 2);
-  assert.deepEqual(lots.list().map((lot) => lot.zone), ['residential', 'residential']);
+  lots.rebuildFromCadastre(graph, (parcel) => parcel.zoningDistrictId as ZoneType);
+  assert.deepEqual(
+    lots.list(),
+    [
+      { id: 'lot:2,2', x: 2, y: 2, zone: 'residential', frontageRoadKey: '2,3' },
+      { id: 'lot:3,2', x: 3, y: 2, zone: 'residential', frontageRoadKey: '3,3' },
+    ],
+  );
 });
 
 test('buildings move from construction to occupied and expose real capacities', () => {
@@ -124,7 +138,8 @@ test('SimulationCore integrates roads, zoning, lots, development, and population
   assert.equal(core.placeUtility('water', 3, 5).ok, true);
   assert.equal(core.placeUtility('landfill', 4, 5).ok, true);
   core.step(120);
-  assert.equal(core.lots.list().length, 2);
-  assert.equal(core.buildings.occupied().length, 2);
+  assert.equal(core.cadastre.listParcels().length, 1, 'contiguous same-zone frontage is one canonical development site');
+  assert.deepEqual(core.lots.list().map((lot) => lot.id), ['lot:2,3', 'lot:3,3']);
+  assert.equal(core.buildings.occupied().length, 1, 'development materializes once per canonical parcel');
   assert.ok(core.population.population > 0);
 });
