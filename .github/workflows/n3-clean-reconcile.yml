@@ -39,11 +39,22 @@ jobs:
 
           core_path = Path('src/simulation/core/SimulationCore.ts')
           core = core_path.read_text()
+          if 'this.entityProjector = new LegacyV7EntityProjector();' not in core:
+              anchor = '    this.world = world;\n'
+              initialization = (
+                  '    this.world = world;\n'
+                  '    this.entityRegistry = new EntityRegistry();\n'
+                  '    this.entityReferences = new EntityReferenceGraph();\n'
+                  '    this.entityProjector = new LegacyV7EntityProjector();\n'
+              )
+              if anchor not in core:
+                  raise SystemExit('SimulationCore world initialization anchor missing')
+              core = core.replace(anchor, initialization, 1)
           if 'private syncEntityProjection(): void' not in core:
               anchor = '  runDesignStorm(event: DesignStormEvent): FloodResult {'
               method = '''  private syncEntityProjection(): void {\n    const sourceRevisionKey = this.entityProjector.sourceRevisionKey(this);\n    if (sourceRevisionKey !== undefined && sourceRevisionKey === this.lastSyncedEntitySourceRevisionKey) return;\n\n    const partitions = this.entityProjector.projectPartitions(this);\n    if (partitions === this.lastSyncedEntityPartitions) {\n      this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;\n      return;\n    }\n    const result = commitEntityProjectionPartitions(\n      this.entityRegistry,\n      this.entityReferences,\n      partitions,\n    );\n    this.lastUnresolvedEntityReferences = result.unresolved;\n    this.lastSyncedEntityPartitions = partitions;\n    this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;\n  }\n\n'''
               if anchor not in core:
-                  raise SystemExit('SimulationCore insertion anchor missing')
+                  raise SystemExit('SimulationCore sync insertion anchor missing')
               core = core.replace(anchor, method + anchor, 1)
           core_path.write_text(core)
 
@@ -54,17 +65,15 @@ jobs:
           cadastre_tail = '    this.lots = next;\n  }\n\n  list(): Lot[] {'
           if cadastre_tail in lots:
               lots = lots.replace(cadastre_tail, '    this.lots = next;\n    this._entityRevision++;\n  }\n\n  list(): Lot[] {', 1)
-          elif 'rebuildFromCadastre' in lots and 'this.lots = next;\n    this._entityRevision++;\n  }\n\n  list(): Lot[] {' not in lots:
-              raise SystemExit('LotSystem cadastral revision insertion anchor missing')
           lot_path.write_text(lots)
 
           save7_path = Path('src/save/saveV7.ts')
           save7 = save7_path.read_text()
           first = '    core.rebuildCadastreFromLegacyState();\n    return core;'
-          if first in save7 and '    core.rebuildCadastreFromLegacyState();\n    core.rebuildEntityProjection();\n    return core;' not in save7:
+          if first in save7:
               save7 = save7.replace(first, '    core.rebuildCadastreFromLegacyState();\n    core.rebuildEntityProjection();\n    return core;', 1)
           second = '  core.rebuildCadastreFromLegacyState();\n  return core;'
-          if second in save7 and '  core.rebuildCadastreFromLegacyState();\n  core.rebuildEntityProjection();\n  return core;' not in save7:
+          if second in save7:
               save7 = save7.replace(second, '  core.rebuildCadastreFromLegacyState();\n  core.rebuildEntityProjection();\n  return core;', 1)
           save7_path.write_text(save7)
 
