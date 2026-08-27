@@ -4,8 +4,14 @@ import { PropertyMarketSystem, type PropertyMarketSnapshot } from '../developmen
 import type { ZoningSystem } from '../zoning/ZoningSystem.ts';
 import { CadastralGraph } from '../../world/cadastre/CadastralGraph.ts';
 import { CadastralMutationSystem } from '../../world/cadastre/CadastralMutationSystem.ts';
-import { polygonArea, polygonIntersection, type WorldPoint } from '../../world/cadastre/Geometry.ts';
-import type { Parcel } from '../../world/cadastre/CadastralTypes.ts';
+import {
+  polygonArea,
+  polygonIntersection,
+  polygonUnion,
+  type PolygonRing,
+  type WorldPoint,
+} from '../../world/cadastre/Geometry.ts';
+import type { EasementKind, Parcel } from '../../world/cadastre/CadastralTypes.ts';
 import { LotSystem } from '../../world/lots/LotSystem.ts';
 
 const GEOMETRY_AREA_TOLERANCE_M2 = 0.01;
@@ -154,6 +160,127 @@ export class CadastralRuntimeMutationService {
     return committed(lowLevel);
   }
 
+  dedicateRightOfWay(parcelId: string, dedication: PolygonRing): CadastralRuntimeMutationResult {
+    const originalCadastre = this.deps.cadastre.snapshot();
+    const originalBuildings = this.deps.buildings.listV2();
+    const originalZoning = this.deps.zoning.listParcelAssignments();
+    const originalProperty = this.deps.propertyMarket.snapshot();
+
+    const sourceParcel = this.deps.cadastre.getParcel(parcelId);
+    if (!sourceParcel) return rejected('parcel-not-found');
+
+    const stagedGraph = new CadastralGraph(originalCadastre);
+    const lowLevel = new CadastralMutationSystem(stagedGraph).dedicateRightOfWay(parcelId, dedication);
+    if (!lowLevel.committed) return fromLowLevel(lowLevel);
+
+    const residualParcelId = lowLevel.resultingParcelIds[0];
+    if (!residualParcelId) return rejected('right-of-way-produced-no-residual');
+    const residualParcel = stagedGraph.getParcel(residualParcelId);
+    if (!residualParcel) return rejected('right-of-way-residual-missing');
+
+    const stagedBuildings = stageBuildingsForReplacement(
+      originalBuildings,
+      parcelId,
+      residualParcelId,
+      stagedGraph,
+    );
+    if (stagedBuildings.rejectionReason) {
+      return rejected(stagedBuildings.rejectionReason, lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
+    }
+
+    const stagedZoning = stageZoningForReplacement(originalZoning, parcelId, residualParcelId);
+    const stagedProperty = stagePropertyForRightOfWay(
+      originalProperty,
+      parcelId,
+      residualParcelId,
+      sourceParcel.areaM2,
+      residualParcel.areaM2,
+    );
+    const stagedHistoricalPredicate = historicalParcelPredicate(stagedGraph);
+
+    // Validate derived compatibility and property-history projections before touching live state.
+    const stagedLots = new LotSystem();
+    stagedLots.rebuildFromCadastre(stagedGraph, this.deps.legacyZoneResolver);
+    new PropertyMarketSystem().restore(stagedProperty, {
+      isHistoricalParcelId: stagedHistoricalPredicate,
+    });
+
+    try {
+      this.deps.cadastre.replaceSnapshot(stagedGraph.snapshot());
+      this.deps.zoning.restoreParcelAssignments(stagedZoning);
+      this.deps.buildings.restoreV2(stagedBuildings.buildings);
+      this.deps.propertyMarket.restore(stagedProperty, {
+        isHistoricalParcelId: stagedHistoricalPredicate,
+      });
+      this.deps.lots.rebuildFromCadastre(this.deps.cadastre, this.deps.legacyZoneResolver);
+    } catch (error) {
+      this.rollback(originalCadastre, originalZoning, originalBuildings, originalProperty, error);
+      return rejected('runtime-commit-rollback', lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
+    }
+
+    return committed(lowLevel);
+  }
+
+  createEasement(
+    parcelIds: readonly string[],
+    kind: EasementKind,
+    geometry: readonly WorldPoint[],
+  ): CadastralRuntimeMutationResult {
+    const originalCadastre = this.deps.cadastre.snapshot();
+    const originalBuildings = this.deps.buildings.listV2();
+    const originalZoning = this.deps.zoning.listParcelAssignments();
+    const originalProperty = this.deps.propertyMarket.snapshot();
+
+    const stagedGraph = new CadastralGraph(originalCadastre);
+    const lowLevel = new CadastralMutationSystem(stagedGraph).createEasement(parcelIds, kind, geometry);
+    if (!lowLevel.committed) return fromLowLevel(lowLevel);
+
+    const stagedHistoricalPredicate = historicalParcelPredicate(stagedGraph);
+    const stagedLots = new LotSystem();
+    stagedLots.rebuildFromCadastre(stagedGraph, this.deps.legacyZoneResolver);
+    new PropertyMarketSystem().restore(originalProperty, {
+      isHistoricalParcelId: stagedHistoricalPredicate,
+    });
+
+    try {
+      this.deps.cadastre.replaceSnapshot(stagedGraph.snapshot());
+      this.deps.lots.rebuildFromCadastre(this.deps.cadastre, this.deps.legacyZoneResolver);
+    } catch (error) {
+      this.rollback(originalCadastre, originalZoning, originalBuildings, originalProperty, error);
+      return rejected('runtime-commit-rollback', lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
+    }
+
+    return committed(lowLevel);
+  }
+
+  removeEasement(easementId: string): CadastralRuntimeMutationResult {
+    const originalCadastre = this.deps.cadastre.snapshot();
+    const originalBuildings = this.deps.buildings.listV2();
+    const originalZoning = this.deps.zoning.listParcelAssignments();
+    const originalProperty = this.deps.propertyMarket.snapshot();
+
+    const stagedGraph = new CadastralGraph(originalCadastre);
+    const lowLevel = new CadastralMutationSystem(stagedGraph).removeEasement(easementId);
+    if (!lowLevel.committed) return fromLowLevel(lowLevel);
+
+    const stagedHistoricalPredicate = historicalParcelPredicate(stagedGraph);
+    const stagedLots = new LotSystem();
+    stagedLots.rebuildFromCadastre(stagedGraph, this.deps.legacyZoneResolver);
+    new PropertyMarketSystem().restore(originalProperty, {
+      isHistoricalParcelId: stagedHistoricalPredicate,
+    });
+
+    try {
+      this.deps.cadastre.replaceSnapshot(stagedGraph.snapshot());
+      this.deps.lots.rebuildFromCadastre(this.deps.cadastre, this.deps.legacyZoneResolver);
+    } catch (error) {
+      this.rollback(originalCadastre, originalZoning, originalBuildings, originalProperty, error);
+      return rejected('runtime-commit-rollback', lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
+    }
+
+    return committed(lowLevel);
+  }
+
   private rollback(
     originalCadastre: ReturnType<CadastralGraph['snapshot']>,
     originalZoning: readonly ParcelAssignment[],
@@ -241,6 +368,43 @@ function stageBuildingsForAssembly(
   );
 }
 
+function stageBuildingsForReplacement(
+  buildings: readonly BuildingSnapshot[],
+  sourceParcelId: string,
+  replacementParcelId: string,
+  stagedGraph: CadastralGraph,
+): StagedBuildings {
+  const staged: BuildingSnapshot[] = [];
+
+  for (const building of [...buildings].sort((left, right) => left.id.localeCompare(right.id))) {
+    if (!building.parcelIds.includes(sourceParcelId)) {
+      staged.push(building);
+      continue;
+    }
+
+    const parcelIds = [...new Set(
+      building.parcelIds.map((parcelId) => (parcelId === sourceParcelId ? replacementParcelId : parcelId)),
+    )].sort((left, right) => left.localeCompare(right));
+    const supportGeometry = parcelIds.reduce<ReturnType<typeof polygonUnion>>((unionGeometry, parcelId) => {
+      const parcelPolygon = stagedGraph.parcelPolygon(parcelId);
+      return unionGeometry.length === 0 ? Object.freeze([parcelPolygon]) : polygonUnion(unionGeometry, parcelPolygon);
+    }, Object.freeze([]));
+    const footprintArea = polygonArea(building.footprint);
+    const overlapAreaM2 = polygonIntersection(building.footprint, supportGeometry)
+      .reduce((sum, ring) => sum + polygonArea(ring), 0);
+    if (Math.abs(footprintArea - overlapAreaM2) > GEOMETRY_AREA_TOLERANCE_M2) {
+      return Object.freeze({
+        buildings: Object.freeze(staged),
+        rejectionReason: 'building-outside-resulting-parcel',
+      });
+    }
+
+    staged.push(Object.freeze({ ...building, parcelIds: Object.freeze(parcelIds) }));
+  }
+
+  return Object.freeze({ buildings: Object.freeze(staged) });
+}
+
 function stageZoningForSplit(
   assignments: readonly ParcelAssignment[],
   sourceParcelId: string,
@@ -301,6 +465,23 @@ function stageZoningForAssembly(
 
   staged.sort((left, right) => left.parcelId.localeCompare(right.parcelId));
   return Object.freeze({ assignments: Object.freeze(staged) });
+}
+
+function stageZoningForReplacement(
+  assignments: readonly ParcelAssignment[],
+  sourceParcelId: string,
+  replacementParcelId: string,
+): readonly ParcelAssignment[] {
+  const source = assignments.find((assignment) => assignment.parcelId === sourceParcelId);
+  const staged = assignments.filter((assignment) => assignment.parcelId !== sourceParcelId);
+  if (source) {
+    staged.push(Object.freeze({
+      parcelId: replacementParcelId,
+      districtId: source.districtId,
+      overlayIds: Object.freeze([...source.overlayIds]),
+    }));
+  }
+  return Object.freeze(staged.sort((left, right) => left.parcelId.localeCompare(right.parcelId)));
 }
 
 function sameAssignment(left: ParcelAssignment, right: ParcelAssignment): boolean {
@@ -381,6 +562,34 @@ function stagePropertyForAssembly(
       transactions: snapshot.transactions,
       nextTransactionId: snapshot.nextTransactionId,
     }),
+  });
+}
+
+function stagePropertyForRightOfWay(
+  snapshot: PropertyMarketSnapshot,
+  sourceParcelId: string,
+  residualParcelId: string,
+  sourceAreaM2: number,
+  residualAreaM2: number,
+): PropertyMarketSnapshot {
+  const sourceHolding = snapshot.holdings.find((holding) => holding.parcelId === sourceParcelId);
+  if (!sourceHolding) return snapshot;
+
+  const holdings = snapshot.holdings.filter((holding) => holding.parcelId !== sourceParcelId);
+  const residualValueCents = Math.round(
+    sourceHolding.reservationValue * (residualAreaM2 / sourceAreaM2) * 100,
+  );
+  holdings.push(Object.freeze({
+    parcelId: residualParcelId,
+    ownerId: sourceHolding.ownerId,
+    reservationValue: residualValueCents / 100,
+  }));
+  holdings.sort((left, right) => left.parcelId.localeCompare(right.parcelId));
+
+  return Object.freeze({
+    holdings: Object.freeze(holdings),
+    transactions: snapshot.transactions,
+    nextTransactionId: snapshot.nextTransactionId,
   });
 }
 
