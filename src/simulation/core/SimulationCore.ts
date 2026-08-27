@@ -6,6 +6,7 @@ import type { DevelopmentAward, DevelopmentFeasibilityResult, PhysicalDevelopmen
 import { HighestBestUseSystem } from '../development/HighestBestUseSystem.ts';
 import { PropertyMarketSystem } from '../development/PropertyMarketSystem.ts';
 import { SiteAssemblySystem } from '../development/SiteAssemblySystem.ts';
+import { CadastralRuntimeMutationService } from '../land/CadastralRuntimeMutationService.ts';
 import { BuildableEnvelopeSystem } from '../zoning/BuildableEnvelopeSystem.ts';
 import { ZoningComplianceSystem } from '../zoning/ZoningComplianceSystem.ts';
 import { districtForLegacyZone } from '../zoning/ZoningDistrictCatalog.ts';
@@ -20,7 +21,7 @@ import type { Lot } from '../../world/lots/LotSystem.ts';
 import { WorldFoundation } from '../../world/foundation/WorldFoundation.ts';
 import { CadastralGraph } from '../../world/cadastre/CadastralGraph.ts';
 import { ParcelGenerationSystem } from '../../world/cadastre/ParcelGenerationSystem.ts';
-import { LEGACY_CELL_SIZE_METERS, pointInPolygon } from '../../world/cadastre/Geometry.ts';
+import { LEGACY_CELL_SIZE_METERS, pointInPolygon, polygonArea, polygonIntersection } from '../../world/cadastre/Geometry.ts';
 import type { Parcel } from '../../world/cadastre/CadastralTypes.ts';
 import type { WorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
 import { resolveWorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
@@ -49,6 +50,7 @@ type HydrationOverride = Readonly<{
 
 const hydrationOverrides: HydrationOverride[] = [];
 const LEGACY_CELL_AREA_M2 = LEGACY_CELL_SIZE_METERS * LEGACY_CELL_SIZE_METERS;
+const CANONICAL_BUILDING_FOOTPRINT_TOLERANCE_M2 = 0.01;
 
 export function withSimulationCoreHydrationOverride<T>(override: HydrationOverride, operation: () => T): T {
   hydrationOverrides.push(override);
@@ -87,6 +89,17 @@ function legacyZoneForParcel(parcel: Parcel): ZoneType | undefined {
   return zone === 'residential' || zone === 'commercial' || zone === 'industrial' ? zone : undefined;
 }
 
+function footprintsMatchWithinTolerance(
+  left: BuildingV2['footprint'],
+  right: BuildingV2['footprint'],
+): boolean {
+  const leftArea = polygonArea(left);
+  const rightArea = polygonArea(right);
+  const overlapArea = polygonIntersection(left, right).reduce((sum, ring) => sum + polygonArea(ring), 0);
+  const symmetricDifferenceArea = leftArea + rightArea - 2 * overlapArea;
+  return Math.abs(symmetricDifferenceArea) <= CANONICAL_BUILDING_FOOTPRINT_TOLERANCE_M2;
+}
+
 export class SimulationCore extends LegacySimulationCore {
   readonly world: WorldFoundation;
   readonly cadastre: CadastralGraph;
@@ -99,6 +112,7 @@ export class SimulationCore extends LegacySimulationCore {
   readonly highestBestUse: HighestBestUseSystem;
   readonly propertyMarket: PropertyMarketSystem;
   readonly siteAssembly: SiteAssemblySystem;
+  readonly cadastralMutations: CadastralRuntimeMutationService;
 
   constructor(options: SimulationCoreOptions = {}) {
     const hydration = activeHydrationOverride();
@@ -147,6 +161,14 @@ export class SimulationCore extends LegacySimulationCore {
     this.highestBestUse = new HighestBestUseSystem();
     this.propertyMarket = new PropertyMarketSystem();
     this.siteAssembly = new SiteAssemblySystem();
+    this.cadastralMutations = new CadastralRuntimeMutationService({
+      cadastre: this.cadastre,
+      buildings: this.buildings,
+      zoning: this.zoning,
+      propertyMarket: this.propertyMarket,
+      lots: this.lots,
+      legacyZoneResolver: legacyZoneForParcel,
+    });
     this.rebuildCadastreFromLegacyState();
 
     const preparationMultiplierAt = (x: number, y: number): number => this.world.preparationMultiplierAt(x, y);
@@ -343,7 +365,9 @@ export class SimulationCore extends LegacySimulationCore {
 
   private reconcileCanonicalBuildingProjection(): void {
     const canonical: BuildingV2[] = [];
-    const existingById = new Map(this.buildings.listV2().map((building) => [building.id, building] as const));
+    const existingBuildings = this.buildings.listV2().sort((left, right) => left.id.localeCompare(right.id));
+    const existingById = new Map(existingBuildings.map((building) => [building.id, building] as const));
+    const consumedExistingIds = new Set<string>();
     const parcels = [...this.cadastre.listParcels()].sort((left, right) => left.id.localeCompare(right.id));
     const legacyBuildings = this.buildings.list().sort((left, right) => left.id.localeCompare(right.id));
     const compatibilityLots = this.lots.list();
@@ -371,13 +395,24 @@ export class SimulationCore extends LegacySimulationCore {
       const preferredPrimary = primaryLotIdByParcel.get(parcel.id);
       const isPrimary = !primaryAssignedParcels.has(parcel.id)
         && (building.lotId === preferredPrimary || preferredPrimary === undefined);
-      const canonicalBuildingId = isPrimary
+      const proposedCanonicalBuildingId = isPrimary
         ? `building:${parcel.id}`
         : `building:${parcel.id}:legacy:${building.lotId}`;
       if (isPrimary) primaryAssignedParcels.add(parcel.id);
 
-      const existing = existingById.get(canonicalBuildingId);
+      let existing = existingById.get(proposedCanonicalBuildingId);
+      if (existing && consumedExistingIds.has(existing.id)) existing = undefined;
+      if (!existing) {
+        existing = existingBuildings.find((candidate) => (
+          !consumedExistingIds.has(candidate.id)
+          && candidate.parcelIds.includes(parcel.id)
+          && candidate.typologyId === typology.id
+          && footprintsMatchWithinTolerance(candidate.footprint, projection.footprint)
+        ));
+      }
+
       if (existing) {
+        consumedExistingIds.add(existing.id);
         const legacyStatus = building.status === 'occupied' ? 'occupied' : 'construction';
         const status = existing.status === 'construction' && legacyStatus === 'occupied'
           ? 'occupied'
@@ -387,7 +422,7 @@ export class SimulationCore extends LegacySimulationCore {
       }
 
       canonical.push(Object.freeze({
-        id: canonicalBuildingId,
+        id: proposedCanonicalBuildingId,
         parcelIds: Object.freeze([parcel.id]),
         typologyId: typology.id,
         footprint: projection.footprint,
