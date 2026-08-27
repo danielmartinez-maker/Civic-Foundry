@@ -425,3 +425,53 @@ test('SimulationCore exposes safe cadastral mutations and preserves canonical bu
   assert.deepEqual(buildingAfter.entitlement, entitlementBefore);
   assert.ok(buildingAfter.parcelIds.every((id) => core.cadastre.getParcel(id)));
 });
+
+test('identical runtime cadastral mutation sequences are deterministic across twin cores', () => {
+  const first = buildSplitFixture();
+  const second = buildSplitFixture();
+
+  const splitRequest = (fixture: ReturnType<typeof buildSplitFixture>): readonly WorldPoint[] => {
+    const building = fixture.core.buildings.listV2()[0]!;
+    const parcelPolygon = fixture.core.cadastre.parcelPolygon(fixture.sourceParcelId);
+    const buildingMaxX = Math.max(...building.footprint.map((point) => point.x));
+    const parcelMaxX = Math.max(...parcelPolygon.map((point) => point.x));
+    const safeX = buildingMaxX + (parcelMaxX - buildingMaxX) / 2;
+    return verticalCutAt(fixture.core, fixture.sourceParcelId, safeX);
+  };
+
+  const firstSplit = first.service.splitParcel(first.sourceParcelId, splitRequest(first));
+  const secondSplit = second.service.splitParcel(second.sourceParcelId, splitRequest(second));
+  assert.deepEqual(firstSplit, secondSplit);
+
+  const firstAssembly = first.service.assembleParcels(firstSplit.resultingParcelIds);
+  const secondAssembly = second.service.assembleParcels(secondSplit.resultingParcelIds);
+  assert.deepEqual(firstAssembly, secondAssembly);
+  assert.deepEqual(snapshots(first.core), snapshots(second.core));
+});
+
+test('runtime commit fault rolls back every dependent domain byte-for-byte', () => {
+  const { core, sourceParcelId } = buildSplitFixture();
+  const before = snapshots(core);
+  const service = new CadastralRuntimeMutationService({
+    cadastre: core.cadastre,
+    buildings: core.buildings,
+    zoning: core.zoning,
+    propertyMarket: core.propertyMarket,
+    lots: core.lots,
+    legacyZoneResolver: () => 'residential',
+    commitFaultInjector: (stage) => {
+      if (stage === 'property') throw new Error('forced property-stage failure');
+    },
+  });
+  const building = core.buildings.listV2()[0]!;
+  const parcelPolygon = core.cadastre.parcelPolygon(sourceParcelId);
+  const buildingMaxX = Math.max(...building.footprint.map((point) => point.x));
+  const parcelMaxX = Math.max(...parcelPolygon.map((point) => point.x));
+  const safeX = buildingMaxX + (parcelMaxX - buildingMaxX) / 2;
+
+  const result = service.splitParcel(sourceParcelId, verticalCutAt(core, sourceParcelId, safeX));
+
+  assert.equal(result.committed, false);
+  assert.ok(result.rejectionReasons.includes('runtime-commit-rollback'));
+  assert.deepEqual(snapshots(core), before);
+});
