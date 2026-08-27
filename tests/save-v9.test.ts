@@ -165,7 +165,7 @@ test('Save V9 preserves historical property transactions across runtime parcel r
   for (const building of restored.buildings.listV2()) {
     assert.ok(building.parcelIds.every((parcelId) => restored.cadastre.getParcel(parcelId)));
   }
-  for (const holding of restored.propertyMarket.listHoldings()) {
+  for (const holding of restored.propertyMarket.snapshot().holdings) {
     assert.ok(restored.cadastre.getParcel(holding.parcelId));
   }
 });
