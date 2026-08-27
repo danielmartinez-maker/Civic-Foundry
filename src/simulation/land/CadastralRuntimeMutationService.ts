@@ -35,6 +35,16 @@ type StagedBuildings = Readonly<{
   rejectionReason?: string;
 }>;
 
+type StagedZoning = Readonly<{
+  assignments: readonly ParcelAssignment[];
+  rejectionReason?: string;
+}>;
+
+type StagedProperty = Readonly<{
+  snapshot: PropertyMarketSnapshot;
+  rejectionReason?: string;
+}>;
+
 export class CadastralRuntimeMutationService {
   private readonly deps: CadastralRuntimeMutationDependencies;
 
@@ -83,6 +93,56 @@ export class CadastralRuntimeMutationService {
       this.deps.zoning.restoreParcelAssignments(stagedZoning);
       this.deps.buildings.restoreV2(stagedBuildings.buildings);
       this.deps.propertyMarket.restore(stagedProperty, {
+        isHistoricalParcelId: stagedHistoricalPredicate,
+      });
+      this.deps.lots.rebuildFromCadastre(this.deps.cadastre, this.deps.legacyZoneResolver);
+    } catch (error) {
+      this.rollback(originalCadastre, originalZoning, originalBuildings, originalProperty, error);
+      return rejected('runtime-commit-rollback', lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
+    }
+
+    return committed(lowLevel);
+  }
+
+  assembleParcels(parcelIds: readonly string[]): CadastralRuntimeMutationResult {
+    const originalCadastre = this.deps.cadastre.snapshot();
+    const originalBuildings = this.deps.buildings.listV2();
+    const originalZoning = this.deps.zoning.listParcelAssignments();
+    const originalProperty = this.deps.propertyMarket.snapshot();
+
+    const stagedGraph = new CadastralGraph(originalCadastre);
+    const lowLevel = new CadastralMutationSystem(stagedGraph).assembleParcels(parcelIds);
+    if (!lowLevel.committed) return fromLowLevel(lowLevel);
+
+    const sourceParcelIds = [...lowLevel.retiredParcelIds].sort((left, right) => left.localeCompare(right));
+    const assembledParcelId = lowLevel.resultingParcelIds[0];
+    if (!assembledParcelId) return rejected('assembly-produced-no-parcel');
+
+    const stagedZoning = stageZoningForAssembly(originalZoning, sourceParcelIds, assembledParcelId);
+    if (stagedZoning.rejectionReason) {
+      return rejected(stagedZoning.rejectionReason, lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
+    }
+
+    const stagedProperty = stagePropertyForAssembly(originalProperty, sourceParcelIds, assembledParcelId);
+    if (stagedProperty.rejectionReason) {
+      return rejected(stagedProperty.rejectionReason, lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
+    }
+
+    const stagedBuildings = stageBuildingsForAssembly(originalBuildings, sourceParcelIds, assembledParcelId);
+    const stagedHistoricalPredicate = historicalParcelPredicate(stagedGraph);
+
+    // Validate derived compatibility and property-history projections before touching live state.
+    const stagedLots = new LotSystem();
+    stagedLots.rebuildFromCadastre(stagedGraph, this.deps.legacyZoneResolver);
+    new PropertyMarketSystem().restore(stagedProperty.snapshot, {
+      isHistoricalParcelId: stagedHistoricalPredicate,
+    });
+
+    try {
+      this.deps.cadastre.replaceSnapshot(stagedGraph.snapshot());
+      this.deps.zoning.restoreParcelAssignments(stagedZoning.assignments);
+      this.deps.buildings.restoreV2(stagedBuildings);
+      this.deps.propertyMarket.restore(stagedProperty.snapshot, {
         isHistoricalParcelId: stagedHistoricalPredicate,
       });
       this.deps.lots.rebuildFromCadastre(this.deps.cadastre, this.deps.legacyZoneResolver);
@@ -162,6 +222,25 @@ function stageBuildingsForSplit(
   return Object.freeze({ buildings: Object.freeze(staged) });
 }
 
+function stageBuildingsForAssembly(
+  buildings: readonly BuildingSnapshot[],
+  sourceParcelIds: readonly string[],
+  assembledParcelId: string,
+): readonly BuildingSnapshot[] {
+  const sourceIds = new Set(sourceParcelIds);
+  return Object.freeze(
+    [...buildings]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((building) => {
+        if (!building.parcelIds.some((parcelId) => sourceIds.has(parcelId))) return building;
+        const parcelIds = [...new Set(
+          building.parcelIds.map((parcelId) => (sourceIds.has(parcelId) ? assembledParcelId : parcelId)),
+        )].sort((left, right) => left.localeCompare(right));
+        return Object.freeze({ ...building, parcelIds: Object.freeze(parcelIds) });
+      }),
+  );
+}
+
 function stageZoningForSplit(
   assignments: readonly ParcelAssignment[],
   sourceParcelId: string,
@@ -181,6 +260,53 @@ function stageZoningForSplit(
     }
   }
   return Object.freeze(staged.sort((left, right) => left.parcelId.localeCompare(right.parcelId)));
+}
+
+function stageZoningForAssembly(
+  assignments: readonly ParcelAssignment[],
+  sourceParcelIds: readonly string[],
+  assembledParcelId: string,
+): StagedZoning {
+  const sourceIds = new Set(sourceParcelIds);
+  const sourceAssignments = sourceParcelIds.map((parcelId) =>
+    assignments.find((assignment) => assignment.parcelId === parcelId),
+  );
+  const assignedCount = sourceAssignments.filter((assignment) => assignment !== undefined).length;
+
+  if (assignedCount > 0) {
+    if (assignedCount !== sourceParcelIds.length) {
+      return Object.freeze({
+        assignments: Object.freeze([...assignments]),
+        rejectionReason: 'conflicting-zoning-assignments',
+      });
+    }
+    const first = sourceAssignments[0]!;
+    if (sourceAssignments.some((assignment) => !sameAssignment(first, assignment!))) {
+      return Object.freeze({
+        assignments: Object.freeze([...assignments]),
+        rejectionReason: 'conflicting-zoning-assignments',
+      });
+    }
+  }
+
+  const staged = assignments.filter((assignment) => !sourceIds.has(assignment.parcelId));
+  if (assignedCount > 0) {
+    const source = sourceAssignments[0]!;
+    staged.push(Object.freeze({
+      parcelId: assembledParcelId,
+      districtId: source.districtId,
+      overlayIds: Object.freeze([...source.overlayIds]),
+    }));
+  }
+
+  staged.sort((left, right) => left.parcelId.localeCompare(right.parcelId));
+  return Object.freeze({ assignments: Object.freeze(staged) });
+}
+
+function sameAssignment(left: ParcelAssignment, right: ParcelAssignment): boolean {
+  if (left.districtId !== right.districtId) return false;
+  if (left.overlayIds.length !== right.overlayIds.length) return false;
+  return left.overlayIds.every((overlayId, index) => overlayId === right.overlayIds[index]);
 }
 
 function stagePropertyForSplit(
@@ -211,6 +337,50 @@ function stagePropertyForSplit(
     holdings: Object.freeze(holdings),
     transactions: snapshot.transactions,
     nextTransactionId: snapshot.nextTransactionId,
+  });
+}
+
+function stagePropertyForAssembly(
+  snapshot: PropertyMarketSnapshot,
+  sourceParcelIds: readonly string[],
+  assembledParcelId: string,
+): StagedProperty {
+  const sourceIds = new Set(sourceParcelIds);
+  const sourceHoldings = sourceParcelIds.map((parcelId) =>
+    snapshot.holdings.find((holding) => holding.parcelId === parcelId),
+  );
+  const heldCount = sourceHoldings.filter((holding) => holding !== undefined).length;
+
+  if (heldCount > 0) {
+    if (heldCount !== sourceParcelIds.length) {
+      return Object.freeze({ snapshot, rejectionReason: 'conflicting-property-owners' });
+    }
+    const ownerId = sourceHoldings[0]!.ownerId;
+    if (sourceHoldings.some((holding) => holding!.ownerId !== ownerId)) {
+      return Object.freeze({ snapshot, rejectionReason: 'conflicting-property-owners' });
+    }
+  }
+
+  const holdings = snapshot.holdings.filter((holding) => !sourceIds.has(holding.parcelId));
+  if (heldCount > 0) {
+    const reservationValueCents = sourceHoldings.reduce(
+      (sum, holding) => sum + Math.round(holding!.reservationValue * 100),
+      0,
+    );
+    holdings.push(Object.freeze({
+      parcelId: assembledParcelId,
+      ownerId: sourceHoldings[0]!.ownerId,
+      reservationValue: reservationValueCents / 100,
+    }));
+  }
+  holdings.sort((left, right) => left.parcelId.localeCompare(right.parcelId));
+
+  return Object.freeze({
+    snapshot: Object.freeze({
+      holdings: Object.freeze(holdings),
+      transactions: snapshot.transactions,
+      nextTransactionId: snapshot.nextTransactionId,
+    }),
   });
 }
 
