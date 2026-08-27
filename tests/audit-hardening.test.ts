@@ -117,12 +117,15 @@ test('HTML escaping neutralizes user-controlled transit names', async () => {
   assert.equal(module.escapeHtml(`<img src=x onerror="boom()"> O'Reilly & Co.`), '&lt;img src=x onerror=&quot;boom()&quot;&gt; O&#39;Reilly &amp; Co.');
 });
 
-test('GameApp uses V7 as the primary save slot while retaining a V6 migration key', async () => {
+test('GameApp retains historical save slots while presenting the current Save V9 contract', async () => {
   const source = await readFile(new URL('../src/app/GameApp.ts', import.meta.url), 'utf8');
   assert.match(source, /civic-foundry-save-v7/);
   assert.match(source, /civic-foundry-save-v6/);
-  assert.doesNotMatch(source, />Save V6</);
-  assert.doesNotMatch(source, /Saved V6|Loaded V6/);
+  assert.match(source, />Save V9</);
+  assert.match(source, /Saved V9 at tick/);
+  assert.match(source, /Loaded V9 at tick/);
+  assert.doesNotMatch(source, />Save V7</);
+  assert.doesNotMatch(source, /Saved V7|Loaded V7/);
 });
 
 test('fatal kernel tick errors put the kernel into fail-stop mode instead of allowing continued mutation', () => {
