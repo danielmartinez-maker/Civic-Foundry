@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0
       - name: Configure Git
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name "github-actions[bot]]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Merge Phase 0B onto current main baseline
         shell: bash
@@ -41,27 +41,57 @@ jobs:
           core = core_path.read_text()
           if 'this.entityProjector = new LegacyV7EntityProjector();' not in core:
               anchor = '    this.world = world;\n'
-              initialization = (
-                  '    this.world = world;\n'
-                  '    this.entityRegistry = new EntityRegistry();\n'
-                  '    this.entityReferences = new EntityReferenceGraph();\n'
-                  '    this.entityProjector = new LegacyV7EntityProjector();\n'
-              )
-              if anchor not in core:
-                  raise SystemExit('SimulationCore world initialization anchor missing')
-              core = core.replace(anchor, initialization, 1)
+              replacement = anchor + '    this.entityRegistry = new EntityRegistry();\n    this.entityReferences = new EntityReferenceGraph();\n    this.entityProjector = new LegacyV7EntityProjector();\n'
+              if anchor not in core: raise SystemExit('SimulationCore world initialization anchor missing')
+              core = core.replace(anchor, replacement, 1)
+          if 'get entityDiagnostics(): EntityDiagnosticsSnapshot' not in core:
+              anchor = '  constructor(options: SimulationCoreOptions = {}) {'
+              getter = '''  get entityDiagnostics(): EntityDiagnosticsSnapshot {\n    return buildEntityDiagnostics(this.entityRegistry, this.entityReferences, this.lastUnresolvedEntityReferences);\n  }\n\n'''
+              if anchor not in core: raise SystemExit('SimulationCore constructor anchor missing')
+              core = core.replace(anchor, getter + anchor, 1)
+          if 'rebuildEntityProjection(): void' not in core:
+              anchor = '  private syncEntityProjection(): void {'
+              method = '''  rebuildEntityProjection(): void {\n    this.lastSyncedEntitySourceRevisionKey = undefined;\n    this.entityProjector.invalidate();\n    this.syncEntityProjection();\n  }\n\n'''
+              if anchor not in core: raise SystemExit('SimulationCore sync anchor missing for rebuild API')
+              core = core.replace(anchor, method + anchor, 1)
           if 'private syncEntityProjection(): void' not in core:
               anchor = '  runDesignStorm(event: DesignStormEvent): FloodResult {'
-              method = '''  private syncEntityProjection(): void {\n    const sourceRevisionKey = this.entityProjector.sourceRevisionKey(this);\n    if (sourceRevisionKey !== undefined && sourceRevisionKey === this.lastSyncedEntitySourceRevisionKey) return;\n\n    const partitions = this.entityProjector.projectPartitions(this);\n    if (partitions === this.lastSyncedEntityPartitions) {\n      this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;\n      return;\n    }\n    const result = commitEntityProjectionPartitions(\n      this.entityRegistry,\n      this.entityReferences,\n      partitions,\n    );\n    this.lastUnresolvedEntityReferences = result.unresolved;\n    this.lastSyncedEntityPartitions = partitions;\n    this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;\n  }\n\n'''
-              if anchor not in core:
-                  raise SystemExit('SimulationCore sync insertion anchor missing')
+              method = '''  private syncEntityProjection(): void {\n    const sourceRevisionKey = this.entityProjector.sourceRevisionKey(this);\n    if (sourceRevisionKey !== undefined && sourceRevisionKey === this.lastSyncedEntitySourceRevisionKey) return;\n\n    const partitions = this.entityProjector.projectPartitions(this);\n    if (partitions === this.lastSyncedEntityPartitions) {\n      this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;\n      return;\n    }\n    const result = commitEntityProjectionPartitions(this.entityRegistry, this.entityReferences, partitions);\n    this.lastUnresolvedEntityReferences = result.unresolved;\n    this.lastSyncedEntityPartitions = partitions;\n    this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;\n  }\n\n'''
+              if anchor not in core: raise SystemExit('SimulationCore sync insertion anchor missing')
               core = core.replace(anchor, method + anchor, 1)
           core_path.write_text(core)
 
+          building_path = Path('src/simulation/buildings/BuildingSystem.ts')
+          b = building_path.read_text()
+          if 'private _entityRevision = 0;' not in b:
+              anchor = '  private readonly buildingsV2 = new Map<string, BuildingV2>();\n'
+              if anchor not in b: raise SystemExit('BuildingSystem field anchor missing')
+              b = b.replace(anchor, anchor + '  private _entityRevision = 0;\n', 1)
+          if 'get entityRevision(): number' not in b:
+              anchor = '  startDevelopment(tick: number, lot: Lot, award: DevelopmentAward): Building {'
+              getter = '  get entityRevision(): number {\n    return this._entityRevision;\n  }\n\n'
+              if anchor not in b: raise SystemExit('BuildingSystem startDevelopment anchor missing')
+              b = b.replace(anchor, getter + anchor, 1)
+          start_block = '    this.buildings.set(lot.id, building);\n    return { ...building };'
+          if start_block in b:
+              b = b.replace(start_block, '    this.buildings.set(lot.id, building);\n    this._entityRevision++;\n    return { ...building };', 1)
+          replacement_block = '    this.buildings.set(lot.id, replacement);\n    return { removed, replacement: { ...replacement } };'
+          if replacement_block in b:
+              b = b.replace(replacement_block, '    this.buildings.set(lot.id, replacement);\n    this._entityRevision++;\n    return { removed, replacement: { ...replacement } };', 1)
+          old_tick = '''  tick(tick: number): void {\n    for (const building of this.buildings.values()) {\n      if (building.status === 'construction' && tick >= building.completionTick) building.status = 'occupied';\n    }\n  }'''
+          new_tick = '''  tick(tick: number): void {\n    let changed = false;\n    for (const building of this.buildings.values()) {\n      if (building.status === 'construction' && tick >= building.completionTick) {\n        building.status = 'occupied';\n        changed = true;\n      }\n    }\n    if (changed) this._entityRevision++;\n  }'''
+          if old_tick in b: b = b.replace(old_tick, new_tick, 1)
+          remove_block = '        this.buildings.delete(lotId);\n        return { ...building };'
+          if remove_block in b:
+              b = b.replace(remove_block, '        this.buildings.delete(lotId);\n        this._entityRevision++;\n        return { ...building };', 1)
+          restore_block = '    for (const building of buildings) this.buildings.set(building.lotId, { ...building });\n  }\n\n  restoreV2'
+          if restore_block in b:
+              b = b.replace(restore_block, '    for (const building of buildings) this.buildings.set(building.lotId, { ...building });\n    this._entityRevision++;\n  }\n\n  restoreV2', 1)
+          building_path.write_text(b)
+
           lot_path = Path('src/world/lots/LotSystem.ts')
           lots = lot_path.read_text()
-          if 'get entityRevision(): number' not in lots:
-              raise SystemExit('Phase 0B lot revision contract missing after merge')
+          if 'get entityRevision(): number' not in lots: raise SystemExit('Phase 0B lot revision contract missing after merge')
           cadastre_tail = '    this.lots = next;\n  }\n\n  list(): Lot[] {'
           if cadastre_tail in lots:
               lots = lots.replace(cadastre_tail, '    this.lots = next;\n    this._entityRevision++;\n  }\n\n  list(): Lot[] {', 1)
@@ -69,29 +99,21 @@ jobs:
 
           save7_path = Path('src/save/saveV7.ts')
           save7 = save7_path.read_text()
-          first = '    core.rebuildCadastreFromLegacyState();\n    return core;'
-          if first in save7:
-              save7 = save7.replace(first, '    core.rebuildCadastreFromLegacyState();\n    core.rebuildEntityProjection();\n    return core;', 1)
-          second = '  core.rebuildCadastreFromLegacyState();\n  return core;'
-          if second in save7:
-              save7 = save7.replace(second, '  core.rebuildCadastreFromLegacyState();\n  core.rebuildEntityProjection();\n  return core;', 1)
+          save7 = save7.replace('    core.rebuildCadastreFromLegacyState();\n    return core;', '    core.rebuildCadastreFromLegacyState();\n    core.rebuildEntityProjection();\n    return core;', 1)
+          save7 = save7.replace('  core.rebuildCadastreFromLegacyState();\n  return core;', '  core.rebuildCadastreFromLegacyState();\n  core.rebuildEntityProjection();\n  return core;', 1)
           save7_path.write_text(save7)
 
           save9_path = Path('src/save/saveV9.ts')
           save9 = save9_path.read_text()
           marker = '  core.propertyMarket.restore(save.propertyMarket, {'
           start = save9.find(marker)
-          if start < 0:
-              raise SystemExit('Save V9 property restore anchor missing')
           ret = save9.find('  return core;', start)
-          if ret < 0:
-              raise SystemExit('Save V9 return anchor missing')
-          if 'core.rebuildEntityProjection();' not in save9[start:ret]:
-              save9 = save9[:ret] + '  core.rebuildEntityProjection();\n' + save9[ret:]
+          if start < 0 or ret < 0: raise SystemExit('Save V9 hydration anchors missing')
+          if 'core.rebuildEntityProjection();' not in save9[start:ret]: save9 = save9[:ret] + '  core.rebuildEntityProjection();\n' + save9[ret:]
           save9_path.write_text(save9)
           PY
 
-          git add src/simulation/core/SimulationCore.ts src/world/lots/LotSystem.ts src/save/saveV7.ts src/save/saveV9.ts
+          git add src/simulation/core/SimulationCore.ts src/simulation/buildings/BuildingSystem.ts src/world/lots/LotSystem.ts src/save/saveV7.ts src/save/saveV9.ts
           git commit -m "fix: reconcile Phase 0B with Urban Fabric 2.0"
           git diff HEAD^ --check
       - uses: actions/setup-node@v4
@@ -102,10 +124,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install dependencies
-        shell: bash
-        run: |
-          set -o pipefail
-          npm ci 2>&1 | tee /tmp/n3-install.log
+        run: npm ci
       - name: Focused reconciliation tests
         shell: bash
         run: |
@@ -129,7 +148,6 @@ jobs:
           name: n3-clean-reconcile-diagnostics
           path: |
             /tmp/n3-merge.log
-            /tmp/n3-install.log
             /tmp/n3-focused.log
             /tmp/n3-verify.log
             /tmp/n3-head.txt
