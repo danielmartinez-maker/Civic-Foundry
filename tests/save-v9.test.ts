@@ -57,6 +57,50 @@ function urbanFabricCore(): SimulationCore {
   return core;
 }
 
+function runtimeMutationSaveCore(): SimulationCore {
+  const core = new SimulationCore({ terrain: flatTerrain(), seed: 93, startingFunds: 500_000 });
+  assert.equal(core.buildRoad([{ x: 2, y: 3 }, { x: 3, y: 3 }], 'local').ok, true);
+  assert.equal(core.paintZone([{ x: 2, y: 2 }, { x: 3, y: 2 }], 'residential').painted, 2);
+  core.buildings.restore([{
+    id: 'building:lot:2,2',
+    lotId: 'lot:2,2',
+    x: 2,
+    y: 2,
+    zone: 'residential',
+    definitionId: 'residential_cottage',
+    status: 'occupied',
+    constructionStartedTick: 0,
+    completionTick: 0,
+  }]);
+  core.rebuildCadastreFromLegacyState();
+
+  const building = core.buildings.listV2()[0];
+  assert.ok(building);
+  const parcelId = building.parcelIds[0];
+  assert.ok(parcelId);
+  const parcel = core.cadastre.getParcel(parcelId);
+  assert.ok(parcel);
+  assert.ok(parcel.areaM2 >= 8_000, 'fixture must create one two-cell parcel large enough for a legal split');
+
+  core.zoning.assignParcel(parcel.id, 'R5');
+  core.propertyMarket.restore({
+    holdings: [{ parcelId: parcel.id, ownerId: 'owner:a', reservationValue: 100_000 }],
+    transactions: [],
+    nextTransactionId: 1,
+  });
+  core.propertyMarket.transact({
+    tick: 3,
+    parcelIds: [parcel.id],
+    buyerId: 'owner:b',
+    sellerId: 'owner:a',
+    purpose: 'sale',
+    price: 120_000,
+    landValue: 80_000,
+    improvementValue: 40_000,
+  });
+  return core;
+}
+
 test('Save V9 round-trip preserves Urban Fabric authority exactly', () => {
   const core = urbanFabricCore();
   const save = serializeCoreV9(core);
@@ -76,7 +120,7 @@ test('Save V9 round-trip preserves Urban Fabric authority exactly', () => {
 });
 
 test('Save V9 preserves historical property transactions across runtime parcel retirement', () => {
-  const core = urbanFabricCore();
+  const core = runtimeMutationSaveCore();
   const buildingBefore = core.buildings.listV2()[0];
   assert.ok(buildingBefore);
   const sourceParcelId = buildingBefore.parcelIds[0];
