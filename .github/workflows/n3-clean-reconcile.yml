@@ -1,0 +1,77 @@
+name: n3-clean-reconcile
+
+on:
+  push:
+    branches:
+      - integration/n3-phase0b-main-clean
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    if: github.event.head_commit.message == 'ci: diagnose N3 clean reconciliation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Merge Phase 0B onto current main baseline
+        id: merge
+        shell: bash
+        run: |
+          set -o pipefail
+          git fetch origin civic-2.0-phase-0b-forward-port
+          {
+            echo "BASE=$(git rev-parse HEAD)"
+            echo "PHASE0B=$(git rev-parse origin/civic-2.0-phase-0b-forward-port)"
+            git merge --no-ff -X ours origin/civic-2.0-phase-0b-forward-port -m "merge: reconcile Phase 0B EntityRegistry onto Urban Fabric 2.0"
+            echo "HEAD=$(git rev-parse HEAD)"
+            echo "--- changed files vs main baseline ---"
+            git diff --name-status HEAD^1..HEAD
+          } 2>&1 | tee /tmp/n3-merge.log
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee /tmp/n3-install.log
+      - name: Focused EntityRegistry tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --experimental-strip-types --test tests/entity-*.test.ts 2>&1 | tee /tmp/n3-focused.log
+      - name: Full repository verification
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee /tmp/n3-verify.log
+      - name: Record reconciliation tree
+        if: success()
+        shell: bash
+        run: |
+          git status --short
+          git rev-parse HEAD | tee /tmp/n3-head.txt
+          git push origin HEAD:integration/n3-phase0b-main-clean
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n3-clean-reconcile-diagnostics
+          path: |
+            /tmp/n3-merge.log
+            /tmp/n3-install.log
+            /tmp/n3-focused.log
+            /tmp/n3-verify.log
+            /tmp/n3-head.txt
+          if-no-files-found: ignore
