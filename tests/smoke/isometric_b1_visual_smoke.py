@@ -98,6 +98,7 @@ def main() -> None:
           const { NEW_BUILDING_LIFECYCLE } = await import('http://civic.test/src/simulation/buildings/BuildingTypes.js');
           const { LEGACY_CELL_SIZE_METERS } = await import('http://civic.test/src/world/cadastre/Geometry.js');
           const { RUNTIME_ASSET_MANIFEST } = await import('http://civic.test/src/rendering/assets/RuntimeAssetManifest.js');
+          const { PASS_B1_COMPOSED_ASSET_MANIFEST } = await import('http://civic.test/src/rendering/assets/PassB1AssetManifest.js');
           const { buildingVariantKey } = await import('http://civic.test/src/rendering/assets/BuildingVisualResolver.js');
           const app=window.__civicApp,width=38,height=22;
           const cells=Array.from({length:width*height},(_,i)=>({
@@ -176,14 +177,18 @@ def main() -> None:
           return {
             entries:RUNTIME_ASSET_MANIFEST.entries.length,
             atlases:RUNTIME_ASSET_MANIFEST.atlases.length,
+            b1_entries:PASS_B1_COMPOSED_ASSET_MANIFEST.entries.length,
+            b1_atlases:PASS_B1_COMPOSED_ASSET_MANIFEST.atlases.length,
             diagnostics:app.renderer.assetDiagnostics(),
             keys,
           };
         }
         """)
 
-        assert evidence["entries"] == 299, evidence
-        assert evidence["atlases"] == 9, evidence
+        assert evidence["b1_entries"] == 299, evidence
+        assert evidence["b1_atlases"] == 9, evidence
+        assert evidence["entries"] == 389, evidence
+        assert evidence["atlases"] == 10, evidence
         assert evidence["diagnostics"] == [], evidence["diagnostics"]
         main_keys = [item["key"] for item in evidence["keys"] if item["id"].startswith("b1:main:")]
         podium_keys = [item["key"] for item in evidence["keys"] if item["id"].startswith("b1:podium:")]
