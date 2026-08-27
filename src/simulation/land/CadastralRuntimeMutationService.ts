@@ -109,7 +109,9 @@ export class CadastralRuntimeMutationService {
     } catch (rollbackError) {
       const originalMessage = originalError instanceof Error ? originalError.message : String(originalError);
       const rollbackMessage = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
-      throw new Error(`runtime cadastral rollback failed after ${originalMessage}: ${rollbackMessage}`);
+      throw new Error(`runtime cadastral rollback failed after ${originalMessage}: ${rollbackMessage}`, {
+        cause: rollbackError,
+      });
     }
   }
 }
