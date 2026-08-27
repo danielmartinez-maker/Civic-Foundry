@@ -100,6 +100,20 @@ function verticalCutAt(core: SimulationCore, parcelId: string, x: number): reado
   ]);
 }
 
+function splitSafely(fixture: ReturnType<typeof buildSplitFixture>): readonly string[] {
+  const { core, service, sourceParcelId } = fixture;
+  const building = core.buildings.listV2()[0]!;
+  const parcelPolygon = core.cadastre.parcelPolygon(sourceParcelId);
+  const buildingMaxX = Math.max(...building.footprint.map((point) => point.x));
+  const parcelMaxX = Math.max(...parcelPolygon.map((point) => point.x));
+  assert.ok(parcelMaxX - buildingMaxX > 0.2, 'fixture must leave a safe split corridor beside the building');
+  const safeX = buildingMaxX + (parcelMaxX - buildingMaxX) / 2;
+  const split = service.splitParcel(sourceParcelId, verticalCutAt(core, sourceParcelId, safeX));
+  assert.equal(split.committed, true, `fixture split failed: ${split.rejectionReasons.join(',')}`);
+  assert.equal(split.resultingParcelIds.length, 2);
+  return Object.freeze([...split.resultingParcelIds].sort((left, right) => left.localeCompare(right)));
+}
+
 function snapshots(core: SimulationCore): Readonly<{
   cadastre: ReturnType<SimulationCore['cadastre']['snapshot']>;
   buildings: ReturnType<SimulationCore['buildings']['listV2']>;
@@ -202,5 +216,73 @@ test('runtime split crossing a canonical building rejects without mutating any d
 
   assert.equal(result.committed, false);
   assert.ok(result.rejectionReasons.includes('building-crosses-split'));
+  assert.deepEqual(snapshots(core), before);
+});
+
+test('runtime assembly rewrites canonical building zoning property and compatibility state atomically', () => {
+  const fixture = buildSplitFixture();
+  const childParcelIds = splitSafely(fixture);
+  const { core, service } = fixture;
+  const beforeBuilding = core.buildings.listV2()[0]!;
+
+  const result = service.assembleParcels(childParcelIds);
+
+  assert.equal(result.committed, true);
+  assert.deepEqual(result.retiredParcelIds, childParcelIds);
+  assert.equal(result.resultingParcelIds.length, 1);
+  const assembledId = result.resultingParcelIds[0]!;
+  assert.ok(core.cadastre.getParcel(assembledId));
+  assert.ok(childParcelIds.every((id) => core.cadastre.getParcel(id) === undefined));
+
+  const afterBuilding = core.buildings.getV2ById(beforeBuilding.id);
+  assert.ok(afterBuilding);
+  assert.equal(afterBuilding.id, beforeBuilding.id);
+  assert.deepEqual(afterBuilding.lifecycle, beforeBuilding.lifecycle);
+  assert.deepEqual(afterBuilding.parcelIds, [assembledId]);
+
+  assert.deepEqual(core.zoning.getParcelAssignment(assembledId), {
+    parcelId: assembledId,
+    districtId: 'R2',
+    overlayIds: [],
+  });
+  assert.equal(core.propertyMarket.ownerOf(assembledId), 'owner:test');
+  const holding = core.propertyMarket.snapshot().holdings.find((candidate) => candidate.parcelId === assembledId);
+  assert.ok(holding);
+  assert.equal(holding.reservationValue, 300_000);
+  assert.ok(core.lots.list().length > 0);
+});
+
+test('runtime assembly rejects conflicting property owners without mutating any dependent domain', () => {
+  const fixture = buildSplitFixture();
+  const childParcelIds = splitSafely(fixture);
+  const { core, service } = fixture;
+  const property = core.propertyMarket.snapshot();
+  core.propertyMarket.restore({
+    ...property,
+    holdings: property.holdings.map((holding, index) => ({
+      ...holding,
+      ownerId: index === 0 ? 'owner:a' : 'owner:b',
+    })),
+  });
+  const before = snapshots(core);
+
+  const result = service.assembleParcels(childParcelIds);
+
+  assert.equal(result.committed, false);
+  assert.ok(result.rejectionReasons.includes('conflicting-property-owners'));
+  assert.deepEqual(snapshots(core), before);
+});
+
+test('runtime assembly rejects conflicting explicit zoning assignments without mutating any dependent domain', () => {
+  const fixture = buildSplitFixture();
+  const childParcelIds = splitSafely(fixture);
+  const { core, service } = fixture;
+  core.zoning.assignParcel(childParcelIds[1]!, 'R5');
+  const before = snapshots(core);
+
+  const result = service.assembleParcels(childParcelIds);
+
+  assert.equal(result.committed, false);
+  assert.ok(result.rejectionReasons.includes('conflicting-zoning-assignments'));
   assert.deepEqual(snapshots(core), before);
 });
