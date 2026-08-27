@@ -16,6 +16,8 @@ import { LotSystem } from '../../world/lots/LotSystem.ts';
 
 const GEOMETRY_AREA_TOLERANCE_M2 = 0.01;
 
+export type CadastralRuntimeCommitStage = 'cadastre' | 'zoning' | 'buildings' | 'property' | 'lots';
+
 export type CadastralRuntimeMutationDependencies = Readonly<{
   cadastre: CadastralGraph;
   buildings: BuildingSystem;
@@ -23,6 +25,7 @@ export type CadastralRuntimeMutationDependencies = Readonly<{
   propertyMarket: PropertyMarketSystem;
   lots: LotSystem;
   legacyZoneResolver: (parcel: Parcel) => ZoneType | undefined;
+  commitFaultInjector?: (stage: CadastralRuntimeCommitStage) => void;
 }>;
 
 export type CadastralRuntimeMutationResult = Readonly<{
@@ -96,12 +99,17 @@ export class CadastralRuntimeMutationService {
 
     try {
       this.deps.cadastre.replaceSnapshot(stagedGraph.snapshot());
+      this.afterCommitStage('cadastre');
       this.deps.zoning.restoreParcelAssignments(stagedZoning);
+      this.afterCommitStage('zoning');
       this.deps.buildings.restoreV2(stagedBuildings.buildings);
+      this.afterCommitStage('buildings');
       this.deps.propertyMarket.restore(stagedProperty, {
         isHistoricalParcelId: stagedHistoricalPredicate,
       });
+      this.afterCommitStage('property');
       this.deps.lots.rebuildFromCadastre(this.deps.cadastre, this.deps.legacyZoneResolver);
+      this.afterCommitStage('lots');
     } catch (error) {
       this.rollback(originalCadastre, originalZoning, originalBuildings, originalProperty, error);
       return rejected('runtime-commit-rollback', lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
@@ -146,12 +154,17 @@ export class CadastralRuntimeMutationService {
 
     try {
       this.deps.cadastre.replaceSnapshot(stagedGraph.snapshot());
+      this.afterCommitStage('cadastre');
       this.deps.zoning.restoreParcelAssignments(stagedZoning.assignments);
+      this.afterCommitStage('zoning');
       this.deps.buildings.restoreV2(stagedBuildings);
+      this.afterCommitStage('buildings');
       this.deps.propertyMarket.restore(stagedProperty.snapshot, {
         isHistoricalParcelId: stagedHistoricalPredicate,
       });
+      this.afterCommitStage('property');
       this.deps.lots.rebuildFromCadastre(this.deps.cadastre, this.deps.legacyZoneResolver);
+      this.afterCommitStage('lots');
     } catch (error) {
       this.rollback(originalCadastre, originalZoning, originalBuildings, originalProperty, error);
       return rejected('runtime-commit-rollback', lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
@@ -207,12 +220,17 @@ export class CadastralRuntimeMutationService {
 
     try {
       this.deps.cadastre.replaceSnapshot(stagedGraph.snapshot());
+      this.afterCommitStage('cadastre');
       this.deps.zoning.restoreParcelAssignments(stagedZoning);
+      this.afterCommitStage('zoning');
       this.deps.buildings.restoreV2(stagedBuildings.buildings);
+      this.afterCommitStage('buildings');
       this.deps.propertyMarket.restore(stagedProperty, {
         isHistoricalParcelId: stagedHistoricalPredicate,
       });
+      this.afterCommitStage('property');
       this.deps.lots.rebuildFromCadastre(this.deps.cadastre, this.deps.legacyZoneResolver);
+      this.afterCommitStage('lots');
     } catch (error) {
       this.rollback(originalCadastre, originalZoning, originalBuildings, originalProperty, error);
       return rejected('runtime-commit-rollback', lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
@@ -244,7 +262,9 @@ export class CadastralRuntimeMutationService {
 
     try {
       this.deps.cadastre.replaceSnapshot(stagedGraph.snapshot());
+      this.afterCommitStage('cadastre');
       this.deps.lots.rebuildFromCadastre(this.deps.cadastre, this.deps.legacyZoneResolver);
+      this.afterCommitStage('lots');
     } catch (error) {
       this.rollback(originalCadastre, originalZoning, originalBuildings, originalProperty, error);
       return rejected('runtime-commit-rollback', lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
@@ -272,13 +292,19 @@ export class CadastralRuntimeMutationService {
 
     try {
       this.deps.cadastre.replaceSnapshot(stagedGraph.snapshot());
+      this.afterCommitStage('cadastre');
       this.deps.lots.rebuildFromCadastre(this.deps.cadastre, this.deps.legacyZoneResolver);
+      this.afterCommitStage('lots');
     } catch (error) {
       this.rollback(originalCadastre, originalZoning, originalBuildings, originalProperty, error);
       return rejected('runtime-commit-rollback', lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
     }
 
     return committed(lowLevel);
+  }
+
+  private afterCommitStage(stage: CadastralRuntimeCommitStage): void {
+    this.deps.commitFaultInjector?.(stage);
   }
 
   private rollback(
