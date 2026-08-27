@@ -130,11 +130,9 @@ function stageBuildingsForSplit(
 
     const footprintArea = polygonArea(building.footprint);
     const overlaps = childParcelIds.map((childParcelId) => {
-      const intersection = polygonIntersection(building.footprint, stagedGraph.parcelPolygon(childParcelId));
-      return Object.freeze({
-        childParcelId,
-        overlapAreaM2: intersection ? polygonArea(intersection) : 0,
-      });
+      const overlapAreaM2 = polygonIntersection(building.footprint, stagedGraph.parcelPolygon(childParcelId))
+        .reduce((sum, ring) => sum + polygonArea(ring), 0);
+      return Object.freeze({ childParcelId, overlapAreaM2 });
     });
     const containingChildren = overlaps.filter(
       ({ overlapAreaM2 }) => Math.abs(footprintArea - overlapAreaM2) <= GEOMETRY_AREA_TOLERANCE_M2,
