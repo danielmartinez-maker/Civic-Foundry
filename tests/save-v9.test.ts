@@ -75,6 +75,54 @@ test('Save V9 round-trip preserves Urban Fabric authority exactly', () => {
   assert.deepEqual(restored.propertyMarket.snapshot(), core.propertyMarket.snapshot());
 });
 
+test('Save V9 preserves historical property transactions across runtime parcel retirement', () => {
+  const core = urbanFabricCore();
+  const buildingBefore = core.buildings.listV2()[0];
+  assert.ok(buildingBefore);
+  const sourceParcelId = buildingBefore.parcelIds[0];
+  assert.ok(sourceParcelId);
+  const transactionBefore = structuredClone(core.propertyMarket.listTransactions()[0]);
+  assert.ok(transactionBefore);
+
+  const parcelPolygon = core.cadastre.parcelPolygon(sourceParcelId);
+  const buildingMaxX = Math.max(...buildingBefore.footprint.map((point) => point.x));
+  const parcelMaxX = Math.max(...parcelPolygon.map((point) => point.x));
+  assert.ok(parcelMaxX - buildingMaxX > 0.2, 'fixture must leave a safe split corridor beside the building');
+  const safeX = buildingMaxX + (parcelMaxX - buildingMaxX) / 2;
+  const ys = parcelPolygon.map((point) => point.y);
+
+  const mutation = core.cadastralMutations.splitParcel(sourceParcelId, [
+    { x: safeX, y: Math.min(...ys) },
+    { x: safeX, y: Math.max(...ys) },
+  ]);
+  assert.equal(mutation.committed, true, mutation.rejectionReasons.join('; '));
+  assert.equal(core.cadastre.getParcel(sourceParcelId), undefined);
+  assert.ok(core.cadastre.lineageFor(sourceParcelId));
+
+  const save = serializeCoreV9(core);
+  assert.equal(save.saveVersion, 9);
+  assert.deepEqual(save.propertyMarket.transactions[0], transactionBefore);
+
+  const restored = hydrateCoreV9(structuredClone(save));
+  assert.deepEqual(restored.propertyMarket.listTransactions()[0], transactionBefore);
+  assert.deepEqual(restored.cadastre.snapshot(), core.cadastre.snapshot());
+  assert.deepEqual(restored.buildings.listV2(), core.buildings.listV2());
+  assert.deepEqual(restored.zoning.listParcelAssignments(), core.zoning.listParcelAssignments());
+  assert.deepEqual(restored.propertyMarket.snapshot(), core.propertyMarket.snapshot());
+  assert.deepEqual(restored.lots.list(), core.lots.list());
+
+  restored.step(10);
+  for (const assignment of restored.zoning.listParcelAssignments()) {
+    assert.ok(restored.cadastre.getParcel(assignment.parcelId));
+  }
+  for (const building of restored.buildings.listV2()) {
+    assert.ok(building.parcelIds.every((parcelId) => restored.cadastre.getParcel(parcelId)));
+  }
+  for (const holding of restored.propertyMarket.listHoldings()) {
+    assert.ok(restored.cadastre.getParcel(holding.parcelId));
+  }
+});
+
 test('Save V9 continuation preserves canonical building lifecycle state after hydration', () => {
   const core = urbanFabricCore();
   const building = core.buildings.listV2()[0];
