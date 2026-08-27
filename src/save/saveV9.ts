@@ -63,7 +63,9 @@ export function hydrateCoreV9(input: unknown): SimulationCore {
   validateUrbanFabricReferences(core, save.zoningV2.parcelAssignments, save.buildingsV2, save.propertyMarket);
   core.zoning.restoreParcelAssignments(save.zoningV2.parcelAssignments);
   core.buildings.restoreV2(save.buildingsV2);
-  core.propertyMarket.restore(save.propertyMarket);
+  core.propertyMarket.restore(save.propertyMarket, {
+    isHistoricalParcelId: (parcelId) => isKnownHistoricalParcelId(core, parcelId),
+  });
   return core;
 }
 
@@ -76,6 +78,11 @@ function validateUrbanFabricReferences(
   const requireParcel = (parcelId: string, source: string): void => {
     if (!core.cadastre.getParcel(parcelId)) throw new Error(`${source} references missing parcel: ${parcelId}`);
   };
+  const requireHistoricalParcel = (parcelId: string, source: string): void => {
+    if (!isKnownHistoricalParcelId(core, parcelId)) {
+      throw new Error(`${source} references unknown parcel history: ${parcelId}`);
+    }
+  };
 
   for (const assignment of assignments) requireParcel(assignment.parcelId, 'zoning assignment');
   for (const building of buildings) {
@@ -83,8 +90,12 @@ function validateUrbanFabricReferences(
   }
   for (const holding of propertyMarket.holdings) requireParcel(holding.parcelId, 'property holding');
   for (const transaction of propertyMarket.transactions) {
-    for (const parcelId of transaction.parcelIds) requireParcel(parcelId, `property transaction ${transaction.id}`);
+    for (const parcelId of transaction.parcelIds) requireHistoricalParcel(parcelId, `property transaction ${transaction.id}`);
   }
+}
+
+function isKnownHistoricalParcelId(core: SimulationCore, parcelId: string): boolean {
+  return core.cadastre.getParcel(parcelId) !== undefined || core.cadastre.lineageFor(parcelId) !== undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
