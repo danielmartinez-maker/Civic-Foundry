@@ -62,6 +62,7 @@ function buildSplitFixture(): Readonly<{
   assert.ok(building, 'fixture must materialize one canonical building');
   assert.equal(building.parcelIds.length, 1);
   const sourceParcelId = building.parcelIds[0]!;
+  core.zoning.assignParcel(sourceParcelId, 'R2');
   assert.ok(core.zoning.getParcelAssignment(sourceParcelId), 'fixture parcel must have canonical zoning');
 
   core.propertyMarket.restore({
