@@ -36,7 +36,11 @@ type StagedBuildings = Readonly<{
 }>;
 
 export class CadastralRuntimeMutationService {
-  constructor(private readonly deps: CadastralRuntimeMutationDependencies) {}
+  private readonly deps: CadastralRuntimeMutationDependencies;
+
+  constructor(deps: CadastralRuntimeMutationDependencies) {
+    this.deps = deps;
+  }
 
   splitParcel(parcelId: string, cutLine: readonly WorldPoint[]): CadastralRuntimeMutationResult {
     const originalCadastre = this.deps.cadastre.snapshot();
