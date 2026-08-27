@@ -59,7 +59,7 @@ def main() -> None:
 
         assert page.locator("h1").inner_text() == "CIVIC FOUNDRY"
         assert "PHASE VI" in page.locator(".eyebrow").inner_text()
-        assert page.locator('[data-testid="save"]').inner_text() == "Save V7"
+        assert page.locator('[data-testid="save"]').inner_text() == "Save V9"
         assert page.locator('[data-testid="economy-panel"]').is_visible()
 
         setup = page.evaluate("""
@@ -108,7 +108,7 @@ def main() -> None:
         assert "Freight routes" in legend
 
         page.locator('[data-testid="save"]').click()
-        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Saved V7')")
+        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Saved V9')")
         saved_raw = page.evaluate("() => localStorage.getItem('civic-foundry-save-v7')")
         assert saved_raw
         saved_obj = json.loads(saved_raw)
@@ -131,7 +131,7 @@ def main() -> None:
         assert mutated["roads"] < setup["roads"]
 
         page.locator('[data-testid="load"]').click()
-        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Loaded V7')")
+        page.wait_for_function("() => document.querySelector('#notification')?.textContent?.includes('Loaded V9')")
         restored = page.evaluate("""
         async () => {
           const { serializeCore } = await import('http://civic.test/src/save/save.js');

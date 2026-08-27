@@ -13,7 +13,8 @@
     "dev": "python -m http.server 5173 -d dist",
     "test:smoke": "python tests/smoke/phase6_smoke.py",
     "test:smoke:phase7": "python tests/smoke/phase7_land_housing_smoke.py",
-    "test:smoke:isometric": "python tests/smoke/isometric_pass_a_smoke.py"
+    "test:smoke:isometric": "python tests/smoke/isometric_pass_a_smoke.py",
+    "test:smoke:urban-fabric": "python tests/smoke/urban_fabric_smoke.py"
   },
   "dependencies": {
     "clipper2-ts": "2.0.1-18"

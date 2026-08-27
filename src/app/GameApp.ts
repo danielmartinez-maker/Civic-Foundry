@@ -77,7 +77,7 @@ export class GameApp {
     const serviceBudgetRows = (['fire', 'police', 'healthcare', 'education', 'garbage'] as ServiceDepartment[]).map((department) => `<label class="tax-row"><span>${department[0]!.toUpperCase()}${department.slice(1, 4)}</span><input data-service-budget="${department}" data-testid="budget-${department}" type="number" min="50" max="150" step="5" value="100"><b>%</b></label>`).join('');
     return `<div class="game-shell">
       <header class="topbar"><div><div class="eyebrow">PHASE VI · FIRMS, PRODUCTION & FREIGHT</div><h1>CIVIC FOUNDRY</h1></div>
-        <div class="top-actions"><button data-action="save" data-testid="save">Save V7</button><button data-action="load" data-testid="load">Load</button></div></header>
+        <div class="top-actions"><button data-action="save" data-testid="save">Save V9</button><button data-action="load" data-testid="load">Load</button></div></header>
       <section id="hud" class="hud"></section>
       <main class="workspace">
         <aside class="toolbox"><h2>Build</h2>${toolButtons}
@@ -440,7 +440,7 @@ export class GameApp {
     const json = JSON.stringify(serializeCore(this.core));
     this.fallbackSave = json;
     try { localStorage.setItem(STORAGE_KEY, json); } catch { /* fallback retained */ }
-    this.flash(`Saved V7 at tick ${this.core.clock.tick}.`, 'ok');
+    this.flash(`Saved V9 at tick ${this.core.clock.tick}.`, 'ok');
   }
 
   private load(): void {
@@ -463,7 +463,7 @@ export class GameApp {
       this.syncInputsFromCore();
       this.renderTransitPanel();
       this.renderEconomyPanel();
-      this.flash(`Loaded V7 at tick ${this.core.clock.tick}.`, 'ok');
+      this.flash(`Loaded V9 at tick ${this.core.clock.tick}.`, 'ok');
       this.renderInspector();
     } catch (error) {
       this.flash(error instanceof Error ? error.message : 'Load failed', 'error');
