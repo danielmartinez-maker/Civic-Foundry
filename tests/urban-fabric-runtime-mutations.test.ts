@@ -161,7 +161,7 @@ test('runtime split preserves canonical building identity while rewriting live p
 
   assert.equal(result.committed, true);
   assert.deepEqual(result.retiredParcelIds, [sourceParcelId]);
-  assert.equal(result.createdParcelIds.length, 2);
+  assert.equal(result.resultingParcelIds.length, 2);
   assert.equal(core.cadastre.getParcel(sourceParcelId), undefined);
 
   const afterBuilding = core.buildings.getV2ById(beforeBuilding.id);
@@ -173,14 +173,14 @@ test('runtime split preserves canonical building identity while rewriting live p
 
   const childAssignments = core.zoning
     .listParcelAssignments()
-    .filter((assignment) => result.createdParcelIds.includes(assignment.parcelId));
+    .filter((assignment) => result.resultingParcelIds.includes(assignment.parcelId));
   assert.equal(childAssignments.length, 2);
   assert.ok(childAssignments.every((assignment) => assignment.districtId === 'R2'));
 
   const property = core.propertyMarket.snapshot();
   assert.deepEqual(
     property.holdings.map((holding) => holding.parcelId),
-    [...result.createdParcelIds].sort(),
+    [...result.resultingParcelIds].sort(),
   );
   assert.ok(property.holdings.every((holding) => holding.ownerId === 'owner:test'));
   assert.equal(
