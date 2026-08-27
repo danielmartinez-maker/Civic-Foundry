@@ -78,14 +78,8 @@ jobs:
         run: npm run test:smoke
       - name: Phase 7 smoke
         run: npm run test:smoke:phase7
-      - name: Urban Fabric smoke when parent checkpoint is present
-        shell: bash
-        run: |
-          if [ -f tests/smoke/urban_fabric_smoke.py ]; then
-            python tests/smoke/urban_fabric_smoke.py
-          else
-            echo "Urban Fabric smoke enters this branch during Task 8 frozen-parent reconciliation."
-          fi
+      - name: Urban Fabric smoke
+        run: python tests/smoke/urban_fabric_smoke.py
       - name: Pass A interaction smoke
         run: npm run test:smoke:isometric
       - name: Pass B1 visual regression
