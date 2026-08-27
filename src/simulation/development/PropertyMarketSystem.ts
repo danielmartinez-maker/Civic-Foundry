@@ -35,6 +35,10 @@ export type PropertyMarketSnapshot = Readonly<{
   nextTransactionId: number;
 }>;
 
+export type PropertyMarketRestoreOptions = Readonly<{
+  isHistoricalParcelId?: (parcelId: string) => boolean;
+}>;
+
 type PropertyHolding = {
   parcelId: string;
   ownerId: string;
@@ -106,10 +110,14 @@ export class PropertyMarketSystem {
     });
   }
 
-  restore(snapshot: PropertyMarketSnapshot): void {
+  restore(snapshot: PropertyMarketSnapshot, options: PropertyMarketRestoreOptions = {}): void {
     if (!snapshot || typeof snapshot !== 'object') throw new Error('property market snapshot must be an object');
     const holdings = validateHoldings(snapshot.holdings);
-    const transactions = validateTransactionHistory(snapshot.transactions, holdings);
+    const transactions = validateTransactionHistory(
+      snapshot.transactions,
+      holdings,
+      options.isHistoricalParcelId ?? (() => false),
+    );
     if (!Number.isInteger(snapshot.nextTransactionId) || snapshot.nextTransactionId !== transactions.length + 1) {
       throw new Error('property market next transaction id must follow transaction history');
     }
@@ -140,6 +148,7 @@ function validateHoldings(input: readonly PropertyHoldingSeed[]): PropertyHoldin
 function validateTransactionHistory(
   input: readonly PropertyTransaction[],
   holdings: readonly PropertyHoldingSeed[],
+  isHistoricalParcelId: (parcelId: string) => boolean,
 ): PropertyTransaction[] {
   if (!Array.isArray(input)) throw new Error('property transactions must be an array');
   const liveParcelIds = new Set(holdings.map((holding) => holding.parcelId));
@@ -167,7 +176,9 @@ function validateTransactionHistory(
       validateEntityId('parcelId', parcelId);
       if (seen.has(parcelId)) throw new Error(`duplicate parcel in property transaction: ${parcelId}`);
       seen.add(parcelId);
-      if (!liveParcelIds.has(parcelId)) throw new Error(`property transaction references missing holding: ${parcelId}`);
+      if (!liveParcelIds.has(parcelId) && !isHistoricalParcelId(parcelId)) {
+        throw new Error(`property transaction references missing holding or historical parcel: ${parcelId}`);
+      }
     }
     parcelIds.sort((left, right) => left.localeCompare(right));
     return Object.freeze({ ...transaction, parcelIds: Object.freeze(parcelIds) });
