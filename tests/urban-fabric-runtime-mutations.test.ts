@@ -114,6 +114,19 @@ function splitSafely(fixture: ReturnType<typeof buildSplitFixture>): readonly st
   return Object.freeze([...split.resultingParcelIds].sort((left, right) => left.localeCompare(right)));
 }
 
+function verticalStrip(core: SimulationCore, parcelId: string, minX: number, maxX: number): readonly WorldPoint[] {
+  const polygon = core.cadastre.parcelPolygon(parcelId);
+  const ys = polygon.map((point) => point.y);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  return Object.freeze([
+    Object.freeze({ x: minX, y: minY }),
+    Object.freeze({ x: maxX, y: minY }),
+    Object.freeze({ x: maxX, y: maxY }),
+    Object.freeze({ x: minX, y: maxY }),
+  ]);
+}
+
 function snapshots(core: SimulationCore): Readonly<{
   cadastre: ReturnType<SimulationCore['cadastre']['snapshot']>;
   buildings: ReturnType<SimulationCore['buildings']['listV2']>;
@@ -285,4 +298,102 @@ test('runtime assembly rejects conflicting explicit zoning assignments without m
   assert.equal(result.committed, false);
   assert.ok(result.rejectionReasons.includes('conflicting-zoning-assignments'));
   assert.deepEqual(snapshots(core), before);
+});
+
+test('runtime right-of-way dedication transfers live references to the residual parcel and scales land value', () => {
+  const { core, service, sourceParcelId } = buildSplitFixture();
+  const source = core.cadastre.getParcel(sourceParcelId)!;
+  const building = core.buildings.listV2()[0]!;
+  const parcelXs = core.cadastre.parcelPolygon(sourceParcelId).map((point) => point.x);
+  const parcelMaxX = Math.max(...parcelXs);
+  const buildingMaxX = Math.max(...building.footprint.map((point) => point.x));
+  assert.ok(parcelMaxX - buildingMaxX > 0.2, 'fixture must leave a dedication corridor beside the building');
+  const corridorMinX = buildingMaxX + (parcelMaxX - buildingMaxX) / 2;
+
+  const result = service.dedicateRightOfWay(
+    sourceParcelId,
+    verticalStrip(core, sourceParcelId, corridorMinX, parcelMaxX),
+  );
+
+  assert.equal(result.committed, true);
+  assert.deepEqual(result.retiredParcelIds, [sourceParcelId]);
+  assert.equal(result.resultingParcelIds.length, 1);
+  const residualId = result.resultingParcelIds[0]!;
+  const residual = core.cadastre.getParcel(residualId);
+  assert.ok(residual);
+  assert.equal(core.cadastre.getParcel(sourceParcelId), undefined);
+
+  const afterBuilding = core.buildings.getV2ById(building.id);
+  assert.ok(afterBuilding);
+  assert.equal(afterBuilding.id, building.id);
+  assert.deepEqual(afterBuilding.lifecycle, building.lifecycle);
+  assert.deepEqual(afterBuilding.parcelIds, [residualId]);
+  assert.deepEqual(core.zoning.getParcelAssignment(residualId), {
+    parcelId: residualId,
+    districtId: 'R2',
+    overlayIds: [],
+  });
+
+  const holding = core.propertyMarket.snapshot().holdings.find((candidate) => candidate.parcelId === residualId);
+  assert.ok(holding);
+  const expectedValue = Math.round(300_000 * (residual.areaM2 / source.areaM2) * 100) / 100;
+  assert.equal(holding.ownerId, 'owner:test');
+  assert.equal(holding.reservationValue, expectedValue);
+  assert.ok(core.lots.list().length > 0);
+});
+
+test('runtime right-of-way dedication crossing the active building rejects without dependent mutation', () => {
+  const { core, service, sourceParcelId } = buildSplitFixture();
+  const building = core.buildings.listV2()[0]!;
+  const parcelXs = core.cadastre.parcelPolygon(sourceParcelId).map((point) => point.x);
+  const parcelMinX = Math.min(...parcelXs);
+  const buildingXs = building.footprint.map((point) => point.x);
+  const crossingX = (Math.min(...buildingXs) + Math.max(...buildingXs)) / 2;
+  const before = snapshots(core);
+
+  const result = service.dedicateRightOfWay(
+    sourceParcelId,
+    verticalStrip(core, sourceParcelId, parcelMinX, crossingX),
+  );
+
+  assert.equal(result.committed, false);
+  assert.ok(result.rejectionReasons.includes('building-outside-resulting-parcel'));
+  assert.deepEqual(snapshots(core), before);
+});
+
+test('runtime easement create and remove mutate only cadastral legal state', () => {
+  const { core, service, sourceParcelId } = buildSplitFixture();
+  const building = core.buildings.listV2()[0]!;
+  const polygon = core.cadastre.parcelPolygon(sourceParcelId);
+  const xs = polygon.map((point) => point.x);
+  const ys = polygon.map((point) => point.y);
+  const parcelMaxX = Math.max(...xs);
+  const buildingMaxX = Math.max(...building.footprint.map((point) => point.x));
+  const easementX = buildingMaxX + (parcelMaxX - buildingMaxX) / 2;
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const geometry = Object.freeze([
+    Object.freeze({ x: easementX, y: minY + (maxY - minY) * 0.25 }),
+    Object.freeze({ x: easementX, y: minY + (maxY - minY) * 0.75 }),
+  ]);
+  const before = snapshots(core);
+
+  const created = service.createEasement([sourceParcelId], 'utility', geometry);
+
+  assert.equal(created.committed, true);
+  const easements = core.cadastre.listEasements();
+  assert.equal(easements.length, 1);
+  assert.deepEqual(core.buildings.listV2(), before.buildings);
+  assert.deepEqual(core.zoning.listParcelAssignments(), before.zoning);
+  assert.deepEqual(core.propertyMarket.snapshot(), before.propertyMarket);
+  assert.deepEqual(core.lots.list(), before.lots);
+
+  const removed = service.removeEasement(easements[0]!.id);
+
+  assert.equal(removed.committed, true);
+  assert.deepEqual(core.cadastre.snapshot(), before.cadastre);
+  assert.deepEqual(core.buildings.listV2(), before.buildings);
+  assert.deepEqual(core.zoning.listParcelAssignments(), before.zoning);
+  assert.deepEqual(core.propertyMarket.snapshot(), before.propertyMarket);
+  assert.deepEqual(core.lots.list(), before.lots);
 });
