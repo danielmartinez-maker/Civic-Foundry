@@ -39,6 +39,11 @@ jobs:
 
           core_path = Path('src/simulation/core/SimulationCore.ts')
           core = core_path.read_text()
+          if 'readonly entityRegistry: EntityRegistry;' not in core:
+              anchor = 'export class SimulationCore extends LegacySimulationCore {\n  readonly world: WorldFoundation;\n'
+              fields = '''export class SimulationCore extends LegacySimulationCore {\n  readonly world: WorldFoundation;\n  readonly entityRegistry: EntityRegistry;\n  readonly entityReferences: EntityReferenceGraph;\n  private readonly entityProjector: LegacyV7EntityProjector;\n  private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;\n  private lastSyncedEntitySourceRevisionKey: string | undefined;\n  private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);\n'''
+              if anchor not in core: raise SystemExit('SimulationCore class field anchor missing')
+              core = core.replace(anchor, fields, 1)
           if 'this.entityProjector = new LegacyV7EntityProjector();' not in core:
               anchor = '    this.world = world;\n'
               replacement = anchor + '    this.entityRegistry = new EntityRegistry();\n    this.entityReferences = new EntityReferenceGraph();\n    this.entityProjector = new LegacyV7EntityProjector();\n'
