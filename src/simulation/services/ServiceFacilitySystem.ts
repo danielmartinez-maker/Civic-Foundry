@@ -29,11 +29,16 @@ export class ServiceFacilitySystem {
   private readonly funding: DepartmentFunding = { fire: 100, police: 100, healthcare: 100, education: 100, garbage: 100 };
   private nextId = 1;
   private fiscalPaymentRatio = 1;
+  private _entityRevision = 0;
 
   constructor(terrain: TerrainGrid, roads: RoadSystem, externallyOccupied: (x: number, y: number) => boolean = () => false) {
     this.terrain = terrain;
     this.roads = roads;
     this.externallyOccupied = externallyOccupied;
+  }
+
+  get entityRevision(): number {
+    return this._entityRevision;
   }
 
   placeFacility(type: ServiceFacilityType, x: number, y: number, treasury: TreasurySystem): { ok: boolean; cost: number; reason?: string } {
@@ -47,6 +52,7 @@ export class ServiceFacilitySystem {
     if (!CARDINAL.some(([dx, dy]) => this.roads.has(x + dx, y + dy))) return { ok: false, cost, reason: 'road access required' };
     if (!treasury.tryDebit(cost, `Build ${definition.label}`)) return { ok: false, cost, reason: 'insufficient funds' };
     this.facilities.push({ id: `service:${this.nextId++}`, type, department: definition.department, x, y });
+    this._entityRevision++;
     return { ok: true, cost };
   }
 
@@ -103,7 +109,6 @@ export class ServiceFacilitySystem {
     return Math.max(0, Math.min(definition.baseVehicleCount, Math.floor(definition.baseVehicleCount * this.fundingEffectiveness(facility.department) + 1e-9)));
   }
 
-
   setFiscalPaymentRatio(ratio: number): number {
     this.fiscalPaymentRatio = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 1));
     return this.fiscalPaymentRatio;
@@ -135,6 +140,7 @@ export class ServiceFacilitySystem {
     for (const department of DEPARTMENTS) this.setFunding(department, funding[department] ?? 100);
     this.nextId = Math.max(1, Math.floor(nextId));
     this.setFiscalPaymentRatio(fiscalPaymentRatio);
+    this._entityRevision++;
   }
 
   private requireFacility(id: string): ServiceFacility {

@@ -30,6 +30,12 @@ import type { TerrainGrid } from '../../world/terrain/TerrainGrid.ts';
 import type { RoadType } from '../../data/roads.ts';
 import type { DesignStormEvent, FloodResult } from '../../world/hydrology/HydrologyTypes.ts';
 import type { FloodEventResolvedPayload, FloodEventStartedPayload, WorldGeneratedPayload, WorldMigratedTo1RPayload } from '../../world/foundation/WorldFoundationTypes.ts';
+import { EntityRegistry } from '../../entities/EntityRegistry.ts';
+import { EntityReferenceGraph } from '../../entities/EntityReferenceGraph.ts';
+import { LegacyV7EntityProjector } from '../../entities/LegacyV7EntityProjector.ts';
+import { commitEntityProjectionPartitions, type EntityProjectionPartition } from '../../entities/EntityProjection.ts';
+import { assertEntityIntegrity, buildEntityDiagnostics, type EntityDiagnosticsSnapshot } from '../../entities/EntityDiagnostics.ts';
+import type { UnresolvedEntityReference } from '../../entities/EntityTypes.ts';
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -178,6 +184,20 @@ export class SimulationCore extends LegacySimulationCore {
     installTerrainDevelopmentCosts(redevelopmentFeasibility, preparationMultiplierAt);
 
     if (generationRegistry) this.kernel.random.restore(generationRegistry.snapshot());
+    this.syncEntityProjection();
+    this.kernel.registerSystem({
+      id: 'entity-registry-sync',
+      reads: ['legacy-v7-city'],
+      writes: ['entity-registry'],
+      cadence: { every: 1 },
+      after: ['legacy-v7-city'],
+      execute: () => this.syncEntityProjection(),
+    });
+    this.kernel.invariants.register({
+      id: 'entity-referential-integrity',
+      cadence: { every: 1 },
+      check: () => assertEntityIntegrity(this.entityRegistry, this.entityReferences),
+    });
     this.kernel.snapshots.register('world', () => this.world.diagnosticSnapshot());
     this.kernel.invariants.register({
       id: 'world-foundation-dimensions',

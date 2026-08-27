@@ -27,6 +27,11 @@ type LegacyLotCandidate = Readonly<{
 
 export class LotSystem {
   private lots: Lot[] = [];
+  private _entityRevision = 0;
+
+  get entityRevision(): number {
+    return this._entityRevision;
+  }
 
   /** @deprecated Runtime development should consume cadastral parcels. */
   rebuild(roads: RoadSystem, zoning: ZoningSystem): void {
@@ -43,6 +48,7 @@ export class LotSystem {
       if (frontage) next.push({ id: `lot:${cell.x},${cell.y}`, x: cell.x, y: cell.y, zone: cell.zone, frontageRoadKey: frontage });
     }
     this.lots = next.sort((a, b) => a.y - b.y || a.x - b.x);
+    this._entityRevision++;
   }
 
   rebuildFromCadastre(

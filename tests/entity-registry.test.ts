@@ -1,0 +1,160 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { EntityRegistry } from '../src/entities/EntityRegistry.ts';
+import { canonicalLegacyKey } from '../src/entities/EntityTypes.ts';
+
+const building = (token: string) => ({
+  kind: 'building' as const,
+  legacyId: 'building:lot:1,1',
+  incarnationToken: token,
+});
+
+test('changed incarnation token advances generation and preserves history', () => {
+  const registry = new EntityRegistry();
+  registry.commitPrepared(registry.prepareProjection([building('start:10')]));
+  const g1 = registry.require('building', 'building:lot:1,1');
+  assert.equal(g1.generation, 1);
+
+  registry.commitPrepared(registry.prepareProjection([building('start:20')]));
+  const g2 = registry.require('building', 'building:lot:1,1');
+  assert.equal(g2.generation, 2);
+  assert.equal(registry.isKnown(g1), true);
+  assert.equal(registry.isActive(g1), false);
+  assert.equal(registry.isActive(g2), true);
+});
+
+test('same incarnation token preserves the current generation', () => {
+  const registry = new EntityRegistry();
+  registry.commitPrepared(registry.prepareProjection([building('start:10')]));
+  const first = registry.require('building', 'building:lot:1,1');
+  registry.commitPrepared(registry.prepareProjection([building('start:10')]));
+  assert.deepEqual(registry.require('building', 'building:lot:1,1'), first);
+});
+
+test('disappearance makes an entity historical and reappearance advances generation', () => {
+  const registry = new EntityRegistry();
+  registry.commitPrepared(registry.prepareProjection([building('start:10')]));
+  const first = registry.require('building', 'building:lot:1,1');
+  registry.commitPrepared(registry.prepareProjection([]));
+  assert.equal(registry.resolve('building', 'building:lot:1,1'), undefined);
+  assert.equal(registry.isKnown(first), true);
+  assert.equal(registry.isActive(first), false);
+
+  registry.commitPrepared(registry.prepareProjection([building('start:10')]));
+  assert.equal(registry.require('building', 'building:lot:1,1').generation, 2);
+});
+
+test('duplicate legacy identity and invalid tokens reject without mutating committed state', () => {
+  const registry = new EntityRegistry();
+  registry.commitPrepared(registry.prepareProjection([building('start:10')]));
+  const before = registry.snapshot();
+  assert.throws(() => registry.prepareProjection([building('a'), building('b')]), /duplicate/i);
+  assert.throws(() => registry.prepareProjection([{ ...building(''), incarnationToken: '' }]), /token/i);
+  assert.deepEqual(registry.snapshot(), before);
+});
+
+test('projection ordering does not affect deterministic registry snapshots', () => {
+  const entities = [
+    { kind: 'firm' as const, legacyId: 'firm:2', incarnationToken: '20|b2' },
+    { kind: 'building' as const, legacyId: 'building:2', incarnationToken: 'start:20' },
+    { kind: 'firm' as const, legacyId: 'firm:1', incarnationToken: '10|b1' },
+    { kind: 'building' as const, legacyId: 'building:1', incarnationToken: 'start:10' },
+  ];
+  const a = new EntityRegistry();
+  const b = new EntityRegistry();
+  a.commitPrepared(a.prepareProjection(entities));
+  b.commitPrepared(b.prepareProjection([...entities].reverse()));
+  assert.deepEqual(a.snapshot(), b.snapshot());
+});
+
+test('resolveKnownByToken returns an exact historical incarnation without retargeting', () => {
+  const registry = new EntityRegistry();
+  registry.commitPrepared(registry.prepareProjection([building('start:10')]));
+  const first = registry.require('building', 'building:lot:1,1');
+  registry.commitPrepared(registry.prepareProjection([building('start:20')]));
+  assert.deepEqual(
+    registry.resolveKnownByToken('building', 'building:lot:1,1', 'start:10'),
+    first,
+  );
+  assert.equal(registry.resolveKnownByToken('building', 'building:lot:1,1', 'unknown'), undefined);
+});
+
+test('registry returns isolated snapshots and handle arrays', () => {
+  const registry = new EntityRegistry();
+  registry.commitPrepared(registry.prepareProjection([building('start:10')]));
+  const active = registry.listActive();
+  assert.equal(Object.isFrozen(active), true);
+  assert.equal(Object.isFrozen(active[0]), true);
+  const snapshot = registry.snapshot();
+  assert.equal(Object.isFrozen(snapshot.active), true);
+  assert.equal(Object.isFrozen(snapshot.known), true);
+});
+
+class IterationCountingMap<K, V> extends Map<K, V> {
+  iterations = 0;
+
+  override [Symbol.iterator]() {
+    this.iterations += 1;
+    return super[Symbol.iterator]();
+  }
+
+  override values() {
+    this.iterations += 1;
+    return super.values();
+  }
+}
+
+test('steady-state projection does not full-scan accumulated historical records', () => {
+  const registry = new EntityRegistry();
+  for (let generation = 1; generation <= 100; generation++) {
+    registry.commitPrepared(registry.prepareProjection([building(`start:${generation}`)]));
+  }
+
+  const internals = registry as unknown as { knownByHandleKey: Map<string, unknown> };
+  const counted = new IterationCountingMap(internals.knownByHandleKey);
+  internals.knownByHandleKey = counted;
+
+  registry.commitPrepared(registry.prepareProjection([building('start:100')]));
+
+  assert.equal(counted.iterations, 0, 'steady-state staging must not iterate the full historical map');
+  assert.equal(registry.require('building', 'building:lot:1,1').generation, 100);
+  assert.equal(registry.listHistorical('building').length, 99);
+});
+
+test('unchanged active entities do not enter staged known-record updates', () => {
+  const registry = new EntityRegistry();
+  registry.commitPrepared(registry.prepareProjection([
+    { ...building('start:10'), metadata: { status: 'occupied', zone: 'residential' } },
+  ]));
+
+  const prepared = registry.prepareProjection([
+    { ...building('start:10'), metadata: { zone: 'residential', status: 'occupied' } },
+  ]);
+
+  assert.equal(prepared.knownUpdatesByHandleKey.size, 0,
+    'unchanged immutable entity records should be reused rather than staged for replacement');
+  assert.equal(prepared.highestGenerationUpdatesByLegacyKey.size, 0);
+});
+
+test('commit preserves immutable record identity for unchanged active entities', () => {
+  const registry = new EntityRegistry();
+  const stable = { kind: 'building' as const, legacyId: 'building:stable', incarnationToken: 'stable:1', metadata: { status: 'occupied' } };
+  const changing = { kind: 'building' as const, legacyId: 'building:changing', incarnationToken: 'changing:1', metadata: { status: 'construction' } };
+  registry.commitPrepared(registry.prepareProjection([stable, changing]));
+
+  const internals = registry as unknown as { activeByLegacyKey: Map<string, unknown> };
+  const stableKey = canonicalLegacyKey(stable);
+  const stableRecordBefore = internals.activeByLegacyKey.get(stableKey);
+  assert.ok(stableRecordBefore);
+
+  registry.commitPrepared(registry.prepareProjection([
+    stable,
+    { ...changing, metadata: { status: 'occupied' } },
+  ]));
+
+  assert.strictEqual(
+    internals.activeByLegacyKey.get(stableKey),
+    stableRecordBefore,
+    'unchanged frozen records should not be deep-cloned during an unrelated entity update',
+  );
+});
