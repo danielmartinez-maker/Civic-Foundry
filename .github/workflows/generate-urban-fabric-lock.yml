@@ -1,5 +1,6 @@
 name: Generate Urban Fabric Lock
 
+# Temporary integration workflow; this file will not enter the feature branch.
 on:
   push:
     branches: [sync/urban-fabric-lock]
