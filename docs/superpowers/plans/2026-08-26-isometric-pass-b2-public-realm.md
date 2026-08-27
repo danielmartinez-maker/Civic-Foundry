@@ -1,5 +1,7 @@
 # Isometric Pass B2 — Parking & Public Realm Implementation Plan
 
+> **Execution status: COMPLETE against frozen Urban Fabric checkpoint `941a9d5261898b00af103bfd9797065975a660f2`.** Final acceptance evidence is recorded in `docs/art/PASS_B2_REPORT.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to execute this plan task-by-task. Every production task follows RED → GREEN → focused verification → commit.
 
 **Goal:** Add a deterministic, presentation-only parking/public-realm layer with six context-derived streetscape profiles, 90 authored B2 asset entries, correct shared depth ordering, and no new simulation or parking authority.
