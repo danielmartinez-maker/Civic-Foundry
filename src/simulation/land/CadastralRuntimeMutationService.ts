@@ -21,7 +21,7 @@ export type CadastralRuntimeMutationDependencies = Readonly<{
 
 export type CadastralRuntimeMutationResult = Readonly<{
   committed: boolean;
-  createdParcelIds: readonly string[];
+  resultingParcelIds: readonly string[];
   retiredParcelIds: readonly string[];
   rejectionReasons: readonly string[];
   parcelReferenceRewrites: Readonly<Record<string, string>>;
@@ -51,18 +51,18 @@ export class CadastralRuntimeMutationService {
     const lowLevel = new CadastralMutationSystem(stagedGraph).splitParcel(parcelId, cutLine);
     if (!lowLevel.committed) return fromLowLevel(lowLevel);
 
-    const createdParcelIds = [...lowLevel.createdParcelIds].sort((left, right) => left.localeCompare(right));
-    const stagedBuildings = stageBuildingsForSplit(originalBuildings, parcelId, createdParcelIds, stagedGraph);
+    const resultingParcelIds = [...lowLevel.resultingParcelIds].sort((left, right) => left.localeCompare(right));
+    const stagedBuildings = stageBuildingsForSplit(originalBuildings, parcelId, resultingParcelIds, stagedGraph);
     if (stagedBuildings.rejectionReason) {
-      return rejected(stagedBuildings.rejectionReason, lowLevel.createdParcelIds, lowLevel.retiredParcelIds);
+      return rejected(stagedBuildings.rejectionReason, lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
     }
 
-    const stagedZoning = stageZoningForSplit(originalZoning, parcelId, createdParcelIds);
+    const stagedZoning = stageZoningForSplit(originalZoning, parcelId, resultingParcelIds);
     const stagedProperty = stagePropertyForSplit(
       originalProperty,
       parcelId,
       sourceParcel.areaM2,
-      createdParcelIds,
+      resultingParcelIds,
       stagedGraph,
     );
     const stagedHistoricalPredicate = historicalParcelPredicate(stagedGraph);
@@ -84,7 +84,7 @@ export class CadastralRuntimeMutationService {
       this.deps.lots.rebuildFromCadastre(this.deps.cadastre, this.deps.legacyZoneResolver);
     } catch (error) {
       this.rollback(originalCadastre, originalZoning, originalBuildings, originalProperty, error);
-      return rejected('runtime-commit-rollback', lowLevel.createdParcelIds, lowLevel.retiredParcelIds);
+      return rejected('runtime-commit-rollback', lowLevel.resultingParcelIds, lowLevel.retiredParcelIds);
     }
 
     return committed(lowLevel);
@@ -242,7 +242,7 @@ function committed(
 ): CadastralRuntimeMutationResult {
   return Object.freeze({
     committed: true,
-    createdParcelIds: Object.freeze([...result.createdParcelIds]),
+    resultingParcelIds: Object.freeze([...result.resultingParcelIds]),
     retiredParcelIds: Object.freeze([...result.retiredParcelIds]),
     rejectionReasons: Object.freeze([]),
     parcelReferenceRewrites: Object.freeze({ ...result.parcelReferenceRewrites }),
@@ -254,7 +254,7 @@ function fromLowLevel(
 ): CadastralRuntimeMutationResult {
   return Object.freeze({
     committed: result.committed,
-    createdParcelIds: Object.freeze([...result.createdParcelIds]),
+    resultingParcelIds: Object.freeze([...result.resultingParcelIds]),
     retiredParcelIds: Object.freeze([...result.retiredParcelIds]),
     rejectionReasons: Object.freeze([...result.rejectionReasons]),
     parcelReferenceRewrites: Object.freeze({ ...result.parcelReferenceRewrites }),
@@ -263,12 +263,12 @@ function fromLowLevel(
 
 function rejected(
   reason: string,
-  createdParcelIds: readonly string[] = [],
+  resultingParcelIds: readonly string[] = [],
   retiredParcelIds: readonly string[] = [],
 ): CadastralRuntimeMutationResult {
   return Object.freeze({
     committed: false,
-    createdParcelIds: Object.freeze([...createdParcelIds]),
+    resultingParcelIds: Object.freeze([...resultingParcelIds]),
     retiredParcelIds: Object.freeze([...retiredParcelIds]),
     rejectionReasons: Object.freeze([reason]),
     parcelReferenceRewrites: Object.freeze({}),
