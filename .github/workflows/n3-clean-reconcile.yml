@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0
       - name: Configure Git
         run: |
-          git config user.name "github-actions[bot]]"
+          git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Merge Phase 0B onto current main baseline
         shell: bash
@@ -50,9 +50,9 @@ jobs:
               if anchor not in core: raise SystemExit('SimulationCore constructor anchor missing')
               core = core.replace(anchor, getter + anchor, 1)
           if 'rebuildEntityProjection(): void' not in core:
-              anchor = '  private syncEntityProjection(): void {'
+              anchor = '  runDesignStorm(event: DesignStormEvent): FloodResult {'
               method = '''  rebuildEntityProjection(): void {\n    this.lastSyncedEntitySourceRevisionKey = undefined;\n    this.entityProjector.invalidate();\n    this.syncEntityProjection();\n  }\n\n'''
-              if anchor not in core: raise SystemExit('SimulationCore sync anchor missing for rebuild API')
+              if anchor not in core: raise SystemExit('SimulationCore rebuild insertion anchor missing')
               core = core.replace(anchor, method + anchor, 1)
           if 'private syncEntityProjection(): void' not in core:
               anchor = '  runDesignStorm(event: DesignStormEvent): FloodResult {'
