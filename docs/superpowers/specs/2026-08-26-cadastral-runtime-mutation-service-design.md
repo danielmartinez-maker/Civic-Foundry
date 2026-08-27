@@ -2,20 +2,18 @@
 
 **Date:** 2026-08-26  
 **Branch:** `feature/urban-fabric-2.0`  
-**Status:** Approved architecture, pending implementation plan  
+**Status:** Approved architecture, ready for implementation planning  
 **Roadmap scope:** Phase 2R Urban Fabric 2.0 / Task 13 completion
 
 ## 1. Purpose
 
-Urban Fabric 2.0 already makes `CadastralGraph` the canonical legal-land authority and includes deterministic low-level split, assembly, easement, and right-of-way mutation primitives. Those primitives are intentionally not exposed through `SimulationCore` because a successful graph mutation can retire parcel IDs that remain referenced by canonical buildings, parcel zoning assignments, property holdings, redevelopment state, and legacy compatibility projections.
+Urban Fabric 2.0 already makes `CadastralGraph` the canonical legal-land authority and includes deterministic low-level split, assembly, easement, and right-of-way mutation primitives. Those primitives are intentionally not exposed through `SimulationCore` because a successful graph mutation can retire parcel IDs that remain referenced by canonical buildings, parcel zoning assignments, property holdings, and legacy compatibility projections.
 
 This design closes that Task 13 gap by introducing a runtime transaction boundary that coordinates cadastral mutation with all live dependent references. A mutation either produces a fully valid cross-domain state and commits all affected authorities, or leaves runtime state unchanged.
 
-The feature does **not** transfer ownership of buildings, zoning, property-market data, or redevelopment state into `CadastralGraph`. Each domain remains authoritative for its own state.
+The feature does **not** transfer ownership of buildings, zoning, property-market data, or future project state into `CadastralGraph`. Each domain remains authoritative for its own state.
 
 ## 2. Non-negotiable invariants
-
-The implementation must preserve the following repository-wide rules:
 
 - `WorldFoundation` remains the sole physical/geographic authority.
 - `CadastralGraph` remains the sole legal-land/topology authority.
@@ -32,7 +30,7 @@ The implementation must preserve the following repository-wide rules:
 
 ## 3. Selected architecture
 
-Introduce a simulation-layer coordinator named `CadastralRuntimeMutationService`.
+Introduce a simulation-layer coordinator named `CadastralRuntimeMutationService` under `src/simulation/land/`.
 
 ```text
 SimulationCore
@@ -42,7 +40,7 @@ SimulationCore
        ├─ resolves parcel zoning assignments
        ├─ resolves property holdings
        ├─ validates historical property references through lineage
-       ├─ validates redevelopment/project references
+       ├─ validates concrete live parcel-referencing runtime state
        ├─ derives the legacy LotSystem projection
        └─ commits all resulting snapshots to owning systems
 ```
@@ -53,13 +51,11 @@ SimulationCore
 readonly cadastralMutations: CadastralRuntimeMutationService;
 ```
 
-Callers do not receive the raw mutable `CadastralMutationSystem` tied directly to `core.cadastre`.
+Callers do not receive a raw mutable `CadastralMutationSystem` tied directly to `core.cadastre`.
 
-The coordinator uses `CadastralMutationSystem` only against a staged `CadastralGraph` clone. The real graph is untouched until every dependent state has been rewritten and validated.
+The coordinator may depend on world/cadastre primitives and simulation-domain owners. The world/cadastre layer must not import simulation-layer systems.
 
 ## 4. Public mutation surface
-
-The runtime service exposes the Phase 2R operations that can be made safe with deterministic cross-domain rewriting:
 
 ```ts
 splitParcel(parcelId: string, cutLine: readonly WorldPoint[]): CadastralRuntimeMutationResult;
@@ -68,8 +64,6 @@ dedicateRightOfWay(parcelId: string, geometry: PolygonRing): CadastralRuntimeMut
 createEasement(parcelIds: readonly string[], kind: EasementKind, geometry: readonly WorldPoint[]): CadastralRuntimeMutationResult;
 removeEasement(easementId: string): CadastralRuntimeMutationResult;
 ```
-
-The result includes the low-level cadastral result plus explicit runtime outcome data:
 
 ```ts
 type CadastralRuntimeMutationResult = Readonly<{
@@ -85,161 +79,146 @@ No separate success flag is introduced beyond `committed`.
 
 ## 5. Transaction algorithm
 
-Every runtime mutation follows the same high-level sequence.
+### 5.1 Snapshot owners
 
-### 5.1 Snapshot all owning domains
-
-Before staging a mutation, capture deterministic snapshots of:
+Capture deterministic snapshots of:
 
 - `core.cadastre.snapshot()`;
 - `core.buildings.listV2()`;
 - `core.zoning.listParcelAssignments()`;
 - `core.propertyMarket.snapshot()`;
-- the live redevelopment/project state that contains parcel IDs, if any;
-- the legacy lot projection only as derived output, not as source state.
+- any concrete live runtime state already present in `SimulationCore` that stores parcel IDs.
 
-### 5.2 Stage the cadastral graph
+`LotSystem` is not snapshotted as authority; it is rebuilt from committed cadastre.
 
-Construct a temporary `CadastralGraph` from the canonical snapshot and run the requested `CadastralMutationSystem` operation against that temporary graph.
+### 5.2 Stage cadastre
 
-If the low-level mutation rejects, return its rejection result and do not touch any live system.
+Construct a temporary `CadastralGraph` from the canonical snapshot and run the requested `CadastralMutationSystem` operation against it.
 
-### 5.3 Build a parcel-reference resolution plan
+If the low-level mutation rejects, return its rejection result and do not touch a live owner.
 
-The coordinator derives a deterministic mapping from each retired parcel to either:
+### 5.3 Resolve parcel references
 
-- one resulting live parcel;
+For each retired parcel, determine whether references resolve to:
+
+- one resulting parcel through `parcelReferenceRewrites`;
 - multiple candidate children requiring geometry-based resolution;
-- no live private parcel, for a fully consumed/invalid operation, which must reject unless the dependent reference is explicitly removable by the owning workflow.
+- no valid live private parcel, which rejects unless the owning workflow explicitly supports removal.
 
-One-to-one rewrites use `parcelReferenceRewrites` emitted by the low-level mutation.
+One-to-many split resolution is geometric, never based on arbitrary child ordering.
 
-One-to-many split resolution uses geometry, not arbitrary child ordering.
+### 5.4 Stage dependent state
 
-### 5.4 Stage dependent domains
+Create rewritten in-memory copies of buildings, zoning assignments, property state, and any concrete participating runtime state. No owner mutates yet.
 
-Rewritten copies of buildings, zoning, holdings, and project state are created in memory. No live owner is mutated during this step.
+### 5.5 Validate the staged world
 
-### 5.5 Cross-domain validation
+Before commit:
 
-The staged result must satisfy all of the following before commit:
-
-- every live `BuildingV2.parcelIds` entry exists in the staged cadastre;
-- every building footprint is contained by its assigned parcel set;
-- every current parcel zoning assignment references a staged live parcel;
+- every `BuildingV2.parcelIds` entry references a staged live parcel;
+- every surviving building footprint is contained by its assigned staged parcel set;
+- every V2 zoning assignment references a staged live parcel;
 - every current property holding references a staged live parcel;
-- no live redevelopment/project parcel reference points at a retired parcel;
-- property transaction history remains internally valid under lineage-aware historical validation;
-- the staged legacy lot projection can be rebuilt from the staged cadastre;
-- cadastral validation remains valid;
-- deterministic ordering is preserved in all snapshots.
+- any concrete live project/runtime parcel reference points only at staged live parcels;
+- historical property transactions validate against live parcels plus cadastral lineage;
+- staged cadastre passes cadastral validation;
+- the legacy lot projection can be rebuilt from staged cadastre;
+- ordering is deterministic.
 
-Any failure returns `committed: false` and leaves all live state unchanged.
+Failure returns `committed: false` with no live mutation.
 
-### 5.6 Commit
+### 5.6 Commit and rollback
 
-After validation succeeds, replace owning-domain state in a fixed order:
+Commit in fixed order:
 
 1. canonical cadastre;
 2. parcel zoning assignments;
 3. canonical `BuildingV2` store;
-4. property-market current state/history snapshot;
-5. redevelopment/project state, where applicable;
-6. rebuild `LotSystem` from the committed cadastre.
+4. property-market snapshot;
+5. any concrete participating runtime state;
+6. rebuild `LotSystem` from committed cadastre.
 
-Because all commit inputs have already been validated, owner `restore`/`replaceSnapshot` methods are expected to succeed. If a restore method can still throw for reasons not covered by prevalidation, the coordinator must retain the original snapshots and perform rollback before rethrowing or returning rejection. Partial state may never escape the service.
+All commit inputs are prevalidated. The coordinator still retains original snapshots. If an owner restore unexpectedly throws, rollback restores the original cadastre, zoning, buildings, property state, participating runtime state, and legacy lot projection before returning or throwing. Partial state may never escape the service.
 
 ## 6. Split semantics
-
-Splits are the hardest mutation because one retired parcel becomes multiple live children.
 
 ### 6.1 Buildings
 
 For each `BuildingV2` referencing the source parcel:
 
-- compute footprint containment against every resulting child polygon;
-- if the complete footprint is contained in exactly one child, replace the source parcel ID with that child ID;
-- if the footprint overlaps multiple children or is not fully contained in any child, reject the entire split;
-- preserve the building ID, lifecycle state, entitlement, project state, owner/developer fields, and all physical metrics exactly.
+- compute complete footprint containment against every resulting child polygon;
+- if exactly one child contains the footprint, rewrite the source parcel ID to that child;
+- if the footprint crosses multiple children or is not fully contained, reject the split;
+- preserve building ID, lifecycle, entitlement, project metadata, owner/developer fields, year built, and physical metrics exactly.
 
-The runtime service does not split one building into multiple buildings.
+The service never splits one building into multiple buildings.
 
 ### 6.2 Zoning
 
-A source parcel's explicit V2 zoning assignment is inherited by every child created by that split. District ID and overlay IDs are copied exactly.
-
-If the source has no explicit V2 assignment, no child assignment is fabricated; normal parcel/legacy zoning fallback continues to apply.
+If the source parcel has an explicit V2 zoning assignment, every split child inherits the same district ID and overlay IDs. If no explicit assignment exists, no assignment is fabricated.
 
 ### 6.3 Property holdings
 
-If the source parcel has a current property holding, every child inherits the same owner.
+If the source parcel has a current holding, every child inherits the same owner.
 
-The source reservation value is allocated by child-area share:
+Reservation value is allocated by child area share:
 
 ```text
 childReservationValue = sourceReservationValue * childArea / sum(childAreas)
 ```
 
-The final child in canonical ID order receives the residual cents needed for exact conservation after currency rounding. Total reservation value across children must equal the source value within the existing monetary tolerance.
+Allocation rounds deterministically to cents. The final child in canonical ID order receives the residual cents so the child total exactly equals the source reservation value.
 
-### 6.4 Historical property transactions
+### 6.4 Historical transactions
 
-Past transactions referencing the retired source parcel remain historical records of the parcel that existed at transaction time. They are not rewritten to child IDs.
+Past transactions referencing the retired source parcel remain unchanged.
 
-`PropertyMarketSystem` validation therefore must stop requiring every historical transaction parcel ID to be a current holding. Instead, transaction parcel IDs are valid when they identify either:
+`PropertyMarketSystem` must support lineage-aware restore/validation via a narrow validator/callback supplied by the coordinator. A historical transaction parcel ID is valid when it identifies either:
 
 - a current live holding; or
-- a parcel represented in cadastral lineage as a historical source/ancestor.
+- a parcel appearing as a historical cadastral lineage source/ancestor.
 
-This validation requires a lineage-aware restore/validation path supplied by the runtime coordinator or a narrow callback/interface. It must not make `PropertyMarketSystem` own cadastral history.
+`PropertyMarketSystem` does not own lineage.
 
 ## 7. Assembly semantics
 
-Assembly is deterministic because several retired source parcels become one resulting parcel.
+The low-level mutation already enforces adjacency, one block, one zoning district, and common parcel owner metadata. Runtime checks additionally require:
 
-### 7.1 Preconditions
+- source property holdings, when present, have one owner;
+- explicit V2 zoning assignments are either absent or identical in district and overlays;
+- surviving buildings are contained by the assembled parcel.
 
-The low-level cadastral mutation already requires adjacency, one block, one zoning district, and common parcel owner metadata. The runtime service adds cross-domain checks:
+On success:
 
-- all current property holdings for source parcels must have the same owner;
-- conflicting explicit V2 parcel zoning assignments reject assembly unless they are identical in district and overlays;
-- active buildings must remain geometrically contained by the assembled parcel.
-
-### 7.2 Rewrites
-
-- all `BuildingV2.parcelIds` source references become the assembled parcel ID;
-- duplicate parcel IDs are removed and canonical ordering is preserved;
-- one identical source zoning assignment is installed on the assembled parcel;
-- current property holdings collapse to one holding for the assembled parcel;
-- assembled reservation value equals the sum of source reservation values;
-- historical transactions remain unchanged and are validated through lineage;
-- live redevelopment/project parcel references are rewritten to the assembled parcel.
+- source `BuildingV2.parcelIds` become the assembled parcel ID;
+- duplicate parcel IDs are removed and sorted;
+- one identical zoning assignment is installed on the assembled parcel;
+- source holdings collapse into one holding;
+- assembled reservation value equals the exact sum of source values;
+- historical transactions remain unchanged and validate through lineage;
+- concrete live project/runtime parcel references rewrite to the assembled parcel.
 
 ## 8. Right-of-way dedication semantics
 
-Right-of-way dedication retires the source private parcel and creates a residual private parcel.
+Right-of-way dedication retires one source private parcel and creates one residual private parcel.
 
-The operation is allowed only when every referenced active building footprint is fully contained in the residual parcel. If dedication intersects or excludes a building footprint, reject.
+It commits only if every referenced surviving building footprint is fully contained in the residual parcel. An intersected or excluded building rejects the mutation.
 
-Current zoning assignment and holding transfer one-to-one to the residual parcel. Reservation value is scaled by residual private-land area unless the owning workflow supplies an explicit acquisition/value adjustment in a future phase; no transportation compensation economics are introduced here.
+Current zoning assignment and holding rewrite one-to-one to the residual parcel. Reservation value scales by residual private-land area, rounded deterministically. No transportation compensation or acquisition economics are introduced here.
 
 Historical transactions remain unchanged.
 
-This operation only updates land topology. Creation of a 3R transportation network object from the dedicated right-of-way is explicitly out of scope.
+The operation updates legal land topology only. It does not create a 3R transportation network object.
 
 ## 9. Easement semantics
 
-Creating or removing an easement does not retire parcel IDs and therefore normally requires no building/zoning/property rewrite.
-
-The runtime service still stages the graph and runs the full cross-domain validation before commit so callers use one safe mutation boundary for every cadastral operation.
+Creating/removing an easement does not retire parcel IDs and normally requires no dependent rewrites. It still runs through the same staged coordinator and validation path so every public cadastral mutation uses one safe runtime boundary.
 
 ## 10. Building identity and legacy compatibility
 
-Parcel mutation must not silently regenerate canonical building IDs.
+Runtime mutation must not silently regenerate canonical building IDs.
 
-`reconcileCanonicalBuildingProjection()` currently derives canonical projections from legacy buildings and may synthesize IDs from parcel IDs. After runtime mutations, continued simulation ticks must preserve an existing `BuildingV2` whose physical building survived the mutation.
-
-The implementation must therefore ensure reconciliation recognizes existing canonical buildings by stable identity/geometry rather than treating a parcel-ID rewrite as demolition plus new construction.
+`reconcileCanonicalBuildingProjection()` currently derives canonical projections from legacy buildings and can synthesize canonical IDs from parcel IDs. After parcel mutation, later `core.step()` calls must recognize a surviving canonical building rather than replacing it because its parcel ID changed.
 
 Required invariant:
 
@@ -251,85 +230,80 @@ parcel mutation + core.step(n)
   preserves entitlement approvalTick
 ```
 
-The derived `LotSystem` is rebuilt only after canonical commit. Legacy lot/building compatibility behavior must continue to resolve occupied cells without becoming the authority for parcel rewrites.
+The implementation may add a narrow stable-identity/geometry matching helper to `BuildingSystem` or `SimulationCore`; it must not make the legacy lot/building model authoritative again.
 
-## 11. Redevelopment/project references
+`LotSystem` is rebuilt only after canonical commit.
 
-Any live runtime state containing parcel IDs must either participate in the transaction or block mutation.
+## 11. Concrete runtime-state participation
 
-Initial implementation should support the currently persisted/live redevelopment structures actually present in `SimulationCore`. The rule is conservative:
+Before implementation, search the branch for live/persisted parcel-ID state beyond cadastre, buildings, zoning, and property market.
 
-- one-to-one and assembly rewrites are applied deterministically;
-- one-to-many split references are allowed only when the project can be uniquely assigned by associated building footprint/site geometry;
-- otherwise the mutation rejects with a stable reason code such as `ambiguous-project-parcel-rewrite`.
+If a concrete state exists, it must either:
 
-Do not add speculative project systems solely for this feature.
+- participate in deterministic one-to-one/assembly rewrites;
+- resolve one-to-many split references uniquely from existing geometry/identity; or
+- reject the mutation with a stable ambiguity reason.
+
+Do not add speculative project persistence or new domain models solely for this feature. If safe mutation requires Save V9 schema expansion, stop and treat that expansion as a separate explicitly reviewed change.
 
 ## 12. Rejection reasons
 
-Runtime-level rejection reasons must be deterministic strings suitable for tests and diagnostics. Required categories include:
+Required deterministic runtime-level categories:
 
 - `building-crosses-split`;
 - `building-outside-resulting-parcel`;
 - `conflicting-zoning-assignments`;
 - `conflicting-property-owners`;
-- `ambiguous-project-parcel-rewrite`;
+- `ambiguous-project-parcel-rewrite` when a concrete project state exists;
 - `missing-resulting-parcel`;
 - `property-value-not-conserved`;
 - `dangling-parcel-reference`;
 - `runtime-commit-rollback`.
 
-Low-level cadastral rejection reasons pass through unchanged when the graph mutation itself rejects.
+Low-level cadastral rejection reasons pass through unchanged.
 
-## 13. Persistence behavior
+## 13. Persistence
 
-No Save V10 is introduced.
+No Save V10 is introduced by default.
 
-Save V9 already persists:
-
-- cadastral topology and lineage;
-- parcel V2 zoning assignments;
-- canonical `BuildingV2` state;
-- property-market state.
-
-A successfully committed runtime mutation must therefore round-trip through existing Save V9 serialization without schema expansion unless implementation discovers an already-live parcel-referencing project state that is not currently persisted. If such a state exists, the implementation must stop and treat persistence expansion as a separate explicitly reviewed change rather than silently adding fields.
+Save V9 already persists cadastral topology/lineage, parcel V2 zoning assignments, canonical `BuildingV2` state, and property-market state. A committed mutation must round-trip through existing V9 serialization and hydration.
 
 V8 migration behavior remains unchanged.
 
+If implementation discovers a currently live parcel-referencing state that must persist but is absent from V9, implementation stops before schema expansion.
+
 ## 14. Determinism
 
-The runtime service must not introduce nondeterministic collection traversal.
-
-- parcel IDs are sorted lexicographically before rewrite decisions;
-- building IDs are sorted lexicographically before geometry resolution;
+- parcel IDs sort lexicographically before rewrite decisions;
+- building IDs sort lexicographically before geometry resolution;
 - zoning assignments use canonical parcel-ID order;
 - property holdings use canonical parcel-ID order;
-- area-based value allocation uses deterministic currency rounding with residual applied to the final canonical child;
+- value allocation uses cent rounding with the residual assigned to the final canonical child;
 - rejection reason ordering is stable;
-- no new RNG stream is needed.
+- no RNG stream is introduced.
 
-Running the same mutation against identical snapshots must produce byte-equivalent staged snapshots and the same result object.
+Identical snapshots plus identical mutation requests must produce deep-equal results and staged snapshots.
 
 ## 15. Testing requirements
 
-Implementation follows TDD. At minimum, tests must cover:
+Implementation follows TDD. At minimum:
 
-1. **Split success:** a parcel with a building fully contained in one child commits; building points to that child.
-2. **Split rejection:** a cut through a building rejects and all canonical snapshots remain deep-equal to pre-mutation state.
-3. **Zoning inheritance:** explicit parcel assignment copies to all split children.
-4. **Property conservation:** child holdings preserve owner and total reservation value.
-5. **Historical transactions:** pre-split sale remains unchanged and Save V9 hydration accepts it through lineage-aware validation.
-6. **Assembly success:** buildings, zoning, holdings, and live project references rewrite to the assembled parcel.
-7. **Assembly conflict:** inconsistent owners or zoning reject atomically.
-8. **Right-of-way success:** residual parcel receives live references when buildings remain contained.
-9. **Right-of-way rejection:** dedication intersecting a building rejects atomically.
-10. **Easement mutation:** create/remove uses the runtime service and does not alter unrelated canonical domains.
-11. **Continuation:** after split/assembly, `core.step(10)` leaves no dangling parcel references and preserves surviving `BuildingV2` identity/lifecycle.
-12. **Save V9 round-trip:** mutation → serialize V9 → hydrate → continue simulation preserves cadastre, buildings, zoning, holdings, history, and deterministic IDs.
-13. **Failure rollback:** forced restore/commit failure restores all original canonical snapshots.
-14. **Determinism:** identical initial cores + identical mutation requests produce deep-equal results and snapshots.
+1. split success rewrites a fully contained building;
+2. split crossing a building rejects with all owner snapshots unchanged;
+3. explicit zoning assignment inherits to every split child;
+4. split holdings conserve owner and reservation value exactly;
+5. pre-split property transaction remains unchanged and hydrates through lineage-aware validation;
+6. assembly rewrites buildings/zoning/holdings;
+7. assembly owner/zoning conflict rejects atomically;
+8. right-of-way success rewrites to the residual parcel;
+9. right-of-way intersecting a building rejects atomically;
+10. easement create/remove uses the runtime service without unrelated state changes;
+11. mutation then `core.step(10)` preserves surviving building ID/lifecycle and leaves no dangling parcel references;
+12. mutation → Save V9 → hydrate → continue preserves cadastre/buildings/zoning/property/history;
+13. forced commit failure rolls back all owners;
+14. identical cores and mutation requests produce deep-equal results.
 
-The final repository gate remains:
+Final repository gate:
 
 ```bash
 npm test
@@ -347,31 +321,29 @@ plus the CI-managed Isometric Pass A visual smoke.
 
 ## 16. Expected file boundaries
 
-The implementation plan should prefer the following structure:
-
-- Create `src/world/cadastre/CadastralRuntimeMutationService.ts` for transaction staging, rewrite planning, validation, commit, and rollback orchestration.
+- Create `src/simulation/land/CadastralRuntimeMutationService.ts` for staging, rewrite planning, validation, commit, and rollback orchestration.
 - Modify `src/simulation/core/SimulationCore.ts` only to construct/expose the service and make canonical building reconciliation mutation-safe.
 - Modify `src/simulation/buildings/BuildingSystem.ts` only for narrow stable-identity/validation helpers if required.
 - Modify `src/simulation/zoning/ZoningSystem.ts` only for narrow staged assignment validation/restore support if required.
 - Modify `src/simulation/development/PropertyMarketSystem.ts` only for lineage-aware historical validation and staged-state support; do not give it cadastral ownership.
-- Modify redevelopment/project code only when a concrete current parcel reference requires participation.
-- Add focused runtime mutation tests rather than expanding unrelated suites.
-- Extend Save V9 tests only for mutation round-trip behavior; do not change the V9 schema by default.
+- Modify concrete project/runtime code only when an existing parcel reference requires participation.
+- Add focused runtime mutation tests.
+- Extend Save V9 tests only for mutation round-trip behavior; do not change the schema by default.
 
-If implementation pressure suggests moving unrelated responsibilities into the service or rewriting large existing systems, stop and split the work rather than creating a coordinator god object.
+If implementation pressure starts turning the coordinator into a general simulation god object, split the work instead of moving unrelated responsibilities into it.
 
 ## 17. Acceptance criteria
 
-Task 13 is complete when all of the following are true:
+Task 13 is complete when:
 
-- `SimulationCore` exposes a safe cadastral runtime mutation service.
-- No caller needs direct mutable access to `CadastralMutationSystem` bound to the live canonical graph.
-- Split, assembly, right-of-way, and easement operations are all-or-nothing across every current parcel-referencing canonical domain.
-- Surviving buildings retain stable canonical identity and lifecycle across mutation and later simulation ticks.
-- Parcel zoning assignments and current property holdings contain no retired live parcel IDs.
-- Historical property transactions remain historically truthful and validate through parcel lineage.
-- Save V9 round-trip and continued simulation preserve the committed mutation state.
-- Failed mutations leave all canonical snapshots unchanged.
-- Existing V7/V8 compatibility remains green.
-- Full repository CI passes on the exact implementation head.
-- No 3R transportation behavior is introduced.
+- `SimulationCore` exposes `cadastralMutations` as the safe runtime mutation boundary;
+- callers do not need a raw live-graph `CadastralMutationSystem`;
+- split, assembly, right-of-way, and easement operations are all-or-nothing across every current parcel-referencing canonical domain;
+- surviving buildings retain stable canonical identity/lifecycle across mutation and later simulation ticks;
+- live zoning assignments and property holdings contain no retired parcel IDs;
+- historical property transactions remain truthful and validate through lineage;
+- Save V9 round-trip plus continued simulation preserve mutation state;
+- failed mutations leave owner snapshots unchanged;
+- V7/V8 compatibility remains green;
+- exact-head full CI passes;
+- no 3R transportation behavior is introduced.
