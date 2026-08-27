@@ -141,7 +141,10 @@ test('Save V9 preserves historical property transactions across runtime parcel r
   ]);
   assert.equal(mutation.committed, true, mutation.rejectionReasons.join('; '));
   assert.equal(core.cadastre.getParcel(sourceParcelId), undefined);
-  assert.ok(core.cadastre.lineageFor(sourceParcelId));
+  assert.ok(
+    core.cadastre.listLineage().some((event) => event.sourceParcelIds.includes(sourceParcelId)),
+    'retired source parcel must remain represented in cadastral lineage',
+  );
 
   const save = serializeCoreV9(core);
   assert.equal(save.saveVersion, 9);
