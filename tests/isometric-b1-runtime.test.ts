@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { NEW_BUILDING_LIFECYCLE, type BuildingV2 } from '../src/simulation/buildings/BuildingTypes.ts';
+import { PASS_B1_COMPOSED_ASSET_MANIFEST } from '../src/rendering/assets/PassB1AssetManifest.ts';
 
 async function loadRuntimeManifest() {
   return import('../src/rendering/assets/RuntimeAssetManifest.ts');
@@ -38,11 +39,14 @@ function canonicalBuilding(overrides: Partial<BuildingV2> = {}): BuildingV2 {
   };
 }
 
-test('runtime asset manifest composes Pass A and B1', async () => {
+test('B1 sub-manifest remains exact inside the B2 runtime composition', async () => {
   const { RUNTIME_ASSET_MANIFEST } = await loadRuntimeManifest();
-  assert.equal(RUNTIME_ASSET_MANIFEST.entries.length, 299);
-  assert.equal(RUNTIME_ASSET_MANIFEST.atlases.length, 9);
+  assert.equal(PASS_B1_COMPOSED_ASSET_MANIFEST.entries.length, 299);
+  assert.equal(PASS_B1_COMPOSED_ASSET_MANIFEST.atlases.length, 9);
+  assert.equal(RUNTIME_ASSET_MANIFEST.entries.length, 389);
+  assert.equal(RUNTIME_ASSET_MANIFEST.atlases.length, 10);
   assert.ok(RUNTIME_ASSET_MANIFEST.atlases.some((atlas) => atlas.atlasId === 'urban_depth_buildings'));
+  assert.ok(RUNTIME_ASSET_MANIFEST.atlases.some((atlas) => atlas.atlasId === 'public_realm'));
 });
 
 test('canonical building resolves a condition-aware runtime sprite without mutation', async () => {
