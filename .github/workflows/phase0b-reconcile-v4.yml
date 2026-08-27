@@ -1,0 +1,287 @@
+name: Phase 0B Main Reconciliation v4
+
+on:
+  push:
+    branches: [sync/phase0b-reconcile-v4]
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Phase 0B target
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: civic-2.0-phase-0b-forward-port
+          fetch-depth: 0
+      - name: Guard and merge current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main civic-2.0-phase-0b-forward-port
+          test "$(git rev-parse HEAD)" = "2df00e071f70578c93bf98de037ba074aa371585"
+          test "$(git rev-parse origin/main)" = "ee296a988a0be6db5a3f535c08e21ffb085906cc"
+          git config user.name "civic-foundry-reconciliation"
+          git config user.email "actions@users.noreply.github.com"
+          set +e
+          git merge --no-commit --no-ff origin/main
+          set -e
+          mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
+          expected=(
+            "src/save/saveV7.ts"
+            "src/simulation/buildings/BuildingSystem.ts"
+            "src/simulation/core/SimulationCore.ts"
+            "src/world/lots/LotSystem.ts"
+          )
+          test "${conflicts[*]}" = "${expected[*]}"
+          for path in "${expected[@]}"; do git checkout --theirs -- "$path"; done
+      - name: Node 22 on merged toolchain
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Reapply existing Phase 0B hooks to current-main files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def r(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: anchor count {count} for {old[:60]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          p = 'src/simulation/buildings/BuildingSystem.ts'
+          r(p,
+            "  private readonly buildings = new Map<string, Building>();\n  private readonly buildingsV2 = new Map<string, BuildingV2>();\n",
+            "  private readonly buildings = new Map<string, Building>();\n  private readonly buildingsV2 = new Map<string, BuildingV2>();\n  private _entityRevision = 0;\n\n  get entityRevision(): number {\n    return this._entityRevision;\n  }\n")
+          r(p,
+            "    this.buildings.set(lot.id, building);\n    return { ...building };",
+            "    this.buildings.set(lot.id, building);\n    this._entityRevision++;\n    return { ...building };")
+          r(p,
+            "    this.buildings.set(lot.id, replacement);\n    return { removed, replacement: { ...replacement } };",
+            "    this.buildings.set(lot.id, replacement);\n    this._entityRevision++;\n    return { removed, replacement: { ...replacement } };")
+          r(p,
+            "  tick(tick: number): void {\n    for (const building of this.buildings.values()) {\n      if (building.status === 'construction' && tick >= building.completionTick) building.status = 'occupied';\n    }\n  }",
+            "  tick(tick: number): void {\n    let changed = false;\n    for (const building of this.buildings.values()) {\n      if (building.status === 'construction' && tick >= building.completionTick) {\n        building.status = 'occupied';\n        changed = true;\n      }\n    }\n    if (changed) this._entityRevision++;\n  }")
+          r(p,
+            "        this.buildings.delete(lotId);\n        return { ...building };",
+            "        this.buildings.delete(lotId);\n        this._entityRevision++;\n        return { ...building };")
+          r(p,
+            "  restore(buildings: readonly Building[]): void {\n    this.buildings.clear();\n    for (const building of buildings) this.buildings.set(building.lotId, { ...building });\n  }",
+            "  restore(buildings: readonly Building[]): void {\n    this.buildings.clear();\n    for (const building of buildings) this.buildings.set(building.lotId, { ...building });\n    this._entityRevision++;\n  }")
+
+          p = 'src/world/lots/LotSystem.ts'
+          r(p,
+            "export class LotSystem {\n  private lots: Lot[] = [];\n",
+            "export class LotSystem {\n  private lots: Lot[] = [];\n  private _entityRevision = 0;\n\n  get entityRevision(): number {\n    return this._entityRevision;\n  }\n")
+          r(p,
+            "    this.lots = next.sort((a, b) => a.y - b.y || a.x - b.x);\n  }",
+            "    this.lots = next.sort((a, b) => a.y - b.y || a.x - b.x);\n    this._entityRevision++;\n  }")
+
+          p = 'src/simulation/core/SimulationCore.ts'
+          r(p,
+            "import type { FloodEventResolvedPayload, FloodEventStartedPayload, WorldGeneratedPayload, WorldMigratedTo1RPayload } from '../../world/foundation/WorldFoundationTypes.ts';\n",
+            "import type { FloodEventResolvedPayload, FloodEventStartedPayload, WorldGeneratedPayload, WorldMigratedTo1RPayload } from '../../world/foundation/WorldFoundationTypes.ts';\nimport { EntityRegistry } from '../../entities/EntityRegistry.ts';\nimport { EntityReferenceGraph } from '../../entities/EntityReferenceGraph.ts';\nimport { LegacyV7EntityProjector } from '../../entities/LegacyV7EntityProjector.ts';\nimport { commitEntityProjectionPartitions, type EntityProjectionPartition } from '../../entities/EntityProjection.ts';\nimport { assertEntityIntegrity, buildEntityDiagnostics, type EntityDiagnosticsSnapshot } from '../../entities/EntityDiagnostics.ts';\nimport type { UnresolvedEntityReference } from '../../entities/EntityTypes.ts';\n")
+          r(p,
+            "  readonly cadastralMutations: CadastralRuntimeMutationService;\n",
+            "  readonly cadastralMutations: CadastralRuntimeMutationService;\n  readonly entityRegistry: EntityRegistry;\n  readonly entityReferences: EntityReferenceGraph;\n  private readonly entityProjector: LegacyV7EntityProjector;\n  private lastSyncedEntityPartitions: readonly EntityProjectionPartition[] | undefined;\n  private lastSyncedEntitySourceRevisionKey: string | undefined;\n  private lastUnresolvedEntityReferences: readonly UnresolvedEntityReference[] = Object.freeze([]);\n\n  get entityDiagnostics(): EntityDiagnosticsSnapshot {\n    return buildEntityDiagnostics(this.entityRegistry, this.entityReferences, this.lastUnresolvedEntityReferences);\n  }\n")
+          r(p,
+            "    this.world = world;\n    this.parcelGeneration = new ParcelGenerationSystem();",
+            "    this.world = world;\n    this.entityRegistry = new EntityRegistry();\n    this.entityReferences = new EntityReferenceGraph();\n    this.entityProjector = new LegacyV7EntityProjector();\n    this.parcelGeneration = new ParcelGenerationSystem();")
+          r(p,
+            "    if (generationRegistry) this.kernel.random.restore(generationRegistry.snapshot());\n    this.kernel.snapshots.register('world', () => this.world.diagnosticSnapshot());",
+            "    if (generationRegistry) this.kernel.random.restore(generationRegistry.snapshot());\n    this.syncEntityProjection();\n    this.kernel.registerSystem({\n      id: 'entity-registry-sync',\n      reads: ['legacy-v7-city'],\n      writes: ['entity-registry'],\n      cadence: { every: 1 },\n      after: ['legacy-v7-city'],\n      execute: () => this.syncEntityProjection(),\n    });\n    this.kernel.invariants.register({\n      id: 'entity-referential-integrity',\n      cadence: { every: 1 },\n      check: () => assertEntityIntegrity(this.entityRegistry, this.entityReferences),\n    });\n    this.kernel.snapshots.register('world', () => this.world.diagnosticSnapshot());")
+          methods = (
+            "  rebuildEntityProjection(): void {\n"
+            "    this.lastSyncedEntitySourceRevisionKey = undefined;\n"
+            "    this.entityProjector.invalidate();\n"
+            "    this.syncEntityProjection();\n"
+            "  }\n\n"
+            "  private syncEntityProjection(): void {\n"
+            "    const sourceRevisionKey = this.entityProjector.sourceRevisionKey(this);\n"
+            "    if (sourceRevisionKey !== undefined && sourceRevisionKey === this.lastSyncedEntitySourceRevisionKey) return;\n\n"
+            "    const partitions = this.entityProjector.projectPartitions(this);\n"
+            "    if (partitions === this.lastSyncedEntityPartitions) {\n"
+            "      this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;\n"
+            "      return;\n"
+            "    }\n"
+            "    const result = commitEntityProjectionPartitions(\n"
+            "      this.entityRegistry,\n"
+            "      this.entityReferences,\n"
+            "      partitions,\n"
+            "    );\n"
+            "    this.lastUnresolvedEntityReferences = result.unresolved;\n"
+            "    this.lastSyncedEntityPartitions = partitions;\n"
+            "    this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;\n"
+            "  }\n\n"
+          )
+          r(p,
+            "  override buildRoad(cells: readonly CellCoord[], type: RoadType) {",
+            methods + "  override buildRoad(cells: readonly CellCoord[], type: RoadType) {")
+
+          p = 'src/save/saveV7.ts'
+          r(p,
+            "    core.restoreHousingState();\n    core.rebuildCadastreFromLegacyState();",
+            "    core.restoreHousingState();\n    core.rebuildCadastreFromLegacyState();\n    core.rebuildEntityProjection();")
+          r(p,
+            "  core.restoreHousingState(housingState);\n  core.rebuildCadastreFromLegacyState();",
+            "  core.restoreHousingState(housingState);\n  core.rebuildCadastreFromLegacyState();\n  core.rebuildEntityProjection();")
+          PY
+      - name: Install project dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: RED 1 - transactional cadastre must invalidate derived lot projection
+        shell: bash
+        run: |
+          cat > tests/entity-urban-fabric-reconciliation.test.ts <<'EOF'
+          import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
+          import { hydrateCoreV9, serializeCoreV9 } from '../src/save/saveV9.ts';
+          import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
+          import type { WorldPoint } from '../src/world/cadastre/Geometry.ts';
+
+          function flat(width = 8, height = 6): TerrainGrid {
+            const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({
+              elevation: 0.5,
+              water: false,
+              buildable: true,
+              biome: 'grass' as const,
+            }));
+            return new TerrainGrid(width, height, cells);
+          }
+
+          function preparedCore(seed: number): SimulationCore {
+            const core = new SimulationCore({ terrain: flat(), startingFunds: 300_000, seed });
+            assert.equal(core.buildRoad([
+              { x: 0, y: 2 }, { x: 1, y: 2 }, { x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 2 },
+            ], 'local').ok, true);
+            core.paintZone([{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }], 'residential');
+            core.step(1);
+            return core;
+          }
+
+          function splitLargestParcel(core: SimulationCore): void {
+            const parcel = [...core.cadastre.listParcels()]
+              .sort((a, b) => b.areaM2 - a.areaM2 || a.id.localeCompare(b.id))[0];
+            assert.ok(parcel, 'fixture requires a parcel');
+            const polygon = core.cadastre.parcelPolygon(parcel.id);
+            const xs = polygon.map((point) => point.x);
+            const ys = polygon.map((point) => point.y);
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const minY = Math.min(...ys);
+            const maxY = Math.max(...ys);
+            const cut: readonly WorldPoint[] = maxX - minX >= maxY - minY
+              ? Object.freeze([
+                  Object.freeze({ x: (minX + maxX) / 2, y: minY }),
+                  Object.freeze({ x: (minX + maxX) / 2, y: maxY }),
+                ])
+              : Object.freeze([
+                  Object.freeze({ x: minX, y: (minY + maxY) / 2 }),
+                  Object.freeze({ x: maxX, y: (minY + maxY) / 2 }),
+                ]);
+            const result = core.cadastralMutations.splitParcel(parcel.id, cut);
+            assert.equal(result.committed, true, `split failed: ${result.rejectionReasons.join(',')}`);
+          }
+
+          function activeLotIds(core: SimulationCore): string[] {
+            return core.entityRegistry.listActive('lot').map((record) => record.handle.legacyId).sort();
+          }
+
+          test('transactional cadastral mutation advances the derived lot source revision', () => {
+            const core = preparedCore(390);
+            const beforeRevision = core.lots.entityRevision;
+            const beforeRegistry = activeLotIds(core);
+            splitLargestParcel(core);
+            assert.ok(core.lots.entityRevision > beforeRevision, 'transactional cadastre rebuild must advance lot entity revision');
+            assert.deepEqual(activeLotIds(core), beforeRegistry, 'EntityRegistry remains derived and tick-synchronized');
+            core.step(1);
+            assert.deepEqual(activeLotIds(core), core.lots.list().map((lot) => lot.id).sort());
+          });
+          EOF
+          set +e
+          node --experimental-strip-types --test tests/entity-urban-fabric-reconciliation.test.ts > /tmp/red1.log 2>&1
+          red_status=$?
+          set -e
+          cat /tmp/red1.log
+          test "$red_status" -ne 0
+          grep -q 'transactional cadastre rebuild must advance lot entity revision' /tmp/red1.log
+      - name: GREEN 1 - revision the cadastre-derived lot facade
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('src/world/lots/LotSystem.ts')
+          text = p.read_text()
+          old = "    this.lots = next;\n  }\n\n  list(): Lot[] {"
+          new = "    this.lots = next;\n    this._entityRevision++;\n  }\n\n  list(): Lot[] {"
+          if text.count(old) != 1:
+              raise SystemExit(f'LotSystem GREEN anchor count {text.count(old)}')
+          p.write_text(text.replace(old, new, 1))
+          PY
+          node --experimental-strip-types --test tests/entity-urban-fabric-reconciliation.test.ts
+      - name: RED 2 - Save V9 hydration must rebuild derived entities after authoritative cadastre
+        shell: bash
+        run: |
+          cat >> tests/entity-urban-fabric-reconciliation.test.ts <<'EOF'
+
+          test('Save V9 hydration rebuilds derived entities from the persisted cadastral lot facade', () => {
+            const core = preparedCore(391);
+            splitLargestParcel(core);
+            core.step(1);
+            const expectedLots = core.lots.list().map((lot) => lot.id).sort();
+            const expectedRegistryLots = activeLotIds(core);
+            assert.deepEqual(expectedRegistryLots, expectedLots);
+
+            const hydrated = hydrateCoreV9(structuredClone(serializeCoreV9(core)));
+            assert.deepEqual(hydrated.lots.list().map((lot) => lot.id).sort(), expectedLots);
+            assert.deepEqual(activeLotIds(hydrated), expectedRegistryLots, 'V9 hydration must rebuild derived identity after restoring cadastre');
+          });
+          EOF
+          set +e
+          node --experimental-strip-types --test tests/entity-urban-fabric-reconciliation.test.ts > /tmp/red2.log 2>&1
+          red_status=$?
+          set -e
+          cat /tmp/red2.log
+          test "$red_status" -ne 0
+          grep -q 'V9 hydration must rebuild derived identity after restoring cadastre' /tmp/red2.log
+      - name: GREEN 2 - rebuild derived projection at end of V9 hydration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('src/save/saveV9.ts')
+          text = p.read_text()
+          old = "  core.propertyMarket.restore(save.propertyMarket, {\n    isHistoricalParcelId: (parcelId) => historicalParcelIds.has(parcelId),\n  });\n  return core;"
+          new = "  core.propertyMarket.restore(save.propertyMarket, {\n    isHistoricalParcelId: (parcelId) => historicalParcelIds.has(parcelId),\n  });\n  core.rebuildEntityProjection();\n  return core;"
+          if text.count(old) != 1:
+              raise SystemExit(f'saveV9 GREEN anchor count {text.count(old)}')
+          p.write_text(text.replace(old, new, 1))
+          PY
+          node --experimental-strip-types --test tests/entity-urban-fabric-reconciliation.test.ts
+      - name: Focused Phase 0B verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types --test tests/entity-*.test.ts tests/kernel-core-integration.test.ts
+      - name: Install asset verification runtime
+        run: python -m pip install Pillow==11.3.0
+      - name: Full core verification
+        run: npm run verify
+      - name: Commit and push two-parent reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git commit -m "merge: reconcile current main into Phase 0B"
+          test "$(git show -s --format='%P' HEAD | wc -w)" -eq 2
+          git push origin HEAD:civic-2.0-phase-0b-forward-port
