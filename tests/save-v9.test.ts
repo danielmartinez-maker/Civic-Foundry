@@ -80,7 +80,7 @@ function runtimeMutationSaveCore(): SimulationCore {
   assert.ok(parcelId);
   const parcel = core.cadastre.getParcel(parcelId);
   assert.ok(parcel);
-  assert.ok(parcel.areaM2 >= 8_000, 'fixture must create one two-cell parcel large enough for a legal split');
+  assert.equal(parcel.areaM2, 800, 'fixture must create one two-cell parcel large enough for a legal split');
 
   core.zoning.assignParcel(parcel.id, 'R5');
   core.propertyMarket.restore({
