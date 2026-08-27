@@ -2,5 +2,12 @@ node_modules/
 dist/
 .worktrees/
 test-artifacts/
+coverage/
+.tmp/
+.cache/
+.vscode/
+.idea/
+*.tsbuildinfo
 *.log
 .DS_Store
+Thumbs.db
