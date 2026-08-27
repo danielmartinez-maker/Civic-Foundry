@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   reconcile:
-    if: "${{ !contains(github.event.head_commit.message, 'merge: reconcile Phase 0B') }}"
+    if: "${{ !contains(github.event.head_commit.message, 'fix: reconcile Phase 0B with Urban Fabric 2.0') && !contains(github.event.head_commit.message, 'merge: reconcile Phase 0B') }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,10 +29,62 @@ jobs:
             echo "BASE=$(git rev-parse HEAD)"
             echo "PHASE0B=$(git rev-parse origin/civic-2.0-phase-0b-forward-port)"
             git merge --no-ff -X ours origin/civic-2.0-phase-0b-forward-port -m "merge: reconcile Phase 0B EntityRegistry onto Urban Fabric 2.0"
-            echo "HEAD=$(git rev-parse HEAD)"
-            echo "--- changed files vs baseline ---"
-            git diff --name-status HEAD^1..HEAD
+            echo "MERGE_HEAD=$(git rev-parse HEAD)"
           } 2>&1 | tee /tmp/n3-merge.log
+      - name: Repair Urban Fabric integration seams
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          core_path = Path('src/simulation/core/SimulationCore.ts')
+          core = core_path.read_text()
+          if 'private syncEntityProjection(): void' not in core:
+              anchor = '  runDesignStorm(event: DesignStormEvent): FloodResult {'
+              method = '''  private syncEntityProjection(): void {\n    const sourceRevisionKey = this.entityProjector.sourceRevisionKey(this);\n    if (sourceRevisionKey !== undefined && sourceRevisionKey === this.lastSyncedEntitySourceRevisionKey) return;\n\n    const partitions = this.entityProjector.projectPartitions(this);\n    if (partitions === this.lastSyncedEntityPartitions) {\n      this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;\n      return;\n    }\n    const result = commitEntityProjectionPartitions(\n      this.entityRegistry,\n      this.entityReferences,\n      partitions,\n    );\n    this.lastUnresolvedEntityReferences = result.unresolved;\n    this.lastSyncedEntityPartitions = partitions;\n    this.lastSyncedEntitySourceRevisionKey = sourceRevisionKey;\n  }\n\n'''
+              if anchor not in core:
+                  raise SystemExit('SimulationCore insertion anchor missing')
+              core = core.replace(anchor, method + anchor, 1)
+          core_path.write_text(core)
+
+          lot_path = Path('src/world/lots/LotSystem.ts')
+          lots = lot_path.read_text()
+          if 'get entityRevision(): number' not in lots:
+              raise SystemExit('Phase 0B lot revision contract missing after merge')
+          cadastre_tail = '    this.lots = next;\n  }\n\n  list(): Lot[] {'
+          if cadastre_tail in lots:
+              lots = lots.replace(cadastre_tail, '    this.lots = next;\n    this._entityRevision++;\n  }\n\n  list(): Lot[] {', 1)
+          elif 'rebuildFromCadastre' in lots and 'this.lots = next;\n    this._entityRevision++;\n  }\n\n  list(): Lot[] {' not in lots:
+              raise SystemExit('LotSystem cadastral revision insertion anchor missing')
+          lot_path.write_text(lots)
+
+          save7_path = Path('src/save/saveV7.ts')
+          save7 = save7_path.read_text()
+          first = '    core.rebuildCadastreFromLegacyState();\n    return core;'
+          if first in save7 and '    core.rebuildCadastreFromLegacyState();\n    core.rebuildEntityProjection();\n    return core;' not in save7:
+              save7 = save7.replace(first, '    core.rebuildCadastreFromLegacyState();\n    core.rebuildEntityProjection();\n    return core;', 1)
+          second = '  core.rebuildCadastreFromLegacyState();\n  return core;'
+          if second in save7 and '  core.rebuildCadastreFromLegacyState();\n  core.rebuildEntityProjection();\n  return core;' not in save7:
+              save7 = save7.replace(second, '  core.rebuildCadastreFromLegacyState();\n  core.rebuildEntityProjection();\n  return core;', 1)
+          save7_path.write_text(save7)
+
+          save9_path = Path('src/save/saveV9.ts')
+          save9 = save9_path.read_text()
+          marker = '  core.propertyMarket.restore(save.propertyMarket, {'
+          start = save9.find(marker)
+          if start < 0:
+              raise SystemExit('Save V9 property restore anchor missing')
+          ret = save9.find('  return core;', start)
+          if ret < 0:
+              raise SystemExit('Save V9 return anchor missing')
+          if 'core.rebuildEntityProjection();' not in save9[start:ret]:
+              save9 = save9[:ret] + '  core.rebuildEntityProjection();\n' + save9[ret:]
+          save9_path.write_text(save9)
+          PY
+
+          git add src/simulation/core/SimulationCore.ts src/world/lots/LotSystem.ts src/save/saveV7.ts src/save/saveV9.ts
+          git commit -m "fix: reconcile Phase 0B with Urban Fabric 2.0"
+          git diff HEAD^ --check
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -45,11 +97,11 @@ jobs:
         run: |
           set -o pipefail
           npm ci 2>&1 | tee /tmp/n3-install.log
-      - name: Focused EntityRegistry tests
+      - name: Focused reconciliation tests
         shell: bash
         run: |
           set -o pipefail
-          node --experimental-strip-types --test tests/entity-*.test.ts 2>&1 | tee /tmp/n3-focused.log
+          node --experimental-strip-types --test tests/entity-*.test.ts tests/save-v9.test.ts tests/urban-fabric-runtime-mutations.test.ts 2>&1 | tee /tmp/n3-focused.log
       - name: Full repository verification
         shell: bash
         run: |
