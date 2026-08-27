@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   reconcile:
-    if: github.event.head_commit.message == 'ci: diagnose N3 clean reconciliation'
+    if: "${{ !contains(github.event.head_commit.message, 'merge: reconcile Phase 0B') }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +21,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Merge Phase 0B onto current main baseline
-        id: merge
         shell: bash
         run: |
           set -o pipefail
@@ -31,7 +30,7 @@ jobs:
             echo "PHASE0B=$(git rev-parse origin/civic-2.0-phase-0b-forward-port)"
             git merge --no-ff -X ours origin/civic-2.0-phase-0b-forward-port -m "merge: reconcile Phase 0B EntityRegistry onto Urban Fabric 2.0"
             echo "HEAD=$(git rev-parse HEAD)"
-            echo "--- changed files vs main baseline ---"
+            echo "--- changed files vs baseline ---"
             git diff --name-status HEAD^1..HEAD
           } 2>&1 | tee /tmp/n3-merge.log
       - uses: actions/setup-node@v4
@@ -56,11 +55,10 @@ jobs:
         run: |
           set -o pipefail
           npm run verify 2>&1 | tee /tmp/n3-verify.log
-      - name: Record reconciliation tree
+      - name: Push verified reconciliation
         if: success()
         shell: bash
         run: |
-          git status --short
           git rev-parse HEAD | tee /tmp/n3-head.txt
           git push origin HEAD:integration/n3-phase0b-main-clean
       - name: Upload diagnostics
