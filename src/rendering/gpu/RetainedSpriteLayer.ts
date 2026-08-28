@@ -1,5 +1,5 @@
-import { Container, Sprite, Texture } from 'pixi.js';
-import type { AssetManifestEntry } from '../assets/AssetTypes.ts';
+import { Sprite, Texture } from 'pixi.js';
+import type { Container } from 'pixi.js';
 import type { IsometricCamera } from '../isometric/IsometricCamera.ts';
 import { isProjectedSpriteVisible, type Viewport } from '../isometric/IsometricCulling.ts';
 import type { WorldSize } from '../isometric/IsometricProjection.ts';
@@ -8,13 +8,15 @@ import type { GpuAssetRegistry } from './GpuAssetRegistry.ts';
 import { RetainedSceneIndex, type RetainedTotals } from './RetainedSceneIndex.ts';
 
 export class RetainedSpriteLayer {
+  readonly container: Container;
+  private readonly assets: GpuAssetRegistry;
   private readonly index = new RetainedSceneIndex<Sprite>();
   private totalsValue: RetainedTotals = Object.freeze({ active: 0, created: 0, updated: 0, removed: 0 });
 
-  constructor(
-    readonly container: Container,
-    private readonly assets: GpuAssetRegistry,
-  ) {}
+  constructor(container: Container, assets: GpuAssetRegistry) {
+    this.container = container;
+    this.assets = assets;
+  }
 
   sync(
     commands: readonly BaseSpriteCommand[],
