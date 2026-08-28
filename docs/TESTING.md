@@ -2,12 +2,15 @@
 
 ## Required CI commands
 
+The canonical core verification gate is:
+
 ```bash
-npm test
-npm run typecheck
-npm run lint
-npm run assets:check
-npm run build
+npm run verify
+```
+
+It expands to formatting, lint, repository policy, architecture policy, strict typechecking, Node tests, asset policy/validation, and the production build. CI then runs the compiled browser and visual regression stack:
+
+```bash
 npm run test:smoke
 npm run test:smoke:phase7
 npm run test:smoke:urban-fabric
@@ -17,17 +20,17 @@ python tests/smoke/isometric_visual_smoke.py
 
 `npm test` uses Node's built-in test runner with TypeScript strip-types. Source typechecking uses strict `tsc`. Browser smokes execute the compiled application in Chromium through Playwright.
 
-The GitHub Actions `verify` job runs the same stack and treats the dedicated Urban Fabric smoke as a required gate.
-
 ## Current verified baseline
 
-Task 13 runtime-mutation implementation head `fa23d77bdaba7f8d260b10ca2d75507f38ed81a6` passed exact-head Civic Foundry CI run **#992** with:
+The merged desktop GPU runtime feature head `725c9cec539f1df32386c4c35e95c81a7fe134ab` passed GitHub Actions run **33137152536** before PR #98 was integrated into `main` as merge commit `c2e7befd9174b65dadc90e1e381d892accf780c6`.
 
-- **595/595 Node tests**;
+That verification completed with:
+
+- **600/600 Node tests**;
 - strict TypeScript typecheck;
 - source lint with zero errors;
 - repository and architecture policy checks;
-- isometric asset source validation;
+- asset policy and isometric asset source validation;
 - production build and atlas generation;
 - Phase 6 compiled browser smoke;
 - Phase 7 compiled browser smoke;
@@ -35,7 +38,9 @@ Task 13 runtime-mutation implementation head `fa23d77bdaba7f8d260b10ca2d75507f38
 - Isometric Pass A functional browser smoke;
 - Isometric Pass A visual smoke.
 
-The final documentation/reconciliation head must rerun this complete stack before PR #63 is treated as integration-ready.
+This is exact evidence for the merged PR #98 feature tranche. The merge commit itself does not currently expose a separate attached post-merge status context, so do not describe that absence as a new verification run.
+
+The prior Urban Fabric Task 13 checkpoint remains useful historical evidence: head `fa23d77bdaba7f8d260b10ca2d75507f38ed81a6` passed CI run **#992** with **595/595 Node tests** and the then-current full browser/visual stack. PR #63 later passed its final exact-head reconciliation gate and was merged into `main`; it is no longer an isolated integration vehicle.
 
 ## Regression layers
 
@@ -238,4 +243,4 @@ Playwright request routing serves the compiled `dist` tree under the controlled 
 
 A task slice may be called green only after its relevant RED/acceptance test has passed and the full CI gate for the resulting head is successful. A failed downstream browser/visual gate is treated as a real integration defect unless evidence proves infrastructure failure.
 
-Task 13 requires two separate exact-head checkpoints: a green implementation head proving the runtime transaction behavior, followed by a green final documentation/reconciliation head. `main` is not updated by either verification step. PR #63 remains the isolated integration vehicle until explicit approval to merge.
+Historical feature-specific exact-head checkpoints remain valid evidence for the commits they tested, but a merged or later repository state must not be described as verified by a run that did not execute against that state. Live documentation should identify whether evidence applies to a feature head, PR merge ref, or post-merge `main` commit.
