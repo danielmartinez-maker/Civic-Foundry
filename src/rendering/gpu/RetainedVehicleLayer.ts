@@ -1,4 +1,5 @@
-import { Container, Sprite, Texture } from 'pixi.js';
+import { Sprite, Texture } from 'pixi.js';
+import type { Container } from 'pixi.js';
 import type { IsometricCamera } from '../isometric/IsometricCamera.ts';
 import type { WorldSize } from '../isometric/IsometricProjection.ts';
 import type { GpuAssetRegistry } from './GpuAssetRegistry.ts';
@@ -20,16 +21,18 @@ export type VehicleLayerStats = Readonly<{
 }>;
 
 export class RetainedVehicleLayer {
+  readonly container: Container;
+  private readonly assets: GpuAssetRegistry;
   private readonly active = new Map<string, ActiveVehicleSprite>();
   private readonly pools = new Map<string, Sprite[]>();
   private createdTotal = 0;
   private reusedTotal = 0;
   private destroyedTotal = 0;
 
-  constructor(
-    readonly container: Container,
-    private readonly assets: GpuAssetRegistry,
-  ) {}
+  constructor(container: Container, assets: GpuAssetRegistry) {
+    this.container = container;
+    this.assets = assets;
+  }
 
   sync(
     commands: readonly VehicleSpriteCommand[],
