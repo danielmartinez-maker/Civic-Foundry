@@ -42,13 +42,7 @@ async function copyOptionalVendorFiles(root) {
     await copyFile(clipperSource, join(vendor, "clipper2.min.mjs"));
   }
 
-  const pixiSource = join(
-    root,
-    "node_modules",
-    "pixi.js",
-    "dist",
-    "pixi.mjs",
-  );
+  const pixiSource = join(root, "node_modules", "pixi.js", "dist", "pixi.mjs");
   if (!(await pathExists(pixiSource))) {
     throw new Error(
       "PixiJS browser runtime is missing; run npm ci before building.",
