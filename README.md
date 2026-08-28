@@ -174,7 +174,7 @@ Phase 1R acceptance established deterministic world generation, hydrology, spati
 
 Urban Fabric 2.0 adds repository-wide verification for cadastral geometry/topology, parcel mutation, dimensional zoning, envelopes/compliance, mixed-use massing, lifecycle/renovation, HBU/property/site assembly, runtime cadastral authority, Save V9 migration/round-trip/reference validation, deterministic mutation fuzzing, and compiled Urban Fabric browser behavior.
 
-The desktop GPU runtime is integrated on `main` through PR #98 and adds contract coverage for the production WebGL renderer, local PixiJS module resolution, and hardened Electron host while retaining the inherited browser and visual smoke gates.
+The desktop GPU runtime feature head `725c9cec539f1df32386c4c35e95c81a7fe134ab` passed GitHub Actions run `33137152536` with the complete then-current core/browser/visual stack and was merged through PR #98 into `main` as `c2e7befd9174b65dadc90e1e381d892accf780c6` on 2026-08-27 (America/Monterrey). The production `GameApp` path on `main` therefore uses `GpuWorldRenderer`; legacy Canvas2D sources remain migration references only.
 
 GPU Presentation Phase 2 adds deterministic Pass A atlas reuse, retained static sprite identity, bounded moving-vehicle pools, initialization/asset diagnostics, and compiled browser proof that unchanged redraws and camera motion do not recreate static display objects. The Phase 2 branch changes presentation/tests/docs only; authoritative simulation, world, and save domains are unchanged. Specialized analytical-overlay parity remains the next presentation tranche. PR #99 remains a draft integration boundary until explicit approval.
 
