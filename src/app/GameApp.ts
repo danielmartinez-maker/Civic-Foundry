@@ -1,7 +1,7 @@
 import { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import type { CellCoord, SpeedMode, ZoneType } from '../simulation/core/types.ts';
 import { hydrateCore, serializeCore } from '../save/save.ts';
-import { WorldRenderer, type CellSelection } from '../rendering/WorldRenderer.ts';
+import { GpuWorldRenderer, type CellSelection } from '../rendering/gpu/GpuWorldRenderer.ts';
 import type { TrafficOverlayMode } from '../rendering/TrafficOverlayLayer.ts';
 import { mapServiceOverlay, type ServiceOverlayMode } from '../rendering/ServiceOverlayLayer.ts';
 import { mapTransitOverlay, type TransitOverlayMode } from '../rendering/TransitOverlayLayer.ts';
@@ -30,7 +30,7 @@ const TOOLS: readonly [ToolId, string, string][] = [
 export class GameApp {
   core: SimulationCore;
   readonly tools = new ToolController();
-  readonly renderer: WorldRenderer;
+  readonly renderer: GpuWorldRenderer;
   private readonly hud: HudView;
   private readonly inspector: HTMLElement;
   private readonly notification: HTMLElement;
@@ -55,7 +55,7 @@ export class GameApp {
     this.core = new SimulationCore({ width: 40, height: 24, seed: 42, startingFunds: 250_000 });
     root.innerHTML = this.layoutHtml();
     const canvas = this.required<HTMLCanvasElement>('#world');
-    this.renderer = new WorldRenderer(canvas);
+    this.renderer = new GpuWorldRenderer(canvas);
     this.hud = new HudView(this.required('#hud'));
     this.inspector = this.required('#inspector-content');
     this.notification = this.required('#notification');
