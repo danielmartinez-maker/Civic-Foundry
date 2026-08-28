@@ -12,7 +12,7 @@ Production code remains grouped by domain (`app`, `data`, `rendering`, `save`, `
 
 The compiler baseline keeps `strict`, `noUncheckedIndexedAccess`, and `exactOptionalPropertyTypes` enabled. Define explicit interfaces/types for persistent data, configuration, system boundaries, messages, and asset references. Avoid `any`; where external or untrusted data enters the system, validate and narrow it before use.
 
-Civic Foundry currently compiles to browser-native ES modules. Do not introduce TypeScript `paths` aliases that the browser cannot resolve. A future bundler/import-map migration requires an ADR and runtime verification.
+Civic Foundry compiles to browser-native ES modules. Do not introduce TypeScript `paths` aliases that the browser cannot resolve. ADR 0002 permits the narrow local import map used to resolve pinned browser ESM runtime dependencies such as PixiJS; broader bundler or dependency-resolution changes require a separate ADR and runtime verification.
 
 Use ESLint for semantic/static checks and Prettier for deterministic formatting of repository/tooling surfaces. Gameplay source formatting is migrated incrementally to avoid creating high-conflict whitespace-only diffs across active feature stacks; new or substantially edited source should follow the prevailing formatted style.
 
