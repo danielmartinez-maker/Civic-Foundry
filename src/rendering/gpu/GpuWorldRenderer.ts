@@ -1,5 +1,4 @@
 import { Application, Container, Graphics } from 'pixi.js';
-import { definitionForBuilding } from '../../simulation/buildings/BuildingSystem.ts';
 import type { SimulationCore } from '../../simulation/core/SimulationCore.ts';
 import { LEGACY_CELL_SIZE_METERS, type WorldPoint } from '../../world/cadastre/Geometry.ts';
 import type { EconomyOverlayMode } from '../EconomyOverlayLayer.ts';
@@ -7,49 +6,21 @@ import type { ServiceOverlayMode } from '../ServiceOverlayLayer.ts';
 import type { TrafficOverlayMode } from '../TrafficOverlayLayer.ts';
 import type { TransitOverlayMode } from '../TransitOverlayLayer.ts';
 import type { UrbanFabricOverlayMode } from '../CadastralOverlayLayer.ts';
+import { PASS_A_ASSET_MANIFEST } from '../assets/PassAAssetManifest.ts';
 import { IsometricCamera } from '../isometric/IsometricCamera.ts';
+import { buildBaseSpriteCommands, type BaseSpriteCommand } from './BaseSpriteCommands.ts';
+import { GpuAssetRegistry } from './GpuAssetRegistry.ts';
+import { RetainedSpriteLayer } from './RetainedSpriteLayer.ts';
 
 export type GpuPoint = Readonly<{ x: number; y: number }>;
 export type CellSelection = Readonly<{ x: number; y: number }> | null;
 type RendererWorldSize = Readonly<{ width: number; height: number }>;
 type CellCoord = Readonly<{ x: number; y: number }>;
 
-type BlockCommand = Readonly<{
-  x: number;
-  y: number;
-  height: number;
-  topColor: string;
-  leftColor: string;
-  rightColor: string;
-  outlineColor: string;
-}>;
-
-const TERRAIN_COLORS: Readonly<Record<string, string>> = Object.freeze({
-  water: '#5f94bd',
-  wetland: '#789d82',
-  hills: '#aa9d78',
-  forest: '#68865f',
-  plains: '#8ea86f',
-  grassland: '#8ea86f',
-});
-
 const ZONE_COLORS: Readonly<Record<string, string>> = Object.freeze({
   residential: '#53b566',
   commercial: '#4987d7',
   industrial: '#cc9946',
-});
-
-const ROAD_COLORS: Readonly<Record<string, string>> = Object.freeze({
-  local: '#66584f',
-  collector: '#756054',
-  arterial: '#8b6754',
-  highway: '#795241',
-});
-
-const BUILDING_COLORS = Object.freeze({
-  residential: Object.freeze({ top: '#d8dcc9', left: '#a8ad9b', right: '#bdc2ae' }),
-  commercial: Object.freeze({ top: '#c9d7e1', left: '#8fa8b8', right: '#a9bdc9' }),
-  industrial: Object.freeze({ top: '#d7c6ac', left: '#a99172', right: '#bea785' }),
 });
 
 const OVERLAY_COLORS = Object.freeze({
@@ -60,27 +31,44 @@ const OVERLAY_COLORS = Object.freeze({
   urbanFabric: '#df78c8',
 });
 
+export type GpuSceneStats = Readonly<{
+  staticActive: number;
+  staticCreated: number;
+  staticUpdated: number;
+  staticRemoved: number;
+}>;
+
 // Presentation-only facade. Authoritative state remains inside SimulationCore.
 export class GpuWorldRenderer {
   readonly canvas: HTMLCanvasElement;
   private readonly camera = new IsometricCamera();
   private readonly application = new Application();
+  private readonly assets = new GpuAssetRegistry(PASS_A_ASSET_MANIFEST);
   private readonly scene = new Container();
-  private readonly terrainLayer = new Graphics();
+  private readonly terrainContainer = new Container();
+  private readonly terrainEffectsLayer = new Graphics();
   private readonly zoningLayer = new Graphics();
-  private readonly roadLayer = new Graphics();
-  private readonly objectLayer = new Graphics();
+  private readonly roadContainer = new Container();
+  private readonly roadEffectsLayer = new Graphics();
+  private readonly objectContainer = new Container();
   private readonly vehicleLayer = new Graphics();
   private readonly overlayLayer = new Graphics();
   private readonly selectionLayer = new Graphics();
+  private readonly terrainSprites = new RetainedSpriteLayer(this.terrainContainer, this.assets);
+  private readonly roadSprites = new RetainedSpriteLayer(this.roadContainer, this.assets);
+  private readonly objectSprites = new RetainedSpriteLayer(this.objectContainer, this.assets);
+  private readonly initializationPromise: Promise<void>;
   private initialized = false;
+  private initializationError: string | null = null;
   private lastWorldSize: RendererWorldSize | null = null;
   private urbanFabricOverlayMode: UrbanFabricOverlayMode = 'none';
   private urbanFabricSelectedParcelId: string | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    void this.initialize();
+    this.initializationPromise = this.initialize().catch((error: unknown) => {
+      this.initializationError = error instanceof Error ? error.message : String(error);
+    });
   }
 
   get cellSize(): number { return this.camera.tileWidth; }
@@ -131,11 +119,24 @@ export class GpuWorldRenderer {
   }
 
   async preloadAssets(): Promise<void> {
-    await this.ready();
+    await this.initializationPromise;
+    if (this.initializationError) throw new Error(`GPU renderer initialization failed: ${this.initializationError}`);
   }
 
   assetDiagnostics(): readonly string[] {
-    return Object.freeze([]);
+    const diagnostics = [...this.assets.diagnostics()];
+    if (this.initializationError) diagnostics.push(`renderer initialization failed: ${this.initializationError}`);
+    return Object.freeze(diagnostics.sort());
+  }
+
+  debugSceneStats(): GpuSceneStats {
+    const stats = [this.terrainSprites.stats(), this.roadSprites.stats(), this.objectSprites.stats()];
+    return Object.freeze({
+      staticActive: stats.reduce((sum, item) => sum + item.active, 0),
+      staticCreated: stats.reduce((sum, item) => sum + item.created, 0),
+      staticUpdated: stats.reduce((sum, item) => sum + item.updated, 0),
+      staticRemoved: stats.reduce((sum, item) => sum + item.removed, 0),
+    });
   }
 
   resize(): void {
@@ -156,14 +157,24 @@ export class GpuWorldRenderer {
     urbanFabricOverlayMode?: UrbanFabricOverlayMode,
     selectedParcelId?: string | null,
   ): void {
-    this.worldSize(core);
-    if (!this.initialized) return;
+    const size = this.worldSize(core);
+    if (!this.initialized || !this.assets.ready) return;
 
-    this.clearLayers();
-    this.drawTerrain(core);
+    const rect = this.canvas.getBoundingClientRect();
+    const viewport = { width: rect.width, height: rect.height };
+    const commands = buildBaseSpriteCommands(core, this.camera.quarterTurns);
+    this.syncBaseSprites(commands, size, viewport);
+
+    this.terrainEffectsLayer.clear();
+    this.zoningLayer.clear();
+    this.roadEffectsLayer.clear();
+    this.vehicleLayer.clear();
+    this.overlayLayer.clear();
+    this.selectionLayer.clear();
+
+    this.drawTerrainEffects(core);
     this.drawZoning(core);
-    this.drawRoads(core);
-    this.drawObjects(core);
+    this.drawRoadDetails(core);
     this.drawVehicles(core);
     this.drawOverlayTint(
       core,
@@ -188,12 +199,15 @@ export class GpuWorldRenderer {
       background: '#11171b',
       resizeTo: this.canvas.parentElement ?? window,
     });
+    await this.assets.preload();
 
     this.scene.addChild(
-      this.terrainLayer,
+      this.terrainContainer,
+      this.terrainEffectsLayer,
       this.zoningLayer,
-      this.roadLayer,
-      this.objectLayer,
+      this.roadContainer,
+      this.roadEffectsLayer,
+      this.objectContainer,
       this.vehicleLayer,
       this.overlayLayer,
       this.selectionLayer,
@@ -202,29 +216,38 @@ export class GpuWorldRenderer {
     this.initialized = true;
   }
 
-  private async ready(): Promise<void> {
-    while (!this.initialized) await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+  private syncBaseSprites(
+    commands: readonly BaseSpriteCommand[],
+    size: RendererWorldSize,
+    viewport: Readonly<{ width: number; height: number }>,
+  ): void {
+    this.terrainSprites.sync(
+      commands.filter((item) => item.category === 'terrain'),
+      this.camera,
+      size,
+      viewport,
+    );
+    this.roadSprites.sync(
+      commands.filter((item) => item.category === 'road'),
+      this.camera,
+      size,
+      viewport,
+    );
+    this.objectSprites.sync(
+      commands.filter((item) => item.category !== 'terrain' && item.category !== 'road'),
+      this.camera,
+      size,
+      viewport,
+    );
   }
 
-  private clearLayers(): void {
-    this.terrainLayer.clear();
-    this.zoningLayer.clear();
-    this.roadLayer.clear();
-    this.objectLayer.clear();
-    this.vehicleLayer.clear();
-    this.overlayLayer.clear();
-    this.selectionLayer.clear();
-  }
-
-  private drawTerrain(core: SimulationCore): void {
+  private drawTerrainEffects(core: SimulationCore): void {
     const size = this.worldSize(core);
     for (let y = 0; y < core.terrain.height; y += 1) {
       for (let x = 0; x < core.terrain.width; x += 1) {
         const terrain = core.terrain.get(x, y);
-        const color = TERRAIN_COLORS[terrain.biome] ?? '#8ea86f';
-        this.fillDiamond(this.terrainLayer, this.camera.tilePolygon(x, y, size), color, 1, '#1d2929', 0.34);
         if (!terrain.buildable && !terrain.water) {
-          this.fillDiamond(this.terrainLayer, this.camera.tilePolygon(x, y, size), '#ffffff', 0.07);
+          this.fillDiamond(this.terrainEffectsLayer, this.camera.tilePolygon(x, y, size), '#ffffff', 0.07);
         }
       }
     }
@@ -242,78 +265,13 @@ export class GpuWorldRenderer {
     }
   }
 
-  private drawRoads(core: SimulationCore): void {
+  private drawRoadDetails(core: SimulationCore): void {
+    if (this.camera.zoom < 1.6) return;
     const size = this.worldSize(core);
     for (const road of core.roads.list()) {
       const polygon = this.camera.tilePolygon(road.x, road.y, size);
-      this.fillDiamond(
-        this.roadLayer,
-        polygon,
-        ROAD_COLORS[road.type] ?? '#66584f',
-        1,
-        '#c5b7a7',
-        this.camera.zoom >= 1.4 ? 0.18 : 0.08,
-      );
-      const center = this.camera.tileCenter(road.x, road.y, size);
-      const half = Math.max(2, this.camera.tileWidth * 0.12);
-      this.roadLayer
-        .moveTo(center.x - half, center.y)
-        .lineTo(center.x + half, center.y)
-        .stroke({ color: '#d8d1c8', alpha: 0.2, width: Math.max(1, this.camera.zoom) });
+      this.strokePolygon(this.roadEffectsLayer, polygon, '#ffffff', 1, 0.035);
     }
-  }
-
-  private drawObjects(core: SimulationCore): void {
-    const size = this.worldSize(core);
-    const commands: BlockCommand[] = [];
-
-    for (const building of core.buildings.list()) {
-      const palette = BUILDING_COLORS[building.zone] ?? BUILDING_COLORS.residential;
-      const intensity = definitionForBuilding(building).intensity;
-      const intensityHeight = intensity === 'high' ? 38 : intensity === 'medium' ? 27 : 18;
-      const constructionScale = building.status === 'construction' ? 0.55 : 1;
-      commands.push({
-        x: building.x,
-        y: building.y,
-        height: intensityHeight * this.camera.zoom * constructionScale,
-        topColor: building.status === 'construction' ? '#d3b67c' : palette.top,
-        leftColor: building.status === 'construction' ? '#9e8152' : palette.left,
-        rightColor: building.status === 'construction' ? '#b89a62' : palette.right,
-        outlineColor: '#283033',
-      });
-    }
-
-    for (const facility of core.services.listFacilities()) {
-      commands.push({
-        x: facility.x,
-        y: facility.y,
-        height: 30 * this.camera.zoom,
-        topColor: '#d9edf0',
-        leftColor: '#79a8af',
-        rightColor: '#96bdc2',
-        outlineColor: '#244248',
-      });
-    }
-
-    for (const facility of core.utilities.listFacilities()) {
-      commands.push({
-        x: facility.x,
-        y: facility.y,
-        height: 25 * this.camera.zoom,
-        topColor: '#e6d6a7',
-        leftColor: '#9e8950',
-        rightColor: '#bba66b',
-        outlineColor: '#403a27',
-      });
-    }
-
-    commands.sort((left, right) => {
-      const lp = this.camera.tileCenter(left.x, left.y, size);
-      const rp = this.camera.tileCenter(right.x, right.y, size);
-      return lp.y - rp.y || lp.x - rp.x;
-    });
-
-    for (const command of commands) this.drawBlock(this.objectLayer, command, size);
   }
 
   private drawVehicles(core: SimulationCore): void {
@@ -461,17 +419,6 @@ export class GpuWorldRenderer {
       0.95,
       Math.max(1.5, 2 * this.camera.zoom),
     );
-  }
-
-  private drawBlock(graphics: Graphics, command: BlockCommand, size: RendererWorldSize): void {
-    const base = this.camera.tilePolygon(command.x, command.y, size);
-    if (base.length < 4) return;
-    const top = base.map((point) => ({ x: point.x, y: point.y - command.height }));
-    const eastSide = [base[1]!, base[2]!, top[2]!, top[1]!];
-    const westSide = [base[2]!, base[3]!, top[3]!, top[2]!];
-    this.fillPolygon(graphics, westSide, command.leftColor, 1, command.outlineColor, 0.5, 1);
-    this.fillPolygon(graphics, eastSide, command.rightColor, 1, command.outlineColor, 0.5, 1);
-    this.fillPolygon(graphics, top, command.topColor, 1, command.outlineColor, 0.72, 1);
   }
 
   private drawVehicleMarker(
