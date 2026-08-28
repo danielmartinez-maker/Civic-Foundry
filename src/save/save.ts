@@ -4,7 +4,8 @@ import { hydrateCoreV5, serializeCoreV5 } from './saveV5.ts';
 import { hydrateCoreV6, serializeCoreV6 } from './saveV6.ts';
 import { hydrateCoreV7, serializeCoreV7, type SaveV7 } from './saveV7.ts';
 import { hydrateCoreV8, serializeCoreV8 } from './saveV8.ts';
-import { hydrateCoreV9, serializeCoreV9, type SaveV9 } from './saveV9.ts';
+import { hydrateCoreV9, serializeCoreV9 } from './saveV9.ts';
+import { hydrateCoreV10, serializeCoreV10, type SaveV10 } from './saveV10.ts';
 
 export type { SaveTrafficVehicle, SaveV3, SaveV4 } from './saveLegacy.ts';
 export type { SaveV5 } from './saveV5.ts';
@@ -12,6 +13,7 @@ export type { SaveV6 } from './saveV6.ts';
 export type { SaveV7 } from './saveV7.ts';
 export type { SaveV8 } from './saveV8.ts';
 export type { SaveV9 } from './saveV9.ts';
+export type { SaveV10 } from './saveV10.ts';
 export {
   hydrateCoreV4,
   serializeCoreV4,
@@ -25,20 +27,36 @@ export {
   serializeCoreV8,
   hydrateCoreV9,
   serializeCoreV9,
+  hydrateCoreV10,
+  serializeCoreV10,
 };
 
-export function serializeCore(core: SimulationCore): SaveV9 {
+export function serializeCore(core: SimulationCore): SaveV10 {
   const sanitizedV7 = sanitizePausedServiceState(serializeCoreV7(core), core);
   const v8 = serializeCoreV8(core, sanitizedV7);
-  return serializeCoreV9(core, v8);
+  const v9 = serializeCoreV9(core, v8);
+  return serializeCoreV10(core, v9);
 }
 
-export function hydrateCore(input: unknown): SimulationCore { return hydrateCoreV9(input); }
+export function hydrateCore(input: unknown): SimulationCore {
+  return hydrateCoreV10(input);
+}
 
 function sanitizePausedServiceState(save: SaveV7, core: SimulationCore): SaveV7 {
   const buildingIds = new Set(core.buildings.list().map((building) => building.id));
-  const orphanJobIds = new Set(save.services.jobs.filter((job) => !buildingIds.has(job.targetBuildingId)).map((job) => job.id));
-  const resetVehicleIds = new Set(save.services.vehicles.filter((vehicle) => vehicle.currentJobId !== null && orphanJobIds.has(vehicle.currentJobId)).map((vehicle) => vehicle.id));
+  const orphanJobIds = new Set(
+    save.services.jobs
+      .filter((job) => !buildingIds.has(job.targetBuildingId))
+      .map((job) => job.id),
+  );
+  const resetVehicleIds = new Set(
+    save.services.vehicles
+      .filter(
+        (vehicle) =>
+          vehicle.currentJobId !== null && orphanJobIds.has(vehicle.currentJobId),
+      )
+      .map((vehicle) => vehicle.id),
+  );
 
   let recoveredCargo = 0;
   const jobCargo = save.services.waste.jobCargo.filter(([jobId, cargo]) => {
@@ -66,15 +84,25 @@ function sanitizePausedServiceState(save: SaveV7, core: SimulationCore): SaveV7 
     };
   });
 
-  const intersections = Object.fromEntries(Object.entries(save.intersections).map(([nodeId, approaches]) => [
-    nodeId,
-    approaches.map((approach) => ({
-      incomingEdgeId: approach.incomingEdgeId,
-      entries: approach.entries.filter((entry) => !resetVehicleIds.has(entry.vehicleId)).map((entry) => ({ ...entry })),
-    })).filter((approach) => approach.entries.length > 0),
-  ]).filter(([, approaches]) => (approaches as readonly unknown[]).length > 0));
+  const intersections = Object.fromEntries(
+    Object.entries(save.intersections)
+      .map(([nodeId, approaches]) => [
+        nodeId,
+        approaches
+          .map((approach) => ({
+            incomingEdgeId: approach.incomingEdgeId,
+            entries: approach.entries
+              .filter((entry) => !resetVehicleIds.has(entry.vehicleId))
+              .map((entry) => ({ ...entry })),
+          }))
+          .filter((approach) => approach.entries.length > 0),
+      ])
+      .filter(([, approaches]) => (approaches as readonly unknown[]).length > 0),
+  );
 
-  const filterBuildingRecord = <T>(record: Readonly<Record<string, T>>): Record<string, T> =>
+  const filterBuildingRecord = <T>(
+    record: Readonly<Record<string, T>>,
+  ): Record<string, T> =>
     Object.fromEntries(Object.entries(record).filter(([buildingId]) => buildingIds.has(buildingId)));
 
   return {
@@ -84,19 +112,34 @@ function sanitizePausedServiceState(save: SaveV7, core: SimulationCore): SaveV7 
       ...save.services,
       jobs: save.services.jobs.filter((job) => !orphanJobIds.has(job.id)),
       vehicles,
-      incidents: save.services.incidents.filter((incident) => buildingIds.has(incident.targetBuildingId) && !orphanJobIds.has(incident.serviceJobId)),
+      incidents: save.services.incidents.filter(
+        (incident) =>
+          buildingIds.has(incident.targetBuildingId) &&
+          !orphanJobIds.has(incident.serviceJobId),
+      ),
       waste: {
         ...save.services.waste,
-        buildings: save.services.waste.buildings.filter((state) => buildingIds.has(state.buildingId)),
+        buildings: save.services.waste.buildings.filter((state) =>
+          buildingIds.has(state.buildingId),
+        ),
         processingQueue: save.services.waste.processingQueue + recoveredCargo,
         jobCargo,
-        jobAssignments: save.services.waste.jobAssignments.filter(([buildingId, jobId]) => buildingIds.has(buildingId) && !orphanJobIds.has(jobId)),
+        jobAssignments: save.services.waste.jobAssignments.filter(
+          ([buildingId, jobId]) =>
+            buildingIds.has(buildingId) && !orphanJobIds.has(jobId),
+        ),
       },
     },
     serviceCached: {
       ...save.serviceCached,
-      demand: { ...save.serviceCached.demand, perBuilding: filterBuildingRecord(save.serviceCached.demand.perBuilding) },
-      neighborhood: { ...save.serviceCached.neighborhood, perBuilding: filterBuildingRecord(save.serviceCached.neighborhood.perBuilding) },
+      demand: {
+        ...save.serviceCached.demand,
+        perBuilding: filterBuildingRecord(save.serviceCached.demand.perBuilding),
+      },
+      neighborhood: {
+        ...save.serviceCached.neighborhood,
+        perBuilding: filterBuildingRecord(save.serviceCached.neighborhood.perBuilding),
+      },
       accessByBuilding: filterBuildingRecord(save.serviceCached.accessByBuilding),
     },
   };

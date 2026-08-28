@@ -1,5 +1,7 @@
 import { SERVICE_DEFINITIONS, type ServiceDepartment, type ServiceVehicleType } from '../../data/services.ts';
 import type { ServiceFacilitySystem } from './ServiceFacilitySystem.ts';
+import type { IntersectionControlSystem } from '../transportation/IntersectionControlSystem.ts';
+import type { LegacyRouteMovementResolver } from '../transportation/LegacyRouteMovementResolver.ts';
 import type { RouteResult, PathfindingSystem } from '../traffic/PathfindingSystem.ts';
 import type { IntersectionSystem } from '../traffic/IntersectionSystem.ts';
 import type { TransportationEdge, TransportationGraph } from '../traffic/TransportationGraph.ts';
@@ -137,6 +139,175 @@ export class ServiceVehicleSystem {
 
   step(
     graph: TransportationGraph,
+    controls: IntersectionControlSystem,
+    resolver: LegacyRouteMovementResolver,
+    releasedVehicleIds: ReadonlySet<string>,
+    pathfinding: PathfindingSystem,
+    edgeCost: (edge: TransportationEdge) => number,
+    tick: number,
+  ): ServiceVehicleEvent[];
+  step(
+    graph: TransportationGraph,
+    intersections: IntersectionSystem,
+    pathfinding: PathfindingSystem,
+    edgeCost: (edge: TransportationEdge) => number,
+    tick: number,
+  ): ServiceVehicleEvent[];
+  step(
+    graph: TransportationGraph,
+    authority: IntersectionControlSystem | IntersectionSystem,
+    resolverOrPathfinding: LegacyRouteMovementResolver | PathfindingSystem,
+    releasedOrEdgeCost: ReadonlySet<string> | ((edge: TransportationEdge) => number),
+    pathfindingOrTick: PathfindingSystem | number,
+    edgeCostMaybe?: (edge: TransportationEdge) => number,
+    tickMaybe?: number,
+  ): ServiceVehicleEvent[] {
+    if (typeof releasedOrEdgeCost === 'function') {
+      if (typeof pathfindingOrTick !== 'number') throw new Error('legacy service step requires a simulation tick');
+      return this.stepLegacyCompatibility(
+        graph,
+        authority as IntersectionSystem,
+        resolverOrPathfinding as PathfindingSystem,
+        releasedOrEdgeCost,
+        pathfindingOrTick,
+      );
+    }
+
+    if (typeof pathfindingOrTick === 'number' || typeof edgeCostMaybe !== 'function' || tickMaybe === undefined) {
+      throw new Error('3R service step requires resolver, release set, pathfinding, edge cost, and tick');
+    }
+    return this.stepWithIntersectionControl(
+      graph,
+      authority as IntersectionControlSystem,
+      resolverOrPathfinding as LegacyRouteMovementResolver,
+      releasedOrEdgeCost,
+      pathfindingOrTick,
+      edgeCostMaybe,
+      tickMaybe,
+    );
+  }
+
+  private stepWithIntersectionControl(
+    graph: TransportationGraph,
+    controls: IntersectionControlSystem,
+    resolver: LegacyRouteMovementResolver,
+    releasedVehicleIds: ReadonlySet<string>,
+    pathfinding: PathfindingSystem,
+    edgeCost: (edge: TransportationEdge) => number,
+    tick: number,
+  ): ServiceVehicleEvent[] {
+    const events: ServiceVehicleEvent[] = [];
+
+    for (const vehicleId of [...releasedVehicleIds].sort((a, b) => a.localeCompare(b))) {
+      const vehicle = this.vehicles.get(vehicleId);
+      if (!vehicle || !vehicle.queuedNodeId) continue;
+      vehicle.currentEdgeIndex++;
+      vehicle.edgeProgressTicks = 0;
+      vehicle.currentSpeed = 0;
+      vehicle.currentNodeId = vehicle.queuedNodeId;
+      delete vehicle.queuedNodeId;
+      controls.acknowledge(vehicleId);
+    }
+
+    for (const vehicle of [...this.vehicles.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+      if (vehicle.queuedNodeId) vehicle.accumulatedDelayTicks++;
+      if ((vehicle.state === 'outbound' || vehicle.state === 'returning')
+        && !this.ensureValidRoute(vehicle, graph, pathfinding, edgeCost, tick)) {
+        if (vehicle.currentJobId) events.push({ type: 'failed', vehicleId: vehicle.id, jobId: vehicle.currentJobId });
+        controls.removeVehicle(vehicle.id);
+        this.resetIdle(vehicle);
+        continue;
+      }
+
+      if (vehicle.state === 'servicing') {
+        vehicle.serviceRemainingTicks--;
+        if (vehicle.serviceRemainingTicks <= 0 && vehicle.currentJobId) {
+          vehicle.state = 'returning';
+          vehicle.currentEdgeIndex = 0;
+          vehicle.edgeProgressTicks = 0;
+          vehicle.currentNodeId = vehicle.destinationNodeId;
+          delete vehicle.queuedNodeId;
+          events.push({ type: 'returning', vehicleId: vehicle.id, jobId: vehicle.currentJobId });
+        }
+        continue;
+      }
+      if (vehicle.state !== 'outbound' && vehicle.state !== 'returning') continue;
+      if (vehicle.queuedNodeId) continue;
+
+      const route = vehicle.state === 'outbound' ? vehicle.edgeIds : vehicle.returnEdgeIds;
+      const edgeId = route[vehicle.currentEdgeIndex];
+      if (!edgeId) {
+        this.finishLeg(vehicle, events);
+        continue;
+      }
+      const edge = graph.getEdge(edgeId);
+      if (!edge) {
+        if (vehicle.currentJobId) events.push({ type: 'failed', vehicleId: vehicle.id, jobId: vehicle.currentJobId });
+        controls.removeVehicle(vehicle.id);
+        this.resetIdle(vehicle);
+        continue;
+      }
+      const travelTicks = this.edgeTravelTicks(vehicle, edge, edgeCost);
+      vehicle.currentSpeed = edge.lengthCells / Math.max(0.1, travelTicks / 10);
+      vehicle.edgeProgressTicks++;
+      if (vehicle.edgeProgressTicks + 1e-9 < travelTicks) continue;
+      vehicle.currentNodeId = edge.to;
+      const isLast = vehicle.currentEdgeIndex >= route.length - 1;
+      if (isLast) {
+        this.finishLeg(vehicle, events);
+        continue;
+      }
+
+      const nextEdgeId = route[vehicle.currentEdgeIndex + 1];
+      const nextEdge = nextEdgeId ? graph.getEdge(nextEdgeId) : undefined;
+      if (!nextEdge) {
+        if (vehicle.currentJobId) events.push({ type: 'failed', vehicleId: vehicle.id, jobId: vehicle.currentJobId });
+        controls.removeVehicle(vehicle.id);
+        this.resetIdle(vehicle);
+        continue;
+      }
+      const resolved = resolver.resolve(edge.id, nextEdge.id);
+      if (!resolved) {
+        if (vehicle.currentJobId) events.push({ type: 'failed', vehicleId: vehicle.id, jobId: vehicle.currentJobId });
+        controls.removeVehicle(vehicle.id);
+        this.resetIdle(vehicle);
+        continue;
+      }
+      if (!controls.requiresQueue(resolved.movementId)) {
+        vehicle.currentEdgeIndex++;
+        vehicle.edgeProgressTicks = 0;
+        vehicle.currentSpeed = 0;
+        continue;
+      }
+
+      const emergency = isEmergency(vehicle.vehicleType);
+      controls.enqueue({
+        vehicleId: vehicle.id,
+        movementId: resolved.movementId,
+        laneGroupIds: resolved.laneGroupIds,
+        travelerWeight: vehicle.vehicleType === 'garbage_truck' ? 2 : 1,
+        queuedTick: tick,
+        priority: emergency ? 'emergency' : 'normal',
+      });
+      if (emergency) {
+        controls.submitPriorityRequest({
+          id: `ipr:${vehicle.id}:${resolved.movementId}`,
+          junctionId: resolved.junctionId,
+          movementId: resolved.movementId,
+          kind: 'emergencyPreemption',
+          requestedTick: tick,
+          expiresTick: tick + 100,
+        });
+      }
+      vehicle.queuedNodeId = edge.to;
+      vehicle.edgeProgressTicks = travelTicks;
+      vehicle.currentSpeed = 0;
+    }
+    return events;
+  }
+
+  private stepLegacyCompatibility(
+    graph: TransportationGraph,
     intersections: IntersectionSystem,
     pathfinding: PathfindingSystem,
     edgeCost: (edge: TransportationEdge) => number,
@@ -146,22 +317,11 @@ export class ServiceVehicleSystem {
 
     for (const vehicle of this.vehicles.values()) {
       if (vehicle.queuedNodeId) vehicle.accumulatedDelayTicks++;
-      if ((vehicle.state === 'outbound' || vehicle.state === 'returning') && !this.ensureValidRoute(vehicle, graph, pathfinding, edgeCost, tick)) {
+      if ((vehicle.state === 'outbound' || vehicle.state === 'returning')
+        && !this.ensureValidRoute(vehicle, graph, pathfinding, edgeCost, tick)) {
         if (vehicle.currentJobId) events.push({ type: 'failed', vehicleId: vehicle.id, jobId: vehicle.currentJobId });
         intersections.removeVehicle(vehicle.id);
         this.resetIdle(vehicle);
-      }
-    }
-
-    for (const nodeId of Object.keys(intersections.snapshot()).sort()) {
-      for (const vehicleId of intersections.stepNode(graph, nodeId, tick)) {
-        const vehicle = this.vehicles.get(vehicleId);
-        if (!vehicle || !vehicle.queuedNodeId) continue;
-        vehicle.currentEdgeIndex++;
-        vehicle.edgeProgressTicks = 0;
-        vehicle.currentNodeId = vehicle.queuedNodeId;
-        delete vehicle.queuedNodeId;
-        intersections.removeVehicle(vehicleId);
       }
     }
 

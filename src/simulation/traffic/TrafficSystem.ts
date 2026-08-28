@@ -1,4 +1,6 @@
 import { clamp01 } from '../core/types.ts';
+import type { IntersectionControlSystem } from '../transportation/IntersectionControlSystem.ts';
+import type { LegacyRouteMovementResolver } from '../transportation/LegacyRouteMovementResolver.ts';
 import type { RouteResult } from './PathfindingSystem.ts';
 import type { TripPurpose, TripRequest } from './TripGenerationSystem.ts';
 import type { IntersectionSystem } from './IntersectionSystem.ts';
@@ -40,6 +42,10 @@ type MutableTrafficVehicle = {
   queuedNodeId?: string;
 };
 
+type VehicleQueueAuthority = Readonly<{
+  removeVehicle(vehicleId: string): void;
+}>;
+
 export type EdgeTrafficMetric = Readonly<{
   edgeId: string;
   weightedVehicles: number;
@@ -66,6 +72,13 @@ export type TrafficStateSnapshot = Readonly<{
   failedTrips: number;
   congestionEpoch: number;
 }>;
+
+function isReleasedVehicleSet(value: unknown): value is ReadonlySet<string> {
+  return typeof value === 'object'
+    && value !== null
+    && 'has' in value
+    && typeof (value as { has?: unknown }).has === 'function';
+}
 
 export class TrafficSystem {
   private readonly vehicles = new Map<string, MutableTrafficVehicle>();
@@ -122,7 +135,143 @@ export class TrafficSystem {
     return id;
   }
 
-  step(graph: TransportationGraph, intersections: IntersectionSystem, tick: number, extraEdgeLoads: Readonly<Record<string, number>> = {}): void {
+  step(
+    graph: TransportationGraph,
+    controls: IntersectionControlSystem,
+    resolver: LegacyRouteMovementResolver,
+    releasedVehicleIds: ReadonlySet<string>,
+    tick: number,
+    extraEdgeLoads?: Readonly<Record<string, number>>,
+  ): void;
+  step(
+    graph: TransportationGraph,
+    intersections: IntersectionSystem,
+    tick: number,
+    extraEdgeLoads?: Readonly<Record<string, number>>,
+  ): void;
+  step(
+    graph: TransportationGraph,
+    authority: IntersectionControlSystem | IntersectionSystem,
+    resolverOrTick: LegacyRouteMovementResolver | number,
+    releasedOrExtra?: ReadonlySet<string> | Readonly<Record<string, number>>,
+    tickMaybe?: number,
+    extraEdgeLoads: Readonly<Record<string, number>> = {},
+  ): void {
+    if (typeof resolverOrTick === 'number') {
+      this.stepLegacyCompatibility(
+        graph,
+        authority as IntersectionSystem,
+        resolverOrTick,
+        (releasedOrExtra ?? {}) as Readonly<Record<string, number>>,
+      );
+      return;
+    }
+
+    if (tickMaybe === undefined) throw new Error('3R traffic step requires a simulation tick');
+    if (!isReleasedVehicleSet(releasedOrExtra)) {
+      throw new Error('3R traffic step requires released vehicle IDs');
+    }
+    this.stepWithIntersectionControl(
+      graph,
+      authority as IntersectionControlSystem,
+      resolverOrTick,
+      releasedOrExtra,
+      tickMaybe,
+      extraEdgeLoads,
+    );
+  }
+
+  private stepWithIntersectionControl(
+    graph: TransportationGraph,
+    controls: IntersectionControlSystem,
+    resolver: LegacyRouteMovementResolver,
+    releasedVehicleIds: ReadonlySet<string>,
+    tick: number,
+    extraEdgeLoads: Readonly<Record<string, number>>,
+  ): void {
+    for (const vehicleId of [...releasedVehicleIds].sort((a, b) => a.localeCompare(b))) {
+      const vehicle = this.vehicles.get(vehicleId);
+      if (!vehicle || vehicle.status !== 'queued') continue;
+      vehicle.currentEdgeIndex++;
+      vehicle.edgeProgressTicks = 0;
+      vehicle.status = 'moving';
+      delete vehicle.queuedNodeId;
+      controls.acknowledge(vehicleId);
+    }
+
+    this.invalidateMissingRoutes(graph, controls, tick);
+
+    for (const vehicle of this.vehicles.values()) {
+      if (vehicle.status === 'queued') vehicle.accumulatedDelayTicks++;
+    }
+
+    this.edgeMetrics = this.calculateEdgeMetrics(graph, extraEdgeLoads);
+    if (tick % 10 === 0) this.congestionEpoch++;
+    const metricByEdge = new Map(this.edgeMetrics.map((metric) => [metric.edgeId, metric]));
+
+    const moving = [...this.vehicles.values()]
+      .filter((vehicle) => vehicle.status === 'moving')
+      .sort((a, b) => a.id.localeCompare(b.id));
+    for (const vehicle of moving) {
+      const edgeId = vehicle.edgeIds[vehicle.currentEdgeIndex];
+      if (!edgeId) {
+        this.complete(vehicle, tick);
+        continue;
+      }
+      const edge = graph.getEdge(edgeId);
+      if (!edge) {
+        this.fail(vehicle, controls, tick);
+        continue;
+      }
+      const travelTimeTicks = metricByEdge.get(edge.id)?.travelTimeTicks ?? edge.freeFlowTicks;
+      vehicle.edgeProgressTicks += 1;
+      if (vehicle.edgeProgressTicks + 1e-9 < travelTimeTicks) continue;
+
+      const isLastEdge = vehicle.currentEdgeIndex >= vehicle.edgeIds.length - 1;
+      if (isLastEdge) {
+        this.complete(vehicle, tick);
+        continue;
+      }
+
+      const nextEdgeId = vehicle.edgeIds[vehicle.currentEdgeIndex + 1];
+      const nextEdge = nextEdgeId ? graph.getEdge(nextEdgeId) : undefined;
+      if (!nextEdge) {
+        this.fail(vehicle, controls, tick);
+        continue;
+      }
+
+      const resolved = resolver.resolve(edge.id, nextEdge.id);
+      if (!resolved) {
+        this.fail(vehicle, controls, tick);
+        continue;
+      }
+      if (!controls.requiresQueue(resolved.movementId)) {
+        vehicle.currentEdgeIndex++;
+        vehicle.edgeProgressTicks = 0;
+        delete vehicle.queuedNodeId;
+        continue;
+      }
+
+      controls.enqueue({
+        vehicleId: vehicle.id,
+        movementId: resolved.movementId,
+        laneGroupIds: resolved.laneGroupIds,
+        travelerWeight: vehicle.travelerWeight,
+        queuedTick: tick,
+        priority: 'normal',
+      });
+      vehicle.status = 'queued';
+      vehicle.queuedNodeId = resolved.junctionId;
+      vehicle.edgeProgressTicks = travelTimeTicks;
+    }
+  }
+
+  private stepLegacyCompatibility(
+    graph: TransportationGraph,
+    intersections: IntersectionSystem,
+    tick: number,
+    extraEdgeLoads: Readonly<Record<string, number>> = {},
+  ): void {
     this.invalidateMissingRoutes(graph, intersections, tick);
     this.recoverOrphanedQueues(intersections, tick);
 
@@ -130,25 +279,13 @@ export class TrafficSystem {
       if (vehicle.status === 'queued') vehicle.accumulatedDelayTicks++;
     }
 
-    const queuedNodes = Object.keys(intersections.snapshot()).sort();
-    for (const nodeId of queuedNodes) {
-      const released = intersections.stepNode(graph, nodeId, tick);
-      for (const vehicleId of released) {
-        const vehicle = this.vehicles.get(vehicleId);
-        if (!vehicle || vehicle.status !== 'queued') continue;
-        vehicle.currentEdgeIndex++;
-        vehicle.edgeProgressTicks = 0;
-        vehicle.status = 'moving';
-        delete vehicle.queuedNodeId;
-        intersections.removeVehicle(vehicleId);
-      }
-    }
-
     this.edgeMetrics = this.calculateEdgeMetrics(graph, extraEdgeLoads);
     if (tick % 10 === 0) this.congestionEpoch++;
     const metricByEdge = new Map(this.edgeMetrics.map((metric) => [metric.edgeId, metric]));
 
-    const moving = [...this.vehicles.values()].filter((vehicle) => vehicle.status === 'moving').sort((a, b) => a.id.localeCompare(b.id));
+    const moving = [...this.vehicles.values()]
+      .filter((vehicle) => vehicle.status === 'moving')
+      .sort((a, b) => a.id.localeCompare(b.id));
     for (const vehicle of moving) {
       const edgeId = vehicle.edgeIds[vehicle.currentEdgeIndex];
       if (!edgeId) {
@@ -271,10 +408,10 @@ export class TrafficSystem {
     }
   }
 
-  private invalidateMissingRoutes(graph: TransportationGraph, intersections: IntersectionSystem, tick: number): void {
+  private invalidateMissingRoutes(graph: TransportationGraph, authority: VehicleQueueAuthority, tick: number): void {
     for (const vehicle of [...this.vehicles.values()]) {
       const remaining = vehicle.edgeIds.slice(vehicle.currentEdgeIndex);
-      if (remaining.some((edgeId) => !graph.getEdge(edgeId))) this.fail(vehicle, intersections, tick);
+      if (remaining.some((edgeId) => !graph.getEdge(edgeId))) this.fail(vehicle, authority, tick);
     }
   }
 
@@ -291,8 +428,8 @@ export class TrafficSystem {
     });
   }
 
-  private fail(vehicle: MutableTrafficVehicle, intersections: IntersectionSystem, tick: number): void {
-    intersections.removeVehicle(vehicle.id);
+  private fail(vehicle: MutableTrafficVehicle, authority: VehicleQueueAuthority, tick: number): void {
+    authority.removeVehicle(vehicle.id);
     this.vehicles.delete(vehicle.id);
     this.failedTrips++;
     this.recordOutcome({
