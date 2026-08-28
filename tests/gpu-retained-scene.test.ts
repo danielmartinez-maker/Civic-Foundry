@@ -1,12 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
+import { Texture } from 'pixi.js';
 import { TerrainGrid, type TerrainCell } from '../src/world/terrain/TerrainGrid.ts';
 import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
 import { roadConnectivityMask, rotateRoadMask } from '../src/rendering/assets/RoadAutotile.ts';
 import { PASS_A_ASSET_MANIFEST } from '../src/rendering/assets/PassAAssetManifest.ts';
-import { selectCoordinateVariantEntry } from '../src/rendering/assets/VariantSelector.ts';
+import {
+  selectCoordinateVariantEntry,
+  resolveVariantEntry,
+} from '../src/rendering/assets/VariantSelector.ts';
+import {
+  privateVehicleVariantKey,
+  serviceVehicleVariantKey,
+  transitVehicleVariantKey,
+  vehicleOrientationFromWorldDelta,
+} from '../src/rendering/assets/VehicleVisuals.ts';
 import { compareDepthKeys } from '../src/rendering/passes/RenderOrder.ts';
+import {
+  MAX_VEHICLE_POOL_PER_ASSET,
+  RetainedVehicleLayer,
+} from '../src/rendering/gpu/RetainedVehicleLayer.ts';
+import { buildVehicleSpriteCommands } from '../src/rendering/gpu/VehicleSpriteCommands.ts';
 
 const retainedModuleUrl = new URL('../src/rendering/gpu/RetainedSceneIndex.ts', import.meta.url);
 const catalogModuleUrl = new URL('../src/rendering/gpu/GpuAssetCatalog.ts', import.meta.url);
@@ -41,6 +56,76 @@ function flatTerrain(width = 8, height = 8): TerrainGrid {
     biome: 'grass' as const,
   }));
   return new TerrainGrid(width, height, cells);
+}
+
+function vehicleFixtureCore(): SimulationCore {
+  const graph = {
+    getEdge: (id: string) => id === 'edge:1'
+      ? { id: 'edge:1', from: 'node:a', to: 'node:b', freeFlowTicks: 10 }
+      : undefined,
+    getNode: (id: string) => id === 'node:a'
+      ? { id: 'node:a', x: 1, y: 2 }
+      : id === 'node:b'
+        ? { id: 'node:b', x: 5, y: 2 }
+        : undefined,
+  };
+  const transit = {
+    getLine: (id: string) => id === 'line:1' ? { id, stopIds: ['stop:a', 'stop:b'] } : undefined,
+    getStop: (id: string) => id === 'stop:a'
+      ? { id, x: 1, y: 2 }
+      : id === 'stop:b'
+        ? { id, x: 5, y: 2 }
+        : undefined,
+  };
+  return {
+    transportationGraph: graph,
+    traffic: {
+      edgeMetrics: [],
+      activeVehicles: [{
+        id: 'private:fixture',
+        edgeIds: ['edge:1'],
+        currentEdgeIndex: 0,
+        edgeProgressTicks: 5,
+        status: 'moving',
+      }],
+    },
+    serviceVehicles: {
+      listVehicles: () => [{
+        id: 'service:fixture',
+        vehicleType: 'fire_engine',
+        state: 'outbound',
+        edgeIds: ['edge:1'],
+        currentEdgeIndex: 0,
+        edgeProgressTicks: 5,
+      }],
+    },
+    transit,
+    mobility: {
+      vehicles: {
+        listVehicles: () => [{
+          id: 'transit:fixture',
+          lineId: 'line:1',
+          mode: 'bus',
+          state: 'in_transit',
+          stopIndex: 0,
+          directionKey: 'forward',
+          roadEdgeIds: ['edge:1'],
+          currentRoadEdgeIndex: 0,
+          edgeProgressTicks: 5,
+        }],
+      },
+    },
+    economyDomain: {
+      freightVehicles: {
+        listVehicles: () => [{
+          id: 'freight:fixture',
+          routeEdgeIds: ['edge:1'],
+          currentEdgeIndex: 0,
+          edgeProgressTicks: 5,
+        }],
+      },
+    },
+  } as unknown as SimulationCore;
 }
 
 test('retained index reuses identity for an unchanged fingerprint', async () => {
@@ -142,4 +227,61 @@ test('base sprite commands are deterministically depth-sorted', async () => {
   for (let index = 1; index < commands.length; index += 1) {
     assert.ok(compareDepthKeys(commands[index - 1]!.depth, commands[index]!.depth) <= 0);
   }
+});
+
+test('vehicle sprite commands reuse canonical vehicle variants and orientation', () => {
+  const core = vehicleFixtureCore();
+  const turn = 1 as const;
+  const commands = buildVehicleSpriteCommands(core, turn);
+  const orientation = vehicleOrientationFromWorldDelta(4, 0, turn);
+
+  const privateVariant = privateVehicleVariantKey('private:fixture');
+  const serviceVariant = serviceVehicleVariantKey('fire_engine');
+  const transitVariant = transitVehicleVariantKey('bus');
+  assert.ok(transitVariant);
+
+  const expectedPrivate = resolveVariantEntry(PASS_A_ASSET_MANIFEST.entries, privateVariant, orientation)?.assetId;
+  const expectedService = resolveVariantEntry(PASS_A_ASSET_MANIFEST.entries, serviceVariant, orientation)?.assetId;
+  const expectedTransit = resolveVariantEntry(PASS_A_ASSET_MANIFEST.entries, transitVariant, orientation)?.assetId;
+  const expectedFreight = resolveVariantEntry(PASS_A_ASSET_MANIFEST.entries, 'vehicle_freight_truck_01', orientation)?.assetId;
+
+  assert.equal(commands.find((command) => command.key === 'private:private:fixture')?.assetId, expectedPrivate);
+  assert.equal(commands.find((command) => command.key === 'service:service:fixture')?.assetId, expectedService);
+  assert.equal(commands.find((command) => command.key === 'transit:transit:fixture')?.assetId, expectedTransit);
+  assert.equal(commands.find((command) => command.key === 'freight:freight:fixture')?.assetId, expectedFreight);
+});
+
+test('retained vehicle pool reuses compatible sprites and remains bounded', () => {
+  const entry = PASS_A_ASSET_MANIFEST.entries.find((candidate) => candidate.assetId === 'vehicle_sedan_01_o0');
+  assert.ok(entry);
+  const assets = {
+    texture: (assetId: string) => assetId === entry.assetId ? { entry, texture: Texture.WHITE } : null,
+    query: () => [entry],
+  };
+  const container = {
+    removeChildren: () => undefined,
+    addChild: () => undefined,
+  };
+  const camera = {
+    zoom: 1,
+    worldToCanvas: (x: number, y: number) => ({ x, y }),
+  };
+  const layer = new RetainedVehicleLayer(container as any, assets as any);
+
+  for (let index = 0; index < MAX_VEHICLE_POOL_PER_ASSET * 3; index += 1) {
+    layer.sync([{
+      key: `private:${index}`,
+      fingerprint: entry.assetId,
+      assetId: entry.assetId,
+      x: index,
+      y: 0,
+      queued: false,
+    }], camera as any, { width: 64, height: 64 });
+    layer.sync([], camera as any, { width: 64, height: 64 });
+  }
+
+  const stats = layer.stats();
+  assert.equal(stats.created, 1);
+  assert.ok(stats.reused > 0);
+  assert.ok(stats.pooled <= MAX_VEHICLE_POOL_PER_ASSET);
 });
