@@ -81,6 +81,31 @@ def main() -> None:
         assert metrics["turn"] == 0
         assert metrics["diagnostics"] == []
 
+        retained_before = page.evaluate("""() => {
+          const app=window.__civicApp;
+          app.renderer.draw(app.core,'none',null);
+          return app.renderer.debugSceneStats();
+        }""")
+        page.evaluate("""() => {
+          const app=window.__civicApp;
+          app.renderer.draw(app.core,'none',null);
+          app.renderer.draw(app.core,'none',null);
+        }""")
+        retained_after = page.evaluate("() => window.__civicApp.renderer.debugSceneStats()")
+        assert retained_before["staticActive"] > 0
+        assert retained_after["staticActive"] == retained_before["staticActive"]
+        assert retained_after["staticCreated"] == retained_before["staticCreated"]
+        assert retained_after["staticUpdated"] == retained_before["staticUpdated"]
+
+        created_before_pan = retained_after["staticCreated"]
+        page.evaluate("""() => {
+          const app=window.__civicApp;
+          app.renderer.pan(12,-7);
+          app.renderer.draw(app.core,'none',null);
+        }""")
+        retained_after_pan = page.evaluate("() => window.__civicApp.renderer.debugSceneStats()")
+        assert retained_after_pan["staticCreated"] == created_before_pan
+
         page.locator('[data-testid="tool-zone-residential"]').click()
         x, y = page_point(page, 6, 6)
         page.mouse.click(x, y)
@@ -145,7 +170,10 @@ def main() -> None:
 
     if errors:
         raise AssertionError("browser errors: " + repr(errors))
-    print("ISOMETRIC_PASS_A_SMOKE_PASS", {"metrics": metrics, "roads": len(roads), "zoom": zoom})
+    print(
+        "ISOMETRIC_PASS_A_SMOKE_PASS",
+        {"metrics": metrics, "roads": len(roads), "zoom": zoom, "retained": retained_after_pan},
+    )
 
 
 if __name__ == "__main__":
