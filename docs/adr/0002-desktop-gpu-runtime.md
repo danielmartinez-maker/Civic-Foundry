@@ -33,3 +33,18 @@ The static build now has one approved import-map dependency-resolution seam and 
 Renderer initialization is asynchronous, so presentation startup must tolerate the GPU application becoming ready after `GameApp` construction. Browser and visual smoke coverage remain required because type/unit tests alone cannot prove WebGL runtime behavior.
 
 Legacy Canvas2D presentation code is technical migration debt until equivalent GPU passes exist or the legacy sources are deleted. Specialized overlay fidelity, sprite/atlas parity, performance optimization, Windows installer/signing, and WebGPU remain intentionally deferred.
+
+## Follow-on status: GPU Presentation Phase 2
+
+The retained-scene follow-on implements the sprite/atlas portion that item 10 originally deferred without changing the accepted authority boundaries above.
+
+- `PASS_A_ASSET_MANIFEST` is the production base-scene asset identity authority.
+- `GpuAssetRegistry` loads the deterministic atlases once and exposes cached Pixi subtextures and diagnostics.
+- terrain, roads, buildings, construction, civic facilities, utilities, vegetation, and surface vehicles render as Pixi sprites derived from canonical deterministic presentation helpers;
+- static display objects are retained by stable presentation key and updated in place when fingerprints change;
+- moving private, service, transit, and freight sprites use bounded reusable pools rather than per-frame allocation;
+- camera pan/zoom and unchanged redraws update transforms without replacing static sprite identity;
+- zoning, selection/tool previews, and the existing generic analytical-overlay seam remain vector presentation layers pending the specialized overlay parity tranche;
+- `debugSceneStats()` is presentation-only instrumentation and owns no simulation or persistence state.
+
+The Phase 2 regression gate explicitly verifies retained identity in the compiled browser runtime and keeps the inherited Phase 6, Phase 7, Urban Fabric, isometric browser, and isometric visual gates intact. Legacy Canvas2D sources remain migration references until specialized GPU overlay parity and the explicit zero-use removal audit are complete.
