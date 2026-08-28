@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -21,6 +21,17 @@ jobs:
           cache: npm
       - name: Bootstrap desktop dependency lockfile
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Persist desktop dependency lockfile
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "build: resolve desktop dependency lockfile"
+          git push origin HEAD:${GITHUB_HEAD_REF}
       - name: Upload desktop dependency lockfile
         uses: actions/upload-artifact@v4
         with:
