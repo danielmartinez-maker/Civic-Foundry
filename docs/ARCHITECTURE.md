@@ -259,4 +259,4 @@ Urban Fabric acceptance now includes:
 - compiled isometric browser proof that the atlas registry has no diagnostics and unchanged redraw/pan operations do not recreate static scene sprites;
 - all inherited Phase 1R, Phase 6/7, Urban Fabric, and isometric functional/visual gates.
 
-GitHub remains the durable canonical source of truth. Desktop GPU Runtime PR #98 is integrated on `main`; GPU Presentation Phase 2 remains isolated on PR #99 until explicit integration approval.
+GitHub remains the durable canonical source of truth. Desktop GPU Runtime feature head `725c9cec539f1df32386c4c35e95c81a7fe134ab` passed GitHub Actions run `33137152536` before PR #98 was merged into `main` as `c2e7befd9174b65dadc90e1e381d892accf780c6`. GPU Presentation Phase 2 remains isolated on draft PR #99 until explicit integration approval.
