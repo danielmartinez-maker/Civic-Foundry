@@ -43,7 +43,10 @@ export async function runPrismVerification(cwd = prismRoot) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   try {
     await runPrismVerification();
   } catch (error) {
