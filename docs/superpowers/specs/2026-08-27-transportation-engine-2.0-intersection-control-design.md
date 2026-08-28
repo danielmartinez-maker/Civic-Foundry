@@ -114,7 +114,7 @@ Signal timing never mutates physical/legal topology. A green or red indication d
 
 A topology mutation that removes or changes a referenced movement invalidates affected derived control state and may require a deterministic control-plan rebuild.
 
-Authored signal-plan changes increment `intersectionControlRevision`. Merely advancing the simulation clock or changing active phase because time advanced does not increment the revision.
+`intersectionControlRevision` increments whenever the canonical control-authority snapshot actually changes, including a topology-triggered regeneration that changes generated controls or plans. It does not increment merely because `topologyRevision` changed if the canonical control snapshot is byte-equivalent, and it never increments merely because simulation time advances into another phase.
 
 Later routing-cost consumers may respond to changed signal policy by advancing `TransportNetworkStore.costEpoch` through an explicit integration contract. 3R-B does not overload topology revision for this purpose.
 
@@ -201,7 +201,7 @@ export type SignalPhase = Readonly<{
 
 `protectedMovementIds` is authoritative signal permission for the phase. 3R-B core does not model permissive turns across conflicting traffic. A movement is either protected for service during the green interval or not serviceable by that phase.
 
-`pedestrianWalkTicks` and `pedestrianClearanceTicks` reserve time inside the phase contract so future pedestrian movement can consume it without a signal-schema rewrite. 3R-B does not yet create pedestrian agents or pedestrian queues.
+`pedestrianWalkTicks` and `pedestrianClearanceTicks` are reservations inside the existing vehicular phase interval so future pedestrian movement can consume the contract without a signal-schema rewrite. Walk time must fit entirely inside green. Walk plus pedestrian clearance must fit inside green plus amber and may not consume or extend the all-red interval. 3R-B does not yet create pedestrian agents or pedestrian queues.
 
 All timing values are non-negative safe integers. `greenTicks` must be positive for every service phase. Generated plans must obey project constants for minimum green, amber, all-red, and pedestrian clearance.
 
@@ -225,7 +225,7 @@ The plan cycle length is the exact integer sum of all phase intervals:
 cycle = Σ(green + amber + allRed)
 ```
 
-Pedestrian walk/clearance timing must fit within the corresponding phase timing contract and may not extend the cycle implicitly.
+Pedestrian timing is embedded within those intervals and never extends the cycle implicitly.
 
 ### IntersectionControlSnapshot
 
@@ -322,7 +322,7 @@ Offsets are stable integer tick values. Generated offsets may be zero in the fir
 
 The engine must nevertheless support non-zero authored offsets now, because coordination is part of the 3R-B contract.
 
-Two identical plans with different offsets must produce predictably shifted active-phase schedules and byte-equivalent results after save/rebuild of their authoritative plan definitions.
+Two identical plans with different offsets must produce predictably shifted active-phase schedules and byte-equivalent results after in-memory control-authority snapshot/restore. Once a later save format persists authored plans, the same invariant must also hold across save/load.
 
 ## Deterministic Legacy Signal-Plan Generation
 
@@ -481,7 +481,7 @@ When `TransportNetworkStore.topologyRevision` changes:
 4. authored plans are revalidated against current movement IDs and conflicts;
 5. stale movement queues referencing removed movements are reconciled through an explicit policy before the next service step.
 
-Generated control state may be replaced automatically because it is deterministic derived/default authority.
+Generated control state may be replaced automatically because it is deterministic derived/default authority. If regeneration changes the canonical control snapshot, `intersectionControlRevision` increments exactly once for the committed reconciliation mutation.
 
 Authored control state must never be silently rewritten into a different semantic plan. Invalid authored plans are surfaced as validation failures until explicitly replaced or a documented migration rule applies.
 
@@ -523,6 +523,8 @@ Validation must reject at minimum:
 - duplicate phase IDs;
 - zero/negative required green duration;
 - non-finite or non-integer timing values;
+- pedestrian walk longer than green;
+- pedestrian walk plus clearance longer than green plus amber;
 - duplicate movement references inside a phase;
 - unknown movement IDs;
 - disallowed movement IDs;
@@ -581,6 +583,7 @@ Verify:
 - stable control/plan/phase identity;
 - canonical snapshot ordering;
 - invalid timing rejection;
+- invalid pedestrian timing rejection;
 - invalid movement references rejection;
 - cross-junction reference rejection;
 - conflicting phase rejection;
@@ -641,7 +644,8 @@ Verify:
 - removed movement invalidates affected generated control and triggers deterministic rebuild;
 - authored invalid movement reference fails closed;
 - unaffected junction control IDs/plans remain stable;
-- topology revision changes do not spuriously increment control revision unless authoritative control state changes;
+- topology revision changes do not increment control revision when the canonical control snapshot is unchanged;
+- a regeneration that changes canonical control state increments control revision exactly once;
 - stale queue references are reconciled deterministically.
 
 ### Compatibility tests
@@ -677,10 +681,11 @@ At a representative large synthetic network:
 9. Emergency priority is deterministic.
 10. Lane-group capacity changes throughput directionally.
 11. Topology edits deterministically invalidate/rebuild affected generated control state.
-12. The legacy traffic stack can continue through a compatibility adapter without becoming a second control authority.
-13. Save V9 compatibility is preserved without pretending in-memory authored overrides are durable.
-14. Existing transportation, traffic, save, architecture, typecheck, lint, build, and browser/visual smoke gates remain green.
-15. `npm run verify` passes on the implementation branch before merge consideration.
+12. Control revision changes only when canonical control authority changes, not merely when time advances.
+13. The legacy traffic stack can continue through a compatibility adapter without becoming a second control authority.
+14. Save V9 compatibility is preserved without pretending in-memory authored overrides are durable.
+15. Existing transportation, traffic, save, architecture, typecheck, lint, build, and browser/visual smoke gates remain green.
+16. `npm run verify` passes on the implementation branch before merge consideration.
 
 ## Deferred Follow-On Work
 
@@ -719,7 +724,7 @@ Adds parking inventory, access, occupancy, search/cruising cost, and generalized
 - `IntersectionControlStore` owns control policy, not road legality.
 - Signal state never changes `TurnMovement.allowed` merely because a light is red.
 - `topologyRevision` is not a signal clock.
-- `intersectionControlRevision` is not a frame counter.
+- `intersectionControlRevision` changes only when canonical control authority changes; it is never a frame counter.
 - Default signal generation is deterministic and hierarchy-aware.
 - Generated control may be rebuilt; authored semantic state may not be silently rewritten.
 - Derived conflict matrices, lane groups, and active phases are not persisted as authority.
