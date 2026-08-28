@@ -247,3 +247,101 @@ test('zoning envelope commands preserve parcel/buildable rings and rounded heigh
   assert.ok(rings(commands).some((command) => command.key === 'zoning-envelope:buildable:parcel:1' && command.fill === '#59d8c4' && command.fillAlpha === 0.32 && command.stroke === '#59d8c4'));
   assert.ok(labels(commands).some((command) => command.text === '24m'));
 });
+
+const coordinatorModuleUrl = new URL('../src/rendering/gpu/GpuOverlayCoordinator.ts', import.meta.url);
+
+async function loadRetainedOverlayFamily(): Promise<any> {
+  assert.ok(
+    existsSync(coordinatorModuleUrl),
+    'GpuOverlayCoordinator must retain keyed overlay objects before Phase 3 can cut over rendering',
+  );
+  const module = await import(coordinatorModuleUrl.href);
+  assert.equal(typeof module.RetainedOverlayFamily, 'function', 'RetainedOverlayFamily must be exported');
+  return module.RetainedOverlayFamily;
+}
+
+const retainedCell = (key: string, fill = '#ffffff') => ({
+  kind: 'cell' as const,
+  key,
+  x: 1,
+  y: 1,
+  fill,
+  alpha: 0.5,
+});
+
+function retainedFamilyOptions(maxPoolSize = 2) {
+  let nextId = 0;
+  return {
+    maxPoolSize,
+    create: () => ({ id: ++nextId, key: '', fill: '' }),
+    apply: (value: any, command: any) => {
+      value.key = command.key;
+      value.fill = command.fill ?? command.color ?? command.stroke ?? '';
+    },
+  };
+}
+
+test('retained overlay family reuses identity for identical command lists', async () => {
+  const RetainedOverlayFamily = await loadRetainedOverlayFamily();
+  const family = new RetainedOverlayFamily(retainedFamilyOptions());
+  const command = retainedCell('service:quality:building:1');
+
+  const first = family.sync([command]);
+  const before = family.stats();
+  const second = family.sync([command]);
+  const after = family.stats();
+
+  assert.strictEqual(second[0]?.value, first[0]?.value);
+  assert.equal(after.created, before.created);
+  assert.equal(after.updated, before.updated);
+  assert.equal(after.recycled, before.recycled);
+});
+
+test('retained overlay family updates changed semantics in place', async () => {
+  const RetainedOverlayFamily = await loadRetainedOverlayFamily();
+  const family = new RetainedOverlayFamily(retainedFamilyOptions());
+  const first = family.sync([retainedCell('service:quality:building:1', '#ffffff')]);
+  const before = family.stats();
+  const second = family.sync([retainedCell('service:quality:building:1', '#ff0000')]);
+  const after = family.stats();
+
+  assert.strictEqual(second[0]?.value, first[0]?.value);
+  assert.equal(after.created, before.created);
+  assert.equal(after.updated, before.updated + 1);
+  assert.equal(second[0]?.value.fill, '#ff0000');
+});
+
+test('retained overlay family recycles objects and keeps the pool bounded through mode cycling', async () => {
+  const RetainedOverlayFamily = await loadRetainedOverlayFamily();
+  const family = new RetainedOverlayFamily(retainedFamilyOptions(2));
+
+  for (let index = 0; index < 12; index += 1) {
+    family.sync([retainedCell(`traffic:mode-${index}:edge:1`)]);
+  }
+  const stats = family.stats();
+
+  assert.equal(stats.active, 1);
+  assert.ok(stats.created <= 2, `expected bounded creation, got ${stats.created}`);
+  assert.ok(stats.recycled >= 10, `expected pooled reuse, got ${stats.recycled}`);
+  assert.ok(stats.pooled <= 2, `pool exceeded configured bound: ${stats.pooled}`);
+});
+
+test('retained overlay families isolate parcel-selection churn from unrelated analytical layers', async () => {
+  const RetainedOverlayFamily = await loadRetainedOverlayFamily();
+  const traffic = new RetainedOverlayFamily(retainedFamilyOptions());
+  const cadastre = new RetainedOverlayFamily(retainedFamilyOptions());
+  const zoningEnvelope = new RetainedOverlayFamily(retainedFamilyOptions());
+
+  traffic.sync([retainedCell('traffic:congestion:edge:slow', '#ff5b5b')]);
+  cadastre.sync([retainedCell('cadastre:parcel:parcel:1', '#ffffff')]);
+  zoningEnvelope.sync([retainedCell('zoning-envelope:parcel:parcel:1', '#df5c5c')]);
+  const trafficBefore = traffic.stats();
+
+  cadastre.sync([retainedCell('cadastre:parcel:parcel:2', '#ffffff')]);
+  zoningEnvelope.sync([retainedCell('zoning-envelope:parcel:parcel:2', '#df5c5c')]);
+  const trafficAfter = traffic.stats();
+
+  assert.deepEqual(trafficAfter, trafficBefore);
+  assert.ok(cadastre.stats().recycled >= 1);
+  assert.ok(zoningEnvelope.stats().recycled >= 1);
+});
