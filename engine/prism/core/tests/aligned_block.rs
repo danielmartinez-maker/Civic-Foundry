@@ -1,4 +1,4 @@
-use prism_core::memory::{AlignedBlock, MemoryError, CACHE_LINE_BYTES};
+use prism_core::memory::{AlignedBlock, CACHE_LINE_BYTES, MemoryError};
 
 #[test]
 fn block_is_cache_line_aligned_and_rounds_capacity() {
@@ -25,6 +25,9 @@ fn logical_bounds_are_enforced_even_when_capacity_is_padded() {
     );
     assert_eq!(
         block.write_byte(127, 1),
-        Err(MemoryError::OutOfBounds { index: 127, len: 65 })
+        Err(MemoryError::OutOfBounds {
+            index: 127,
+            len: 65
+        })
     );
 }
