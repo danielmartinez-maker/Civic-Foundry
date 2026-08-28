@@ -430,12 +430,11 @@ export class GpuWorldRenderer {
       }
     }
 
-    if (urbanFabric !== 'none' && selectedParcelId) {
-      const parcel = core.cadastre.getParcel(selectedParcelId);
-      if (parcel) {
-        const points = parcel.polygon.map((point) => this.worldMetersToCanvas(point, core));
-        if (points.length >= 3) this.strokePolygon(this.overlayLayer, points, '#ffe7f7', 3, 0.95);
-      }
+    if (urbanFabric !== 'none' && selectedParcelId && core.cadastre.getParcel(selectedParcelId)) {
+      const points = core.cadastre
+        .parcelPolygon(selectedParcelId)
+        .map((point) => this.worldMetersToCanvas(point, core));
+      if (points.length >= 3) this.strokePolygon(this.overlayLayer, points, '#ffe7f7', 3, 0.95);
     }
   }
 
