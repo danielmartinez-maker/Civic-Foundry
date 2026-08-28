@@ -193,14 +193,14 @@ impl JobGraph {
         for (offset, left) in ids.iter().copied().enumerate() {
             for right in ids.iter().copied().skip(offset + 1) {
                 if let Some(resource) = conflicting_resource(&self.jobs[&left], &self.jobs[&right])
+                    && !reaches(left, right, &outgoing)
+                    && !reaches(right, left, &outgoing)
                 {
-                    if !reaches(left, right, &outgoing) && !reaches(right, left, &outgoing) {
-                        return Err(JobGraphError::UnorderedHazard {
-                            resource,
-                            left,
-                            right,
-                        });
-                    }
+                    return Err(JobGraphError::UnorderedHazard {
+                        resource,
+                        left,
+                        right,
+                    });
                 }
             }
         }
