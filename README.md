@@ -30,7 +30,9 @@ Electron provides the native desktop window around the same local `dist/` build 
 
 The static TypeScript build remains in place. PixiJS's pinned browser ESM module is copied to `dist/vendor/pixi.mjs` and resolved through the local import map in `index.html`; no CDN runtime dependency or TypeScript `paths` alias is required. This boundary is recorded in `docs/adr/0002-desktop-gpu-runtime.md`.
 
-Legacy Canvas2D renderer/pass sources remain temporarily as migration references for specialized visual parity, but the production `GameApp` path no longer instantiates them.
+The current GPU presentation branch uses the deterministic Pass A atlas manifest as the production base-scene asset identity authority. Terrain, roads, buildings, construction, civic facilities, utilities, vegetation, and surface vehicles are translated into deterministic sprite commands. Static Pixi sprites are retained by stable presentation key and updated in place; moving private, service, transit, and freight sprites use bounded pools. `debugSceneStats()` exposes presentation-only allocation diagnostics so browser smoke tests can prove unchanged redraws and camera movement do not recreate static display objects.
+
+Zoning, selection/tool previews, and the generic analytical-overlay seam remain vector presentation layers until the specialized GPU overlay parity tranche. Legacy Canvas2D renderer/pass sources remain temporarily as migration references, but the production `GameApp` path no longer instantiates them.
 
 ## Phase 1R — World Foundation 2.0
 
@@ -86,7 +88,7 @@ The preserved gameplay layer still includes:
 - bus, BRT, tram, and metro topology, multimodal journey planning, passenger queues, transit vehicles, operations, fares, crowding, reliability, and accessibility;
 - establishment-based firms, labor allocation, inventories, production, imports/exports, freight orders, explicit freight trucks, formation, distress, recovery, and closure;
 - housing affordability, renter/owner tenure economics, persistent relocation, development policy, developer capital allocation, and inherited redevelopment safeguards;
-- deterministic isometric GPU presentation with terrain, zoning, roads, structures, active vehicle markers, analytical overlays, selection, and tool previews.
+- deterministic isometric GPU presentation with retained Pass A atlas sprites for the base scene and surface vehicles, vector zoning/selection/tool previews, and the existing analytical-overlay compatibility seam.
 
 These domains continue through the deterministic kernel compatibility architecture while later Civic Foundry 2.0 tranches progressively replace ownership behind parity gates.
 
@@ -172,15 +174,19 @@ Phase 1R acceptance established deterministic world generation, hydrology, spati
 
 Urban Fabric 2.0 adds repository-wide verification for cadastral geometry/topology, parcel mutation, dimensional zoning, envelopes/compliance, mixed-use massing, lifecycle/renovation, HBU/property/site assembly, runtime cadastral authority, Save V9 migration/round-trip/reference validation, deterministic mutation fuzzing, and compiled Urban Fabric browser behavior.
 
-The desktop GPU runtime adds contract coverage for the production WebGL renderer, local PixiJS module resolution, and hardened Electron host while retaining the inherited browser and visual smoke gates. PR #98 remains isolated from `main` until final review and explicit integration approval.
+The desktop GPU runtime is integrated on `main` through PR #98 and adds contract coverage for the production WebGL renderer, local PixiJS module resolution, and hardened Electron host while retaining the inherited browser and visual smoke gates.
+
+GPU Presentation Phase 2 adds deterministic Pass A atlas reuse, retained static sprite identity, bounded moving-vehicle pools, initialization/asset diagnostics, and compiled browser proof that unchanged redraws and camera motion do not recreate static display objects. The Phase 2 branch changes presentation/tests/docs only; authoritative simulation, world, and save domains are unchanged. Specialized analytical-overlay parity remains the next presentation tranche.
 
 ## Roadmap
 
 0. Civic Foundry 2.0 Phase 0A — Kernel Skeleton & Deterministic Scheduling ✅
 1. **1R — World Foundation 2.0 ✅** — geography hierarchy, irregular geometry, terrain/soils, hydrology/flooding, deterministic world generation, spatial index, world-aware costs, Save V8, compatibility facade
 2. **2R — Urban Fabric 2.0 ✅** — true cadastral parcels, dimensional zoning, mixed-use `BuildingV2`, deterioration/renovation, HBU/redevelopment, parcel splitting/assembly, Save V9, cadastral diagnostics
-3. **Desktop GPU Runtime — PR #98** — PixiJS/WebGL production renderer and hardened Windows Electron host while preserving simulation/save authority
-4. **3R — Transportation Engine 2.0** — lane/turn/signal/parking/crash authority and dynamic routing replacement
-5. Later Civic Foundry 2.0 systems continue under the progressive replacement architecture in `docs/superpowers/specs/2026-08-24-civic-foundry-2.0-master-design.md`.
+3. **Desktop GPU Runtime — PR #98 ✅** — PixiJS/WebGL production renderer and hardened Windows Electron host while preserving simulation/save authority
+4. **GPU Presentation Phase 2 — PR #99** — deterministic Pass A atlas sprites, retained base scene, bounded vehicle pools, and retained-scene browser diagnostics
+5. **GPU Presentation Phase 3** — specialized retained traffic/service/transit/economy/cadastral/zoning-envelope overlays and explicit legacy Canvas removal gate
+6. **3R — Transportation Engine 2.0** — lane/turn/signal/parking/crash authority and dynamic routing replacement
+7. Later Civic Foundry 2.0 systems continue under the progressive replacement architecture in `docs/superpowers/specs/2026-08-24-civic-foundry-2.0-master-design.md`.
 
 See `docs/ARCHITECTURE.md`, `docs/SAVE_FORMAT.md`, and `docs/superpowers/` for architecture, persistence, design specifications, and implementation plans.
