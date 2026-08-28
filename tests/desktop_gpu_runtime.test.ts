@@ -18,6 +18,19 @@ test('GPU renderer selects WebGL and never acquires a Canvas2D context', async (
   assert.doesNotMatch(source, /CanvasRenderingContext2D/);
 });
 
+test('GPU renderer consumes the canonical atlas manifest through retained sprite layers', async () => {
+  const renderer = await text('src/rendering/gpu/GpuWorldRenderer.ts');
+  const registry = await text('src/rendering/gpu/GpuAssetRegistry.ts');
+  assert.match(renderer, /PASS_A_ASSET_MANIFEST/);
+  assert.match(renderer, /GpuAssetRegistry/);
+  assert.match(renderer, /RetainedSpriteLayer/);
+  assert.match(renderer, /debugSceneStats/);
+  assert.doesNotMatch(renderer, /clearLayers\(/);
+  assert.match(registry, /Assets\.load/);
+  assert.match(registry, /new Texture\(/);
+  assert.doesNotMatch(registry, /CanvasRenderingContext2D|getContext\(\s*['"]2d['"]\s*\)/);
+});
+
 test('desktop host loads local content with hardened BrowserWindow settings', async () => {
   const source = await text('desktop/main.mjs');
   assert.match(source, /loadFile\(/);
