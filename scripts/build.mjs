@@ -50,7 +50,9 @@ async function copyOptionalVendorFiles(root) {
     "pixi.mjs",
   );
   if (!(await pathExists(pixiSource))) {
-    throw new Error("PixiJS browser runtime is missing; run npm ci before building.");
+    throw new Error(
+      "PixiJS browser runtime is missing; run npm ci before building.",
+    );
   }
   await copyFile(pixiSource, join(vendor, "pixi.mjs"));
 }
