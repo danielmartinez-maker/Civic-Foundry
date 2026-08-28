@@ -12,11 +12,11 @@ The implementation sequence is D0 → D1 → D2 → D3 → D4. Canvas2D may exis
 
 Civic Foundry becomes a full Windows desktop city simulator that launches as a packaged `.exe`, renders the city as a GPU-driven 3D world through Babylon.js, preserves the current deterministic city simulation, and exposes the existing gameplay systems through a desktop-quality interface.
 
-The migration is a platform and presentation replacement. It is not authorization to redesign transportation, households, economics, politics, or other simulation domains that already have separate roadmap ownership.
+This is a platform and presentation replacement. It does not authorize redesign of transportation, households, economics, politics, or other simulation domains that already have separate roadmap ownership.
 
-## Chosen Runtime
+## Locked Runtime Stack
 
-The approved runtime stack is:
+The approved and self-review-locked runtime stack is:
 
 - Electron desktop shell;
 - TypeScript throughout the existing simulation and presentation code;
@@ -24,11 +24,13 @@ The approved runtime stack is:
 - WebGL2 as the required rendering baseline;
 - optional Babylon WebGPU support later as an acceleration path, never as the minimum launch requirement;
 - HTML/CSS for dense city-management UI surfaces inside the Electron renderer process;
+- `electron-vite` for Electron main/preload/renderer development and production bundling;
+- `electron-builder` for Windows packaging, with NSIS as the initial installer target;
 - existing deterministic simulation, save serializers, and compatibility migrations preserved unless a desktop-specific defect requires a narrowly scoped fix.
 
-## Strategic Placement in the Roadmap
+The build tool choice intentionally avoids depending on Electron Forge's currently experimental Vite integration. Tool versions are pinned through the lockfile during implementation.
 
-The roadmap becomes:
+## Strategic Placement in the Roadmap
 
 ```text
 0A  Kernel Skeleton                    COMPLETE
@@ -53,14 +55,15 @@ D0–D4 must complete before 3R begins. This prevents a rendering-platform migra
 2. `SimulationCore` remains the public compatibility gameplay facade during the migration.
 3. `WorldFoundation` remains the sole physical/geographic authority.
 4. `CadastralGraph` remains the sole legal-land/topology authority.
-5. Babylon.js owns presentation state only. Babylon meshes, materials, transforms, animation interpolation, effects, cameras, lights, and selection highlights are never authoritative simulation state.
-6. Presentation may read typed snapshots and emit typed commands. It may not directly manufacture simulation outcomes.
+5. Babylon.js owns presentation state only. Babylon meshes, materials, transforms, interpolation, effects, cameras, lights, and highlights are never authoritative simulation state.
+6. Presentation reads typed snapshots and emits typed commands. It may not manufacture simulation outcomes.
 7. Save V9 remains the default authoritative save schema unless an actual new persistence requirement emerges.
 8. The existing V3–V9 hydration chain remains supported.
 9. Simulation cadence remains independent from display frame rate.
 10. D0–D4 may add presentation read models and commands but may not quietly assume ownership over later simulation domains.
-11. A failed or low-frame-rate renderer may degrade visual fidelity before it is allowed to alter simulation determinism.
+11. A failed or slow renderer may degrade visual fidelity before it is allowed to alter simulation determinism.
 12. No production world renderer may use Canvas2D after D4.
+13. `HTMLCanvasElement` remains permitted strictly as a GPU surface for Babylon/WebGL/WebGPU; requesting a `2d` context is forbidden in production world-rendering code after D4.
 
 ## Current Baseline and Replacement Boundary
 
@@ -76,7 +79,7 @@ GameApp
 
 `WorldRenderer` currently owns the HTML canvas, the 2D drawing context, isometric projection, generated sprite-atlas presentation, overlays, selection rendering, and vehicle presentation. `GameApp` also couples browser DOM orchestration, browser storage, input, the frame loop, and the Canvas renderer.
 
-The desktop migration deliberately replaces this presentation stack without rewriting the simulation owners behind `SimulationCore`.
+The desktop migration replaces this presentation stack without rewriting the simulation owners behind `SimulationCore`.
 
 ## Target Runtime Architecture
 
@@ -184,10 +187,10 @@ Babylon scene          HUD / panels / inspector
 
 `CityPresentationSnapshot` contains stable IDs and renderer-oriented immutable data. It contains no Babylon classes, DOM nodes, mutable simulation owners, or native filesystem handles.
 
-The snapshot should cover, as needed by the migrated presentation:
+The snapshot covers, as needed by the migrated presentation:
 
 - world bounds and coordinate scale;
-- terrain elevation/physical visualization inputs;
+- terrain elevation and physical visualization inputs;
 - hydrology and flood visualization state;
 - cadastral parcel polygons, zoning, frontage, access, ownership/read-only diagnostics, and selected-state metadata;
 - canonical `BuildingV2` footprint, height, floors, use mix, quality, condition, lifecycle, project/construction state, and visual classification;
@@ -197,10 +200,10 @@ The snapshot should cover, as needed by the migrated presentation:
 - service facilities and active service vehicles;
 - freight vehicles and trade-flow presentation data;
 - active overlay metric values;
-- simulation clock, speed, date/time if applicable, treasury/population/employment and selected HUD values;
+- simulation clock, speed, treasury/population/employment and selected HUD values;
 - inspection identifiers and read-only diagnostic summaries.
 
-The builder must maintain deterministic ordering for collections whose order can affect delta generation or tests.
+Collections whose order can affect deltas or tests must use deterministic ordering.
 
 ## Scene Synchronization
 
@@ -218,9 +221,7 @@ parcel:parcel-117  → ParcelVisual
 vehicle:veh-9184   → VehicleVisual
 ```
 
-Synchronization uses create/update/remove deltas rather than rebuilding the whole scene every frame.
-
-Static or infrequently changing geometry must be cached. Terrain, unchanged parcel geometry, stable roads, and unchanged buildings should not be re-created per render frame.
+Synchronization uses create/update/remove deltas rather than rebuilding the whole scene every frame. Terrain, unchanged parcel geometry, stable roads, and unchanged buildings are cached and invalidated only when their source snapshot data changes.
 
 ### Interpolation
 
@@ -250,7 +251,7 @@ World/cadastral geometry is projected from the existing simulation coordinate sy
 
 ### Terrain
 
-`WorldFoundation` terrain becomes a real 3D height field or chunked equivalent. Terrain rendering may initially use a moderate-resolution mesh derived from authoritative terrain samples, with later visual refinement permitted so long as it remains non-authoritative.
+`WorldFoundation` terrain becomes a real 3D height field or chunked equivalent. Terrain rendering may initially use a moderate-resolution mesh derived from authoritative terrain samples, with later visual refinement permitted only as non-authoritative presentation.
 
 ### Parcels
 
@@ -267,20 +268,18 @@ The default camera is a free city-builder orbit camera rather than a four-quarte
 Required controls:
 
 - mouse-wheel zoom;
-- middle-mouse or configured drag pan;
+- middle-mouse drag pan;
 - WASD keyboard pan;
 - Q/E rotation;
 - pitch limits appropriate for city-builder readability;
 - click selection;
 - focus selected entity;
 - world-space ray picking;
-- resilient controls at both neighborhood and city scales.
+- controls that remain usable from neighborhood to full-city scale.
 
-A high-altitude orthographic-like presentation mode may be added later, but it is not required for initial D0–D4 acceptance.
+A high-altitude orthographic-like mode may be added later, but it is not required for D0–D4 acceptance.
 
 ## Input and Command Flow
-
-Input follows:
 
 ```text
 mouse / keyboard input
@@ -297,13 +296,13 @@ mouse / keyboard input
 
 Legacy cell-based tools may temporarily receive a derived cell coordinate where compatibility still requires it. Newer parcel/world-coordinate tools should operate directly on canonical world or parcel identity.
 
-The renderer may show a provisional visual preview for road/zoning/building placement, but the preview may not become authoritative until the simulation accepts the corresponding command.
+The renderer may show provisional road/zoning/building previews, but preview state never becomes authoritative until the simulation accepts the corresponding command.
 
 ## Desktop UI Strategy
 
 Babylon owns the world viewport. HTML/CSS remains the preferred technology for dense management interfaces.
 
-The player-facing shell should provide:
+The shell provides:
 
 - central 3D city viewport;
 - persistent top HUD for treasury, population, simulation time/speed, and core status;
@@ -311,7 +310,7 @@ The player-facing shell should provide:
 - contextual inspector;
 - expandable management panels for taxes, services, transit, economy, zoning, Urban Fabric, and diagnostics;
 - mutually exclusive analytical overlay selection where current semantics require it;
-- native-feeling save/load dialogs or in-game save browser backed by the desktop storage service.
+- save/load/import surfaces backed by the desktop storage service.
 
 A full visual redesign of every panel is outside this migration unless required for desktop usability or removal of Canvas assumptions.
 
@@ -329,34 +328,33 @@ Desktop storage root:
   logs\
 ```
 
-Suggested save extension:
+Save extension:
 
 ```text
 *.cfsave
 ```
 
-A `.cfsave` initially contains the validated Save V9 JSON envelope. The extension is a desktop file convention, not a new save schema.
+A `.cfsave` contains the validated Save V9 JSON envelope. The extension is a desktop file convention, not a new save schema.
 
 ### Save Guarantees
 
 Manual and autosave writes use an atomic pattern:
 
 1. serialize authoritative state;
-2. validate serializable output where appropriate;
-3. write a temporary file;
-4. close/flush the temporary file;
-5. preserve or rotate the previous known-good save when applicable;
-6. atomically rename the temporary file into place.
+2. write a temporary file in the target directory;
+3. flush and close the temporary file;
+4. preserve/rotate the previous known-good save when applicable;
+5. atomically rename the temporary file into place.
 
 A corrupt or unsupported save is rejected through existing hydration/validation logic. Partial state must not be loaded.
 
 ### Compatibility
 
-Existing V9 JSON can be imported into the desktop save flow. Older supported save versions continue through the existing V3–V9 migration chain. D0–D4 does not fabricate a Save V10 merely to change storage location.
+Existing V9 JSON can be imported into the desktop save flow. Older supported save versions continue through the existing V3–V9 migration chain. D0–D4 does not create Save V10 merely to change storage location.
 
 ### Autosaves
 
-Desktop baseline includes rotating autosaves. The exact cadence is configurable during implementation, but rotation must prevent unbounded file growth and preserve multiple recent recovery points.
+Desktop baseline includes three rotating autosave slots. Default cadence is every five real-time minutes while a city is loaded and has authoritative changes since the previous save. Autosave is suppressed while the simulation is in an invalid/load-transition state. Autosave cadence may later become user-configurable.
 
 ## Electron Process and Security Model
 
@@ -371,8 +369,8 @@ Required defaults:
 - no arbitrary filesystem API exposed to renderer code;
 - no arbitrary process/shell execution from renderer code;
 - deny untrusted navigation and popups;
-- packaged renderer resources governed by a restrictive Content Security Policy;
-- validate IPC payloads in the main process before performing file operations.
+- restrictive Content Security Policy for packaged renderer resources;
+- validate IPC payloads in the main process before performing native operations.
 
 Expected bridge shape:
 
@@ -389,9 +387,14 @@ The main process owns native persistence and platform integration. Babylon and m
 
 ## Build and Packaging
 
-The existing build is optimized for a static browser distribution and generated isometric atlas pipeline. D0 replaces that canonical packaging path with a desktop bundling/package workflow.
+The canonical desktop toolchain is:
 
-Required developer commands should converge toward:
+```text
+electron-vite  → development + main/preload/renderer bundles
+electron-builder → packaged Windows application + NSIS installer
+```
+
+Required developer commands converge on:
 
 ```text
 npm run desktop:dev
@@ -400,9 +403,7 @@ npm run desktop:package
 npm run desktop:test
 ```
 
-Exact tools may be Electron Forge, electron-builder, or an equivalent maintained packaging stack selected during implementation planning. The design requirement is the capability, not one mandatory packaging library.
-
-A production build must yield a launchable Windows application and distributable installer/package artifact. CI must prove packaging rather than merely compiling renderer TypeScript.
+The repository remains on Node 22, but desktop CI must pin a Node 22 release that satisfies all selected packaging-tool minimums. A production build must yield both an unpacked launchable Windows application for smoke testing and an NSIS installer artifact.
 
 ## Babylon Rendering Baseline
 
@@ -442,18 +443,18 @@ validated runtime manifest
 Babylon asset containers / instancing pools
 ```
 
-### Asset Rules
+Asset rules:
 
 - engine-ready runtime assets are referenced through manifests rather than ad hoc paths;
-- repeated visual assets use instancing/thin instances where appropriate;
+- repeated assets use instancing/thin instances where appropriate;
 - texture memory is budgeted explicitly;
-- authored models should use GLB/glTF as the preferred interchange/runtime format;
-- source art remains separate from optimized runtime artifacts according to repository policy;
-- asset validation must reject missing runtime references before packaging.
+- authored models use GLB/glTF as the preferred runtime format;
+- raw production source art is not committed as runtime content; only repository-policy-approved source definitions and optimized engine-ready outputs are tracked;
+- asset validation rejects missing runtime references before packaging.
 
 ### Procedural Building Strategy
 
-Initial desktop buildings should favor modular procedural 3D driven by `BuildingV2`:
+Initial desktop buildings favor modular procedural 3D driven by `BuildingV2`:
 
 - footprint;
 - floor count / height;
@@ -463,9 +464,7 @@ Initial desktop buildings should favor modular procedural 3D driven by `Building
 - lifecycle state;
 - construction/redevelopment state.
 
-This provides immediate visual diversity from the canonical Urban Fabric model without requiring hundreds of bespoke assets before D1 can become playable.
-
-Authored landmarks and richer modular kits can replace or augment procedural visuals incrementally.
+This provides immediate visual diversity from the canonical Urban Fabric model without requiring hundreds of bespoke assets before D1 can become playable. Authored landmarks and richer modular kits can replace or augment procedural visuals incrementally.
 
 ## Visual Direction
 
@@ -484,14 +483,42 @@ Tilt-shift depth of field is a GPU post-process and must be configurable or disa
 
 ## Performance Contract
 
-The migration introduces explicit renderer performance gates.
+### Reference Hardware
 
-### Initial Targets
+Desktop rendering acceptance is measured on a Windows 11 x64 machine with, at minimum:
 
-- target: 60 FPS at 1920×1080 on the defined reference desktop scene;
-- hard migration acceptance floor: 30 FPS on the defined stress scene;
-- simulation tick performance remains independently measured;
-- frame-rate variation must not change deterministic simulation outcomes.
+- 6 physical CPU cores from a broadly 2020-or-newer desktop-class processor;
+- 16 GB system RAM;
+- NVIDIA GTX 1660 Super / AMD RX 5600 XT class GPU or better;
+- current vendor graphics driver;
+- 1920×1080 output resolution.
+
+This is a migration baseline, not the final minimum-spec promise for a commercial release.
+
+### Reference Scene
+
+The committed renderer-performance fixture uses a presentation snapshot containing approximately:
+
+- 2,000 visible buildings;
+- 1,000 active moving vehicles across traffic/transit/service/freight categories;
+- 5,000 repeated props/roadside instances;
+- parcel and road geometry sufficient to exercise normal city-scale culling and overlay paths;
+- one representative analytical overlay active.
+
+Target: 60 FPS at 1920×1080 on reference hardware after a 10-second warmup, measured over the next 30 seconds. The median frame rate must be at least 60 FPS and the 1% low must be at least 45 FPS.
+
+### Stress Scene
+
+The committed stress fixture uses a synthetic read-only presentation snapshot containing approximately:
+
+- 5,000 visible buildings;
+- 2,000 active moving vehicles;
+- 20,000 repeated props/roadside instances;
+- full parcel/road geometry and one analytical overlay.
+
+The fixture is synthetic presentation data so renderer stress coverage does not require simulation systems to manufacture an unnaturally large city.
+
+Acceptance floor: median frame rate at least 30 FPS and 1% low at least 22 FPS at 1920×1080 on reference hardware after warmup.
 
 ### Rendering Rules
 
@@ -501,13 +528,14 @@ The migration introduces explicit renderer performance gates.
 - chunk terrain and other large static geometry;
 - use frustum culling and LODs for large cities;
 - pool moving-agent visual instances where practical;
-- update analytical overlays only when their source data invalidates;
+- update analytical overlays only when source data invalidates;
 - maintain explicit snapshot-build and snapshot-sync timing telemetry;
-- degrade visual density/LOD before blocking simulation progress.
+- degrade visual density/LOD before blocking simulation progress;
+- frame-rate variation must not change deterministic simulation outcomes.
 
 ### Telemetry
 
-Desktop development telemetry should expose at least:
+Desktop development telemetry exposes at least:
 
 - renderer FPS/frame time;
 - CPU presentation sync time;
@@ -519,26 +547,26 @@ Desktop development telemetry should expose at least:
 
 ## Migration Tranches
 
-## D0 — Windows Desktop Foundation
+### D0 — Windows Desktop Foundation
 
 Purpose: create the secure desktop runtime while leaving simulation behavior unchanged.
 
 Required outcomes:
 
 - Electron main/preload/renderer process structure;
-- desktop bundling/dev workflow;
+- `electron-vite` desktop dev/build workflow;
 - launchable Windows development build;
-- packaged Windows build artifact;
+- `electron-builder` unpacked package and NSIS artifact;
 - secure preload bridge;
 - native settings/save storage service;
 - Save V9 manual save/load using filesystem storage;
-- rotating autosave infrastructure;
+- three-slot rotating autosave infrastructure;
 - preserved Node simulation test workflow;
 - no simulation-domain authority changes.
 
 D0 may temporarily host a minimal placeholder renderer while D1 is being built, but the shipping target remains Babylon only.
 
-## D1 — Babylon 3D Vertical Slice
+### D1 — Babylon 3D Vertical Slice
 
 Purpose: establish the first actually playable GPU-rendered desktop city.
 
@@ -554,13 +582,13 @@ Required outcomes:
 - free orbit/pan/zoom camera;
 - inspect/select;
 - pause/simulation speed controls;
-- minimum road/zoning/build interaction required for a playable city slice;
+- minimum road/zoning interaction required for a playable city slice;
 - manual save/load through desktop storage;
 - no Canvas2D renderer executed by the D1 desktop entry point.
 
-D1 hard gate: Civic Foundry can launch as a Windows desktop game and the playable vertical slice runs through Babylon without invoking Canvas2D world rendering.
+D1 hard gate: Civic Foundry launches as a Windows desktop game and the playable vertical slice runs through Babylon without invoking Canvas2D world rendering.
 
-## D2 — Gameplay Presentation Parity
+### D2 — Gameplay Presentation Parity
 
 Purpose: migrate the complete currently supported player-facing presentation and interaction layer.
 
@@ -586,7 +614,7 @@ Required outcomes include:
 
 The old browser/Canvas renderer remains only as a temporary reference for parity testing during this tranche.
 
-## D3 — 3D Asset and Visual Pipeline
+### D3 — 3D Asset and Visual Pipeline
 
 Purpose: replace temporary primitive visuals and isometric sprite dependencies with the long-term 3D runtime asset system.
 
@@ -600,7 +628,7 @@ Required outcomes:
 - asset policy updated for desktop runtime artifacts;
 - old atlas dependencies removed from desktop build.
 
-## D4 — Canvas2D and Browser Runtime Removal
+### D4 — Canvas2D and Browser Runtime Removal
 
 Purpose: make the desktop Babylon runtime the only supported production game path.
 
@@ -609,7 +637,7 @@ Required outcomes:
 - remove `WorldRenderer` Canvas2D implementation;
 - remove Canvas render passes and Canvas-specific vehicle renderers;
 - remove `IsometricCamera` if no non-Canvas tooling still requires it;
-- remove production dependencies on `CanvasRenderingContext2D` and `canvas.getContext('2d')`;
+- remove production dependencies on `CanvasRenderingContext2D` and `getContext('2d')`;
 - remove generated isometric atlas runtime build requirements;
 - retire browser `index.html` as a supported game entry point;
 - retire Canvas/browser smoke tests superseded by desktop tests;
@@ -618,11 +646,11 @@ Required outcomes:
 - prove packaged Windows launch/save/load/gameplay parity;
 - pass defined performance gates.
 
-D4 completion is the gate that unlocks 3R.
+D4 completion unlocks 3R.
 
 ## Player-Facing Completion Criteria
 
-Before D4 is considered complete, the packaged Windows build must allow the player to:
+Before D4 is complete, the packaged Windows build must allow the player to:
 
 - create a deterministic new city;
 - pan, orbit, zoom, and inspect the 3D city;
@@ -637,7 +665,7 @@ Before D4 is considered complete, the packaged Windows build must allow the play
 - activate current traffic, service, transit, economy, and Urban Fabric overlays;
 - inspect cells/compatibility targets, parcels, buildings, transit, and relevant diagnostics;
 - save to named desktop save files;
-- autosave and recover from recent autosaves;
+- recover from rotating autosaves;
 - load Save V9 desktop files;
 - import older supported saves through the existing migration path;
 - quit and relaunch without losing valid saved state.
@@ -663,8 +691,6 @@ If migration reveals a true simulation compatibility bug, fix it narrowly with t
 
 ## Testing and CI Contract
 
-The desktop migration must preserve the existing deterministic simulation verification and add renderer/platform gates.
-
 Required CI layers by D4:
 
 1. formatting and linting;
@@ -679,26 +705,24 @@ Required CI layers by D4:
 10. packaged Electron smoke test;
 11. Windows gameplay smoke covering launch → create/new/load → build road → zone → tick → save → quit → relaunch → load;
 12. architecture/static test proving no production Canvas2D world-rendering path exists after D4;
-13. stress/performance telemetry gate;
-14. Windows installer/package artifact generation.
+13. reference/stress renderer telemetry gate;
+14. Windows unpacked application and NSIS installer artifact generation.
 
-### Determinism Test Rule
-
-A presentation test may verify scene mappings, transforms, visible classifications, and snapshot-delta behavior. It must not make Babylon output part of authoritative simulation determinism. Authoritative equivalence continues to be asserted through simulation/save state.
+A presentation test may verify scene mappings, transforms, visible classifications, and snapshot-delta behavior. Babylon output never becomes part of authoritative simulation determinism. Authoritative equivalence continues to be asserted through simulation/save state.
 
 ## Error Handling
 
 ### Renderer failure
 
-A Babylon initialization failure must produce a clear desktop error state and diagnostics rather than silently falling back to the old Canvas renderer after D4.
+A Babylon initialization failure produces a clear desktop error state and diagnostics rather than silently falling back to the old Canvas renderer after D4.
 
 ### Asset failure
 
-Missing required packaged assets fail validation in build/CI. Runtime optional assets may fall back to an explicit placeholder visual, but diagnostics must identify the missing asset.
+Missing required packaged assets fail validation in build/CI. Optional runtime assets may fall back to an explicit placeholder visual, but diagnostics identify the missing asset.
 
 ### Save failure
 
-Save write failures leave the previous valid save intact. The UI surfaces a recoverable error. Autosave failure must not crash the simulation.
+Save write failures leave the previous valid save intact. The UI surfaces a recoverable error. Autosave failure does not crash the simulation.
 
 ### Load failure
 
@@ -710,7 +734,7 @@ Desktop IPC operations return typed failures. Renderer code does not assume nati
 
 ## Documentation Updates Required During Implementation
 
-D0–D4 should progressively update:
+D0–D4 progressively update:
 
 - `README.md`;
 - `docs/ARCHITECTURE.md`;
@@ -718,7 +742,7 @@ D0–D4 should progressively update:
 - `docs/SAVE_FORMAT.md` where desktop file conventions need documentation;
 - `docs/ENGINEERING_STANDARDS.md`;
 - relevant ADRs for Electron/Babylon and renderer authority boundaries;
-- asset documentation replacing the isometric runtime atlas assumptions.
+- asset documentation replacing isometric runtime atlas assumptions.
 
 Final D4 documentation must not describe the browser Canvas renderer as canonical.
 
@@ -733,10 +757,10 @@ The Windows desktop migration is complete when all of the following are true:
 5. Current player-facing city-building, management, overlay, inspection, traffic/transit/service/freight presentation, and save/load workflows have reached desktop parity.
 6. Scene synchronization is snapshot-driven and Babylon state is non-authoritative.
 7. Electron renderer privileges are restricted through a narrow preload/IPC boundary.
-8. Desktop saves use atomic filesystem writes with rotating autosave recovery.
-9. The defined reference/stress scenes satisfy the accepted performance floors.
+8. Desktop saves use atomic filesystem writes with three-slot rotating autosave recovery.
+9. The committed reference and stress fixtures satisfy the performance thresholds defined in this spec.
 10. Isometric sprite-atlas generation is no longer required by the canonical desktop build.
-11. CI generates and smoke-tests the Windows package.
+11. CI generates and smoke-tests the Windows package and NSIS installer artifact.
 12. D4 documentation and architecture policy declare desktop Babylon as the canonical runtime.
 
 Only after these criteria pass should Civic Foundry resume the 3R Transportation Engine 2.0 replacement program.
