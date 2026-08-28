@@ -7,6 +7,7 @@ coverage/
 .cache/
 .vscode/
 .idea/
+engine/prism/target/
 *.tsbuildinfo
 *.log
 .DS_Store

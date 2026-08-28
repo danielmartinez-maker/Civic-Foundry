@@ -1,0 +1,13 @@
+[package]
+name = "prism-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+prism-core = { path = "../core" }
+
+[lints]
+workspace = true

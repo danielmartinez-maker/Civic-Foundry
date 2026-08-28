@@ -19,6 +19,10 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - name: Rust 1.98.0
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.98.0
       - name: Install project dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install atlas rasterizer and browser smoke runtime
@@ -27,6 +31,8 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Core verification
         run: npm run verify
+      - name: Prism verification
+        run: npm run prism:verify
       - name: Phase 6 browser smoke
         run: npm run test:smoke
       - name: Phase 7 browser smoke
@@ -37,3 +43,15 @@ jobs:
         run: npm run test:smoke:isometric
       - name: Isometric Pass A visual smoke
         run: python tests/smoke/isometric_visual_smoke.py
+
+  prism-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Rust 1.98.0
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.98.0
+      - name: Build native Prism host
+        run: cargo build --manifest-path engine/prism/Cargo.toml -p prism-host --release --locked
