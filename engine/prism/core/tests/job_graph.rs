@@ -6,7 +6,9 @@ const ECONOMY: ResourceId = ResourceId::new(2);
 #[test]
 fn compile_order_is_independent_of_registration_order() {
     let specs = [
-        JobSpec::new(JobId::new(30), 0).read(WORLD).after(JobId::new(10)),
+        JobSpec::new(JobId::new(30), 0)
+            .read(WORLD)
+            .after(JobId::new(10)),
         JobSpec::new(JobId::new(10), 0).write(WORLD),
         JobSpec::new(JobId::new(20), -1).read(ECONOMY),
     ];
