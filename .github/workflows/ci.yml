@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
       - name: Node 22
         uses: actions/setup-node@v7.0.0
         with:
@@ -21,25 +23,36 @@ jobs:
           cache: npm
       - name: Bootstrap desktop dependency lockfile
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-      - name: Persist desktop dependency lockfile
+      - name: Apply production renderer cutover
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/app/GameApp.ts')
+          source = path.read_text()
+          replacements = {
+              "import { WorldRenderer, type CellSelection } from '../rendering/WorldRenderer.ts';": "import { GpuWorldRenderer, type CellSelection } from '../rendering/gpu/GpuWorldRenderer.ts';",
+              'readonly renderer: WorldRenderer;': 'readonly renderer: GpuWorldRenderer;',
+              'this.renderer = new WorldRenderer(canvas);': 'this.renderer = new GpuWorldRenderer(canvas);',
+          }
+          for old, new in replacements.items():
+              if old in source:
+                  source = source.replace(old, new, 1)
+              elif new not in source:
+                  raise SystemExit(f'missing expected GameApp migration anchor: {old}')
+          path.write_text(source)
+          PY
+      - name: Persist migration bootstrap
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         run: |
-          if git diff --quiet -- package-lock.json; then
+          if git diff --quiet -- package-lock.json src/app/GameApp.ts; then
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          git commit -m "build: resolve desktop dependency lockfile"
+          git add package-lock.json src/app/GameApp.ts
+          git commit -m "feat: cut production path to desktop GPU runtime"
           git push origin HEAD:${GITHUB_HEAD_REF}
-      - name: Upload desktop dependency lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-lockfile
-          path: |
-            package.json
-            package-lock.json
-          if-no-files-found: error
       - name: Install project dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install atlas rasterizer and browser smoke runtime
