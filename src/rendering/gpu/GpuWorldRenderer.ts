@@ -11,6 +11,8 @@ import { IsometricCamera } from '../isometric/IsometricCamera.ts';
 import { buildBaseSpriteCommands, type BaseSpriteCommand } from './BaseSpriteCommands.ts';
 import { GpuAssetRegistry } from './GpuAssetRegistry.ts';
 import { RetainedSpriteLayer } from './RetainedSpriteLayer.ts';
+import { RetainedVehicleLayer } from './RetainedVehicleLayer.ts';
+import { buildVehicleSpriteCommands } from './VehicleSpriteCommands.ts';
 
 export type GpuPoint = Readonly<{ x: number; y: number }>;
 export type CellSelection = Readonly<{ x: number; y: number }> | null;
@@ -36,6 +38,10 @@ export type GpuSceneStats = Readonly<{
   staticCreated: number;
   staticUpdated: number;
   staticRemoved: number;
+  vehicleActive: number;
+  vehicleCreated: number;
+  vehicleReused: number;
+  vehiclePooled: number;
 }>;
 
 // Presentation-only facade. Authoritative state remains inside SimulationCore.
@@ -51,12 +57,13 @@ export class GpuWorldRenderer {
   private readonly roadContainer = new Container();
   private readonly roadEffectsLayer = new Graphics();
   private readonly objectContainer = new Container();
-  private readonly vehicleLayer = new Graphics();
+  private readonly vehicleContainer = new Container();
   private readonly overlayLayer = new Graphics();
   private readonly selectionLayer = new Graphics();
   private readonly terrainSprites = new RetainedSpriteLayer(this.terrainContainer, this.assets);
   private readonly roadSprites = new RetainedSpriteLayer(this.roadContainer, this.assets);
   private readonly objectSprites = new RetainedSpriteLayer(this.objectContainer, this.assets);
+  private readonly vehicleSprites = new RetainedVehicleLayer(this.vehicleContainer, this.assets);
   private readonly initializationPromise: Promise<void>;
   private initialized = false;
   private initializationError: string | null = null;
@@ -131,11 +138,16 @@ export class GpuWorldRenderer {
 
   debugSceneStats(): GpuSceneStats {
     const stats = [this.terrainSprites.stats(), this.roadSprites.stats(), this.objectSprites.stats()];
+    const vehicle = this.vehicleSprites.stats();
     return Object.freeze({
       staticActive: stats.reduce((sum, item) => sum + item.active, 0),
       staticCreated: stats.reduce((sum, item) => sum + item.created, 0),
       staticUpdated: stats.reduce((sum, item) => sum + item.updated, 0),
       staticRemoved: stats.reduce((sum, item) => sum + item.removed, 0),
+      vehicleActive: vehicle.active,
+      vehicleCreated: vehicle.created,
+      vehicleReused: vehicle.reused,
+      vehiclePooled: vehicle.pooled,
     });
   }
 
@@ -164,18 +176,21 @@ export class GpuWorldRenderer {
     const viewport = { width: rect.width, height: rect.height };
     const commands = buildBaseSpriteCommands(core, this.camera.quarterTurns);
     this.syncBaseSprites(commands, size, viewport);
+    this.vehicleSprites.sync(
+      buildVehicleSpriteCommands(core, this.camera.quarterTurns),
+      this.camera,
+      size,
+    );
 
     this.terrainEffectsLayer.clear();
     this.zoningLayer.clear();
     this.roadEffectsLayer.clear();
-    this.vehicleLayer.clear();
     this.overlayLayer.clear();
     this.selectionLayer.clear();
 
     this.drawTerrainEffects(core);
     this.drawZoning(core);
     this.drawRoadDetails(core);
-    this.drawVehicles(core);
     this.drawOverlayTint(
       core,
       overlayMode,
@@ -208,7 +223,7 @@ export class GpuWorldRenderer {
       this.roadContainer,
       this.roadEffectsLayer,
       this.objectContainer,
-      this.vehicleLayer,
+      this.vehicleContainer,
       this.overlayLayer,
       this.selectionLayer,
     );
@@ -274,91 +289,6 @@ export class GpuWorldRenderer {
     }
   }
 
-  private drawVehicles(core: SimulationCore): void {
-    const size = this.worldSize(core);
-    const graph = core.transportationGraph;
-    const travelTicks = new Map(core.traffic.edgeMetrics.map((metric) => [metric.edgeId, metric.travelTimeTicks]));
-
-    for (const vehicle of core.traffic.activeVehicles) {
-      const edgeId = vehicle.edgeIds[vehicle.currentEdgeIndex];
-      if (!edgeId) continue;
-      const edge = graph.getEdge(edgeId);
-      if (!edge) continue;
-      const from = graph.getNode(edge.from);
-      const to = graph.getNode(edge.to);
-      if (!from || !to) continue;
-      const edgeTicks = travelTicks.get(edge.id) ?? edge.freeFlowTicks;
-      const progress = vehicle.status === 'queued'
-        ? 1
-        : Math.max(0, Math.min(1, vehicle.edgeProgressTicks / Math.max(1, edgeTicks)));
-      this.drawVehicleMarker(
-        from.x + (to.x - from.x) * progress,
-        from.y + (to.y - from.y) * progress,
-        size,
-        vehicle.status === 'queued' ? '#ffd166' : '#f5f5f4',
-        2.6,
-      );
-    }
-
-    for (const vehicle of core.serviceVehicles.listVehicles()) {
-      if (vehicle.state === 'idle' || vehicle.state === 'unavailable') continue;
-      const edgeId = vehicle.edgeIds[vehicle.currentEdgeIndex];
-      const edge = edgeId ? graph.getEdge(edgeId) : undefined;
-      if (!edge) continue;
-      const from = graph.getNode(edge.from);
-      const to = graph.getNode(edge.to);
-      if (!from || !to) continue;
-      const edgeTicks = travelTicks.get(edge.id) ?? edge.freeFlowTicks;
-      const progress = vehicle.state === 'servicing'
-        ? 1
-        : Math.max(0, Math.min(1, vehicle.edgeProgressTicks / Math.max(1, edgeTicks)));
-      this.drawVehicleMarker(
-        from.x + (to.x - from.x) * progress,
-        from.y + (to.y - from.y) * progress,
-        size,
-        '#56cfe1',
-        3.2,
-      );
-    }
-
-    for (const vehicle of core.mobility.vehicles.listVehicles()) {
-      if (vehicle.state === 'out_of_service' || vehicle.mode === 'metro') continue;
-      const edgeId = vehicle.roadEdgeIds[vehicle.currentRoadEdgeIndex];
-      const edge = edgeId ? graph.getEdge(edgeId) : undefined;
-      if (!edge) continue;
-      const from = graph.getNode(edge.from);
-      const to = graph.getNode(edge.to);
-      if (!from || !to) continue;
-      const edgeTicks = travelTicks.get(edge.id) ?? edge.freeFlowTicks;
-      const progress = Math.max(0, Math.min(1, vehicle.edgeProgressTicks / Math.max(1, edgeTicks)));
-      this.drawVehicleMarker(
-        from.x + (to.x - from.x) * progress,
-        from.y + (to.y - from.y) * progress,
-        size,
-        '#9b8afb',
-        3.5,
-      );
-    }
-
-    for (const vehicle of core.economyDomain.freightVehicles.listVehicles()) {
-      const edgeId = vehicle.routeEdgeIds[vehicle.currentEdgeIndex];
-      const edge = edgeId ? graph.getEdge(edgeId) : undefined;
-      if (!edge) continue;
-      const from = graph.getNode(edge.from);
-      const to = graph.getNode(edge.to);
-      if (!from || !to) continue;
-      const edgeTicks = travelTicks.get(edge.id) ?? edge.freeFlowTicks;
-      const progress = Math.max(0, Math.min(1, vehicle.edgeProgressTicks / Math.max(1, edgeTicks)));
-      this.drawVehicleMarker(
-        from.x + (to.x - from.x) * progress,
-        from.y + (to.y - from.y) * progress,
-        size,
-        '#f0a35e',
-        3.8,
-      );
-    }
-  }
-
   private drawOverlayTint(
     core: SimulationCore,
     traffic: TrafficOverlayMode,
@@ -419,20 +349,6 @@ export class GpuWorldRenderer {
       0.95,
       Math.max(1.5, 2 * this.camera.zoom),
     );
-  }
-
-  private drawVehicleMarker(
-    x: number,
-    y: number,
-    size: RendererWorldSize,
-    color: string,
-    radius: number,
-  ): void {
-    const point = this.camera.worldToCanvas(x, y, size);
-    this.vehicleLayer
-      .circle(point.x, point.y - 2 * this.camera.zoom, Math.max(1.5, radius * this.camera.zoom))
-      .fill({ color, alpha: 0.96 })
-      .stroke({ color: '#1d2528', alpha: 0.75, width: Math.max(0.8, this.camera.zoom) });
   }
 
   private fillDiamond(
