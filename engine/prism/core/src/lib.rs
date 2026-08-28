@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod entity;
+
 pub const PRISM_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(test)]
