@@ -1,0 +1,32 @@
+name: Desktop dependency lockfile bootstrap
+
+on:
+  push:
+    branches:
+      - feature/desktop-gpu-runtime
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Resolve exact desktop dependencies
+        run: |
+          npm install --package-lock-only --ignore-scripts --save-exact pixi.js@8.20.1
+          npm install --package-lock-only --ignore-scripts --save-dev --save-exact electron@44.0.0
+      - name: Upload resolved package metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-lockfile
+          path: |
+            package.json
+            package-lock.json
+          if-no-files-found: error
