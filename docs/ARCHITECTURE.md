@@ -7,17 +7,22 @@ Civic Foundry uses progressive replacement rather than a clean-slate rewrite. Ur
 Current high-level path:
 
 ```text
-GameApp
-  → SimulationCore facade
-    → SimulationKernel
-    → WorldFoundation                  physical/geographic authority
-    → CadastralGraph                   legal-land authority
-    → CadastralRuntimeMutationService  cross-domain land transaction boundary
-    → parcel zoning / envelopes / massing / BuildingV2 / property systems
-    → legacy city compatibility domains
+Electron desktop host (optional local shell)
+  → GameApp
+    → SimulationCore facade
+      → SimulationKernel
+      → WorldFoundation                  physical/geographic authority
+      → CadastralGraph                   legal-land authority
+      → CadastralRuntimeMutationService  cross-domain land transaction boundary
+      → parcel zoning / envelopes / massing / BuildingV2 / property systems
+      → legacy city compatibility domains
+    → GpuWorldRenderer
+      → PixiJS WebGL                     read-only presentation
 ```
 
 `SimulationCore` remains the public gameplay facade. `SimulationKernel` owns deterministic tick execution. `WorldFoundation` remains the sole physical/geographic authority. `CadastralGraph` owns legal parcels and their topology. `CadastralRuntimeMutationService` coordinates runtime geometry changes across the owners that reference parcel IDs. Legacy grid lots remain available only as a derived compatibility view.
+
+The Electron process is a local application host only. It does not own simulation state, persistence state, or gameplay authority, and the current desktop tranche exposes no generic IPC bridge. The browser development target and Electron desktop target execute the same built application and authoritative TypeScript simulation.
 
 ## Authority matrix
 
@@ -185,7 +190,9 @@ The Task 13 runtime-mutation work does **not** change the schema: Save V9 remain
 
 ## Presentation boundary
 
-Rendering and UI remain read-only consumers of simulation authority.
+Rendering and UI remain read-only consumers of simulation authority. The production world renderer is `GpuWorldRenderer`, backed by PixiJS 8/WebGL and the existing `IsometricCamera` projection/input contract.
+
+The renderer owns presentation-only GPU scene state for terrain, zoning, roads, structures, moving vehicles, overlays, parcel selection, and tool previews. It may derive visual geometry from authoritative snapshots, including `CadastralGraph.parcelPolygon()`, but it does not call simulation mutation APIs or create persistent state.
 
 Urban Fabric presentation includes:
 
@@ -196,6 +203,16 @@ Urban Fabric presentation includes:
 - parcel selection routed through the renderer/tool compatibility coordinate seam.
 
 Analytical overlays are mutually exclusive so presentation state cannot ambiguously claim multiple active analytical modes. Selecting a parcel does not mutate cadastre, zoning, or property state.
+
+Legacy Canvas2D renderer/pass files are transitional migration references and are not instantiated by the production `GameApp` path. Equivalent specialized GPU parity can replace and eventually remove them without changing simulation ownership.
+
+## Desktop and module-loading boundary
+
+The Windows desktop runtime uses Electron as a hardened local host around the same `dist/` application used by browser development. The desktop window loads local packaged content only, disables Node integration, enables context isolation and sandboxing, and denies unexpected navigation/window creation.
+
+Electron owns application-window lifecycle only. No simulation state crosses into the Electron main process and no generic IPC surface exists in the current tranche.
+
+The renderer build remains browser-native ESM. The static build copies pinned PixiJS browser ESM into `dist/vendor/pixi.mjs`; `index.html` resolves the bare `pixi.js` specifier through a local import map. This approved exception is recorded in ADR 0002. No CDN module loading or compiler-only TypeScript path alias participates in production startup.
 
 ## Determinism and validation invariants
 
@@ -229,6 +246,7 @@ Urban Fabric acceptance now includes:
 - Save V9 round-trip/migration/reference validation, including historical transaction lineage;
 - deterministic fixed-seed mutation fuzzing with per-step graph validation and controlled-area conservation;
 - compiled browser coverage for Urban Fabric overlays, parcel inspection, `BuildingV2` materialization, Save V9, and post-load canonical ID preservation;
-- all inherited Phase 1R, Phase 6/7, and isometric functional/visual gates.
+- production-path contract coverage proving `GameApp` uses the WebGL renderer and the Electron host is local/sandboxed;
+- all inherited Phase 1R, Phase 6/7, Urban Fabric, and isometric functional/visual gates.
 
-GitHub remains the durable canonical source of truth. PR #63 remains isolated from `main` until the tranche is reviewed and explicitly approved for integration.
+GitHub remains the durable canonical source of truth. Desktop GPU runtime work remains isolated on PR #98 until the tranche is reviewed and explicitly approved for integration.
