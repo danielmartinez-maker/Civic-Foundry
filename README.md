@@ -176,7 +176,7 @@ Urban Fabric 2.0 adds repository-wide verification for cadastral geometry/topolo
 
 The desktop GPU runtime is integrated on `main` through PR #98 and adds contract coverage for the production WebGL renderer, local PixiJS module resolution, and hardened Electron host while retaining the inherited browser and visual smoke gates.
 
-GPU Presentation Phase 2 adds deterministic Pass A atlas reuse, retained static sprite identity, bounded moving-vehicle pools, initialization/asset diagnostics, and compiled browser proof that unchanged redraws and camera motion do not recreate static display objects. The Phase 2 branch changes presentation/tests/docs only; authoritative simulation, world, and save domains are unchanged. Specialized analytical-overlay parity remains the next presentation tranche.
+GPU Presentation Phase 2 adds deterministic Pass A atlas reuse, retained static sprite identity, bounded moving-vehicle pools, initialization/asset diagnostics, and compiled browser proof that unchanged redraws and camera motion do not recreate static display objects. The Phase 2 branch changes presentation/tests/docs only; authoritative simulation, world, and save domains are unchanged. Specialized analytical-overlay parity remains the next presentation tranche. PR #99 remains a draft integration boundary until explicit approval.
 
 ## Roadmap
 
