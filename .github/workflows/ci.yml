@@ -19,6 +19,16 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - name: Bootstrap desktop dependency lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Upload desktop dependency lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-lockfile
+          path: |
+            package.json
+            package-lock.json
+          if-no-files-found: error
       - name: Install project dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install atlas rasterizer and browser smoke runtime
