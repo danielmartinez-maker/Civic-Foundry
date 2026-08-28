@@ -213,8 +213,18 @@ Exact-head Civic Foundry CI run **#992** then passed on `fa23d77b`, including **
 
 ### Final documentation gate
 
-The implementation head is green. The documentation/reconciliation checkpoint that records the resolved Task 13 boundary requires its own exact-head CI run before PR #63 is treated as integration-ready.
+At this checkpoint, the implementation head was green and the documentation/reconciliation checkpoint still required its own exact-head CI run before PR #63 could be treated as integration-ready. That final reconciliation head subsequently passed CI run **#993** with the full then-current gate.
 
 ### Integration boundary
 
-PR #63 remains isolated from `main`. No merge is performed automatically. The tranche should only move to `main` after the final branch verification is green and explicit integration approval is given.
+At this checkpoint, PR #63 remained isolated from `main` pending explicit approval. It was subsequently approved and merged into `main` as merge commit `ee296a988a0be6db5a3f535c08e21ffb085906cc` on 2026-08-27. Save V9, cadastral land authority, and the Urban Fabric runtime described above are therefore part of the integrated baseline rather than an isolated feature branch.
+
+## 2026-08-27 — Desktop GPU Runtime / PR #98 integrated
+
+PR #98 replaced the production `GameApp` Canvas2D world-rendering path with `GpuWorldRenderer` backed by PixiJS 8/WebGL while preserving the authoritative TypeScript simulation, Save V9, `IsometricCamera`, tools, HUD, inspector, and compatibility boundaries.
+
+The tranche also added the hardened Electron Windows host around the same local `dist/` build used for browser development. Node integration is disabled, context isolation and sandboxing are enabled, unexpected navigation/window creation is denied, and no generic IPC or new simulation authority was introduced.
+
+Feature head `725c9cec539f1df32386c4c35e95c81a7fe134ab` passed GitHub Actions run `33137152536` with **600/600 Node tests**, core verification, Phase 6/7/Urban Fabric browser smokes, Isometric Pass A functional smoke, and Isometric Pass A visual smoke. PR #98 was then merged into `main` as `c2e7befd9174b65dadc90e1e381d892accf780c6`.
+
+Legacy Canvas2D renderer/pass sources remain in the repository only as transitional parity references. They are not instantiated by the production `GameApp` path; specialized visual parity, retained-scene performance work, installer/update packaging, optional WebGPU evaluation, and eventual legacy renderer deletion remain deferred presentation work.

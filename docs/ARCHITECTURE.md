@@ -249,4 +249,4 @@ Urban Fabric acceptance now includes:
 - production-path contract coverage proving `GameApp` uses the WebGL renderer and the Electron host is local/sandboxed;
 - all inherited Phase 1R, Phase 6/7, Urban Fabric, and isometric functional/visual gates.
 
-GitHub remains the durable canonical source of truth. Desktop GPU runtime work remains isolated on PR #98 until the tranche is reviewed and explicitly approved for integration.
+GitHub remains the durable canonical source of truth. The desktop GPU runtime was verified on PR #98 head `725c9cec`, merged into `main` as `c2e7befd`, and is now the production presentation path. Deferred Canvas2D parity work remains non-authoritative presentation migration work and does not alter simulation or persistence ownership.

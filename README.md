@@ -172,14 +172,14 @@ Phase 1R acceptance established deterministic world generation, hydrology, spati
 
 Urban Fabric 2.0 adds repository-wide verification for cadastral geometry/topology, parcel mutation, dimensional zoning, envelopes/compliance, mixed-use massing, lifecycle/renovation, HBU/property/site assembly, runtime cadastral authority, Save V9 migration/round-trip/reference validation, deterministic mutation fuzzing, and compiled Urban Fabric browser behavior.
 
-The desktop GPU runtime adds contract coverage for the production WebGL renderer, local PixiJS module resolution, and hardened Electron host while retaining the inherited browser and visual smoke gates. PR #98 remains isolated from `main` until final review and explicit integration approval.
+The desktop GPU runtime adds contract coverage for the production WebGL renderer, local PixiJS module resolution, and hardened Electron host while retaining the inherited browser and visual smoke gates. PR #98 head `725c9cec` passed GitHub Actions run `33137152536` and was merged into `main` as merge commit `c2e7befd` on 2026-08-27 (America/Monterrey). The production `GameApp` path on `main` therefore uses `GpuWorldRenderer`; legacy Canvas2D sources remain only as migration references until specialized parity work retires them.
 
 ## Roadmap
 
 0. Civic Foundry 2.0 Phase 0A — Kernel Skeleton & Deterministic Scheduling ✅
 1. **1R — World Foundation 2.0 ✅** — geography hierarchy, irregular geometry, terrain/soils, hydrology/flooding, deterministic world generation, spatial index, world-aware costs, Save V8, compatibility facade
 2. **2R — Urban Fabric 2.0 ✅** — true cadastral parcels, dimensional zoning, mixed-use `BuildingV2`, deterioration/renovation, HBU/redevelopment, parcel splitting/assembly, Save V9, cadastral diagnostics
-3. **Desktop GPU Runtime — PR #98** — PixiJS/WebGL production renderer and hardened Windows Electron host while preserving simulation/save authority
+3. **Desktop GPU Runtime ✅ — PR #98** — PixiJS/WebGL production renderer and hardened Windows Electron host while preserving simulation/save authority
 4. **3R — Transportation Engine 2.0** — lane/turn/signal/parking/crash authority and dynamic routing replacement
 5. Later Civic Foundry 2.0 systems continue under the progressive replacement architecture in `docs/superpowers/specs/2026-08-24-civic-foundry-2.0-master-design.md`.
 
