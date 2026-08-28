@@ -19,13 +19,14 @@ This tranche preserves the existing TypeScript simulation, save schema, player t
 5. **Incremental visual parity:** tranche 1 renders the complete playable base scene with terrain, zoning, roads, buildings, civic/service facilities, utilities, active traffic/service/transit/freight markers, selection, road preview, and high-level overlay tinting. Atlas/sprite parity and specialized overlay fidelity migrate in later GPU passes.
 6. **No presentation authority:** the GPU renderer consumes `SimulationCore` state but cannot mutate simulation outcomes. Input mutations continue through `GameApp`/`ToolController` into simulation APIs.
 7. **No Canvas2D in the production path:** `GameApp` imports the GPU renderer facade. Production code must not call `getContext('2d')` during normal startup or frame rendering.
-8. **Existing browser build remains a supported development target** because Electron packages the same local renderer bundle. Windows desktop is the distribution target.
+8. **Existing browser build remains a supported development target** because Electron hosts the same local renderer output. Windows desktop is the distribution target.
+9. **Preserve the dependency-minimal build shape.** Do not introduce a bundler in tranche 1. The existing TypeScript compiler remains the source compiler; the build copies PixiJS's browser ESM distribution to `dist/vendor/` and resolves the bare `pixi.js` import through an import map.
 
 ## Runtime Architecture
 
 ```text
 Electron Main Process
-  -> local packaged index.html
+  -> local built dist/index.html
      -> src/main.ts
         -> GameApp
            -> SimulationCore (authoritative)
@@ -78,9 +79,9 @@ Geometry is rebuilt from authoritative snapshots only when `draw()` is called. T
 - selected cell and preview path -> GPU outlines/fills
 - active overlays -> presentation-only tint/markers from existing overlay mapper outputs where practical
 
-## Desktop Packaging
+## Desktop Runtime
 
-Tranche 1 adds an Electron entrypoint and package metadata sufficient to launch the built game as a Windows desktop app in development/CI-compatible environments. Packaging configuration targets Windows x64. Installer signing is explicitly out of scope for this tranche.
+Tranche 1 adds an Electron entrypoint and package metadata sufficient to launch the built game as a native Windows desktop window. Creating a signed installer is a later release-engineering tranche; this tranche establishes the actual desktop runtime.
 
 The desktop window:
 
@@ -89,25 +90,25 @@ The desktop window:
 - disables Node integration in the renderer
 - enables context isolation and sandboxing
 - denies unexpected navigation/window creation
+- targets current 64-bit Windows supported by Electron 44
 
 ## Build Strategy
 
-The current static TypeScript build cannot directly ship bare npm package imports such as `pixi.js`. Introduce Vite as the renderer bundler while preserving the existing generated-asset pipeline and `dist/` output contract.
+Keep the existing `tsc` + static-copy pipeline. Extend it to copy `node_modules/pixi.js/dist/pixi.mjs` into `dist/vendor/pixi.mjs`. `index.html` receives an import map mapping `pixi.js` to `./vendor/pixi.mjs`.
 
-- `npm run build` produces renderer assets in `dist/`
-- atlas generation remains part of the build/verification pipeline
-- `npm run dev` runs the Vite development server
-- `npm run desktop` launches Electron against the built local renderer
-- `npm run desktop:pack` creates a Windows package
+- `npm run build` compiles TypeScript, copies static files/vendor ESM, and runs atlas generation
+- `npm run dev` continues serving `dist/` for browser development
+- `npm run desktop` builds then launches Electron against the local `dist/` output
+- Windows packaging/signing is not part of tranche 1
 
-Existing deterministic/unit tests continue to run with Node's TypeScript stripping. New runtime contract tests inspect the desktop/GPU integration without requiring a graphical CI session.
+Existing deterministic/unit tests continue to run with Node's TypeScript stripping. New runtime contract tests inspect desktop/GPU integration without requiring a graphical CI session.
 
 ## Test / Acceptance Gates
 
 1. Contract test proves the production `GameApp` imports the GPU renderer and the GPU renderer has no Canvas2D context acquisition.
 2. Renderer camera/input contract remains covered by existing isometric tests.
 3. Desktop contract test proves Electron security settings and local-file loading.
-4. Build contract test proves package scripts/dependencies and Vite/Electron entry points are present.
+4. Build contract test proves package scripts/dependencies, import map, Pixi vendor copying, and Electron entry point are present.
 5. `npm run typecheck`, `npm test`, architecture policy, asset checks, and production build pass.
 6. No save-version change and no authoritative simulation module modified.
 
@@ -118,7 +119,7 @@ Existing deterministic/unit tests continue to run with Node's TypeScript strippi
 - multiplayer/networking
 - GPU compute simulation
 - perfect sprite-atlas parity with every Canvas pass
-- installer code signing / auto-update infrastructure
+- signed Windows installer / auto-update infrastructure
 - deleting all legacy Canvas renderer source before equivalent GPU passes exist
 
 ## Follow-on Tranches
