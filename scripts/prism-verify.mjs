@@ -15,6 +15,15 @@ export const prismVerificationCommands = Object.freeze([
     "warnings",
   ]),
   Object.freeze(["test", "--workspace", "--locked"]),
+  Object.freeze([
+    "test",
+    "-p",
+    "prism-core",
+    "--release",
+    "--test",
+    "p0_invariants",
+    "--locked",
+  ]),
   Object.freeze(["check", "--workspace", "--all-targets", "--locked"]),
 ]);
 
