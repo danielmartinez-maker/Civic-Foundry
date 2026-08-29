@@ -4,14 +4,14 @@ Civic Foundry uses short-lived branches around `main`, strict TypeScript, determ
 
 ## Setup
 
-Use Node.js 22 and Python 3.
+Use Node.js 22, Python 3 for inherited smoke tooling, and Rust 1.98.0 from the committed `rust-toolchain.toml`.
 
 ```bash
 npm ci
-npm run verify
+npm run verify:all
 ```
 
-Browser and visual smoke tests additionally require the Python packages and Chromium setup used by `.github/workflows/ci.yml`.
+Browser and visual smoke tests additionally require the Python packages and Chromium setup used by `.github/workflows/ci.yml`. Windows native-host changes additionally require the `prism-windows` CI smoke; a non-Windows build is not sufficient evidence for the native executable contract.
 
 ## Branches and commits
 
@@ -31,14 +31,14 @@ Link pull requests to the relevant issue, design, or implementation plan when on
 Before requesting review, run:
 
 ```bash
-npm run verify
+npm run verify:all
 ```
 
-This covers formatting, ESLint, Civic Foundry repository policy, architecture boundaries, strict TypeScript, unit/integration tests, asset policy, asset validation, and the production build. Pull requests also run the existing browser and visual smoke suites in CI.
+This runs the legacy authoritative-runtime gate and the native Prism gate: formatting, ESLint, Civic Foundry repository policy, architecture boundaries, strict TypeScript, unit/integration tests, asset policy, asset validation, the production compatibility build, Rust formatting, Clippy with warnings denied, Rust workspace tests, release-mode P0 invariants, and Rust workspace checking. Pull requests also run the inherited browser/visual smoke suites and the Windows-native Prism host smoke in CI.
 
 ## Architecture rules
 
-Respect the authority model documented in `docs/ARCHITECTURE.md`.
+Respect the authority model documented in `docs/ARCHITECTURE.md` and the native destination decision in `docs/adr/0003-native-prism-bootstrap.md`.
 
 - Simulation/world/save/data code must not depend on application or UI implementation details.
 - Simulation and world code must not depend on rendering.
@@ -46,8 +46,10 @@ Respect the authority model documented in `docs/ARCHITECTURE.md`.
 - Prefer composition, narrow typed interfaces, and explicit dependency passing over deep inheritance or new mutable globals.
 - Keep internal helpers private to their module/domain unless they are an intentional public API.
 - Do not change save ownership, canonical identity, or system authority as an incidental part of another feature.
+- Prism P0 code lives under `engine/prism/`, uses Rust 1.98.0 / Rust 2024, and remains standard-library-only with unsafe code forbidden.
+- Electron/PixiJS is a transitional compatibility runtime, not a constraint on the native Prism destination architecture.
 
-Significant changes to module boundaries, persistence ownership, build architecture, asset authority, or public APIs require an ADR or design/RFC before implementation.
+Significant changes to module boundaries, persistence ownership, build architecture, asset authority, public APIs, Rust dependencies, or unsafe-code policy require an ADR or design/RFC before implementation.
 
 ## Tests and TDD
 
