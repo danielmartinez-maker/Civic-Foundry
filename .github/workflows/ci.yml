@@ -53,5 +53,13 @@ jobs:
         run: |
           rustup toolchain install 1.98.0 --profile minimal --component rustfmt,clippy
           rustup default 1.98.0
-      - name: Build native Prism host
-        run: cargo build --manifest-path engine/prism/Cargo.toml -p prism-host --release --locked
+      - name: Verify native Prism host
+        shell: pwsh
+        run: |
+          cargo test --manifest-path engine/prism/Cargo.toml -p prism-host --test bootstrap_smoke --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = cargo run --manifest-path engine/prism/Cargo.toml -p prism-host --release --locked --quiet
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output -ne "PRISM_BOOTSTRAP version=0.1.0 entity_generation=1 alignment=64 compiled_jobs=2") {
+            throw "Unexpected Prism bootstrap output: $output"
+          }
