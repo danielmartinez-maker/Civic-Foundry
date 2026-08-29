@@ -1,7 +1,8 @@
 # ADR 0002: Desktop GPU Runtime
 
-- Status: Accepted
+- Status: Superseded as destination architecture; retained as accepted transitional tranche
 - Date: 2026-08-27
+- Superseded by: ADR 0003
 
 ## Context
 
