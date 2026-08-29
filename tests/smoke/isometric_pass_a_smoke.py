@@ -130,6 +130,13 @@ def main() -> None:
         road_set = {tuple(item) for item in roads}
         assert expected.issubset(road_set), (expected, road_set)
 
+        graph_edges = page.evaluate("""() => {
+          const app=window.__civicApp;
+          app.core.step(1);
+          return app.core.transportationGraph.edges.length;
+        }""")
+        assert graph_edges > 0, "traffic overlay smoke fixture requires graph edges after road seeding"
+
         overlay_gate = page.evaluate("""() => {
           const app=window.__civicApp;
           const r=app.renderer;
