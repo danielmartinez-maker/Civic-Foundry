@@ -218,3 +218,9 @@ The implementation head is green. The documentation/reconciliation checkpoint th
 ### Integration boundary
 
 PR #63 remains isolated from `main`. No merge is performed automatically. The tranche should only move to `main` after the final branch verification is green and explicit integration approval is given.
+
+## 2026-08-27 — Prism Engine P0 Native Bootstrap
+
+Established the first native Prism Engine foundation without transferring Civic Foundry gameplay authority. P0 introduced the pinned Rust 1.98.0 workspace, 128-bit generational entity registry, safe 64-byte aligned memory primitive, deterministic read/write-aware job-DAG compiler, deterministic diagnostics/bootstrap probe, native `prism-host` executable shell, release-mode invariant stress coverage, and dedicated Windows CI smoke.
+
+The existing TypeScript `SimulationCore`, `WorldFoundation`, `CadastralGraph`, Save V9, Electron/PixiJS compatibility runtime, and inherited browser/visual regression stack remain authoritative and unchanged in ownership. Prism P0 contains no Save V10, Chrono-Lattice, D3D12 rendering, gameplay migration, or dual authority.
