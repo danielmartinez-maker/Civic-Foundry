@@ -16,6 +16,15 @@ test("Prism verification keeps the native gate deterministic and explicit", () =
       "warnings",
     ],
     ["test", "--workspace", "--locked"],
+    [
+      "test",
+      "-p",
+      "prism-core",
+      "--release",
+      "--test",
+      "p0_invariants",
+      "--locked",
+    ],
     ["check", "--workspace", "--all-targets", "--locked"],
   ]);
 });
