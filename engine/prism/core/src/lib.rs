@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod bootstrap;
+pub mod diagnostics;
 pub mod entity;
 pub mod jobs;
 pub mod memory;
