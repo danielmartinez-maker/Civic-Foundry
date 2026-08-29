@@ -19,6 +19,22 @@ python tests/smoke/isometric_visual_smoke.py
 
 The GitHub Actions `verify` job runs the same stack and treats the dedicated Urban Fabric smoke as a required gate.
 
+## Prism P0 native gate
+
+Prism P0 adds a separate native test stack without removing inherited TypeScript/browser regression coverage.
+
+Required native command:
+
+```bash
+npm run prism:verify
+```
+
+It runs Rust formatting, Clippy with warnings denied, workspace tests, release-mode P0 invariant stress tests, and workspace checking from the committed Cargo lockfile.
+
+The Windows-only `prism-windows` CI job must additionally execute `prism-host` and require the exact deterministic bootstrap line. A P0 change is not native-green until that Windows job passes.
+
+During dual-stack migration, `npm run verify:all` is the combined local gate and runs the legacy authoritative-runtime verification followed by the Prism native gate.
+
 ## Current verified baseline
 
 Task 13 runtime-mutation implementation head `fa23d77bdaba7f8d260b10ca2d75507f38ed81a6` passed exact-head Civic Foundry CI run **#992** with:
@@ -233,6 +249,8 @@ The compiled browser stack remains mandatory because several important boundarie
 - browser console/page errors.
 
 Playwright request routing serves the compiled `dist` tree under the controlled `http://civic.test/` origin.
+
+These browser/Chromium regressions cover the still-authoritative compatibility runtime. They remain required until native equivalents replace their coverage; they do not constrain the Prism destination architecture.
 
 ## Completion rule
 
