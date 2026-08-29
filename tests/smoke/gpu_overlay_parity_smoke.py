@@ -208,11 +208,40 @@ def main() -> None:
 
         def select_mode(testid: str, family: str, mode: str, require_active: bool = True):
             page.locator(f'[data-testid="{testid}"]').select_option(mode)
-            page.wait_for_timeout(80)
-            stats = page.evaluate("() => window.__civicApp.renderer.debugOverlayStats()")
+            page.evaluate(
+                "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
+            )
+            diagnostics = page.evaluate(
+                """async ({ family, mode }) => {
+                  const app = window.__civicApp;
+                  const commands = await import('http://civic.test/src/rendering/gpu/GpuOverlayCommands.js');
+                  const builders = {
+                    traffic: commands.buildTrafficOverlayCommands,
+                    service: commands.buildServiceOverlayCommands,
+                    transit: commands.buildTransitOverlayCommands,
+                    economy: commands.buildEconomyOverlayCommands,
+                  };
+                  const appModes = {
+                    traffic: app.overlayMode,
+                    service: app.serviceOverlayMode,
+                    transit: app.transitOverlayMode,
+                    economy: app.economyOverlayMode,
+                  };
+                  const direct = builders[family](app.core, mode);
+                  return {
+                    appMode: appModes[family],
+                    directCommands: direct.length,
+                    occupied: app.core.buildings.occupied().length,
+                    stats: app.renderer.debugOverlayStats(),
+                  };
+                }""",
+                {"family": family, "mode": mode},
+            )
+            assert diagnostics["appMode"] == mode, (testid, family, mode, diagnostics)
             if require_active:
-                assert stats[family]["active"] > 0, (testid, family, mode, stats)
-            return stats
+                assert diagnostics["directCommands"] > 0, (testid, family, mode, diagnostics)
+                assert diagnostics["stats"][family]["active"] > 0, (testid, family, mode, diagnostics)
+            return diagnostics["stats"]
 
         page.locator('[data-testid="traffic-overlay"]').select_option("none")
         page.locator('[data-testid="service-overlay"]').select_option("none")
