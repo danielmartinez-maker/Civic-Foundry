@@ -1,6 +1,6 @@
 import type { ZoneType } from '../core/types.ts';
 import { CadastralGraph } from '../../world/cadastre/CadastralGraph.ts';
-import type { CadastralSnapshot, Parcel, ParcelEdge } from '../../world/cadastre/CadastralTypes.ts';
+import type { CadastralSnapshot, Parcel } from '../../world/cadastre/CadastralTypes.ts';
 import type { WorldPoint } from '../../world/cadastre/Geometry.ts';
 import type { LotSystem } from '../../world/lots/LotSystem.ts';
 
