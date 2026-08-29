@@ -1,9 +1,9 @@
 use std::fmt;
 
+use crate::PRISM_VERSION;
 use crate::entity::{EntityRegistry, EntityRegistryError};
 use crate::jobs::{JobGraph, JobGraphError, JobId, JobSpec, ResourceId};
 use crate::memory::{AlignedBlock, CACHE_LINE_BYTES};
-use crate::PRISM_VERSION;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BootstrapReport {
@@ -52,7 +52,11 @@ pub fn run_bootstrap_probe() -> Result<BootstrapReport, BootstrapError> {
     let state = ResourceId::new(1);
     let mut jobs = JobGraph::new();
     jobs.add_job(JobSpec::new(JobId::new(1), 0).write(state))?;
-    jobs.add_job(JobSpec::new(JobId::new(2), 0).read(state).after(JobId::new(1)))?;
+    jobs.add_job(
+        JobSpec::new(JobId::new(2), 0)
+            .read(state)
+            .after(JobId::new(1)),
+    )?;
     let compiled = jobs.compile()?;
 
     Ok(BootstrapReport {
