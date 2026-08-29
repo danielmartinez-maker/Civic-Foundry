@@ -175,7 +175,7 @@ def main() -> None:
 
               const parcel = app.core.cadastre.listParcels()[0];
               if (!parcel) throw new Error('cadastre setup produced no parcel');
-              app.core.zoning.setParcelAssignment(parcel.id, 'R5', app.core.clock.tick);
+              app.core.zoning.assignParcel(parcel.id, 'R5');
 
               await app.renderer.preloadAssets();
               await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
