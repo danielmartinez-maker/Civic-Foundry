@@ -130,6 +130,60 @@ def main() -> None:
         road_set = {tuple(item) for item in roads}
         assert expected.issubset(road_set), (expected, road_set)
 
+        graph_edges = page.evaluate("""() => {
+          const app=window.__civicApp;
+          app.core.step(1);
+          return app.core.transportationGraph.edges.length;
+        }""")
+        assert graph_edges > 0, "traffic overlay smoke fixture requires graph edges after road seeding"
+
+        overlay_gate = page.evaluate("""() => {
+          const app=window.__civicApp;
+          const r=app.renderer;
+          const baseBefore=r.debugSceneStats();
+          r.draw(app.core,'congestion',null);
+          const first=r.debugOverlayStats();
+          const baseAfterFirst=r.debugSceneStats();
+          r.draw(app.core,'congestion',null);
+          const stable=r.debugOverlayStats();
+          r.draw(app.core,'volume',null);
+          const volume=r.debugOverlayStats();
+          r.draw(app.core,'congestion',null);
+          const cycled=r.debugOverlayStats();
+          const baseAfterCycle=r.debugSceneStats();
+          return {baseBefore,baseAfterFirst,baseAfterCycle,first,stable,volume,cycled};
+        }""")
+        assert overlay_gate["first"]["traffic"]["active"] > 0
+        assert overlay_gate["baseAfterFirst"]["staticCreated"] == overlay_gate["baseBefore"]["staticCreated"]
+        assert overlay_gate["stable"]["traffic"]["created"] == overlay_gate["first"]["traffic"]["created"]
+        assert overlay_gate["stable"]["traffic"]["updated"] == overlay_gate["first"]["traffic"]["updated"]
+        assert overlay_gate["volume"]["traffic"]["active"] == overlay_gate["first"]["traffic"]["active"]
+        assert overlay_gate["cycled"]["traffic"]["created"] == overlay_gate["first"]["traffic"]["created"]
+        assert overlay_gate["cycled"]["traffic"]["recycled"] > overlay_gate["first"]["traffic"]["recycled"]
+        assert overlay_gate["baseAfterCycle"]["staticCreated"] == overlay_gate["baseBefore"]["staticCreated"]
+
+        parcel_gate = page.evaluate("""() => {
+          const app=window.__civicApp;
+          const r=app.renderer;
+          const parcel=app.core.cadastre.listParcels()[0] ?? null;
+          if (!parcel) return null;
+          r.setUrbanFabricOverlay('cadastre',null);
+          r.draw(app.core,'none',null);
+          const before=r.debugOverlayStats();
+          const baseBefore=r.debugSceneStats();
+          r.setUrbanFabricOverlay('cadastre',parcel.id);
+          r.draw(app.core,'none',null);
+          const after=r.debugOverlayStats();
+          const baseAfter=r.debugSceneStats();
+          r.setUrbanFabricOverlay('none',null);
+          return {parcelId:parcel.id,before,after,baseBefore,baseAfter};
+        }""")
+        assert parcel_gate is not None
+        assert parcel_gate["after"]["cadastre"]["active"] > 0
+        assert parcel_gate["after"]["cadastre"]["created"] == parcel_gate["before"]["cadastre"]["created"]
+        assert parcel_gate["after"]["cadastre"]["updated"] > parcel_gate["before"]["cadastre"]["updated"]
+        assert parcel_gate["baseAfter"]["staticCreated"] == parcel_gate["baseBefore"]["staticCreated"]
+
         before = page.evaluate("""() => ({
           roads: JSON.stringify(window.__civicApp.core.roads.list()),
           zoning: JSON.stringify(window.__civicApp.core.zoning.list()),
@@ -172,7 +226,14 @@ def main() -> None:
         raise AssertionError("browser errors: " + repr(errors))
     print(
         "ISOMETRIC_PASS_A_SMOKE_PASS",
-        {"metrics": metrics, "roads": len(roads), "zoom": zoom, "retained": retained_after_pan},
+        {
+            "metrics": metrics,
+            "roads": len(roads),
+            "zoom": zoom,
+            "retained": retained_after_pan,
+            "overlays": overlay_gate["cycled"],
+            "parcel": parcel_gate["parcelId"],
+        },
     )
 
 
