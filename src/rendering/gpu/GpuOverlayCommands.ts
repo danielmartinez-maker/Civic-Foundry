@@ -110,6 +110,8 @@ export function buildTransitOverlayCommands(
   core: SimulationCore,
   mode: TransitOverlayMode,
 ): readonly GpuOverlayCommand[] {
+  if (mode === 'none') return [];
+
   const snapshot = mapTransitOverlay(core, mode);
   const routeMax = Math.max(1, ...snapshot.routes.map((route) => route.value));
   const commands: GpuOverlayCommand[] = [];
