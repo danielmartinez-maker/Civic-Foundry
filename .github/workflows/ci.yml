@@ -35,5 +35,7 @@ jobs:
         run: npm run test:smoke:urban-fabric
       - name: Isometric Pass A browser smoke
         run: npm run test:smoke:isometric
+      - name: GPU overlay parity browser smoke
+        run: python tests/smoke/gpu_overlay_parity_smoke.py
       - name: Isometric Pass A visual smoke
         run: python tests/smoke/isometric_visual_smoke.py
