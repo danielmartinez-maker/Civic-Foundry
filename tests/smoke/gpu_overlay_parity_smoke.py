@@ -124,6 +124,53 @@ def main() -> None:
                   app.core.economyDomain.trade.listGateways().length > 0
                 ) break;
               }
+
+              if (app.core.economyDomain.freightVehicles.activeCount() === 0) {
+                const gateways = app.core.economyDomain.trade.listGateways();
+                let origin = null;
+                let destination = null;
+                let route = null;
+                for (const candidateOrigin of gateways) {
+                  for (const candidateDestination of gateways) {
+                    if (candidateOrigin.id === candidateDestination.id) continue;
+                    const candidateRoute = app.core.pathfinding.findRoute(
+                      app.core.transportationGraph,
+                      candidateOrigin.nodeId,
+                      candidateDestination.nodeId,
+                      { costKey: 'gpu-overlay-parity-smoke-freight' },
+                    );
+                    if (!candidateRoute || candidateRoute.edgeIds.length === 0) continue;
+                    origin = candidateOrigin;
+                    destination = candidateDestination;
+                    route = candidateRoute;
+                    break;
+                  }
+                  if (route) break;
+                }
+                if (!origin || !destination || !route) {
+                  throw new Error('freight overlay smoke fixture could not find a gateway route');
+                }
+                const tick = app.core.clock.tick;
+                app.core.economyDomain.freightVehicles.dispatch(
+                  {
+                    id: 'smoke-shipment:gpu-overlay-parity',
+                    orderId: 'smoke-order:gpu-overlay-parity',
+                    commodity: 'manufactured_goods',
+                    quantity: 10,
+                    vehicleWeight: 2,
+                    originKind: 'gateway',
+                    originId: origin.id,
+                    destinationKind: 'gateway',
+                    destinationId: destination.id,
+                    originNodeId: origin.nodeId,
+                    destinationNodeId: destination.nodeId,
+                    createdTick: tick,
+                    generalizedCost: route.totalCost,
+                  },
+                  route,
+                  tick,
+                );
+              }
               app.core.clock.setSpeed(0);
 
               const parcel = app.core.cadastre.listParcels()[0];
