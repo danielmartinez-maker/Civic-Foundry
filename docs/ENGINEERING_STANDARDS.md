@@ -85,6 +85,16 @@ Do not commit new raw `.png`, `.jpg`, `.webp`, audio/video, or 3D-model sources 
 
 Asset loading should remain asynchronous where I/O is involved. Large future worlds/assets should support staged loading or streaming rather than blocking the main thread. Development hot-reload may be added through a dedicated development server, provided it cannot alter production authority or persistence semantics.
 
+## Native Prism / Rust
+
+Prism production code lives under `engine/prism/`. P0 pins Rust 1.98.0, Rust 2024 edition, Cargo resolver 3, and a committed `engine/prism/Cargo.lock`.
+
+P0 Rust uses the standard library only and forbids unsafe code. New Rust dependencies or any relaxation of the unsafe-code rule require explicit architecture review with ownership, performance, licensing, and determinism rationale.
+
+Use deterministic ordered collections when iteration order can affect authoritative output. Thread completion order, wall-clock time, hash-table iteration, locale, and filesystem enumeration must not become authoritative ordering inputs.
+
+`npm run prism:verify` is the native Prism gate. During progressive migration, `npm run verify:all` is the combined local gate and runs the existing TypeScript verification followed by Prism verification. Windows-native host behavior additionally requires the `prism-windows` CI job.
+
 ## Build and dependencies
 
 Node.js 22 is the supported JavaScript runtime for repository tooling. TypeScript, ESLint, Prettier, and TypeScript ESLint are exact local development dependencies recorded in `package-lock.json`. CI uses `npm ci`; do not depend on globally installed compilers or linters.
@@ -95,7 +105,9 @@ Third-party dependencies must have a clear ownership/performance reason, compati
 
 ## Verification
 
-`npm run verify` is the canonical core gate. It runs formatting checks, ESLint, Civic Foundry policy checks, architecture checks, strict typechecking, tests, asset policy/validation, and a production build. CI runs the browser and visual smoke tiers after that core gate.
+`npm run verify` remains the canonical legacy authoritative-runtime gate. It runs formatting checks, ESLint, Civic Foundry policy checks, architecture checks, strict typechecking, tests, asset policy/validation, and a production build. CI runs the browser and visual smoke tiers after that core gate.
+
+From Prism P0 onward, `npm run verify:all` is the full transitional repository gate. It runs the existing TypeScript verification followed by `npm run prism:verify`. The Windows-only `prism-windows` CI job additionally proves the native executable startup contract.
 
 Do not bypass a failing check by weakening the assertion unless the underlying contract itself was deliberately changed and reviewed.
 
