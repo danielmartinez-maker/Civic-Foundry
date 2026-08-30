@@ -1,6 +1,6 @@
 use prism_core::ecs::{
     ComponentLayout, ComponentRegistry, ComponentTemperature, ComponentTypeId, ComponentValue,
-    EcsWorld, StructuralCommandBuffer,
+    EcsWorld, EcsWorldError, StructuralCommandBuffer,
 };
 use prism_core::jobs::JobId;
 
@@ -53,6 +53,22 @@ fn reversed_buffer_completion_order_produces_identical_world_state() {
 }
 
 #[test]
+fn duplicate_structural_keys_are_rejected_without_world_mutation() {
+    let mut world = EcsWorld::new(registry());
+    let before = world.strict_state_hash();
+    let first = spawn_buffer(7, 3);
+    let duplicate = first.clone();
+
+    assert!(matches!(
+        world.commit_structural(vec![first, duplicate]),
+        Err(EcsWorldError::DuplicateStructuralCommandKey)
+    ));
+    assert_eq!(world.strict_state_hash(), before);
+    assert!(world.live_entities().is_empty());
+    assert_eq!(world.structural_epoch(), 0);
+}
+
+#[test]
 fn add_and_remove_component_migration_preserves_retained_bytes() {
     let mut world = EcsWorld::new(registry());
     let report = world
@@ -99,6 +115,32 @@ fn add_and_remove_component_migration_preserves_retained_bytes() {
 }
 
 #[test]
+fn invalid_migration_is_transactional() {
+    let mut world = EcsWorld::new(registry());
+    let report = world
+        .commit_structural(vec![spawn_buffer(1, 4)])
+        .expect("spawn");
+    let entity = report.spawned_entities()[0];
+    let before_hash = world.strict_state_hash();
+    let before_epoch = world.structural_epoch();
+
+    let mut invalid = StructuralCommandBuffer::new(JobId::new(2));
+    invalid.add_component(entity, value(1, &[9, 9, 9, 9]));
+    assert!(matches!(
+        world.commit_structural(vec![invalid]),
+        Err(EcsWorldError::ComponentAlreadyPresent { .. })
+    ));
+    assert_eq!(world.strict_state_hash(), before_hash);
+    assert_eq!(world.structural_epoch(), before_epoch);
+    assert_eq!(
+        world
+            .component_bytes(entity, ComponentTypeId::new(1))
+            .expect("original component"),
+        &[4, 5, 6, 7]
+    );
+}
+
+#[test]
 fn swap_removal_repairs_moved_entity_location() {
     let mut world = EcsWorld::new(registry());
     let report = world
@@ -137,8 +179,19 @@ fn despawned_guid_becomes_stale_and_reused_slot_increments_generation() {
     assert!(!world.is_alive(old));
     assert!(world.component_bytes(old, ComponentTypeId::new(1)).is_err());
 
+    let stale_hash = world.strict_state_hash();
+    let stale_epoch = world.structural_epoch();
+    let mut stale_despawn = StructuralCommandBuffer::new(JobId::new(3));
+    stale_despawn.despawn(old);
+    assert!(matches!(
+        world.commit_structural(vec![stale_despawn]),
+        Err(EcsWorldError::StaleEntity(entity)) if entity == old
+    ));
+    assert_eq!(world.strict_state_hash(), stale_hash);
+    assert_eq!(world.structural_epoch(), stale_epoch);
+
     let report = world
-        .commit_structural(vec![spawn_buffer(3, 7)])
+        .commit_structural(vec![spawn_buffer(4, 7)])
         .expect("respawn");
     let new = report.spawned_entities()[0];
     assert_eq!(new.index, old.index);
