@@ -8,24 +8,14 @@ fn registry() -> ComponentRegistry {
     let mut registry = ComponentRegistry::new();
     registry
         .register(
-            ComponentLayout::new(
-                ComponentTypeId::new(1),
-                8,
-                8,
-                ComponentTemperature::Hot,
-            )
-            .expect("layout 1"),
+            ComponentLayout::new(ComponentTypeId::new(1), 8, 8, ComponentTemperature::Hot)
+                .expect("layout 1"),
         )
         .expect("register 1");
     registry
         .register(
-            ComponentLayout::new(
-                ComponentTypeId::new(2),
-                4,
-                4,
-                ComponentTemperature::Medium,
-            )
-            .expect("layout 2"),
+            ComponentLayout::new(ComponentTypeId::new(2), 4, 4, ComponentTemperature::Medium)
+                .expect("layout 2"),
         )
         .expect("register 2");
     registry
@@ -60,9 +50,7 @@ fn ten_thousand_structural_operations_are_order_independent() {
         .expect("forward spawn");
     let mut reversed = spawn_buffers(&registry);
     reversed.reverse();
-    reverse
-        .commit_structural(reversed)
-        .expect("reverse spawn");
+    reverse.commit_structural(reversed).expect("reverse spawn");
 
     assert_eq!(forward.live_entities().len(), 10_000);
     assert_eq!(forward.live_entities(), reverse.live_entities());
