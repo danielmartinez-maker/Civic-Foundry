@@ -183,4 +183,8 @@ The desktop GPU runtime adds contract coverage for the production WebGL renderer
 4. **3R — Transportation Engine 2.0** — lane/turn/signal/parking/crash authority and dynamic routing replacement
 5. Later Civic Foundry 2.0 systems continue under the progressive replacement architecture in `docs/superpowers/specs/2026-08-24-civic-foundry-2.0-master-design.md`.
 
+## Project knowledge base
+
+Start with [`docs/README.md`](docs/README.md) for the canonical documentation map. The focused [`docs/game/`](docs/game/) knowledge base covers the game bible, current state, authority matrix, systems, roadmap, rendering/art/UI, persistence/performance, future extensibility, Prism Engine status, AI contributor context, and project glossary.
+
 See `docs/ARCHITECTURE.md`, `docs/SAVE_FORMAT.md`, and `docs/superpowers/` for architecture, persistence, design specifications, and implementation plans.
