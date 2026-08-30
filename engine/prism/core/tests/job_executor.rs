@@ -1,7 +1,10 @@
 use std::thread;
 use std::time::Duration;
 
-use prism_core::ecs::StructuralCommandBuffer;
+use prism_core::ecs::{
+    ComponentLayout, ComponentRegistry, ComponentTemperature, ComponentTypeId, ComponentValue,
+    EcsWorld, StructuralCommandBuffer,
+};
 use prism_core::jobs::{
     ExecutableJob, ExecutionEpoch, ExecutorError, JobGraph, JobId, JobOutput, JobSpec,
     PrismExecutor,
@@ -28,6 +31,92 @@ fn jobs() -> Vec<ExecutableJob> {
         }),
         ExecutableJob::new(JobId::new(10), || JobOutput::new(100)),
     ]
+}
+
+fn retirement_registry() -> ComponentRegistry {
+    let mut registry = ComponentRegistry::new();
+    registry
+        .register(
+            ComponentLayout::new(
+                ComponentTypeId::new(1),
+                8,
+                8,
+                ComponentTemperature::Hot,
+            )
+            .expect("retirement layout"),
+        )
+        .expect("retirement component");
+    registry
+}
+
+fn retirement_value(registry: &ComponentRegistry, marker: u64) -> ComponentValue {
+    let type_id = ComponentTypeId::new(1);
+    ComponentValue::new(
+        type_id,
+        marker.to_le_bytes().to_vec(),
+        registry.get(type_id).expect("retirement layout"),
+    )
+    .expect("retirement value")
+}
+
+fn run_retirement_variant(slow_despawn: bool) -> (u64, u64, u64, u64) {
+    let registry = retirement_registry();
+    let mut world = EcsWorld::new(registry.clone());
+    let mut seed = StructuralCommandBuffer::new(JobId::new(1));
+    seed.spawn(vec![retirement_value(&registry, 1)]);
+    let seed_report = world.commit_structural(vec![seed]).expect("seed world");
+    let old = seed_report.spawned_entities()[0];
+
+    let mut graph = JobGraph::new();
+    graph
+        .add_job(JobSpec::new(JobId::new(10), 10))
+        .expect("despawn job");
+    graph
+        .add_job(JobSpec::new(JobId::new(20), 20))
+        .expect("spawn job");
+    let graph = graph.compile().expect("retirement graph");
+
+    let spawn_value = retirement_value(&registry, 2);
+    let jobs = vec![
+        ExecutableJob::new(JobId::new(10), move || {
+            if slow_despawn {
+                thread::sleep(Duration::from_millis(20));
+            }
+            let mut commands = StructuralCommandBuffer::new(JobId::new(10));
+            commands.despawn(old);
+            JobOutput::new(10).with_structural_commands(commands)
+        }),
+        ExecutableJob::new(JobId::new(20), move || {
+            if !slow_despawn {
+                thread::sleep(Duration::from_millis(20));
+            }
+            let mut commands = StructuralCommandBuffer::new(JobId::new(20));
+            commands.spawn(vec![spawn_value.clone()]);
+            JobOutput::new(20).with_structural_commands(commands)
+        }),
+    ];
+
+    let mut executor = PrismExecutor::new(2).expect("retirement executor");
+    let report = executor.execute(&graph, &jobs).expect("retirement execution");
+
+    assert!(world.is_alive(old));
+    assert_eq!(world.live_entities(), vec![old]);
+
+    let commit = world
+        .commit_structural(report.structural_buffers())
+        .expect("post-barrier structural commit");
+    let new = commit.spawned_entities()[0];
+    assert!(!world.is_alive(old));
+    assert_eq!(new.index, old.index);
+    assert_eq!(new.generation, old.generation + 1);
+    assert_eq!(world.live_entities(), vec![new]);
+
+    (
+        world.strict_state_hash(),
+        new.index,
+        old.generation,
+        new.generation,
+    )
 }
 
 #[test]
@@ -88,6 +177,13 @@ fn executor_rejects_structural_buffer_with_forged_issuer() {
         Err(ExecutorError::StructuralIssuerMismatch { job, issuer })
             if job == JobId::new(20) && issuer == JobId::new(999)
     ));
+}
+
+#[test]
+fn executor_barrier_makes_structural_retirement_epoch_safe() {
+    let slow_despawn = run_retirement_variant(true);
+    let slow_spawn = run_retirement_variant(false);
+    assert_eq!(slow_despawn, slow_spawn);
 }
 
 #[test]
