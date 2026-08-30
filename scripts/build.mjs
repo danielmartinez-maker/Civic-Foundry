@@ -1,7 +1,7 @@
+import { spawn } from "node:child_process";
 import { access, copyFile, cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { spawn } from "node:child_process";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 
@@ -139,12 +139,21 @@ async function runAtlasRenderer(root) {
   });
 }
 
+async function run3DAssetCompiler(root) {
+  const compiler = join(root, "tools", "3d", "CivicAssetCompiler.mjs");
+  await runCommand(process.execPath, [compiler, "--build"], {
+    cwd: root,
+    label: "3D asset generation",
+  });
+}
+
 export async function build(root = repositoryRoot) {
   await prepareDist(root);
   await runTypeScriptCompiler(root);
   await copyStaticFiles(root);
   await copyOptionalVendorFiles(root);
   await runAtlasRenderer(root);
+  await run3DAssetCompiler(root);
 }
 
 if (
