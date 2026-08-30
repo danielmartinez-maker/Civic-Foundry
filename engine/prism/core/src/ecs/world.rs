@@ -162,10 +162,7 @@ impl EcsWorld {
             .flat_map(StructuralCommandBuffer::into_commands)
             .collect();
         commands.sort_unstable_by_key(|entry| entry.key);
-        if commands
-            .windows(2)
-            .any(|pair| pair[0].key == pair[1].key)
-        {
+        if commands.windows(2).any(|pair| pair[0].key == pair[1].key) {
             return Err(EcsWorldError::DuplicateStructuralCommandKey);
         }
 
@@ -264,8 +261,8 @@ impl EcsWorld {
             .ok_or(EcsWorldError::UnknownComponent(component.type_id()))?;
         component.validate_against(layout)?;
 
-        let mut values = self.archetypes[&source.archetype]
-            .read_row(source.chunk_index, source.row_index)?;
+        let mut values =
+            self.archetypes[&source.archetype].read_row(source.chunk_index, source.row_index)?;
         values.insert(component.type_id(), component);
         self.migrate(entity, source, values)
     }
@@ -286,8 +283,8 @@ impl EcsWorld {
         if source.archetype.component_types().len() == 1 {
             return Err(EcsWorldError::CannotRemoveLastComponent(entity));
         }
-        let mut values = self.archetypes[&source.archetype]
-            .read_row(source.chunk_index, source.row_index)?;
+        let mut values =
+            self.archetypes[&source.archetype].read_row(source.chunk_index, source.row_index)?;
         values.remove(&component_type);
         self.migrate(entity, source, values)
     }
