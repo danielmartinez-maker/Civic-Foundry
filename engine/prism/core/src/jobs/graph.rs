@@ -8,6 +8,11 @@ impl JobId {
     pub const fn new(value: u64) -> Self {
         Self(value)
     }
+
+    #[must_use]
+    pub const fn value(self) -> u64 {
+        self.0
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -17,6 +22,11 @@ impl ResourceId {
     #[must_use]
     pub const fn new(value: u64) -> Self {
         Self(value)
+    }
+
+    #[must_use]
+    pub const fn value(self) -> u64 {
+        self.0
     }
 }
 
@@ -49,6 +59,16 @@ impl JobSpec {
             accesses: Vec::new(),
             after: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub const fn id(&self) -> JobId {
+        self.id
+    }
+
+    #[must_use]
+    pub const fn order(&self) -> i32 {
+        self.order
     }
 
     #[must_use]
@@ -98,12 +118,18 @@ pub enum JobGraphError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompiledJobGraph {
     ordered: Vec<JobId>,
+    waves: Vec<Vec<JobId>>,
 }
 
 impl CompiledJobGraph {
     #[must_use]
     pub fn ordered_jobs(&self) -> &[JobId] {
         &self.ordered
+    }
+
+    #[must_use]
+    pub fn waves(&self) -> &[Vec<JobId>] {
+        &self.waves
     }
 }
 
@@ -154,8 +180,14 @@ impl JobGraph {
                         dependency: *dependency,
                     });
                 }
-                if outgoing.get_mut(dependency).unwrap().insert(spec.id) {
-                    *indegree.get_mut(&spec.id).unwrap() += 1;
+                if outgoing
+                    .get_mut(dependency)
+                    .expect("known dependency must have outgoing set")
+                    .insert(spec.id)
+                {
+                    *indegree
+                        .get_mut(&spec.id)
+                        .expect("known job must have indegree") += 1;
                 }
             }
         }
@@ -168,17 +200,28 @@ impl JobGraph {
         }
 
         let mut ordered = Vec::with_capacity(self.jobs.len());
+        let mut waves = Vec::new();
         let mut remaining = indegree.clone();
-        while let Some(&(order, id)) = available.first() {
-            available.remove(&(order, id));
-            ordered.push(id);
-            for next in outgoing[&id].iter().copied() {
-                let degree = remaining.get_mut(&next).unwrap();
-                *degree -= 1;
-                if *degree == 0 {
-                    available.insert((self.jobs[&next].order, next));
+        while !available.is_empty() {
+            let frontier: Vec<_> = available.iter().copied().collect();
+            available.clear();
+            let mut next_available = BTreeSet::new();
+            let mut wave = Vec::with_capacity(frontier.len());
+            for (_, id) in frontier {
+                ordered.push(id);
+                wave.push(id);
+                for next in outgoing[&id].iter().copied() {
+                    let degree = remaining
+                        .get_mut(&next)
+                        .expect("known successor must have indegree");
+                    *degree -= 1;
+                    if *degree == 0 {
+                        next_available.insert((self.jobs[&next].order, next));
+                    }
                 }
             }
+            waves.push(wave);
+            available = next_available;
         }
 
         if ordered.len() != self.jobs.len() {
@@ -205,7 +248,7 @@ impl JobGraph {
             }
         }
 
-        Ok(CompiledJobGraph { ordered })
+        Ok(CompiledJobGraph { ordered, waves })
     }
 }
 
