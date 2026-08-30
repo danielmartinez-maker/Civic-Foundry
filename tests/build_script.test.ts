@@ -35,5 +35,8 @@ test("copyDirectory recursively copies a package tree", async () => {
   await copyDirectory(source, target);
 
   assert.equal(await readFile(join(target, "index.js"), "utf8"), "root");
-  assert.equal(await readFile(join(target, "sub", "module.js"), "utf8"), "nested");
+  assert.equal(
+    await readFile(join(target, "sub", "module.js"), "utf8"),
+    "nested",
+  );
 });
