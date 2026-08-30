@@ -1,4 +1,4 @@
-import { access, copyFile, mkdir, rm } from "node:fs/promises";
+import { access, copyFile, cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
@@ -10,6 +10,10 @@ export async function prepareDist(root = repositoryRoot) {
   await rm(dist, { recursive: true, force: true });
   await mkdir(dist, { recursive: true });
   return dist;
+}
+
+export async function copyDirectory(source, target) {
+  await cp(source, target, { recursive: true });
 }
 
 async function pathExists(path) {
@@ -49,6 +53,18 @@ async function copyOptionalVendorFiles(root) {
     );
   }
   await copyFile(pixiSource, join(vendor, "pixi.mjs"));
+
+  const babylonVendor = join(vendor, "@babylonjs");
+  await mkdir(babylonVendor, { recursive: true });
+  for (const packageName of ["core", "loaders"]) {
+    const source = join(root, "node_modules", "@babylonjs", packageName);
+    if (!(await pathExists(source))) {
+      throw new Error(
+        `Babylon.js ${packageName} browser runtime is missing; run npm ci before building.`,
+      );
+    }
+    await copyDirectory(source, join(babylonVendor, packageName));
+  }
 }
 
 function runCommand(command, args, { cwd, label }) {
