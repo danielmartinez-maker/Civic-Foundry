@@ -1,4 +1,4 @@
-import { SimulationCore as LegacySimulationCore } from './LegacySimulationCore.ts';
+import { LegacySimulationCore } from './LegacySimulationCore.ts';
 import type { CellCoord, ZoneType } from './types.ts';
 import { RandomStreamRegistry } from '../kernel/RandomStreamRegistry.ts';
 import { DevelopmentFeasibilitySystem } from '../development/DevelopmentFeasibilitySystem.ts';

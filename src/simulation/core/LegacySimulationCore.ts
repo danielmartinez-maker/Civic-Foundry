@@ -51,7 +51,7 @@ import { HousingTenureSystem, type HousingTenureSnapshot } from '../housing/Hous
 import { HousingRelocationSystem, type HousingRelocationSnapshot, type HousingRelocationState } from '../housing/HousingRelocationSystem.ts';
 import { housingAffordabilityScore } from '../housing/HousingEconomics.ts';
 
-export type SimulationCoreOptions = Readonly<{
+export type LegacySimulationCoreOptions = Readonly<{
   width?: number;
   height?: number;
   seed?: number;
@@ -74,7 +74,7 @@ const DEPARTMENTS: readonly ServiceDepartment[] = ['fire', 'police', 'healthcare
 const CARDINAL = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
 const INTENSITY_RANK: Readonly<Record<BuildingIntensity, number>> = Object.freeze({ low: 0, medium: 1, high: 2 });
 
-export class SimulationCore {
+export class LegacySimulationCore {
   readonly seed: number;
   readonly random: SeededRandom;
   readonly clock: SimulationClock;
@@ -164,7 +164,7 @@ export class SimulationCore {
     return this.developmentPolicy.snapshot();
   }
 
-  constructor(options: SimulationCoreOptions = {}) {
+  constructor(options: LegacySimulationCoreOptions = {}) {
     this.seed = options.seed ?? 1;
     this.random = new SeededRandom(this.seed);
     this.clock = new SimulationClock();

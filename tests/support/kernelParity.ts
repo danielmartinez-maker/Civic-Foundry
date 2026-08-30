@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { SimulationCore as LegacySimulationCore } from '../../src/simulation/core/LegacySimulationCore.ts';
+import { LegacySimulationCore } from '../../src/simulation/core/LegacySimulationCore.ts';
 import type { SimulationCore as CurrentSimulationCore } from '../../src/simulation/core/SimulationCore.ts';
 import { serializeCoreV6 } from '../../src/save/saveV6.ts';
 import type { SaveV7 } from '../../src/save/saveV7.ts';
