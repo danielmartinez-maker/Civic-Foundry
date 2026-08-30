@@ -5,7 +5,7 @@ mod world;
 
 pub use archetype::{
     Archetype, ArchetypeChunk, ArchetypeError, ArchetypeInsertLocation, ArchetypeKey,
-    SwapRemoveResult, DEFAULT_CHUNK_TARGET_BYTES,
+    DEFAULT_CHUNK_TARGET_BYTES, SwapRemoveResult,
 };
 pub use commands::{StructuralCommand, StructuralCommandBuffer, StructuralCommandKey};
 pub use component::{
