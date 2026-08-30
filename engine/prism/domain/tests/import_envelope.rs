@@ -40,7 +40,8 @@ fn valid_envelope_json() -> &'static [u8] {
 
 #[test]
 fn decodes_supported_envelope_without_semantic_validation() {
-    let decoded = decode_envelope_json(valid_envelope_json()).expect("supported envelope should decode");
+    let decoded =
+        decode_envelope_json(valid_envelope_json()).expect("supported envelope should decode");
     assert_eq!(decoded.world.seed, 17);
     assert!(decoded.cadastre.parcels.is_empty());
 }
@@ -67,7 +68,10 @@ fn rejects_wrong_save_version_before_domain_decode() {
     let bytes = br#"{"schemaVersion":1,"sourceSaveVersion":8,"sourceGameVersion":"0.9.0-urban-fabric","world":{},"cadastre":{}}"#;
     assert!(matches!(
         decode_envelope_json(bytes),
-        Err(P2AError::UnsupportedSourceVersion { save_version: 8, .. })
+        Err(P2AError::UnsupportedSourceVersion {
+            save_version: 8,
+            ..
+        })
     ));
 }
 
@@ -76,7 +80,10 @@ fn rejects_wrong_game_version_before_domain_decode() {
     let bytes = br#"{"schemaVersion":1,"sourceSaveVersion":9,"sourceGameVersion":"0.8.0-world-foundation","world":{},"cadastre":{}}"#;
     assert!(matches!(
         decode_envelope_json(bytes),
-        Err(P2AError::UnsupportedSourceVersion { save_version: 9, .. })
+        Err(P2AError::UnsupportedSourceVersion {
+            save_version: 9,
+            ..
+        })
     ));
 }
 
