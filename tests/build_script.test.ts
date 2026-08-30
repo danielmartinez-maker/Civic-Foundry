@@ -1,11 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -34,10 +28,7 @@ test("copyDirectory recursively copies a package tree", async () => {
 
   await copyDirectory(source, target);
 
-  assert.equal(
-    await readFile(join(target, "index.js"), "utf8"),
-    "root",
-  );
+  assert.equal(await readFile(join(target, "index.js"), "utf8"), "root");
   assert.equal(
     await readFile(join(target, "sub", "module.js"), "utf8"),
     "nested",
