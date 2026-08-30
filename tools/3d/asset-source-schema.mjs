@@ -15,7 +15,13 @@ const INSTANCING = new Set(['thin', 'hardware', 'unique']);
 const STREAMING = new Set(['critical', 'near', 'normal', 'background']);
 const MEMORY = new Set(['tiny', 'small', 'medium', 'large']);
 const SNAP_MODES = new Set(['parcel', 'road', 'socket', 'free']);
-const STATE_CHANNELS = new Set(['condition', 'occupancy', 'power', 'construction', 'night']);
+const STATE_CHANNELS = new Set([
+  'condition',
+  'occupancy',
+  'power',
+  'construction',
+  'night',
+]);
 const TOP_LEVEL_KEYS = new Set([
   'schemaVersion',
   'assetId',
@@ -46,7 +52,12 @@ const COMMON_PART_KEYS = new Set(['id', 'primitive', 'center', 'material']);
 const PART_KEYS = {
   box: new Set([...COMMON_PART_KEYS, 'size']),
   wedge: new Set([...COMMON_PART_KEYS, 'size', 'axis']),
-  cylinder: new Set([...COMMON_PART_KEYS, 'radius', 'height', 'segments']),
+  cylinder: new Set([
+    ...COMMON_PART_KEYS,
+    'radius',
+    'height',
+    'segments',
+  ]),
   plane: new Set([...COMMON_PART_KEYS, 'size', 'orientation']),
 };
 
@@ -83,6 +94,20 @@ function validateVector(value, path, errors, { positive = false } = {}) {
   }
 }
 
+function validateDimensions(value, errors) {
+  if (!isRecord(value)) {
+    errors.push('dimensions must be an object');
+    return;
+  }
+  const keys = ['widthM', 'depthM', 'heightM'];
+  validateUnknownKeys(value, new Set(keys), 'dimensions', errors);
+  for (const key of keys) {
+    if (!finite(value[key]) || value[key] <= 0) {
+      errors.push(`dimensions.${key} must be finite and > 0`);
+    }
+  }
+}
+
 function validateTokenArray(value, path, errors) {
   if (!Array.isArray(value)) {
     errors.push(`${path} must be an array`);
@@ -114,8 +139,13 @@ function validateMaterial(material, index, errors, materialIds) {
   } else {
     materialIds.add(material.id);
   }
-  if (!isNonEmptyString(material.family)) errors.push(`${path}.family must be non-empty`);
-  if (typeof material.baseColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(material.baseColor)) {
+  if (!isNonEmptyString(material.family)) {
+    errors.push(`${path}.family must be non-empty`);
+  }
+  if (
+    typeof material.baseColor !== 'string' ||
+    !/^#[0-9a-f]{6}$/i.test(material.baseColor)
+  ) {
     errors.push(`${path}.baseColor must be a six-digit hex color`);
   }
   for (const key of ['roughness', 'metallic', 'alpha']) {
@@ -143,21 +173,38 @@ function validatePrimitive(part, path, errors, materialIds, requireMaterial) {
     if (!isNonEmptyString(part.material)) {
       errors.push(`${path}.material must be non-empty`);
     } else if (!materialIds.has(part.material)) {
-      errors.push(`${path}.material references unknown material '${part.material}'`);
+      errors.push(
+        `${path}.material references unknown material '${part.material}'`,
+      );
     }
-  } else if (part.material !== undefined && !materialIds.has(part.material)) {
+  } else if (
+    part.material !== undefined &&
+    !materialIds.has(part.material)
+  ) {
     errors.push(`${path}.material references unknown material '${part.material}'`);
   }
 
   if (part.primitive === 'box' || part.primitive === 'wedge') {
     validateVector(part.size, `${path}.size`, errors, { positive: true });
-    if (part.primitive === 'wedge' && part.axis !== undefined && !['x', 'z'].includes(part.axis)) {
+    if (
+      part.primitive === 'wedge' &&
+      part.axis !== undefined &&
+      !['x', 'z'].includes(part.axis)
+    ) {
       errors.push(`${path}.axis must be x or z`);
     }
   } else if (part.primitive === 'cylinder') {
-    if (!finite(part.radius) || part.radius <= 0) errors.push(`${path}.radius must be > 0`);
-    if (!finite(part.height) || part.height <= 0) errors.push(`${path}.height must be > 0`);
-    if (!Number.isInteger(part.segments) || part.segments < 3 || part.segments > 128) {
+    if (!finite(part.radius) || part.radius <= 0) {
+      errors.push(`${path}.radius must be > 0`);
+    }
+    if (!finite(part.height) || part.height <= 0) {
+      errors.push(`${path}.height must be > 0`);
+    }
+    if (
+      !Number.isInteger(part.segments) ||
+      part.segments < 3 ||
+      part.segments > 128
+    ) {
       errors.push(`${path}.segments must be an integer between 3 and 128`);
     }
   } else {
@@ -165,10 +212,15 @@ function validatePrimitive(part, path, errors, materialIds, requireMaterial) {
     if (!['xy', 'xz', 'yz'].includes(part.orientation)) {
       errors.push(`${path}.orientation must be xy, xz, or yz`);
     }
-    if (isRecord(part.size) && ['xy', 'xz', 'yz'].includes(part.orientation)) {
+    if (
+      isRecord(part.size) &&
+      ['xy', 'xz', 'yz'].includes(part.orientation)
+    ) {
       for (const axis of part.orientation) {
         if (!finite(part.size[axis]) || part.size[axis] <= 0) {
-          errors.push(`${path}.size.${axis} must be > 0 for ${part.orientation} plane`);
+          errors.push(
+            `${path}.size.${axis} must be > 0 for ${part.orientation} plane`,
+          );
         }
       }
     }
@@ -187,13 +239,20 @@ export function validateAssetSource(source) {
   if (!isNonEmptyString(source.category) || !CATEGORIES.has(source.category)) {
     errors.push('category is not supported');
   }
-  validateVector(source.dimensions, 'dimensions', errors, { positive: true });
+  validateDimensions(source.dimensions, errors);
 
   if (!isRecord(source.pivot)) {
     errors.push('pivot must be an object');
   } else {
-    validateUnknownKeys(source.pivot, new Set(['convention', 'forward', 'up']), 'pivot', errors);
-    if (source.pivot.convention !== 'ground-center') errors.push('pivot.convention must be ground-center');
+    validateUnknownKeys(
+      source.pivot,
+      new Set(['convention', 'forward', 'up']),
+      'pivot',
+      errors,
+    );
+    if (source.pivot.convention !== 'ground-center') {
+      errors.push('pivot.convention must be ground-center');
+    }
     if (source.pivot.forward !== '-Z') errors.push('pivot.forward must be -Z');
     if (source.pivot.up !== '+Y') errors.push('pivot.up must be +Y');
   }
@@ -208,10 +267,16 @@ export function validateAssetSource(source) {
         'placement',
         errors,
       );
-      if (!SNAP_MODES.has(source.placement.snapMode)) errors.push('placement.snapMode is not supported');
+      if (!SNAP_MODES.has(source.placement.snapMode)) {
+        errors.push('placement.snapMode is not supported');
+      }
       for (const key of ['zoneCompatibility', 'density']) {
         if (source.placement[key] !== undefined) {
-          validateTokenArray(source.placement[key], `placement.${key}`, errors);
+          validateTokenArray(
+            source.placement[key],
+            `placement.${key}`,
+            errors,
+          );
         }
       }
     }
@@ -237,7 +302,12 @@ export function validateAssetSource(source) {
         errors.push(`${path} must be an object`);
         continue;
       }
-      validateUnknownKeys(socket, new Set(['id', 'position', 'forward']), path, errors);
+      validateUnknownKeys(
+        socket,
+        new Set(['id', 'position', 'forward']),
+        path,
+        errors,
+      );
       if (!isNonEmptyString(socket.id)) {
         errors.push(`${path}.id must be non-empty`);
       } else if (socketIds.has(socket.id)) {
@@ -257,7 +327,11 @@ export function validateAssetSource(source) {
       if (!STATE_CHANNELS.has(key)) {
         errors.push(`stateChannels.${key} is not supported`);
       } else {
-        validateTokenArray(source.stateChannels[key], `stateChannels.${key}`, errors);
+        validateTokenArray(
+          source.stateChannels[key],
+          `stateChannels.${key}`,
+          errors,
+        );
       }
     }
   }
@@ -271,20 +345,40 @@ export function validateAssetSource(source) {
       'runtime',
       errors,
     );
-    if (!INSTANCING.has(source.runtime.instancing)) errors.push('runtime.instancing is not supported');
-    if (!STREAMING.has(source.runtime.streamingClass)) errors.push('runtime.streamingClass is not supported');
-    if (!MEMORY.has(source.runtime.memoryClass)) errors.push('runtime.memoryClass is not supported');
+    if (!INSTANCING.has(source.runtime.instancing)) {
+      errors.push('runtime.instancing is not supported');
+    }
+    if (!STREAMING.has(source.runtime.streamingClass)) {
+      errors.push('runtime.streamingClass is not supported');
+    }
+    if (!MEMORY.has(source.runtime.memoryClass)) {
+      errors.push('runtime.memoryClass is not supported');
+    }
   }
 
   if (!isRecord(source.art)) {
     errors.push('art must be an object');
   } else {
-    validateUnknownKeys(source.art, new Set(['styleFamily', 'qualityTier', 'reviewImage']), 'art', errors);
-    if (!isNonEmptyString(source.art.styleFamily)) errors.push('art.styleFamily must be non-empty');
-    if (!isNonEmptyString(source.art.qualityTier)) errors.push('art.qualityTier must be non-empty');
+    validateUnknownKeys(
+      source.art,
+      new Set(['styleFamily', 'qualityTier', 'reviewImage']),
+      'art',
+      errors,
+    );
+    if (!isNonEmptyString(source.art.styleFamily)) {
+      errors.push('art.styleFamily must be non-empty');
+    }
+    if (!isNonEmptyString(source.art.qualityTier)) {
+      errors.push('art.qualityTier must be non-empty');
+    }
     if (source.art.reviewImage !== undefined) {
-      if (!isNonEmptyString(source.art.reviewImage)) errors.push('art.reviewImage must be non-empty');
-      else if (/^[a-z][a-z0-9+.-]*:/i.test(source.art.reviewImage) || source.art.reviewImage.startsWith('/') || source.art.reviewImage.includes('..')) {
+      if (!isNonEmptyString(source.art.reviewImage)) {
+        errors.push('art.reviewImage must be non-empty');
+      } else if (
+        /^[a-z][a-z0-9+.-]*:/i.test(source.art.reviewImage) ||
+        source.art.reviewImage.startsWith('/') ||
+        source.art.reviewImage.includes('..')
+      ) {
         errors.push('art.reviewImage must be runtime-relative');
       }
     }
@@ -307,7 +401,12 @@ export function validateAssetSource(source) {
         errors.push(`${path} must be an object`);
         continue;
       }
-      validateUnknownKeys(lod, new Set(['id', 'maxTriangles', 'parts']), path, errors);
+      validateUnknownKeys(
+        lod,
+        new Set(['id', 'maxTriangles', 'parts']),
+        path,
+        errors,
+      );
       if (!['lod0', 'lod1', 'lod2'].includes(lod.id)) {
         errors.push(`${path}.id must be lod0, lod1, or lod2`);
       } else if (lodIds.has(lod.id)) {
@@ -324,9 +423,17 @@ export function validateAssetSource(source) {
         const partIds = new Set();
         for (let partIndex = 0; partIndex < lod.parts.length; partIndex += 1) {
           const part = lod.parts[partIndex];
-          validatePrimitive(part, `${path}.parts[${partIndex}]`, errors, materialIds, true);
+          validatePrimitive(
+            part,
+            `${path}.parts[${partIndex}]`,
+            errors,
+            materialIds,
+            true,
+          );
           if (isRecord(part) && isNonEmptyString(part.id)) {
-            if (partIds.has(part.id)) errors.push(`${path}.parts contains duplicate id '${part.id}'`);
+            if (partIds.has(part.id)) {
+              errors.push(`${path}.parts contains duplicate id '${part.id}'`);
+            }
             partIds.add(part.id);
           }
         }
@@ -335,7 +442,9 @@ export function validateAssetSource(source) {
     for (const required of ['lod0', 'lod1', 'lod2']) {
       if (!lodIds.has(required)) errors.push(`lods must contain ${required}`);
     }
-    if (source.lods.length !== 3) errors.push('lods must contain exactly lod0, lod1, and lod2');
+    if (source.lods.length !== 3) {
+      errors.push('lods must contain exactly lod0, lod1, and lod2');
+    }
   }
 
   if (!Array.isArray(source.collision)) {
@@ -347,9 +456,17 @@ export function validateAssetSource(source) {
     const collisionIds = new Set();
     for (let index = 0; index < source.collision.length; index += 1) {
       const part = source.collision[index];
-      validatePrimitive(part, `collision[${index}]`, errors, materialIds, false);
+      validatePrimitive(
+        part,
+        `collision[${index}]`,
+        errors,
+        materialIds,
+        false,
+      );
       if (isRecord(part) && isNonEmptyString(part.id)) {
-        if (collisionIds.has(part.id)) errors.push(`collision contains duplicate id '${part.id}'`);
+        if (collisionIds.has(part.id)) {
+          errors.push(`collision contains duplicate id '${part.id}'`);
+        }
         collisionIds.add(part.id);
       }
     }
