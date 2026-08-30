@@ -58,7 +58,7 @@ def main() -> None:
         page.wait_for_function("() => !!window.__civicApp")
 
         assert page.locator("h1").inner_text() == "CIVIC FOUNDRY"
-        assert "PHASE VI" in page.locator(".eyebrow").inner_text()
+        assert page.locator(".eyebrow").inner_text() == "URBAN FABRIC 2.0 · DESKTOP GPU RUNTIME"
         assert page.locator('[data-testid="save"]').inner_text() == "Save V9"
         assert page.locator('[data-testid="economy-panel"]').is_visible()
 
