@@ -132,10 +132,7 @@ fn preserves_live_typescript_world_wire_literals_and_fields() {
         world["hydrology"]["watersheds"][0]["primaryChannelId"],
         "channel-0"
     );
-    assert_eq!(
-        world["hydrology"]["channels"][0]["capacityVolumeM3"],
-        10
-    );
+    assert_eq!(world["hydrology"]["channels"][0]["capacityVolumeM3"], 10);
 }
 
 #[test]
