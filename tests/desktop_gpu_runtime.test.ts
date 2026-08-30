@@ -47,3 +47,21 @@ test('package metadata exposes GPU and desktop dependencies and launch script', 
   assert.match(packageJson.devDependencies?.electron ?? '', /^44\./);
   assert.equal(packageJson.scripts?.desktop, 'npm run build && electron desktop/main.mjs');
 });
+
+test('3D tranche pins Babylon and glTF Transform while preserving the local import-map runtime', async () => {
+  const packageJson = JSON.parse(await text('package.json')) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  const html = await text('index.html');
+  const build = await text('scripts/build.mjs');
+
+  assert.equal(packageJson.dependencies?.['@babylonjs/core'], '9.23.0');
+  assert.equal(packageJson.dependencies?.['@babylonjs/loaders'], '9.23.0');
+  assert.equal(packageJson.devDependencies?.['@gltf-transform/core'], '4.4.2');
+  assert.equal(packageJson.devDependencies?.['@gltf-transform/functions'], '4.4.2');
+  assert.match(html, /"@babylonjs\/core\/"\s*:\s*"\.\/vendor\/@babylonjs\/core\/"/);
+  assert.match(html, /"@babylonjs\/loaders\/"\s*:\s*"\.\/vendor\/@babylonjs\/loaders\/"/);
+  assert.match(build, /@babylonjs[\s\S]*core/);
+  assert.match(build, /@babylonjs[\s\S]*loaders/);
+});
