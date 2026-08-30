@@ -159,7 +159,10 @@ impl ArchetypeChunk {
         let capacity_rows = (DEFAULT_CHUNK_TARGET_BYTES / row_bytes).max(1);
         let mut columns = BTreeMap::new();
         for layout in layout_map.values().copied() {
-            columns.insert(layout.type_id(), ComponentColumn::new(layout, capacity_rows)?);
+            columns.insert(
+                layout.type_id(),
+                ComponentColumn::new(layout, capacity_rows)?,
+            );
         }
         Ok(Self {
             layouts: layout_map,
@@ -303,7 +306,10 @@ pub struct ArchetypeInsertLocation {
 }
 
 impl Archetype {
-    pub fn new(key: ArchetypeKey, mut layouts: Vec<ComponentLayout>) -> Result<Self, ArchetypeError> {
+    pub fn new(
+        key: ArchetypeKey,
+        mut layouts: Vec<ComponentLayout>,
+    ) -> Result<Self, ArchetypeError> {
         layouts.sort_unstable_by_key(ComponentLayout::type_id);
         let layout_types: BTreeSet<_> = layouts.iter().map(|layout| layout.type_id()).collect();
         let key_types: BTreeSet<_> = key.component_types().iter().copied().collect();
