@@ -25,6 +25,10 @@ jobs:
         run: npm run typecheck
       - name: Format contracts
         run: npm run format:check
+      - name: Install build rasterizer
+        run: |
+          python -m pip install playwright==1.55.0 Pillow==11.3.0
+          python -m playwright install chromium
       - name: Build local ESM runtime
         run: npm run build
       - name: Verify Babylon vendor paths
