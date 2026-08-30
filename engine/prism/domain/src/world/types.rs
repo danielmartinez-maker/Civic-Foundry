@@ -33,34 +33,32 @@ pub enum WorldFoundationMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilClass {
-    Sand,
-    SandyLoam,
-    SiltLoam,
-    Clay,
+    Rock,
     Gravel,
+    Sand,
+    Loam,
+    Clay,
+    Alluvium,
     Peat,
-    WeatheredRock,
     FillDisturbed,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "lowercase")]
 pub enum VegetationClass {
     None,
-    Sparse,
-    Grassland,
-    Shrub,
+    Grass,
     Forest,
+    Scrub,
     Wetland,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "lowercase")]
 pub enum SurfaceWaterClass {
     None,
-    Stream,
-    River,
     Lake,
+    River,
     Coast,
 }
 
@@ -94,8 +92,8 @@ pub struct TerrainFieldSnapshot {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Biome {
-    Plains,
-    Wetland,
+    Grass,
+    Forest,
     Rock,
     Water,
 }
@@ -122,6 +120,7 @@ pub struct WatershedRecord {
     pub outlet_index: u32,
     pub member_count: u32,
     pub upstream_area_cells: u32,
+    pub primary_channel_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -131,7 +130,7 @@ pub struct ChannelSegment {
     pub from_index: u32,
     pub to_index: u32,
     pub accumulation: f64,
-    pub capacity: f64,
+    pub capacity_volume_m3: f64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
