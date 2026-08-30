@@ -137,10 +137,7 @@ impl ComponentValue {
         &self.bytes
     }
 
-    pub(crate) fn validate_against(
-        &self,
-        layout: &ComponentLayout,
-    ) -> Result<(), ComponentError> {
+    pub(crate) fn validate_against(&self, layout: &ComponentLayout) -> Result<(), ComponentError> {
         if self.type_id != layout.type_id() {
             return Err(ComponentError::TypeMismatch {
                 expected: layout.type_id(),
