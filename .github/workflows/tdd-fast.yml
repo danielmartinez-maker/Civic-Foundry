@@ -25,3 +25,9 @@ jobs:
         run: npm run typecheck
       - name: Format contracts
         run: npm run format:check
+      - name: Build local ESM runtime
+        run: npm run build
+      - name: Verify Babylon vendor paths
+        run: |
+          test -f dist/vendor/@babylonjs/core/Engines/webgpuEngine.js
+          test -f dist/vendor/@babylonjs/loaders/glTF/index.js
