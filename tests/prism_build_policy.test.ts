@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { prismVerificationCommands } from "../scripts/prism-verify.mjs";
@@ -34,6 +35,23 @@ test("Prism verification keeps the native gate deterministic and explicit", () =
       "p1_invariants",
       "--locked",
     ],
+    [
+      "test",
+      "-p",
+      "prism-domain",
+      "--release",
+      "--test",
+      "p2a_invariants",
+      "--locked",
+    ],
     ["check", "--workspace", "--all-targets", "--locked"],
   ]);
+});
+
+test("Prism workspace includes the P2A domain crate", () => {
+  const cargoToml = readFileSync(
+    new URL("../engine/prism/Cargo.toml", import.meta.url),
+    "utf8",
+  );
+  assert.match(cargoToml, /members\s*=\s*\[[^\]]*"domain"[^\]]*\]/s);
 });
