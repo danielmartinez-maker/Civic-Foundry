@@ -17,6 +17,13 @@ import { mapEconomyOverlay, type EconomyOverlayMode } from '../rendering/Economy
 
 const STORAGE_KEY = 'civic-foundry-save-v7';
 const LEGACY_STORAGE_KEY = 'civic-foundry-save-v6';
+const SERVICE_DEPARTMENT_LABELS: Readonly<Record<ServiceDepartment, string>> = Object.freeze({
+  fire: 'Fire',
+  police: 'Police',
+  healthcare: 'Healthcare',
+  education: 'Education',
+  garbage: 'Waste',
+});
 const TOOLS: readonly [ToolId, string, string][] = [
   ['inspect', 'Inspect', 'I'], ['road-local', 'Local', 'R'], ['road-collector', 'Collector', 'C'], ['road-arterial', 'Arterial', 'A'],
   ['zone-residential', 'Residential', '1'], ['zone-commercial', 'Commercial', '2'], ['zone-industrial', 'Industrial', '3'],
@@ -74,7 +81,7 @@ export class GameApp {
     const toolButtons = TOOLS.map(([id, label, key]) => `<button class="tool-btn" data-tool="${id}" data-testid="tool-${id}"><span>${label}</span><kbd>${key}</kbd></button>`).join('');
     const speedButtons = [0, 1, 2, 4].map((speed) => `<button data-speed="${speed}" data-testid="speed-${speed}">${speed === 0 ? 'Pause' : `${speed}×`}</button>`).join('');
     const taxRows = (['residential', 'commercial', 'industrial'] as ZoneType[]).map((zone) => `<label class="tax-row"><span>${zone[0]!.toUpperCase()}</span><input data-tax="${zone}" type="number" min="0" max="25" step="0.5" value="10"><b>%</b></label>`).join('');
-    const serviceBudgetRows = (['fire', 'police', 'healthcare', 'education', 'garbage'] as ServiceDepartment[]).map((department) => `<label class="tax-row"><span>${department[0]!.toUpperCase()}${department.slice(1, 4)}</span><input data-service-budget="${department}" data-testid="budget-${department}" type="number" min="50" max="150" step="5" value="100"><b>%</b></label>`).join('');
+    const serviceBudgetRows = (['fire', 'police', 'healthcare', 'education', 'garbage'] as ServiceDepartment[]).map((department) => `<label class="tax-row"><span>${SERVICE_DEPARTMENT_LABELS[department]}</span><input data-service-budget="${department}" data-testid="budget-${department}" type="number" min="50" max="150" step="5" value="100"><b>%</b></label>`).join('');
     return `<div class="game-shell">
       <header class="topbar"><div><div class="eyebrow">URBAN FABRIC 2.0 · DESKTOP GPU RUNTIME</div><h1>CIVIC FOUNDRY</h1></div>
         <div class="top-actions"><button data-action="save" data-testid="save">Save V9</button><button data-action="load" data-testid="load">Load</button></div></header>
