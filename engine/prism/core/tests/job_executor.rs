@@ -71,6 +71,26 @@ fn executor_rejects_missing_executable_job_before_dispatch() {
 }
 
 #[test]
+fn executor_rejects_structural_buffer_with_forged_issuer() {
+    let graph = independent_graph();
+    let mut executor = PrismExecutor::new(2).expect("executor");
+    let malicious = vec![
+        ExecutableJob::new(JobId::new(20), || {
+            let mut commands = StructuralCommandBuffer::new(JobId::new(999));
+            commands.note();
+            JobOutput::new(200).with_structural_commands(commands)
+        }),
+        ExecutableJob::new(JobId::new(10), || JobOutput::new(100)),
+    ];
+
+    assert!(matches!(
+        executor.execute(&graph, &malicious),
+        Err(ExecutorError::StructuralIssuerMismatch { job, issuer })
+            if job == JobId::new(20) && issuer == JobId::new(999)
+    ));
+}
+
+#[test]
 fn profiling_is_stable_by_job_identity_and_tracks_command_counts() {
     let graph = independent_graph();
     let mut executor = PrismExecutor::new(2).expect("executor");
