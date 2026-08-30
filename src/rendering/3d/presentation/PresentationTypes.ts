@@ -1,5 +1,5 @@
 import type { AssetId } from '../assets/AssetManifestV2.ts';
-import type { PolygonRing } from '../../../world/geometry/Geometry.ts';
+import type { PolygonRing } from '../../../world/cadastre/Geometry.ts';
 
 export type PresentationEntityId =
   | `building:${string}`
