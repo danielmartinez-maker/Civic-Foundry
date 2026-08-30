@@ -7,6 +7,4 @@ pub use executor::{
     PrismExecutor,
 };
 pub use graph::{CompiledJobGraph, JobGraph, JobGraphError, JobId, JobSpec, ResourceId};
-pub use worker_pool::{
-    WorkerPool, WorkerPoolError, WorkerTask, WorkerTaskKey, WorkerTaskResult,
-};
+pub use worker_pool::{WorkerPool, WorkerPoolError, WorkerTask, WorkerTaskKey, WorkerTaskResult};
