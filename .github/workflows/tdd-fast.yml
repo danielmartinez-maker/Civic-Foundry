@@ -25,6 +25,10 @@ jobs:
         run: npm run typecheck
       - name: Format contracts
         run: npm run format:check
+      - name: Asset source policy
+        run: npm run assets:policy
+      - name: Check deterministic 3D sources
+        run: npm run assets:3d:check
       - name: Install build rasterizer
         run: |
           python -m pip install playwright==1.55.0 Pillow==11.3.0
@@ -35,3 +39,11 @@ jobs:
         run: |
           test -f dist/vendor/@babylonjs/core/Engines/webgpuEngine.js
           test -f dist/vendor/@babylonjs/loaders/glTF/index.js
+      - name: Verify House A runtime outputs
+        run: |
+          test -s dist/assets/models/cf_bld_res_detached_house_a_low_v01_lod0.glb
+          test -s dist/assets/models/cf_bld_res_detached_house_a_low_v01_lod1.glb
+          test -s dist/assets/models/cf_bld_res_detached_house_a_low_v01_lod2.glb
+          test -s dist/assets/collisions/cf_bld_res_detached_house_a_low_v01_collision.glb
+          test -s dist/assets/manifests/cf_bld_res_detached_house_a_low_v01_manifest.json
+          test -s dist/assets/manifests/catalog-v2.json
