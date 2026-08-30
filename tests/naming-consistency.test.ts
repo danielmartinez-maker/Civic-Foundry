@@ -27,6 +27,9 @@ test('current runtime presentation uses canonical milestone and waste terminolog
   assert.doesNotMatch(gameAppSource, /PHASE VI · FIRMS, PRODUCTION & FREIGHT/);
   assert.match(gameAppSource, /<option value="garbage">Waste<\/option>/);
   assert.doesNotMatch(gameAppSource, /<option value="garbage">Garbage<\/option>/);
+  assert.match(gameAppSource, /const SERVICE_DEPARTMENT_LABELS: Readonly<Record<ServiceDepartment, string>>/);
+  assert.match(gameAppSource, /garbage: 'Waste'/);
+  assert.match(gameAppSource, /\$\{SERVICE_DEPARTMENT_LABELS\[department\]\}/);
 
   assert.match(inspectorSource, /Waste backlog:/);
   assert.match(inspectorSource, /Waste access:/);
