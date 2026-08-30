@@ -1,0 +1,33 @@
+name: Civic Foundry Lockfile Helper
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Node 22
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Generate exact 3D dependency lockfile
+        run: |
+          npm install --save-exact @babylonjs/core@9.23.0 @babylonjs/loaders@9.23.0
+          npm install --save-dev --save-exact @gltf-transform/core@4.4.2 @gltf-transform/functions@4.4.2
+      - name: Stage lockfile artifact
+        run: |
+          mkdir -p lockfile-helper
+          cp package.json package-lock.json lockfile-helper/
+      - name: Upload lockfile artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: civic-3d-lockfile
+          path: lockfile-helper
+          if-no-files-found: error
