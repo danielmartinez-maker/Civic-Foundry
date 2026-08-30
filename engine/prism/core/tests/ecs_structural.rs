@@ -91,7 +91,11 @@ fn add_and_remove_component_migration_preserves_retained_bytes() {
             .expect("retained after remove"),
         before
     );
-    assert!(world.component_bytes(entity, ComponentTypeId::new(2)).is_err());
+    assert!(
+        world
+            .component_bytes(entity, ComponentTypeId::new(2))
+            .is_err()
+    );
 }
 
 #[test]
