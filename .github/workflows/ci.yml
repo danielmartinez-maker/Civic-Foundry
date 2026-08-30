@@ -31,8 +31,24 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Core verification
         run: npm run verify
-      - name: Prism verification
-        run: npm run prism:verify
+      - name: Prism format
+        working-directory: engine/prism
+        run: cargo fmt --all -- --check
+      - name: Prism Clippy
+        working-directory: engine/prism
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Prism workspace tests
+        working-directory: engine/prism
+        run: cargo test --workspace --locked
+      - name: Prism P0 release invariants
+        working-directory: engine/prism
+        run: cargo test -p prism-core --release --test p0_invariants --locked
+      - name: Prism P1 release invariants
+        working-directory: engine/prism
+        run: cargo test -p prism-core --release --test p1_invariants --locked
+      - name: Prism workspace check
+        working-directory: engine/prism
+        run: cargo check --workspace --all-targets --locked
       - name: Phase 6 browser smoke
         run: npm run test:smoke
       - name: Phase 7 browser smoke
