@@ -2,9 +2,11 @@
 
 pub mod bootstrap;
 pub mod diagnostics;
+pub mod ecs;
 pub mod entity;
 pub mod jobs;
 pub mod memory;
+pub mod profiling;
 
 pub const PRISM_VERSION: &str = env!("CARGO_PKG_VERSION");
 
