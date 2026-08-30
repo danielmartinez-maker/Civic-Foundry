@@ -138,6 +138,7 @@ pub enum ExecutorError {
     WorkerPool(WorkerPoolError),
     DuplicateExecutableJob(JobId),
     MissingJob(JobId),
+    StructuralIssuerMismatch { job: JobId, issuer: JobId },
     EpochOverflow,
     TaskOrdinalOverflow,
 }
@@ -193,6 +194,7 @@ impl PrismExecutor {
         let epoch = ExecutionEpoch::new(self.next_epoch);
         let mut task_ordinal = 0_u64;
         let mut completed = Vec::with_capacity(graph.ordered_jobs().len());
+        let mut profile_samples = Vec::with_capacity(graph.ordered_jobs().len());
 
         for wave in graph.waves() {
             let mut tasks = Vec::with_capacity(wave.len());
@@ -218,11 +220,19 @@ impl PrismExecutor {
             for result in results {
                 let worker_index = result.worker_index();
                 let raw = result.into_value();
+                if let Some(commands) = raw.output.structural_commands()
+                    && commands.issuer() != raw.job_id
+                {
+                    return Err(ExecutorError::StructuralIssuerMismatch {
+                        job: raw.job_id,
+                        issuer: commands.issuer(),
+                    });
+                }
                 let structural_commands = raw
                     .output
                     .structural_commands()
                     .map_or(0, StructuralCommandBuffer::command_count);
-                self.profiler.record(JobProfileSample::new(
+                profile_samples.push(JobProfileSample::new(
                     raw.job_id,
                     epoch,
                     worker_index,
@@ -242,6 +252,9 @@ impl PrismExecutor {
             .next_epoch
             .checked_add(1)
             .ok_or(ExecutorError::EpochOverflow)?;
+        for sample in profile_samples {
+            self.profiler.record(sample);
+        }
         Ok(ExecutionReport {
             epoch,
             ordered_jobs: completed,
