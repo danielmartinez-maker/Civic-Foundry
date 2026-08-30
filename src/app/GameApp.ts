@@ -1,7 +1,8 @@
 import { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import type { CellCoord, SpeedMode, ZoneType } from '../simulation/core/types.ts';
 import { hydrateCore, serializeCore } from '../save/save.ts';
-import { GpuWorldRenderer, type CellSelection } from '../rendering/gpu/GpuWorldRenderer.ts';
+import { GpuWorldRenderer } from '../rendering/gpu/GpuWorldRenderer.ts';
+import type { CellSelection, PresentationRenderer } from '../rendering/PresentationRenderer.ts';
 import type { TrafficOverlayMode } from '../rendering/TrafficOverlayLayer.ts';
 import { mapServiceOverlay, type ServiceOverlayMode } from '../rendering/ServiceOverlayLayer.ts';
 import { mapTransitOverlay, type TransitOverlayMode } from '../rendering/TransitOverlayLayer.ts';
@@ -37,7 +38,7 @@ const TOOLS: readonly [ToolId, string, string][] = [
 export class GameApp {
   core: SimulationCore;
   readonly tools = new ToolController();
-  readonly renderer: GpuWorldRenderer;
+  readonly renderer: PresentationRenderer;
   private readonly hud: HudView;
   private readonly inspector: HTMLElement;
   private readonly notification: HTMLElement;
