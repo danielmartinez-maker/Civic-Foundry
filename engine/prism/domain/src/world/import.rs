@@ -42,10 +42,10 @@ impl TryFrom<WorldFoundationSnapshot> for WorldMirror {
     }
 }
 
-fn world_error(code: &'static str, detail: impl Into<String>) -> P2AError {
+fn world_error(code: &'static str, field: impl Into<String>) -> P2AError {
     P2AError::WorldValidation {
         code,
-        detail: detail.into(),
+        field: field.into(),
     }
 }
 
