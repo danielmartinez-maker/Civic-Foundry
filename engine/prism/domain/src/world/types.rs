@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorldGenerationConfig {
     pub width: u32,
@@ -9,7 +9,7 @@ pub struct WorldGenerationConfig {
     pub preset: WorldFormPreset,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorldFormPreset {
     Plain,
@@ -20,7 +20,7 @@ pub enum WorldFormPreset {
     CoastalLowland,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WorldFoundationMode {
     #[serde(rename = "generated-1r")]
     Generated1r,
@@ -30,7 +30,7 @@ pub enum WorldFoundationMode {
     LegacyExplicit,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SoilClass {
     Sand,
@@ -43,7 +43,7 @@ pub enum SoilClass {
     FillDisturbed,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VegetationClass {
     None,
@@ -54,7 +54,7 @@ pub enum VegetationClass {
     Wetland,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SurfaceWaterClass {
     None,
@@ -64,7 +64,7 @@ pub enum SurfaceWaterClass {
     Coast,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerrainPhysicalSample {
     pub elevation_meters: f64,
@@ -82,7 +82,7 @@ pub struct TerrainPhysicalSample {
     pub buildable: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerrainFieldSnapshot {
     pub width: u32,
@@ -91,7 +91,7 @@ pub struct TerrainFieldSnapshot {
     pub samples: Vec<TerrainPhysicalSample>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Biome {
     Plains,
@@ -100,7 +100,7 @@ pub enum Biome {
     Water,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerrainCell {
     pub elevation: f64,
     pub water: bool,
@@ -108,14 +108,14 @@ pub struct TerrainCell {
     pub biome: Biome,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-pub struct TerrainSnapshot {
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LegacyTerrainSnapshot {
     pub width: u32,
     pub height: u32,
     pub cells: Vec<TerrainCell>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WatershedRecord {
     pub id: String,
@@ -124,7 +124,7 @@ pub struct WatershedRecord {
     pub upstream_area_cells: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelSegment {
     pub id: String,
@@ -134,7 +134,7 @@ pub struct ChannelSegment {
     pub capacity: f64,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HydrologySnapshot {
     pub width: u32,
@@ -148,7 +148,7 @@ pub struct HydrologySnapshot {
     pub flood_susceptibility: Vec<f64>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FloodResult {
     pub event_id: String,
@@ -161,7 +161,7 @@ pub struct FloodResult {
     pub balance_error: f64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GeographyKind {
     Region,
@@ -171,18 +171,18 @@ pub enum GeographyKind {
     Block,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Vec2 {
     pub x: f64,
     pub y: f64,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Polygon2 {
     pub points: Vec<Vec2>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GeographyEntity {
     pub id: String,
@@ -194,12 +194,12 @@ pub struct GeographyEntity {
     pub sort_key: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GeographySnapshot {
     pub entities: Vec<GeographyEntity>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorldFoundationSnapshot {
     pub mode: WorldFoundationMode,
@@ -209,6 +209,6 @@ pub struct WorldFoundationSnapshot {
     pub terrain: TerrainFieldSnapshot,
     pub hydrology: HydrologySnapshot,
     pub geography: GeographySnapshot,
-    pub legacy_compatibility: Option<TerrainSnapshot>,
+    pub legacy_compatibility: Option<LegacyTerrainSnapshot>,
     pub last_flood_result: Option<FloodResult>,
 }

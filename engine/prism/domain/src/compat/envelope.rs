@@ -16,17 +16,23 @@ struct EnvelopeHeader {
     source_game_version: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PrismP2AImportEnvelopeV1 {
-    pub schema_version: u32,
-    pub source_save_version: u32,
-    pub source_game_version: String,
+struct EnvelopeWire {
+    schema_version: u32,
+    source_save_version: u32,
+    source_game_version: String,
+    world: WorldFoundationSnapshot,
+    cadastre: CadastralSnapshot,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DecodedP2AEnvelope {
     pub world: WorldFoundationSnapshot,
     pub cadastre: CadastralSnapshot,
 }
 
-pub fn decode_envelope_json(bytes: &[u8]) -> Result<PrismP2AImportEnvelopeV1, P2AError> {
+pub fn decode_envelope_json(bytes: &[u8]) -> Result<DecodedP2AEnvelope, P2AError> {
     let header: EnvelopeHeader = serde_json::from_slice(bytes).map_err(decode_error)?;
 
     if header.schema_version != P2A_IMPORT_SCHEMA_VERSION {
@@ -44,7 +50,15 @@ pub fn decode_envelope_json(bytes: &[u8]) -> Result<PrismP2AImportEnvelopeV1, P2
         });
     }
 
-    serde_json::from_slice(bytes).map_err(decode_error)
+    let wire: EnvelopeWire = serde_json::from_slice(bytes).map_err(decode_error)?;
+    debug_assert_eq!(wire.schema_version, P2A_IMPORT_SCHEMA_VERSION);
+    debug_assert_eq!(wire.source_save_version, P2A_SOURCE_SAVE_VERSION);
+    debug_assert_eq!(wire.source_game_version, P2A_SOURCE_GAME_VERSION);
+
+    Ok(DecodedP2AEnvelope {
+        world: wire.world,
+        cadastre: wire.cadastre,
+    })
 }
 
 fn decode_error(error: serde_json::Error) -> P2AError {

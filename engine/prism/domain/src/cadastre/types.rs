@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WorldPoint {
     pub x: f64,
     pub y: f64,
@@ -8,13 +8,13 @@ pub struct WorldPoint {
 
 pub type PolygonRing = Vec<WorldPoint>;
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ParcelNode {
     pub id: String,
     pub point: WorldPoint,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ParcelEdgeKind {
     #[serde(rename = "property-boundary")]
     PropertyBoundary,
@@ -28,7 +28,7 @@ pub enum ParcelEdgeKind {
     EasementBoundary,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ParcelEdge {
     pub id: String,
@@ -43,7 +43,7 @@ pub struct ParcelEdge {
     pub road_ref: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Parcel {
     pub id: String,
@@ -59,7 +59,7 @@ pub struct Parcel {
     pub historical_parent_ids: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UrbanBlock {
     pub id: String,
@@ -68,7 +68,7 @@ pub struct UrbanBlock {
     pub road_edge_ids: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EasementKind {
     Access,
@@ -77,7 +77,7 @@ pub enum EasementKind {
     Pedestrian,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Easement {
     pub id: String,
@@ -86,7 +86,7 @@ pub struct Easement {
     pub geometry: Vec<WorldPoint>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ParcelLineageKind {
     #[serde(rename = "split")]
     Split,
@@ -100,7 +100,7 @@ pub enum ParcelLineageKind {
     Easement,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ParcelLineageEvent {
     pub id: String,
@@ -110,7 +110,7 @@ pub struct ParcelLineageEvent {
     pub resulting_parcel_ids: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CadastralSnapshot {
     pub nodes: Vec<ParcelNode>,
     pub edges: Vec<ParcelEdge>,
