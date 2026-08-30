@@ -91,9 +91,7 @@ fn add_and_remove_component_migration_preserves_retained_bytes() {
             .expect("retained after remove"),
         before
     );
-    assert!(world
-        .component_bytes(entity, ComponentTypeId::new(2))
-        .is_err());
+    assert!(world.component_bytes(entity, ComponentTypeId::new(2)).is_err());
 }
 
 #[test]
@@ -133,9 +131,7 @@ fn despawned_guid_becomes_stale_and_reused_slot_increments_generation() {
     despawn.despawn(old);
     world.commit_structural(vec![despawn]).expect("despawn");
     assert!(!world.is_alive(old));
-    assert!(world
-        .component_bytes(old, ComponentTypeId::new(1))
-        .is_err());
+    assert!(world.component_bytes(old, ComponentTypeId::new(1)).is_err());
 
     let report = world
         .commit_structural(vec![spawn_buffer(3, 7)])
