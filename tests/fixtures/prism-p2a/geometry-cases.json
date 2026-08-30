@@ -1,0 +1,211 @@
+{
+  "normalization": [
+    {
+      "name": "duplicate closing point",
+      "kind": "ring",
+      "input": [
+        { "x": 0, "y": 0 },
+        { "x": 4, "y": 0 },
+        { "x": 4, "y": 4 },
+        { "x": 0, "y": 4 },
+        { "x": 0, "y": 0 }
+      ],
+      "expected": [
+        { "x": 0, "y": 0 },
+        { "x": 4, "y": 0 },
+        { "x": 4, "y": 4 },
+        { "x": 0, "y": 4 }
+      ]
+    },
+    {
+      "name": "centimeter point rounding",
+      "kind": "point",
+      "input": { "x": 1.234, "y": 5.678 },
+      "expected": { "x": 1.23, "y": 5.68 }
+    }
+  ],
+  "booleans": [
+    {
+      "name": "disjoint rectangles",
+      "operation": "intersection",
+      "subject": [
+        { "x": 0, "y": 0 },
+        { "x": 2, "y": 0 },
+        { "x": 2, "y": 2 },
+        { "x": 0, "y": 2 }
+      ],
+      "clip": [
+        { "x": 3, "y": 0 },
+        { "x": 5, "y": 0 },
+        { "x": 5, "y": 2 },
+        { "x": 3, "y": 2 }
+      ],
+      "expected": []
+    },
+    {
+      "name": "shared edge rectangles",
+      "operation": "intersection",
+      "subject": [
+        { "x": 0, "y": 0 },
+        { "x": 2, "y": 0 },
+        { "x": 2, "y": 2 },
+        { "x": 0, "y": 2 }
+      ],
+      "clip": [
+        { "x": 2, "y": 0 },
+        { "x": 4, "y": 0 },
+        { "x": 4, "y": 2 },
+        { "x": 2, "y": 2 }
+      ],
+      "expected": []
+    },
+    {
+      "name": "partial rectangle overlap",
+      "operation": "intersection",
+      "subject": [
+        { "x": 0, "y": 0 },
+        { "x": 4, "y": 0 },
+        { "x": 4, "y": 3 },
+        { "x": 0, "y": 3 }
+      ],
+      "clip": [
+        { "x": 2, "y": 1 },
+        { "x": 6, "y": 1 },
+        { "x": 6, "y": 4 },
+        { "x": 2, "y": 4 }
+      ],
+      "expected": [
+        [
+          { "x": 2, "y": 1 },
+          { "x": 4, "y": 1 },
+          { "x": 4, "y": 3 },
+          { "x": 2, "y": 3 }
+        ]
+      ]
+    },
+    {
+      "name": "concave intersection",
+      "operation": "intersection",
+      "subject": [
+        { "x": 0, "y": 0 },
+        { "x": 4, "y": 0 },
+        { "x": 4, "y": 1 },
+        { "x": 1, "y": 1 },
+        { "x": 1, "y": 4 },
+        { "x": 0, "y": 4 }
+      ],
+      "clip": [
+        { "x": -1, "y": -1 },
+        { "x": 3, "y": -1 },
+        { "x": 3, "y": 3 },
+        { "x": -1, "y": 3 }
+      ],
+      "expected": [
+        [
+          { "x": 0, "y": 0 },
+          { "x": 3, "y": 0 },
+          { "x": 3, "y": 1 },
+          { "x": 1, "y": 1 },
+          { "x": 1, "y": 3 },
+          { "x": 0, "y": 3 }
+        ]
+      ]
+    },
+    {
+      "name": "adjacent rectangle union",
+      "operation": "union",
+      "subject": [
+        { "x": 0, "y": 0 },
+        { "x": 2, "y": 0 },
+        { "x": 2, "y": 2 },
+        { "x": 0, "y": 2 }
+      ],
+      "clip": [
+        { "x": 2, "y": 0 },
+        { "x": 4, "y": 0 },
+        { "x": 4, "y": 2 },
+        { "x": 2, "y": 2 }
+      ],
+      "expected": [
+        [
+          { "x": 0, "y": 0 },
+          { "x": 4, "y": 0 },
+          { "x": 4, "y": 2 },
+          { "x": 0, "y": 2 }
+        ]
+      ]
+    },
+    {
+      "name": "right of way strip subtraction",
+      "operation": "difference",
+      "subject": [
+        { "x": 0, "y": 0 },
+        { "x": 4, "y": 0 },
+        { "x": 4, "y": 4 },
+        { "x": 0, "y": 4 }
+      ],
+      "clip": [
+        { "x": 1.5, "y": -1 },
+        { "x": 2.5, "y": -1 },
+        { "x": 2.5, "y": 5 },
+        { "x": 1.5, "y": 5 }
+      ],
+      "expected": [
+        [
+          { "x": 0, "y": 0 },
+          { "x": 1.5, "y": 0 },
+          { "x": 1.5, "y": 4 },
+          { "x": 0, "y": 4 }
+        ],
+        [
+          { "x": 2.5, "y": 0 },
+          { "x": 4, "y": 0 },
+          { "x": 4, "y": 4 },
+          { "x": 2.5, "y": 4 }
+        ]
+      ]
+    },
+    {
+      "name": "reversed winding canonicalization",
+      "operation": "union",
+      "subject": [
+        { "x": 0, "y": 0 },
+        { "x": 0, "y": 3 },
+        { "x": 3, "y": 3 },
+        { "x": 3, "y": 0 }
+      ],
+      "expected": [
+        [
+          { "x": 0, "y": 0 },
+          { "x": 3, "y": 0 },
+          { "x": 3, "y": 3 },
+          { "x": 0, "y": 3 }
+        ]
+      ]
+    },
+    {
+      "name": "non axis aligned triangle clip",
+      "operation": "intersection",
+      "subject": [
+        { "x": 0, "y": 0 },
+        { "x": 4, "y": 0 },
+        { "x": 0, "y": 4 }
+      ],
+      "clip": [
+        { "x": 0, "y": 0 },
+        { "x": 3, "y": 0 },
+        { "x": 3, "y": 3 },
+        { "x": 0, "y": 3 }
+      ],
+      "expected": [
+        [
+          { "x": 0, "y": 0 },
+          { "x": 3, "y": 0 },
+          { "x": 3, "y": 1 },
+          { "x": 1, "y": 3 },
+          { "x": 0, "y": 3 }
+        ]
+      ]
+    }
+  ]
+}
