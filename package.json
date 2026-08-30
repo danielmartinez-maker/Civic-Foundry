@@ -24,11 +24,15 @@
     "test:smoke:isometric": "python tests/smoke/isometric_pass_a_smoke.py"
   },
   "dependencies": {
+    "@babylonjs/core": "9.23.0",
+    "@babylonjs/loaders": "9.23.0",
     "clipper2-ts": "2.0.1-18",
     "pixi.js": "8.20.1"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@gltf-transform/core": "4.4.2",
+    "@gltf-transform/functions": "4.4.2",
     "electron": "44.0.0",
     "eslint": "10.9.0",
     "prettier": "3.9.6",
