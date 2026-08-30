@@ -9,7 +9,7 @@ pub enum EntityRegistryError {
     GenerationOverflow(u64),
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct EntityRegistry {
     generations: Vec<u64>,
     alive: Vec<bool>,
