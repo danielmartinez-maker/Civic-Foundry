@@ -40,8 +40,12 @@ For a new developer or AI contributor:
 | [`game/ECONOMY_HOUSING_AND_FIRMS.md`](game/ECONOMY_HOUSING_AND_FIRMS.md) | Firms, labor, housing, development, freight and future economic depth. |
 | [`game/CIVIC_GOVERNMENT_AND_INFRASTRUCTURE.md`](game/CIVIC_GOVERNMENT_AND_INFRASTRUCTURE.md) | Services, utilities, finance, institutions, environment and politics. |
 | [`game/RENDERING_ART_AND_UI.md`](game/RENDERING_ART_AND_UI.md) | GPU renderer, camera, visual identity, overlays and interface principles. |
+| [`game/AUDIO_AND_ATMOSPHERE.md`](game/AUDIO_AND_ATMOSPHERE.md) | Target soundscape, music, spatial audio and simulation-driven atmosphere. |
+| [`game/CONTROLS_ACCESSIBILITY_AND_SETTINGS.md`](game/CONTROLS_ACCESSIBILITY_AND_SETTINGS.md) | Camera/tool interaction, accessibility principles and settings direction. |
+| [`game/BALANCING_AND_DIFFICULTY.md`](game/BALANCING_AND_DIFFICULTY.md) | Systemic balance, scenario difficulty and calibration principles. |
 | [`game/PERSISTENCE_DETERMINISM_AND_PERFORMANCE.md`](game/PERSISTENCE_DETERMINISM_AND_PERFORMANCE.md) | Technical promises that constrain game design. |
 | [`game/CONTENT_SCENARIOS_AND_MODDING.md`](game/CONTENT_SCENARIOS_AND_MODDING.md) | Data, assets, scenarios, editor/replay and modding direction. |
+| [`game/PLATFORMS_BUILD_AND_RELEASE.md`](game/PLATFORMS_BUILD_AND_RELEASE.md) | Windows/browser platform status, build, compatibility and release expectations. |
 | [`game/PRISM_ENGINE.md`](game/PRISM_ENGINE.md) | Status and adoption rules for the Prism Engine concept/name. |
 | [`game/AI_CONTRIBUTOR_CONTEXT.md`](game/AI_CONTRIBUTOR_CONTEXT.md) | Operating rules for AI-assisted development. |
 | [`game/GLOSSARY.md`](game/GLOSSARY.md) | Stable Civic Foundry terminology. |
