@@ -119,7 +119,9 @@ impl Profiler {
             .invocations
             .checked_add(1)
             .expect("profile invocation count overflow");
-        aggregate.total_elapsed_ns = aggregate.total_elapsed_ns.saturating_add(sample.elapsed_ns());
+        aggregate.total_elapsed_ns = aggregate
+            .total_elapsed_ns
+            .saturating_add(sample.elapsed_ns());
         aggregate.max_elapsed_ns = aggregate.max_elapsed_ns.max(sample.elapsed_ns());
         aggregate.total_structural_commands = aggregate
             .total_structural_commands
