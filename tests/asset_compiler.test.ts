@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
-import { compileAssetSource } from '../tools/3d/CivicAssetCompiler.mjs';
+import {
+  compileAssetFile,
+  compileAssetSource,
+} from '../tools/3d/CivicAssetCompiler.mjs';
 
 const source = {
   schemaVersion: 1,
@@ -85,6 +91,11 @@ const source = {
   ],
 };
 
+const houseASourceUrl = new URL(
+  '../assets/source/3d/buildings/cf_bld_res_detached_house_a_low_v01.asset.json',
+  import.meta.url,
+);
+
 test('compiler emits byte-identical GLB for identical source', async () => {
   const first = await compileAssetSource(source, {
     compilerVersion: 'test-v1',
@@ -110,4 +121,47 @@ test('compiler rejects geometry below ground and missing required LODs', async (
     () => compileAssetSource(missing, { compilerVersion: 'test-v1' }),
     /lod2/,
   );
+});
+
+test('House A source preserves the approved miniature calibration contract', async () => {
+  const house = JSON.parse(await readFile(houseASourceUrl, 'utf8')) as any;
+  assert.equal(house.assetId, 'cf_bld_res_detached_house_a_low_v01');
+  assert.deepEqual(house.dimensions, {
+    widthM: 9,
+    depthM: 12,
+    heightM: 7.6,
+  });
+  assert.deepEqual(house.pivot, {
+    convention: 'ground-center',
+    forward: '-Z',
+    up: '+Y',
+  });
+  assert.deepEqual(
+    house.sockets.map((socket: any) => socket.id).sort(),
+    ['exterior_light', 'front_entry', 'rear_service', 'tree_primary'],
+  );
+  assert.deepEqual(house.stateChannels.condition, [
+    'excellent',
+    'good',
+    'worn',
+    'distressed',
+    'unsafe',
+  ]);
+  assert.equal(house.bakedPeople, false);
+  assert.equal(house.bakedVehicles, false);
+  assert.equal(house.bakedText, false);
+});
+
+test('House A compiles into valid monotonic LODs and collision output', async () => {
+  const outputRoot = await mkdtemp(join(tmpdir(), 'civic-house-a-'));
+  const result = await compileAssetFile(houseASourceUrl, outputRoot);
+  assert.ok(result.triangleCounts.lod0 >= result.triangleCounts.lod1);
+  assert.ok(result.triangleCounts.lod1 >= result.triangleCounts.lod2);
+  assert.ok(result.triangleCounts.lod2 > 0);
+  assert.ok(result.collisionTriangleCount > 0);
+  assert.deepEqual(result.dimensions, {
+    widthM: 9,
+    depthM: 12,
+    heightM: 7.6,
+  });
 });
