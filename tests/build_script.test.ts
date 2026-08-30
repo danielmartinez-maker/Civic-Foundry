@@ -34,3 +34,25 @@ test("copyDirectory recursively copies a package tree", async () => {
     "nested",
   );
 });
+
+test("package scripts expose deterministic 3d asset gates", async () => {
+  const packageJson = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  assert.equal(
+    packageJson.scripts["assets:3d:check"],
+    "node tools/3d/CivicAssetCompiler.mjs --check",
+  );
+  assert.equal(
+    packageJson.scripts["assets:3d:build"],
+    "node tools/3d/CivicAssetCompiler.mjs --build",
+  );
+  assert.equal(
+    packageJson.scripts["assets:check"],
+    "python tools/render_isometric_atlases.py --check && npm run assets:3d:check",
+  );
+  assert.equal(
+    packageJson.scripts["assets:build"],
+    "python tools/render_isometric_atlases.py && npm run assets:3d:build",
+  );
+});
