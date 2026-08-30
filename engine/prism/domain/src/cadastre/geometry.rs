@@ -146,11 +146,10 @@ pub fn ring_self_intersects(ring: &PolygonRing) -> Result<bool, P2AError> {
 pub fn point_in_ring(point: WorldPoint, ring: &PolygonRing) -> Result<bool, P2AError> {
     let point = normalize_int_point(point)?;
     let ring = prepare_boolean_ring(ring)?;
-    Ok(point_location_doubled(
-        i128::from(point.x) * 2,
-        i128::from(point.y) * 2,
-        &ring,
-    )? != PointLocation::Outside)
+    Ok(
+        point_location_doubled(i128::from(point.x) * 2, i128::from(point.y) * 2, &ring)?
+            != PointLocation::Outside,
+    )
 }
 
 pub fn ring_contains_ring(outer: &PolygonRing, inner: &PolygonRing) -> Result<bool, P2AError> {
@@ -158,10 +157,7 @@ pub fn ring_contains_ring(outer: &PolygonRing, inner: &PolygonRing) -> Result<bo
     Ok(remainder.is_empty())
 }
 
-pub fn rings_materially_overlap(
-    left: &PolygonRing,
-    right: &PolygonRing,
-) -> Result<bool, P2AError> {
+pub fn rings_materially_overlap(left: &PolygonRing, right: &PolygonRing) -> Result<bool, P2AError> {
     for ring in polygon_intersection(left, right)? {
         if polygon_area(&ring)? > 0.0 {
             return Ok(true);
@@ -458,9 +454,7 @@ fn pair_split_parameters(
                 .ok_or_else(|| geometry_error("geometry-overflow"))?;
         }
 
-        if (0..=denominator).contains(&left_num)
-            && (0..=denominator).contains(&right_num)
-        {
+        if (0..=denominator).contains(&left_num) && (0..=denominator).contains(&right_num) {
             return Ok((
                 vec![Rational::new(left_num, denominator)?],
                 vec![Rational::new(right_num, denominator)?],
@@ -597,10 +591,7 @@ fn point_on_segment(point: IntPoint, segment: Segment) -> Result<bool, P2AError>
         && point.y <= segment.from.y.max(segment.to.y))
 }
 
-fn point_location_midpoint(
-    segment: Segment,
-    ring: &[IntPoint],
-) -> Result<PointLocation, P2AError> {
+fn point_location_midpoint(segment: Segment, ring: &[IntPoint]) -> Result<PointLocation, P2AError> {
     let x2 = i128::from(segment.from.x) + i128::from(segment.to.x);
     let y2 = i128::from(segment.from.y) + i128::from(segment.to.y);
     point_location_doubled(x2, y2, ring)
@@ -640,11 +631,7 @@ fn point_location_doubled(
     })
 }
 
-fn point_on_segment_doubled(
-    x2: i128,
-    y2: i128,
-    segment: Segment,
-) -> Result<bool, P2AError> {
+fn point_on_segment_doubled(x2: i128, y2: i128, segment: Segment) -> Result<bool, P2AError> {
     if orientation_doubled(segment, x2, y2)? != 0 {
         return Ok(false);
     }
@@ -665,10 +652,7 @@ fn orientation_doubled(segment: Segment, x2: i128, y2: i128) -> Result<i128, P2A
     cross(edge, point)
 }
 
-fn insert_boundary_segment(
-    boundary: &mut BTreeSet<(IntPoint, IntPoint)>,
-    segment: Segment,
-) {
+fn insert_boundary_segment(boundary: &mut BTreeSet<(IntPoint, IntPoint)>, segment: Segment) {
     if segment.from == segment.to {
         return;
     }
@@ -718,9 +702,7 @@ fn reconstruct_world_rings(
         .collect())
 }
 
-fn first_edge(
-    adjacency: &BTreeMap<IntPoint, BTreeSet<IntPoint>>,
-) -> Option<(IntPoint, IntPoint)> {
+fn first_edge(adjacency: &BTreeMap<IntPoint, BTreeSet<IntPoint>>) -> Option<(IntPoint, IntPoint)> {
     let (from, targets) = adjacency.first_key_value()?;
     let to = targets.iter().next()?;
     Some((*from, *to))
