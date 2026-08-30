@@ -64,10 +64,10 @@ fn executor_rejects_missing_executable_job_before_dispatch() {
     let mut executor = PrismExecutor::new(2).expect("executor");
     let partial = vec![ExecutableJob::new(JobId::new(20), || JobOutput::new(1))];
 
-    assert_eq!(
+    assert!(matches!(
         executor.execute(&graph, &partial),
-        Err(ExecutorError::MissingJob(JobId::new(10)))
-    );
+        Err(ExecutorError::MissingJob(id)) if id == JobId::new(10)
+    ));
 }
 
 #[test]
