@@ -19,9 +19,9 @@ jobs:
           cache: npm
       - name: Install project dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Format contracts
-        run: npm run format:check
-      - name: Typecheck
-        run: npm run typecheck
       - name: Node tests
         run: npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Format contracts
+        run: npm run format:check
