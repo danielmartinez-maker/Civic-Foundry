@@ -1,6 +1,6 @@
 import type { AssetId } from '../assets/AssetManifestV2.ts';
 import type { BuildingV2 } from '../../../simulation/buildings/BuildingTypes.ts';
-import { polygonCentroid } from '../../../world/geometry/Geometry.ts';
+import { polygonCentroid } from '../../../world/cadastre/Geometry.ts';
 import type {
   BuildingVisualState,
   VisualCondition,
