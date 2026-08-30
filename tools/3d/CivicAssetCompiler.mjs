@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Document, NodeIO } from '@gltf-transform/core';
 import { assertAssetSource, validateAssetSource } from './asset-source-schema.mjs';
@@ -15,6 +15,7 @@ import {
 
 export { validateAssetSource } from './asset-source-schema.mjs';
 
+const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url));
 const GROUND_TOLERANCE_M = 0.001;
 const BOUNDS_TOLERANCE_M = 0.02;
 
@@ -118,7 +119,9 @@ async function emitGlb(source, preparedParts, { collision = false } = {}) {
   const buffer = document.createBuffer('geometry');
   const scene = document.createScene('Scene');
   const mesh = document.createMesh(collision ? 'collision' : source.assetId);
-  const materials = collision ? new Map() : createMaterials(document, source.materials);
+  const materials = collision
+    ? new Map()
+    : createMaterials(document, source.materials);
 
   for (const { part, geometry } of preparedParts) {
     const positions = createAccessor(
@@ -153,13 +156,21 @@ async function emitGlb(source, preparedParts, { collision = false } = {}) {
     mesh.addPrimitive(primitive);
   }
 
-  scene.addChild(document.createNode(collision ? 'collision_root' : source.assetId).setMesh(mesh));
+  scene.addChild(
+    document
+      .createNode(collision ? 'collision_root' : source.assetId)
+      .setMesh(mesh),
+  );
   return new NodeIO().writeBinary(document);
 }
 
 function revisionFromAssetId(assetId) {
   const match = assetId.match(/_v(\d{2})$/);
-  if (!match) throw new Error(`assetId '${assetId}' does not contain a two-digit revision`);
+  if (!match) {
+    throw new Error(
+      `assetId '${assetId}' does not contain a two-digit revision`,
+    );
+  }
   return Number.parseInt(match[1], 10);
 }
 
@@ -181,7 +192,9 @@ function manifestForSource(source) {
     dimensions: source.dimensions,
     pivot: source.pivot,
     placement,
-    sockets: [...source.sockets].sort((left, right) => left.id.localeCompare(right.id, 'en')),
+    sockets: [...source.sockets].sort((left, right) =>
+      left.id.localeCompare(right.id, 'en'),
+    ),
     materials: [...source.materials]
       .sort((left, right) => left.id.localeCompare(right.id, 'en'))
       .map(({ id, family }) => ({ id, family })),
@@ -236,7 +249,11 @@ export async function compileAssetSource(
     throw new Error('lod2 triangle count may not exceed lod1');
   }
 
-  const preparedCollision = prepareParts(source.collision, source.dimensions, 'collision');
+  const preparedCollision = prepareParts(
+    source.collision,
+    source.dimensions,
+    'collision',
+  );
   const collisionTriangleCount = preparedCollision.reduce(
     (sum, item) => sum + triangleCount(item.geometry),
     0,
@@ -250,7 +267,9 @@ export async function compileAssetSource(
     lod1: await emitGlb(source, prepared.lod1),
     lod2: await emitGlb(source, prepared.lod2),
   };
-  const collision = await emitGlb(source, preparedCollision, { collision: true });
+  const collision = await emitGlb(source, preparedCollision, {
+    collision: true,
+  });
   const manifest = manifestForSource(source);
   const hash = contentHash(compilerVersion, source, { lods, collision });
 
@@ -289,27 +308,115 @@ export async function compileAssetFile(
     mkdir(manifestRoot, { recursive: true }),
   ]);
 
-  await Promise.all([
+  const writes = [
     writeFile(join(modelRoot, `${assetId}_lod0.glb`), result.lods.lod0),
     writeFile(join(modelRoot, `${assetId}_lod1.glb`), result.lods.lod1),
     writeFile(join(modelRoot, `${assetId}_lod2.glb`), result.lods.lod2),
-    writeFile(join(collisionRoot, `${assetId}_collision.glb`), result.collision),
     writeFile(
       join(manifestRoot, `${assetId}_manifest.json`),
       `${JSON.stringify(result.manifest, null, 2)}\n`,
       'utf8',
     ),
-  ]);
+  ];
+  if (source.collision.length > 0) {
+    writes.push(
+      writeFile(
+        join(collisionRoot, `${assetId}_collision.glb`),
+        result.collision,
+      ),
+    );
+  }
+  await Promise.all(writes);
   return result;
 }
 
-function parseCliArgs(argv) {
+export async function listAssetSourceFiles(
+  sourceRoot = join(repositoryRoot, 'assets', 'source', '3d'),
+) {
+  const root = resolve(sourceRoot);
+  const files = [];
+
+  async function visit(directory) {
+    const entries = await readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
+    for (const entry of entries) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(path);
+      } else if (entry.isFile() && entry.name.endsWith('.asset.json')) {
+        files.push(path);
+      }
+    }
+  }
+
+  await visit(root);
+  return files;
+}
+
+async function compileAssetSources({ sourceRoot, outputRoot = null }) {
+  const files = await listAssetSourceFiles(sourceRoot);
+  const entries = [];
+  const diagnostics = [];
+  const seenAssetIds = new Set();
+
+  for (const sourcePath of files) {
+    const source = JSON.parse(await readFile(sourcePath, 'utf8'));
+    if (seenAssetIds.has(source.assetId)) {
+      throw new Error(`duplicate assetId '${source.assetId}' across 3D sources`);
+    }
+    seenAssetIds.add(source.assetId);
+
+    const result = outputRoot
+      ? await compileAssetFile(sourcePath, outputRoot)
+      : await compileAssetSource(source);
+    entries.push(result.manifest.entries[0]);
+    diagnostics.push({
+      assetId: source.assetId,
+      sourcePath,
+      contentHash: result.contentHash,
+      triangleCounts: result.triangleCounts,
+      collisionTriangleCount: result.collisionTriangleCount,
+    });
+  }
+
+  return {
+    files,
+    catalog: { schemaVersion: 2, entries },
+    diagnostics,
+  };
+}
+
+export async function checkAssetSources(
+  sourceRoot = join(repositoryRoot, 'assets', 'source', '3d'),
+) {
+  return compileAssetSources({ sourceRoot });
+}
+
+export async function buildAssetSources(
+  sourceRoot = join(repositoryRoot, 'assets', 'source', '3d'),
+  outputRoot = join(repositoryRoot, 'dist', 'assets'),
+) {
+  const root = resolve(outputRoot);
+  const result = await compileAssetSources({ sourceRoot, outputRoot: root });
+  const manifestRoot = join(root, 'manifests');
+  await mkdir(manifestRoot, { recursive: true });
+  await writeFile(
+    join(manifestRoot, 'catalog-v2.json'),
+    `${JSON.stringify(result.catalog, null, 2)}\n`,
+    'utf8',
+  );
+  return result;
+}
+
+function parseFocusedCliArgs(argv) {
   const args = new Map();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
     if (!flag?.startsWith('--') || value === undefined) {
-      throw new Error('Usage: CivicAssetCompiler.mjs --source <recipe.json> --out <output-root>');
+      throw new Error(
+        'Usage: CivicAssetCompiler.mjs --check | --build | --source <recipe.json> --out <output-root>',
+      );
     }
     args.set(flag, value);
   }
@@ -317,11 +424,29 @@ function parseCliArgs(argv) {
 }
 
 async function main() {
-  const args = parseCliArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.length === 1 && argv[0] === '--check') {
+    const result = await checkAssetSources();
+    process.stdout.write(
+      `${JSON.stringify({ mode: 'check', assetCount: result.files.length, diagnostics: result.diagnostics })}\n`,
+    );
+    return;
+  }
+  if (argv.length === 1 && argv[0] === '--build') {
+    const result = await buildAssetSources();
+    process.stdout.write(
+      `${JSON.stringify({ mode: 'build', assetCount: result.files.length, diagnostics: result.diagnostics })}\n`,
+    );
+    return;
+  }
+
+  const args = parseFocusedCliArgs(argv);
   const sourcePath = args.get('--source');
   const outputRoot = args.get('--out');
-  if (!sourcePath || !outputRoot) {
-    throw new Error('Usage: CivicAssetCompiler.mjs --source <recipe.json> --out <output-root>');
+  if (!sourcePath || !outputRoot || args.size !== 2) {
+    throw new Error(
+      'Usage: CivicAssetCompiler.mjs --check | --build | --source <recipe.json> --out <output-root>',
+    );
   }
   const result = await compileAssetFile(sourcePath, outputRoot);
   process.stdout.write(
