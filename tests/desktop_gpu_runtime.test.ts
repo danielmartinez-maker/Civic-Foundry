@@ -4,9 +4,12 @@ import { readFile } from 'node:fs/promises';
 
 const text = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('GameApp uses the GPU world renderer in the production path', async () => {
+test('GameApp uses the shared presentation contract while legacy GPU remains the default production path', async () => {
   const source = await text('src/app/GameApp.ts');
+  assert.match(source, /rendering\/PresentationRenderer\.ts/);
   assert.match(source, /rendering\/gpu\/GpuWorldRenderer\.ts/);
+  assert.match(source, /readonly renderer:\s*PresentationRenderer/);
+  assert.match(source, /new GpuWorldRenderer\(canvas\)/);
   assert.doesNotMatch(source, /rendering\/WorldRenderer\.ts/);
 });
 
