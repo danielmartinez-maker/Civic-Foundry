@@ -266,9 +266,7 @@ fn validate_hydrology(
     Ok(())
 }
 
-fn validate_legacy_compatibility(
-    legacy: Option<&LegacyTerrainSnapshot>,
-) -> Result<(), P2AError> {
+fn validate_legacy_compatibility(legacy: Option<&LegacyTerrainSnapshot>) -> Result<(), P2AError> {
     let Some(legacy) = legacy else {
         return Ok(());
     };
@@ -408,7 +406,10 @@ fn validate_geography(geography: &GeographySnapshot) -> Result<(), P2AError> {
                 if parent.kind != expected_kind {
                     return Err(world_error(
                         "invalid-geography-parent",
-                        format!("geography entity {} has parent of the wrong kind", entity.id),
+                        format!(
+                            "geography entity {} has parent of the wrong kind",
+                            entity.id
+                        ),
                     ));
                 }
                 if !polygon_contains_polygon(&parent.boundary, &entity.boundary) {
@@ -521,8 +522,7 @@ fn validate_polygon(polygon: &Polygon2) -> Result<(), &'static str> {
 }
 
 fn points_equal(left: Vec2, right: Vec2) -> bool {
-    (left.x - right.x).abs() <= GEOMETRY_EPSILON
-        && (left.y - right.y).abs() <= GEOMETRY_EPSILON
+    (left.x - right.x).abs() <= GEOMETRY_EPSILON && (left.y - right.y).abs() <= GEOMETRY_EPSILON
 }
 
 fn polygon_area_signed(polygon: &Polygon2) -> f64 {
