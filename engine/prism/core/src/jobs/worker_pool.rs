@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::sync::{mpsc, Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -142,7 +142,11 @@ impl WorkerPool {
         let task_count = tasks.len();
         let (sender, receiver) = mpsc::channel::<WorkerTaskResult<R>>();
         {
-            let mut state = self.shared.state.lock().expect("worker state lock poisoned");
+            let mut state = self
+                .shared
+                .state
+                .lock()
+                .expect("worker state lock poisoned");
             for (ordinal, task) in tasks.into_iter().enumerate() {
                 let key = task.key;
                 let work = task.work;
@@ -187,7 +191,11 @@ impl WorkerPool {
 impl Drop for WorkerPool {
     fn drop(&mut self) {
         {
-            let mut state = self.shared.state.lock().expect("worker state lock poisoned");
+            let mut state = self
+                .shared
+                .state
+                .lock()
+                .expect("worker state lock poisoned");
             state.shutdown = true;
         }
         self.shared.wake.notify_all();
