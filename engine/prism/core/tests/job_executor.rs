@@ -37,13 +37,8 @@ fn retirement_registry() -> ComponentRegistry {
     let mut registry = ComponentRegistry::new();
     registry
         .register(
-            ComponentLayout::new(
-                ComponentTypeId::new(1),
-                8,
-                8,
-                ComponentTemperature::Hot,
-            )
-            .expect("retirement layout"),
+            ComponentLayout::new(ComponentTypeId::new(1), 8, 8, ComponentTemperature::Hot)
+                .expect("retirement layout"),
         )
         .expect("retirement component");
     registry
@@ -97,7 +92,9 @@ fn run_retirement_variant(slow_despawn: bool) -> (u64, u64, u64, u64) {
     ];
 
     let mut executor = PrismExecutor::new(2).expect("retirement executor");
-    let report = executor.execute(&graph, &jobs).expect("retirement execution");
+    let report = executor
+        .execute(&graph, &jobs)
+        .expect("retirement execution");
 
     assert!(world.is_alive(old));
     assert_eq!(world.live_entities(), vec![old]);
