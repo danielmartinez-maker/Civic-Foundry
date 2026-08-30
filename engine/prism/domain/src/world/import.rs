@@ -32,10 +32,11 @@ impl TryFrom<WorldFoundationSnapshot> for WorldMirror {
         validate_flood_result(&snapshot.terrain, snapshot.last_flood_result.as_ref())?;
         validate_geography(&snapshot.geography)?;
 
-        snapshot
-            .geography
-            .entities
-            .sort_by(|left, right| left.sort_key.cmp(&right.sort_key).then(left.id.cmp(&right.id)));
+        snapshot.geography.entities.sort_by(|left, right| {
+            left.sort_key
+                .cmp(&right.sort_key)
+                .then(left.id.cmp(&right.id))
+        });
 
         Ok(Self { snapshot })
     }
@@ -189,7 +190,9 @@ fn validate_hydrology(
         }
     }
     for (index, receiver) in hydrology.receiver.iter().enumerate() {
-        if receiver.is_some_and(|receiver| usize::try_from(receiver).map_or(true, |r| r >= expected)) {
+        if receiver.is_some_and(|receiver| {
+            usize::try_from(receiver).map_or(true, |receiver| receiver >= expected)
+        }) {
             return Err(world_error(
                 "invalid-hydrology-receiver",
                 format!("receiver at {index} points outside the hydrology grid"),
@@ -197,7 +200,11 @@ fn validate_hydrology(
         }
     }
 
-    let channel_ids: HashSet<&str> = hydrology.channels.iter().map(|channel| channel.id.as_str()).collect();
+    let channel_ids: HashSet<&str> = hydrology
+        .channels
+        .iter()
+        .map(|channel| channel.id.as_str())
+        .collect();
     if channel_ids.len() != hydrology.channels.len() {
         return Err(world_error(
             "duplicate-channel-id",
@@ -303,7 +310,11 @@ fn validate_flood_result(
             ),
         ));
     }
-    if flood.depth_meters.iter().any(|depth| !depth.is_finite() || *depth < 0.0) {
+    if flood
+        .depth_meters
+        .iter()
+        .any(|depth| !depth.is_finite() || *depth < 0.0)
+    {
         return Err(world_error(
             "invalid-flood-value",
             "flood depths must be finite and non-negative",
@@ -388,7 +399,10 @@ fn validate_geography(geography: &GeographySnapshot) -> Result<(), P2AError> {
                 let parent = by_id.get(parent_id).copied().ok_or_else(|| {
                     world_error(
                         "missing-geography-parent",
-                        format!("geography entity {} references missing parent {parent_id}", entity.id),
+                        format!(
+                            "geography entity {} references missing parent {parent_id}",
+                            entity.id
+                        ),
                     )
                 })?;
                 if parent.kind != expected_kind {
@@ -400,7 +414,10 @@ fn validate_geography(geography: &GeographySnapshot) -> Result<(), P2AError> {
                 if !polygon_contains_polygon(&parent.boundary, &entity.boundary) {
                     return Err(world_error(
                         "geography-child-outside-parent",
-                        format!("geography entity {} extends outside parent {parent_id}", entity.id),
+                        format!(
+                            "geography entity {} extends outside parent {parent_id}",
+                            entity.id
+                        ),
                     ));
                 }
             }
@@ -466,7 +483,10 @@ fn validate_polygon(polygon: &Polygon2) -> Result<(), &'static str> {
     if points.len() < 3 {
         return Err("polygon requires at least three vertices");
     }
-    if points.iter().any(|point| !point.x.is_finite() || !point.y.is_finite()) {
+    if points
+        .iter()
+        .any(|point| !point.x.is_finite() || !point.y.is_finite())
+    {
         return Err("polygon contains non-finite coordinates");
     }
     for left in 0..points.len() {
@@ -487,7 +507,12 @@ fn validate_polygon(polygon: &Polygon2) -> Result<(), &'static str> {
             if left == right || left_next == right || right_next == left {
                 continue;
             }
-            if segments_intersect(points[left], points[left_next], points[right], points[right_next]) {
+            if segments_intersect(
+                points[left],
+                points[left_next],
+                points[right],
+                points[right_next],
+            ) {
                 return Err("polygon self-intersects");
             }
         }
@@ -531,7 +556,10 @@ fn polygon_centroid(polygon: &Polygon2) -> Vec2 {
 }
 
 fn polygon_contains_polygon(parent: &Polygon2, child: &Polygon2) -> bool {
-    child.points.iter().all(|point| point_in_polygon(*point, parent, true))
+    child
+        .points
+        .iter()
+        .all(|point| point_in_polygon(*point, parent, true))
         && point_in_polygon(polygon_centroid(child), parent, true)
 }
 
