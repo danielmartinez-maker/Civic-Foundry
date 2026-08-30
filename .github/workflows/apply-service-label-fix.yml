@@ -1,0 +1,33 @@
+name: Apply service label fix
+
+on:
+  push:
+    branches:
+      - fix/naming-consistency-pass
+    paths:
+      - scripts/apply-service-label-fix.mjs
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/naming-consistency-pass
+          fetch-depth: 0
+      - name: Apply service label normalization
+        run: node scripts/apply-service-label-fix.mjs
+      - name: Commit implementation
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/GameApp.ts
+          git commit -m "fix: normalize service display labels"
+          git push origin HEAD:fix/naming-consistency-pass
