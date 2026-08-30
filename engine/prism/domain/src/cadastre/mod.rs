@@ -1,1 +1,3 @@
-// Native P2A cadastral mirror lives here.
+//! Native P2A cadastral mirror.
+
+pub mod types;

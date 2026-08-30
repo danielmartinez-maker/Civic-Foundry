@@ -1,1 +1,3 @@
-// Versioned TypeScript-to-Rust compatibility import lives here.
+//! Compatibility import/export types for the P2A TypeScript/native boundary.
+
+pub mod envelope;

@@ -1,0 +1,54 @@
+use serde::Deserialize;
+
+use crate::cadastre::types::CadastralSnapshot;
+use crate::error::P2AError;
+use crate::world::types::WorldFoundationSnapshot;
+
+pub const P2A_IMPORT_SCHEMA_VERSION: u32 = 1;
+pub const P2A_SOURCE_SAVE_VERSION: u32 = 9;
+pub const P2A_SOURCE_GAME_VERSION: &str = "0.9.0-urban-fabric";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EnvelopeHeader {
+    schema_version: u32,
+    source_save_version: u32,
+    source_game_version: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrismP2AImportEnvelopeV1 {
+    pub schema_version: u32,
+    pub source_save_version: u32,
+    pub source_game_version: String,
+    pub world: WorldFoundationSnapshot,
+    pub cadastre: CadastralSnapshot,
+}
+
+pub fn decode_envelope_json(bytes: &[u8]) -> Result<PrismP2AImportEnvelopeV1, P2AError> {
+    let header: EnvelopeHeader = serde_json::from_slice(bytes).map_err(decode_error)?;
+
+    if header.schema_version != P2A_IMPORT_SCHEMA_VERSION {
+        return Err(P2AError::UnsupportedSchema {
+            found: header.schema_version,
+        });
+    }
+
+    if header.source_save_version != P2A_SOURCE_SAVE_VERSION
+        || header.source_game_version != P2A_SOURCE_GAME_VERSION
+    {
+        return Err(P2AError::UnsupportedSourceVersion {
+            save_version: header.source_save_version,
+            game_version: header.source_game_version,
+        });
+    }
+
+    serde_json::from_slice(bytes).map_err(decode_error)
+}
+
+fn decode_error(error: serde_json::Error) -> P2AError {
+    P2AError::Decode {
+        message: error.to_string(),
+    }
+}
