@@ -1,0 +1,27 @@
+name: Civic Foundry TDD Fast
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  node-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Node 22
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install project dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Format contracts
+        run: npm run format:check
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Node tests
+        run: npm test
