@@ -19,21 +19,59 @@ python tests/smoke/isometric_visual_smoke.py
 
 The GitHub Actions `verify` job runs the same stack and treats the dedicated Urban Fabric smoke as a required gate.
 
-## Prism P0 native gate
+## Prism native gate (P0 + P1)
 
-Prism P0 adds a separate native test stack without removing inherited TypeScript/browser regression coverage.
+Prism adds a separate native test stack without removing inherited TypeScript/browser regression coverage. During progressive replacement, native verification proves the substrate while the existing TypeScript runtime remains authoritative.
 
-Required native command:
+Required native command from the repository root:
 
 ```bash
 npm run prism:verify
 ```
 
-It runs Rust formatting, Clippy with warnings denied, workspace tests, release-mode P0 invariant stress tests, and workspace checking from the committed Cargo lockfile.
+`prism:verify` enforces the committed Cargo lockfile/dependency policy, runs the native gates, and starts `prism-host`. The equivalent Rust gates are:
 
-The Windows-only `prism-windows` CI job must additionally execute `prism-host` and require the exact deterministic bootstrap line. A P0 change is not native-green until that Windows job passes.
+```bash
+cargo fmt --manifest-path engine/prism/Cargo.toml --all -- --check
+cargo clippy --manifest-path engine/prism/Cargo.toml --workspace --all-targets -- -D warnings
+cargo test --manifest-path engine/prism/Cargo.toml --workspace
+cargo test --manifest-path engine/prism/Cargo.toml --workspace --release p0_release_invariants -- --exact
+cargo test --manifest-path engine/prism/Cargo.toml --workspace --release p1_release_invariants -- --exact
+cargo check --manifest-path engine/prism/Cargo.toml --workspace --release
+```
+
+P1 acceptance specifically proves:
+
+- deterministic component IDs and canonical archetype keys;
+- 64-byte-aligned component storage and bounded hot-archetype chunk sizing;
+- transactional spawn/despawn/add/remove structural commits and migration-byte preservation;
+- stale GUID rejection, deterministic slot reuse, and generation advancement;
+- duplicate structural-key rejection and failed-migration atomicity;
+- deterministic job-DAG waves plus dependency/cycle/resource-hazard rejection;
+- persistent worker-pool exactly-once execution with stable task/result ordering;
+- executor output invariance under reversed worker completion timing;
+- graph-barrier completion before structural commit and epoch-safe entity retirement/reuse;
+- structural-command issuer validation against the executing `JobId`;
+- profiling data remaining non-authoritative and excluded from strict ECS state hashing;
+- release-mode P0 and P1 invariant suites.
+
+The Windows-only `prism-windows` CI job additionally builds and executes `prism-host` and requires the exact deterministic bootstrap line:
+
+```text
+Prism Engine v5.1.0 initialized
+```
+
+A native change is not green until both Linux native gates and Windows host startup pass. Full repository CI must also preserve the inherited Phase 6, Phase 7, Urban Fabric, isometric functional, and isometric visual browser gates.
 
 During dual-stack migration, `npm run verify:all` is the combined local gate and runs the legacy authoritative-runtime verification followed by the Prism native gate.
+
+P1 does **not** change the authority or persistence contract: `SimulationCore`, `SimulationKernel`, `WorldFoundation`, `CadastralGraph`, the TypeScript domain systems, and Save V9 remain authoritative. Native authority transfer and Save V10/native persistence require later parity-gated work.
+
+### Prism P1 implementation checkpoint
+
+Implementation head `34833fd557456b535ef1ea009d84f7095d4176a1` passed Civic Foundry CI run **#1149** (`33287289359`) across the complete native and inherited stack, including Windows `prism-host`, Phase 6/7 browser smokes, Urban Fabric browser smoke, isometric functional smoke, and isometric visual regression smoke.
+
+Documentation changes after that checkpoint must pass a fresh exact-head CI cycle before PR #105 is considered verification-complete.
 
 ## Current verified baseline
 
