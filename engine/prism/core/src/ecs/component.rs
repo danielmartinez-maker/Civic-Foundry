@@ -79,7 +79,7 @@ impl ComponentLayout {
     }
 
     #[must_use]
-    pub const fn type_id(self) -> ComponentTypeId {
+    pub const fn type_id(&self) -> ComponentTypeId {
         self.type_id
     }
 
