@@ -4,7 +4,7 @@ import type { PropertyMarketSystem } from '../development/PropertyMarketSystem.t
 import type { ZoningSystem } from '../zoning/ZoningSystem.ts';
 import { CadastralGraph } from '../../world/cadastre/CadastralGraph.ts';
 import type { CadastralSnapshot, Parcel } from '../../world/cadastre/CadastralTypes.ts';
-import type { WorldPoint } from '../../world/cadastre/Geometry.ts';
+import { polygonUnion, type MultiPolygon, type WorldPoint } from '../../world/cadastre/Geometry.ts';
 import { LotSystem } from '../../world/lots/LotSystem.ts';
 
 export type LegacyCadastreRebuildResult = Readonly<{
@@ -39,6 +39,15 @@ export class LegacyCadastreRebuildService {
 
     const previousGraph = new CadastralGraph(previous);
     const candidateGraph = new CadastralGraph(candidate);
+
+    // Canonical parcel operations are allowed to refine legacy parcel topology. If the
+    // legacy projection itself is unchanged (same zoned coverage and road frontage),
+    // rebuilding it would merely erase canonical splits/assemblies/easements. Treat the
+    // generated candidate as an already-represented projection and leave authority intact.
+    if (sameLegacyProjectionModuloCanonicalTopology(previousGraph, candidateGraph)) {
+      return Object.freeze({ committed: true, changed: false });
+    }
+
     const previousByFingerprint = groupParcelsByFingerprint(previousGraph);
     const candidateByFingerprint = groupParcelsByFingerprint(candidateGraph);
     const candidateIdRewrite = new Map<string, string>();
@@ -61,15 +70,20 @@ export class LegacyCadastreRebuildService {
     }
 
     const oldIds = new Set(previous.parcels.map((parcel) => parcel.id));
+    const historicalIds = new Set<string>();
+    for (const event of previous.lineage) {
+      for (const parcelId of event.sourceParcelIds) historicalIds.add(parcelId);
+      for (const parcelId of event.resultingParcelIds) historicalIds.add(parcelId);
+    }
     const usedIds = new Set<string>(candidateIdRewrite.values());
     let generatedIndex = 1;
     for (const parcel of [...candidate.parcels].sort((left, right) => left.id.localeCompare(right.id))) {
       if (candidateIdRewrite.has(parcel.id)) continue;
       let nextId = parcel.id;
-      if (oldIds.has(nextId) || usedIds.has(nextId)) {
+      if (oldIds.has(nextId) || historicalIds.has(nextId) || usedIds.has(nextId)) {
         do {
           nextId = `legacy-parcel:${tick}:${generatedIndex++}:${parcel.id}`;
-        } while (oldIds.has(nextId) || usedIds.has(nextId));
+        } while (oldIds.has(nextId) || historicalIds.has(nextId) || usedIds.has(nextId));
       }
       candidateIdRewrite.set(parcel.id, nextId);
       usedIds.add(nextId);
@@ -168,6 +182,32 @@ function groupParcelsByFingerprint(graph: CadastralGraph): Map<string, string[]>
     result.set(fingerprint, ids);
   }
   return result;
+}
+
+function sameLegacyProjectionModuloCanonicalTopology(left: CadastralGraph, right: CadastralGraph): boolean {
+  const districtIds = new Set<string>();
+  for (const parcel of left.listParcels()) districtIds.add(parcel.zoningDistrictId);
+  for (const parcel of right.listParcels()) districtIds.add(parcel.zoningDistrictId);
+  for (const districtId of [...districtIds].sort()) {
+    if (districtCoverageFingerprint(left, districtId) !== districtCoverageFingerprint(right, districtId)) return false;
+  }
+  return JSON.stringify(frontageRoadRefs(left)) === JSON.stringify(frontageRoadRefs(right));
+}
+
+function districtCoverageFingerprint(graph: CadastralGraph, districtId: string): string {
+  const polygons = graph.listParcels()
+    .filter((parcel) => parcel.zoningDistrictId === districtId)
+    .map((parcel) => graph.parcelPolygon(parcel.id));
+  if (polygons.length === 0) return '';
+  let union: MultiPolygon = Object.freeze([polygons[0]!]);
+  for (let index = 1; index < polygons.length; index += 1) union = polygonUnion(union, polygons[index]!);
+  return union.map(polygonFingerprint).sort().join('|');
+}
+
+function frontageRoadRefs(graph: CadastralGraph): readonly string[] {
+  return Object.freeze([...new Set(graph.listEdges()
+    .filter((edge) => edge.kind === 'street-frontage' && edge.roadRef !== undefined)
+    .map((edge) => edge.roadRef!))].sort());
 }
 
 function sameProjection(left: CadastralGraph, right: CadastralGraph): boolean {
