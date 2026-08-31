@@ -54,7 +54,7 @@ test('failed transit runs requeue onboard passenger cohorts without loss or dupl
 
   assert.equal(vehicles.getVehicle(vehicleId), undefined);
   assert.equal(queues.waitingWeight(firstStop, lineId, 'forward'), 7);
-  const recovered = queues.list(firstStop, lineId, 'forward');
+  const recovered = queues.peek(firstStop, lineId, 'forward');
   assert.equal(recovered.length, 1);
   assert.equal(recovered[0]!.id, 'cohort:recovery');
   assert.equal(recovered[0]!.travelerWeight, 7);
