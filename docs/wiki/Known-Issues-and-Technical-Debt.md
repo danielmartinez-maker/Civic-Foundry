@@ -2,26 +2,28 @@
 
 [← Wiki Home](Home.md)
 
-This page summarizes the current source-level bug/risk audit. It is not a claim that every item has a reproduced runtime failure; confidence varies by finding.
+This page summarizes the current source-level bug/risk audit. It is not a claim that every remaining item has a reproduced runtime failure; confidence varies by finding.
 
-## P0 — protect authoritative state first
+## Stack 0 — authoritative-state findings resolved
 
-The highest-priority risks are cross-system invariant failures:
+The Stack 0 stabilization pass closes the P0 cross-system invariant findings that previously blocked further Transportation 3R work:
 
-- **CF-006 / CF-007 / CF-008 / CF-009:** ordinary cadastral rebuilds can replace canonical land state, erase easements/lineage, churn parcel identity, and reset canonical building lifecycle/history.
-- **SIM-013 / SIM-014 / SIM-015:** development awards, building bulldoze, and kernel ticks are not fully transactional; exceptions can leave partially committed state.
-- **SIM-016 / SIM-017:** freight conservation can fail when delivery/return targets are full, causing goods to disappear.
-- **SIM-007:** transit vehicle failure can remove onboard passenger cohorts without proper recovery/accounting.
+- **CF-006 / CF-007 / CF-008 / CF-009:** legacy road/zoning rebuilds now reconcile against canonical parcel authority, preserve geometry-stable parcel identity plus owner/history, preserve canonical easements/lineage, and reject protected topology changes transactionally. Canonical building projection is reconciled only after the cadastral transaction commits.
+- **SIM-001 / SIM-002:** commute and shopping trip cohorts now use exact proportional weights so aggregate generated demand equals the requested employed/shopper pools. The frozen legacy compatibility engine explicitly retains its historical rounded weighting.
+- **SIM-007:** failed transit runs recover onboard passenger cohorts into the authoritative passenger queues before vehicle deletion, preserving cohort identity, weight, destination, and transfer state.
+- **SIM-013 / SIM-014 / SIM-015:** compound development/bulldoze operations and kernel ticks now have explicit rollback boundaries. Kernel rollback restores clock, pending commands, event journal, random streams, and registered authoritative domain participants before fail-stop state is recorded.
+- **SIM-016 / SIM-017:** delivery and cancellation of already-conserved in-transit freight restore cargo without storage-capacity clipping, preventing goods from disappearing at a full destination/return inventory.
+- **Save V9 hydration hardening:** adversarial duplicate, dangling, stale, malformed, and non-finite state is rejected at the existing cadastre, service/utility/traffic, transit, firm/freight/order/inventory, and property/building ownership seams without changing the Save V9 schema or game version.
 
-These are higher priority than expanding simulation breadth because they can invalidate authoritative state or conservation guarantees.
+Regression coverage includes cadastral identity/history preservation and protected-change rejection, exact trip/freight conservation, forced compound rollback, transit passenger recovery, adversarial Save V9 hydration, deterministic continuation, and the frozen V7 compatibility oracle.
 
 ## Major integration gaps
 
-Urban Fabric contains substantial systems that are not fully driven in the live loop, including lifecycle, renovation, highest-and-best-use, site assembly, and property-market advancement.
+Urban Fabric still contains substantial systems that are not fully driven in the live loop, including lifecycle, renovation, highest-and-best-use, site assembly, and property-market advancement.
 
-Transportation has quantitative correctness risks in commuter/shopping demand generation, congestion dimensionality, transit fallback/capacity/reliability, mixed road-direction behavior, and malformed/non-finite input handling.
+Transportation still has correctness and integration work beyond Stack 0, including congestion dimensionality, broader transit fallback/capacity/reliability behavior, mixed road-direction behavior, and future Transportation 3R scope.
 
-Save/hydration code has broad validation gaps across canonical buildings, services, transit, utilities, traffic routes, transportation graph state, passenger queues, freight vehicles/orders/inventory, firms, and cross-references.
+Save/hydration validation is materially stronger after Stack 0, but future schema versions and newly introduced domains must continue adding cross-reference validation at their authoritative ownership seams.
 
 ## Presentation debt
 
@@ -39,6 +41,6 @@ Key scaling concerns include expensive canonical-building reconciliation, global
 
 ## Systemic pattern
 
-The dominant defect pattern is **integration-boundary failure**: cadastre↔legacy lots, parcels↔properties↔buildings, development↔economy↔housing, traffic↔transit↔services, freight↔inventory, save payloads↔live invariants, and simulation state↔GPU presentation.
+The dominant defect pattern remains **integration-boundary failure**: cadastre↔legacy lots, parcels↔properties↔buildings, development↔economy↔housing, traffic↔transit↔services, freight↔inventory, save payloads↔live invariants, and simulation state↔GPU presentation.
 
-The project should prioritize cross-domain invariant tests, transaction boundaries, adversarial save mutation, deterministic long-horizon soak tests, and large-city profiling.
+The project should continue prioritizing cross-domain invariant tests, transaction boundaries, adversarial save mutation, deterministic long-horizon soak tests, and large-city profiling.
