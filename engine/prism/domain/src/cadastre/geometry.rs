@@ -157,7 +157,10 @@ pub fn ring_contains_ring(outer: &[WorldPoint], inner: &[WorldPoint]) -> Result<
     Ok(remainder.is_empty())
 }
 
-pub fn rings_materially_overlap(left: &[WorldPoint], right: &[WorldPoint]) -> Result<bool, P2AError> {
+pub fn rings_materially_overlap(
+    left: &[WorldPoint],
+    right: &[WorldPoint],
+) -> Result<bool, P2AError> {
     for ring in polygon_intersection(left, right)? {
         if polygon_area(&ring)? > 0.0 {
             return Ok(true);
