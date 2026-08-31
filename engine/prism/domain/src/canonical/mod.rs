@@ -1,1 +1,3 @@
-// Canonical P2A state encoding lives here.
+//! Deterministic P2A canonical hashing.
+
+pub mod hash;
