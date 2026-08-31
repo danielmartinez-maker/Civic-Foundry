@@ -148,12 +148,13 @@ impl CadastralGraph {
     }
 
     pub fn parcel_polygon(&self, parcel_id: &str) -> Result<PolygonRing, P2AError> {
-        let parcel = self.parcels.get(parcel_id).ok_or_else(|| {
-            P2AError::CadastreValidation {
+        let parcel = self
+            .parcels
+            .get(parcel_id)
+            .ok_or_else(|| P2AError::CadastreValidation {
                 code: "missing-parcel",
                 entity_id: Some(parcel_id.to_owned()),
-            }
-        })?;
+            })?;
         trace_boundary(parcel, &self.edges, &self.nodes)
     }
 }
@@ -186,8 +187,12 @@ fn canonicalize_snapshot(snapshot: &mut CadastralSnapshot) {
 
     snapshot.nodes.sort_by(|left, right| left.id.cmp(&right.id));
     snapshot.edges.sort_by(|left, right| left.id.cmp(&right.id));
-    snapshot.blocks.sort_by(|left, right| left.id.cmp(&right.id));
-    snapshot.parcels.sort_by(|left, right| left.id.cmp(&right.id));
+    snapshot
+        .blocks
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    snapshot
+        .parcels
+        .sort_by(|left, right| left.id.cmp(&right.id));
     snapshot
         .easements
         .sort_by(|left, right| left.id.cmp(&right.id));
@@ -209,11 +214,7 @@ fn trace_boundary(
     let boundary_edges = parcel
         .boundary_edge_ids
         .iter()
-        .map(|edge_id| {
-            edges
-                .get(edge_id)
-                .ok_or_else(|| boundary_error(&parcel.id))
-        })
+        .map(|edge_id| edges.get(edge_id).ok_or_else(|| boundary_error(&parcel.id)))
         .collect::<Result<Vec<_>, _>>()?;
 
     if let Some(points) = walk_boundary(&boundary_edges, nodes, false) {
