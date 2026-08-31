@@ -23,7 +23,7 @@ test('failed kernel ticks restore authoritative participants and kernel sequenci
   kernel.commands.enqueue({ type: 'Mutate', payload: null }, 1);
   kernel.registerSystem({
     id: 'forced-failure',
-    reads: ['test-domain'],
+    reads: [],
     writes: ['test-domain'],
     cadence: { every: 1 },
     execute: (context) => {
