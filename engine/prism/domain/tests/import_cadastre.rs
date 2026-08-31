@@ -119,12 +119,7 @@ fn shared_snapshot_shuffled() -> CadastralSnapshot {
             Parcel {
                 id: "pb".into(),
                 block_id: "block".into(),
-                boundary_edge_ids: vec![
-                    "b0".into(),
-                    "b1".into(),
-                    "b2".into(),
-                    "a1".into(),
-                ],
+                boundary_edge_ids: vec!["b0".into(), "b1".into(), "b2".into(), "a1".into()],
                 area_m2: 400.0,
                 centroid: point(30.0, 10.0),
                 frontage_edge_ids: vec!["b0".into()],
@@ -136,12 +131,7 @@ fn shared_snapshot_shuffled() -> CadastralSnapshot {
             Parcel {
                 id: "pa".into(),
                 block_id: "block".into(),
-                boundary_edge_ids: vec![
-                    "a0".into(),
-                    "a1".into(),
-                    "a2".into(),
-                    "a3".into(),
-                ],
+                boundary_edge_ids: vec!["a0".into(), "a1".into(), "a2".into(), "a3".into()],
                 area_m2: 400.0,
                 centroid: point(10.0, 10.0),
                 frontage_edge_ids: vec!["a0".into()],
