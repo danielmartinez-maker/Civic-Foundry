@@ -1,18 +1,18 @@
 import '@babylonjs/loaders/glTF/index.js';
 import { LoadAssetContainerAsync } from '@babylonjs/core/Loading/sceneLoader.js';
-import type { TransformNode } from '@babylonjs/core/Meshes/transformNode.js';
+import type { Node } from '@babylonjs/core/node.js';
 import type { Scene } from '@babylonjs/core/scene.js';
 import type { AssetPrototypeLoadRequest } from './AssetStreamingManager.ts';
 
 export type BabylonPrototypeInstance = Readonly<{
-  rootNodes: readonly TransformNode[];
+  rootNodes: readonly Node[];
   dispose(): void;
 }>;
 
 type Disposable = Readonly<{ dispose(): void }>;
 
 type BabylonInstantiatedEntriesLike = Readonly<{
-  rootNodes: readonly TransformNode[];
+  rootNodes: readonly Node[];
   skeletons?: readonly Disposable[];
   animationGroups?: readonly Disposable[];
   dispose?: () => void;
