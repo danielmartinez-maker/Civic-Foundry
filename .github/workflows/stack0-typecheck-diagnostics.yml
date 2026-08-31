@@ -1,0 +1,38 @@
+name: Stack 0 Typecheck Diagnostics
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck-diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Node 22
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install project dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Capture TypeScript diagnostics
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck -- --pretty false > typecheck.log 2>&1
+          status=$?
+          cat typecheck.log
+          printf '%s\n' "$status" > typecheck-exit-code.txt
+          exit 0
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: stack0-typecheck-diagnostics
+          path: |
+            typecheck.log
+            typecheck-exit-code.txt
+          if-no-files-found: error
