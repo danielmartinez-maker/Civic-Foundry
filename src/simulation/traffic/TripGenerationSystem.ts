@@ -2,6 +2,7 @@ import type { Building } from '../buildings/BuildingSystem.ts';
 import { SeededRandom } from '../core/SeededRandom.ts';
 
 export type TripPurpose = 'commute' | 'shopping';
+export type TripDemandWeightMode = 'exact' | 'legacy-rounded';
 
 export type TripRequest = Readonly<{
   id: string;
@@ -15,9 +16,15 @@ export type TripRequest = Readonly<{
 export class TripGenerationSystem {
   private readonly random: SeededRandom;
   private nextTripId = 1;
+  private demandWeightMode: TripDemandWeightMode;
 
-  constructor(seed: number) {
+  constructor(seed: number, demandWeightMode: TripDemandWeightMode = 'exact') {
     this.random = new SeededRandom(seed ^ 0x5f3759df);
+    this.demandWeightMode = demandWeightMode;
+  }
+
+  setDemandWeightMode(mode: TripDemandWeightMode): void {
+    this.demandWeightMode = mode;
   }
 
   generate(tick: number, buildings: readonly Building[], population: number, employed: number): TripRequest[] {
@@ -28,9 +35,14 @@ export class TripGenerationSystem {
     if (homes.length === 0) return [];
 
     const trips: TripRequest[] = [];
-    const commuterWeight = Math.max(1, Math.ceil(Math.max(0, employed) / homes.length));
+    const employedPool = Math.max(0, employed);
     const shopperPool = Math.max(0, Math.round(Math.max(0, population) * 0.25));
-    const shoppingWeight = Math.max(1, Math.ceil(shopperPool / homes.length));
+    const commuterWeight = this.demandWeightMode === 'legacy-rounded'
+      ? Math.max(1, Math.ceil(employedPool / homes.length))
+      : employedPool / homes.length;
+    const shoppingWeight = this.demandWeightMode === 'legacy-rounded'
+      ? Math.max(1, Math.ceil(shopperPool / homes.length))
+      : shopperPool / homes.length;
 
     if (jobs.length > 0 && employed > 0) {
       for (let i = 0; i < homes.length; i++) {
