@@ -40,10 +40,15 @@ test('legacy GPU renderer implements the shared contract without owning its type
   assert.doesNotMatch(source, /export type CellSelection\s*=/);
 });
 
-test('GameApp depends on PresentationRenderer while legacy GPU remains the default constructor', async () => {
+test('GameApp delegates renderer construction to the backend factory and keeps legacy GPU as the default', async () => {
   const source = await text('src/app/GameApp.ts');
 
-  assert.match(source, /rendering\/PresentationRenderer\.ts/);
+  assert.match(source, /rendering\/PresentationRenderer\.js/);
+  assert.match(source, /rendering\/PresentationRendererFactory\.js/);
   assert.match(source, /readonly renderer:\s*PresentationRenderer/);
-  assert.match(source, /this\.renderer\s*=\s*new GpuWorldRenderer\(canvas\)/);
+  assert.match(
+    source,
+    /this\.renderer\s*=\s*createPresentationRenderer\(\s*this\.elements\.canvas,\s*options\?\.presentationRendererBackend\s*\?\?\s*'legacy-gpu'/s,
+  );
+  assert.doesNotMatch(source, /this\.renderer\s*=\s*new GpuWorldRenderer\(/);
 });
