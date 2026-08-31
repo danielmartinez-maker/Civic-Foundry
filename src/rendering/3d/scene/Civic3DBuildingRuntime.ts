@@ -14,7 +14,10 @@ import {
   BabylonBuildingSceneAdapter,
   type BabylonBuildingHandle,
 } from './BabylonBuildingSceneAdapter.ts';
-import { BuildingSceneLayer } from './BuildingSceneLayer.ts';
+import {
+  BuildingSceneLayer,
+  type BuildingSceneDebugState,
+} from './BuildingSceneLayer.ts';
 import {
   BuildingSceneReconciliationPump,
   type BuildingSceneCameraPosition,
@@ -111,6 +114,10 @@ export class Civic3DBuildingRuntime {
 
   async whenIdle(): Promise<void> {
     await this.pump.whenIdle();
+  }
+
+  debugBuildingState(presentationId: `building:${string}`): BuildingSceneDebugState | null {
+    return this.layer.debugBuildingState(presentationId);
   }
 
   diagnostics(): Civic3DBuildingRuntimeDiagnostics {
