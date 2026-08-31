@@ -3,9 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::error::P2AError;
 
 use super::geometry::{normalize_ring, polygon_area, polygon_intersection, ring_self_intersects};
-use super::types::{
-    CadastralSnapshot, Parcel, ParcelEdge, ParcelNode, PolygonRing, WorldPoint,
-};
+use super::types::{CadastralSnapshot, Parcel, ParcelEdge, ParcelNode, PolygonRing, WorldPoint};
 
 const AREA_TOLERANCE_M2: f64 = 0.01;
 
@@ -16,9 +14,7 @@ pub struct CadastralValidationIssue {
 }
 
 #[must_use]
-pub fn validate_cadastral_snapshot(
-    snapshot: &CadastralSnapshot,
-) -> Vec<CadastralValidationIssue> {
+pub fn validate_cadastral_snapshot(snapshot: &CadastralSnapshot) -> Vec<CadastralValidationIssue> {
     let mut errors = Vec::new();
     check_duplicate_ids(snapshot, &mut errors);
 
@@ -80,9 +76,7 @@ pub fn validate_cadastral_snapshot(
         {
             push(&mut errors, "missing-parcel", Some(&edge.id));
         }
-        if edge.left_parcel_id.is_some()
-            && edge.left_parcel_id == edge.right_parcel_id
-        {
+        if edge.left_parcel_id.is_some() && edge.left_parcel_id == edge.right_parcel_id {
             push(&mut errors, "parcel-boundary-invalid", Some(&edge.id));
         }
         if edge.kind == super::types::ParcelEdgeKind::StreetFrontage && edge.road_ref.is_none() {
@@ -92,11 +86,7 @@ pub fn validate_cadastral_snapshot(
         let pair_key = canonical_node_pair(&edge.from_node_id, &edge.to_node_id);
         if let Some(previous) = edge_by_node_pair.get(&pair_key) {
             if previous != &edge.id {
-                push(
-                    &mut errors,
-                    "duplicate-shared-boundary",
-                    Some(&edge.id),
-                );
+                push(&mut errors, "duplicate-shared-boundary", Some(&edge.id));
             }
         } else {
             edge_by_node_pair.insert(pair_key, edge.id.clone());
@@ -229,18 +219,12 @@ pub fn validate_cadastral_snapshot(
     errors
 }
 
-fn check_duplicate_ids(
-    snapshot: &CadastralSnapshot,
-    errors: &mut Vec<CadastralValidationIssue>,
-) {
+fn check_duplicate_ids(snapshot: &CadastralSnapshot, errors: &mut Vec<CadastralValidationIssue>) {
     check_duplicate_group(snapshot.nodes.iter().map(|row| row.id.as_str()), errors);
     check_duplicate_group(snapshot.edges.iter().map(|row| row.id.as_str()), errors);
     check_duplicate_group(snapshot.blocks.iter().map(|row| row.id.as_str()), errors);
     check_duplicate_group(snapshot.parcels.iter().map(|row| row.id.as_str()), errors);
-    check_duplicate_group(
-        snapshot.easements.iter().map(|row| row.id.as_str()),
-        errors,
-    );
+    check_duplicate_group(snapshot.easements.iter().map(|row| row.id.as_str()), errors);
     check_duplicate_group(snapshot.lineage.iter().map(|row| row.id.as_str()), errors);
 }
 
@@ -374,11 +358,7 @@ fn canonical_node_pair(left: &str, right: &str) -> String {
     }
 }
 
-fn push(
-    errors: &mut Vec<CadastralValidationIssue>,
-    code: &'static str,
-    entity_id: Option<&str>,
-) {
+fn push(errors: &mut Vec<CadastralValidationIssue>, code: &'static str, entity_id: Option<&str>) {
     errors.push(CadastralValidationIssue {
         code,
         entity_id: entity_id.map(str::to_owned),
