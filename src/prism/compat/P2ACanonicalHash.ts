@@ -137,7 +137,7 @@ function compareUtf8Strings(left: string, right: string): number {
   const rightBytes = textEncoder.encode(right);
   const length = Math.min(leftBytes.length, rightBytes.length);
   for (let index = 0; index < length; index += 1) {
-    const difference = leftBytes[index] - rightBytes[index];
+    const difference = leftBytes[index]! - rightBytes[index]!;
     if (difference !== 0) return difference;
   }
   return leftBytes.length - rightBytes.length;
