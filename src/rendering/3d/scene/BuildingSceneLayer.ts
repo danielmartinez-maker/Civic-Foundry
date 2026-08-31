@@ -15,6 +15,13 @@ export type BuildingPickMetadata = Readonly<{
   presentationEntityId: PresentationEntityId;
 }>;
 
+export type BuildingSceneDebugState = Readonly<{
+  assetId: AssetId | null;
+  lod: AssetLod | 'proxy';
+  variationSeed: number;
+  structuralHandleId: string;
+}>;
+
 export type BuildingAssetLease<P> = Readonly<{
   key: string;
   assetId: AssetId;
@@ -54,6 +61,7 @@ type RetainedBuilding<P, H> = {
   handle: H;
   lod: AssetLod | 'proxy';
   lease: BuildingAssetLease<P> | null;
+  structuralHandleId: string;
 };
 
 export type BuildingSceneLayerOptions<P, H> = Readonly<{
@@ -111,6 +119,7 @@ export class BuildingSceneLayer<P, H> {
   private readonly assets: BuildingAssetSource<P>;
   private readonly adapter: BuildingSceneAdapter<P, H>;
   private readonly retained = new Map<PresentationEntityId, RetainedBuilding<P, H>>();
+  private nextStructuralHandleSerial = 1;
   private disposed = false;
 
   constructor(options: BuildingSceneLayerOptions<P, H>) {
@@ -165,6 +174,17 @@ export class BuildingSceneLayer<P, H> {
     }
   }
 
+  debugBuildingState(id: `building:${string}`): BuildingSceneDebugState | null {
+    const retained = this.retained.get(id);
+    if (!retained) return null;
+    return Object.freeze({
+      assetId: retained.state.assetId,
+      lod: retained.lod,
+      variationSeed: retained.state.variationSeed,
+      structuralHandleId: retained.structuralHandleId,
+    });
+  }
+
   debugHandle(id: PresentationEntityId): H | null {
     return this.retained.get(id)?.handle ?? null;
   }
@@ -203,7 +223,13 @@ export class BuildingSceneLayer<P, H> {
         this.adapter.disposeBuilding(handle);
         throw error;
       }
-      return { state, handle, lod: 'proxy', lease: null };
+      return {
+        state,
+        handle,
+        lod: 'proxy',
+        lease: null,
+        structuralHandleId: this.allocateStructuralHandleId(state.presentationId),
+      };
     }
 
     const currentLod =
@@ -225,11 +251,23 @@ export class BuildingSceneLayer<P, H> {
         this.adapter.disposeBuilding(handle);
         throw error;
       }
-      return { state, handle, lod, lease };
+      return {
+        state,
+        handle,
+        lod,
+        lease,
+        structuralHandleId: this.allocateStructuralHandleId(state.presentationId),
+      };
     } catch (error) {
       lease.release();
       throw error;
     }
+  }
+
+  private allocateStructuralHandleId(id: PresentationEntityId): string {
+    const serial = this.nextStructuralHandleSerial;
+    this.nextStructuralHandleSerial += 1;
+    return `${id}:structural:${serial}`;
   }
 
   private removeRetained(id: PresentationEntityId): void {
