@@ -133,15 +133,15 @@ impl CadastralGraph {
         }
         let mut adjacent = BTreeSet::new();
         for edge in self.edges.values() {
-            if edge.left_parcel_id.as_deref() == Some(parcel_id) {
-                if let Some(right) = &edge.right_parcel_id {
-                    adjacent.insert(right.clone());
-                }
+            if edge.left_parcel_id.as_deref() == Some(parcel_id)
+                && let Some(right) = &edge.right_parcel_id
+            {
+                adjacent.insert(right.clone());
             }
-            if edge.right_parcel_id.as_deref() == Some(parcel_id) {
-                if let Some(left) = &edge.left_parcel_id {
-                    adjacent.insert(left.clone());
-                }
+            if edge.right_parcel_id.as_deref() == Some(parcel_id)
+                && let Some(left) = &edge.left_parcel_id
+            {
+                adjacent.insert(left.clone());
             }
         }
         adjacent.into_iter().collect()
