@@ -21,9 +21,11 @@ import { MiniatureCameraController } from './MiniatureCameraController.ts';
 import { MiniatureRenderPipeline } from './MiniatureRenderPipeline.ts';
 import type { VisualTime, WorldPresentationSnapshot } from './presentation/PresentationTypes.ts';
 import { WorldPresentationSnapshotBuilder } from './presentation/WorldPresentationSnapshotBuilder.ts';
+import { Civic3DBuildingRuntime } from './scene/Civic3DBuildingRuntime.ts';
 
 const INITIAL_RADIUS_METERS = 900;
 const PIXEL_PAN_SCALE = 0.0025;
+const MAX_ASSET_DIAGNOSTICS = 32;
 
 type PointerGesture = Readonly<{
   pointerId: number;
@@ -52,6 +54,8 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
   private scene: Scene | null = null;
   private camera: ArcRotateCamera | null = null;
   private renderPipeline: MiniatureRenderPipeline | null = null;
+  private buildingRuntime: Civic3DBuildingRuntime | null = null;
+  private disposePromise: Promise<void> | null = null;
   private pointerGesture: PointerGesture | null = null;
   private visualTime: VisualTime = 'day';
   private lastSnapshot: WorldPresentationSnapshot | null = null;
@@ -63,7 +67,9 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.readyPromise = this.initialize().catch((error: unknown) => {
-      this.diagnostics.push(`3D renderer initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.pushDiagnostic(
+        `3D renderer initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     });
   }
 
@@ -203,35 +209,40 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
 
     if (!this.scene || !this.camera || this.disposed) return;
     this.applyCameraState();
+    this.buildingRuntime?.submit(this.lastSnapshot, Object.freeze({
+      x: this.camera.position.x,
+      y: this.camera.position.y,
+      z: this.camera.position.z,
+    }));
     this.renderPipeline?.setVisualTime(this.visualTime);
     this.renderPipeline?.updateFocusDistance(this.controller.snapshot().radius);
     this.scene.render();
   }
 
   debugSceneStats(): PresentationSceneStats {
+    const runtime = this.buildingRuntime?.diagnostics();
     return Object.freeze({
       backend: 'civic-3d',
-      loadedPrototypes: 0,
-      buildingInstances: 0,
-      fallbackBuildings: this.lastSnapshot?.buildings.length ?? 0,
-      assetRequests: 0,
-      cacheHits: 0,
-      cacheMisses: 0,
+      loadedPrototypes: runtime?.loadedPrototypes ?? 0,
+      buildingInstances: runtime?.buildingInstances ?? 0,
+      fallbackBuildings: runtime?.fallbackBuildings ?? (this.lastSnapshot?.buildings.length ?? 0),
+      assetRequests: runtime?.assetRequests ?? 0,
+      cacheHits: runtime?.cacheHits ?? 0,
+      cacheMisses: runtime?.cacheMisses ?? 0,
     });
   }
 
   dispose(): void {
-    if (this.disposed) return;
+    if (this.disposePromise) return;
     this.disposed = true;
     for (const cleanup of this.inputCleanups.splice(0)) cleanup();
     this.pointerGesture = null;
-    this.renderPipeline?.dispose();
-    this.renderPipeline = null;
-    this.scene?.dispose();
-    this.scene = null;
-    this.camera = null;
-    this.engine?.dispose();
-    this.engine = null;
+    this.disposePromise = this.disposeInternal();
+  }
+
+  async whenDisposed(): Promise<void> {
+    if (!this.disposePromise) return;
+    await this.disposePromise;
   }
 
   private async initialize(): Promise<void> {
@@ -242,7 +253,7 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
     }
     this.engine = result.engine;
     this.diagnostics.push(...result.diagnostics);
-    if (result.backend === 'webgl') this.diagnostics.push('Babylon renderer running on WebGL fallback.');
+    if (result.backend === 'webgl') this.pushDiagnostic('Babylon renderer running on WebGL fallback.');
 
     const scene = new Scene(result.engine);
     this.scene = scene;
@@ -264,9 +275,32 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
 
     this.renderPipeline = new MiniatureRenderPipeline(scene, camera);
     this.renderPipeline.setVisualTime(this.visualTime);
+    this.buildingRuntime = await Civic3DBuildingRuntime.create(scene, {
+      onDiagnostic: (message): void => this.pushDiagnostic(message),
+    });
+    if (this.disposed) return;
+
     this.attachInput();
     this.resize();
     this.applyCameraState();
+  }
+
+  private async disposeInternal(): Promise<void> {
+    await this.readyPromise;
+    try {
+      await this.buildingRuntime?.dispose();
+    } finally {
+      this.buildingRuntime = null;
+      this.renderPipeline?.dispose();
+      this.renderPipeline = null;
+      this.scene?.dispose();
+      this.scene = null;
+      this.camera = null;
+      this.engine?.dispose();
+      this.engine = null;
+      this.lastSnapshot = null;
+      this.centeredOnWorld = false;
+    }
   }
 
   private attachInput(): void {
@@ -328,6 +362,11 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
     camera.beta = Math.PI / 2 - state.elevationRad;
     camera.radius = state.radius;
     camera.target.copyFromFloats(state.target.x, 0, state.target.z);
+  }
+
+  private pushDiagnostic(message: string): void {
+    this.diagnostics.push(message);
+    if (this.diagnostics.length > MAX_ASSET_DIAGNOSTICS) this.diagnostics.shift();
   }
 
   private canvasCenter(): RenderPoint {
