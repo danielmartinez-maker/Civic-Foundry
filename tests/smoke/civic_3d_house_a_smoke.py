@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import mimetypes
 import pathlib
 from io import BytesIO
@@ -233,6 +234,58 @@ def main() -> None:
         png = page.locator("#civic-3d-acceptance").screenshot(type="png")
         screenshot_path = OUTPUT / "house_a_browser.png"
         screenshot_path.write_bytes(png)
+
+        scene_diagnostics = page.evaluate(
+            """() => {
+              const { renderer, core } = window.__civic3dAcceptance;
+              const scene = renderer.scene;
+              const camera = renderer.camera;
+              if (!scene || !camera) return { missingScene: true };
+              const presentationId = 'building:browser-house-a';
+              const nodes = [...scene.transformNodes, ...scene.meshes]
+                .filter(node => node.metadata?.presentationEntityId === presentationId)
+                .map(node => {
+                  node.computeWorldMatrix?.(true);
+                  let bounds = null;
+                  if (typeof node.getBoundingInfo === 'function') {
+                    const box = node.getBoundingInfo().boundingBox;
+                    bounds = {
+                      minimumWorld: { x: box.minimumWorld.x, y: box.minimumWorld.y, z: box.minimumWorld.z },
+                      maximumWorld: { x: box.maximumWorld.x, y: box.maximumWorld.y, z: box.maximumWorld.z },
+                    };
+                  }
+                  const absolute = typeof node.getAbsolutePosition === 'function'
+                    ? node.getAbsolutePosition()
+                    : null;
+                  return {
+                    name: node.name,
+                    className: node.getClassName?.() ?? 'unknown',
+                    isEnabled: node.isEnabled?.() ?? null,
+                    isVisible: typeof node.isVisible === 'boolean' ? node.isVisible : null,
+                    absolutePosition: absolute ? { x: absolute.x, y: absolute.y, z: absolute.z } : null,
+                    bounds,
+                  };
+                });
+              const projectedCenter = renderer.worldToCanvas(120, 100, core);
+              return {
+                camera: {
+                  alpha: camera.alpha,
+                  beta: camera.beta,
+                  radius: camera.radius,
+                  target: { x: camera.target.x, y: camera.target.y, z: camera.target.z },
+                  position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+                },
+                projectedCenter,
+                sceneMeshCount: scene.meshes.length,
+                sceneTransformNodeCount: scene.transformNodes.length,
+                presentationNodeCount: nodes.length,
+                nodes,
+              };
+            }"""
+        )
+        (OUTPUT / "runtime_geometry.json").write_text(
+            json.dumps(scene_diagnostics, indent=2, sort_keys=True), encoding="utf-8"
+        )
         assert_canvas_has_variance(png)
 
         diagnostics = page.evaluate(
