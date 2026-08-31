@@ -119,14 +119,14 @@ test('kernel exposes built-in clock invariant and deterministic diagnostic snaps
   assert.deepEqual(kernel.snapshots.capture('kernel'), snapshot);
 });
 
-test('system exceptions abort the current tick after clock advance and prevent later systems', () => {
+test('system exceptions roll back the current tick and prevent later systems', () => {
   const clock = new SimulationClock();
   const kernel = new SimulationKernel({ clock, seed: 1 });
   const seen: string[] = [];
   kernel.registerSystem({ id: 'a-fail', reads: [], writes: ['a'], cadence: { every: 1 }, execute: () => { seen.push('fail'); throw new Error('system boom'); } });
   kernel.registerSystem({ id: 'z-later', reads: [], writes: ['z'], cadence: { every: 1 }, execute: () => seen.push('later') });
   assert.throws(() => kernel.step(1), /system boom/);
-  assert.equal(clock.tick, 1);
+  assert.equal(clock.tick, 0);
   assert.deepEqual(seen, ['fail']);
 });
 
