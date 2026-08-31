@@ -29,7 +29,7 @@ export interface PresentationRenderer {
   readonly tileWidth: number;
   readonly tileHeight: number;
   readonly zoom: number;
-  readonly quarterTurns: 0 | 1 | 2 | 3;
+  readonly quarterTurns: number;
   readonly currentUrbanFabricOverlayMode: UrbanFabricOverlayMode;
   readonly currentUrbanFabricSelectedParcelId: string | null;
 
