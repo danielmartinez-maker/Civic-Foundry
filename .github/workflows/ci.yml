@@ -37,3 +37,5 @@ jobs:
         run: npm run test:smoke:isometric
       - name: Isometric Pass A visual smoke
         run: python tests/smoke/isometric_visual_smoke.py
+      - name: Civic 3D House A browser smoke
+        run: npm run test:smoke:3d
