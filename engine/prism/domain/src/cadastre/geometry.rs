@@ -404,9 +404,8 @@ fn split_rings(rings: &[Vec<IntPoint>]) -> Result<Vec<Vec<Segment>>, P2AError> {
     let mut result = Vec::with_capacity(rings.len());
     for (ring_index, ring) in rings.iter().enumerate() {
         let mut segments = Vec::new();
-        for edge_index in 0..ring.len() {
+        for (edge_index, params) in parameters[ring_index].iter_mut().enumerate() {
             let edge = ring_segment(ring, edge_index);
-            let params = &mut parameters[ring_index][edge_index];
             params.sort_unstable();
             params.dedup();
 
@@ -688,10 +687,10 @@ fn reconstruct_world_rings(
             }
         }
 
-        if ring.len() >= 3 {
-            if let Some(canonical) = canonicalize_int_ring(ring)? {
-                rings.push(canonical);
-            }
+        if ring.len() >= 3
+            && let Some(canonical) = canonicalize_int_ring(ring)?
+        {
+            rings.push(canonical);
         }
     }
 
