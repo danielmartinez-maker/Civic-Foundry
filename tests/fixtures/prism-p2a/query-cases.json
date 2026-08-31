@@ -1,0 +1,56 @@
+{
+  "terrain": {
+    "first": { "x": 0, "y": 0, "elevationMeters": 10.0, "slope": 0.1 },
+    "last": { "x": 1, "y": 1, "elevationMeters": 13.0, "slope": 0.4 }
+  },
+  "hydrology": {
+    "first": {
+      "x": 0,
+      "y": 0,
+      "conditionedElevationMeters": 100.0,
+      "watershedId": "watershed-0",
+      "flowAccumulation": 1.0,
+      "floodSusceptibility": 0.1
+    },
+    "last": {
+      "x": 1,
+      "y": 1,
+      "conditionedElevationMeters": 103.0,
+      "watershedId": "watershed-0",
+      "flowAccumulation": 4.0,
+      "floodSusceptibility": 0.4
+    }
+  },
+  "flood": {
+    "absent": { "x": 1, "y": 1, "depthMeters": 0.0 },
+    "present": { "x": 1, "y": 1, "depthMeters": 0.25 }
+  },
+  "geography": {
+    "byId": { "id": "region:0", "kind": "region" },
+    "deepest": { "x": 1.0, "y": 1.0, "id": "block:0" },
+    "kindFiltered": { "x": 1.0, "y": 1.0, "kind": "district", "id": "district:0" },
+    "aabb": {
+      "minX": 0.5,
+      "minY": 0.5,
+      "maxX": 1.5,
+      "maxY": 1.5,
+      "ids": ["block:0", "neighborhood:0", "district:0", "municipality:0", "region:0"]
+    }
+  },
+  "cadastre": {
+    "parcel": {
+      "id": "pa",
+      "polygon": [
+        { "x": 0.0, "y": 0.0 },
+        { "x": 20.0, "y": 0.0 },
+        { "x": 20.0, "y": 20.0 },
+        { "x": 0.0, "y": 20.0 }
+      ]
+    },
+    "adjacency": { "id": "pa", "ids": ["pb"] },
+    "aabbs": [
+      { "minX": 0.0, "minY": 0.0, "maxX": 19.9, "maxY": 20.0, "ids": ["pa"] },
+      { "minX": 19.9, "minY": 0.0, "maxX": 40.0, "maxY": 20.0, "ids": ["pa", "pb"] }
+    ]
+  }
+}
