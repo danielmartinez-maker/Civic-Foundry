@@ -57,10 +57,10 @@ pub fn validate_cadastral_snapshot(snapshot: &CadastralSnapshot) -> Vec<Cadastra
         if let Some(to) = to {
             referenced_node_ids.insert(to.id.as_str());
         }
-        if let (Some(from), Some(to)) = (from, to) {
-            if same_point(from.point, to.point) {
-                push(&mut errors, "zero-length-edge", Some(&edge.id));
-            }
+        if let (Some(from), Some(to)) = (from, to)
+            && same_point(from.point, to.point)
+        {
+            push(&mut errors, "zero-length-edge", Some(&edge.id));
         }
         if edge
             .left_parcel_id
