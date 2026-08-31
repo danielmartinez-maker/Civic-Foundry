@@ -366,7 +366,8 @@ fn expected_polygon(value: &Value) -> Vec<WorldPoint> {
 #[test]
 fn read_only_world_and_cadastre_queries_match_the_frozen_typescript_cases() {
     let cases = fixture();
-    let world = WorldMirror::try_from(world_fixture(false)).expect("valid query world should import");
+    let world =
+        WorldMirror::try_from(world_fixture(false)).expect("valid query world should import");
 
     for name in ["first", "last"] {
         let prefix = format!("/terrain/{name}");
@@ -419,8 +420,8 @@ fn read_only_world_and_cadastre_queries_match_the_frozen_typescript_cases() {
         fixture_number(&cases, "/flood/absent/depthMeters")
     );
 
-    let flooded_world =
-        WorldMirror::try_from(world_fixture(true)).expect("valid flooded query world should import");
+    let flooded_world = WorldMirror::try_from(world_fixture(true))
+        .expect("valid flooded query world should import");
     assert_eq!(
         flooded_world
             .flood_depth_at(
