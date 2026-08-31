@@ -35,14 +35,11 @@ export class MiniatureCameraController {
   #elevationRad: number;
 
   constructor(initial: MiniatureCameraState) {
-    this.#target = {
-      x: finite(initial.target.x, 'target.x'),
-      y: 0,
-      z: finite(initial.target.z, 'target.z'),
-    };
-    this.#radius = clamp(finite(initial.radius, 'radius'), MIN_RADIUS, MAX_RADIUS);
-    this.#azimuthRad = normalizeAngle(finite(initial.azimuthRad, 'azimuthRad'));
-    this.#elevationRad = clamp(finite(initial.elevationRad, 'elevationRad'), MIN_ELEVATION, MAX_ELEVATION);
+    this.#target = { x: 0, y: 0, z: 0 };
+    this.#radius = MIN_RADIUS;
+    this.#azimuthRad = 0;
+    this.#elevationRad = MIN_ELEVATION;
+    this.setState(initial);
   }
 
   get quarterTurns(): number {
@@ -65,6 +62,15 @@ export class MiniatureCameraController {
       y: this.#target.y + this.#radius * Math.sin(this.#elevationRad),
       z: this.#target.z + horizontalRadius * Math.cos(this.#azimuthRad),
     });
+  }
+
+  setState(state: MiniatureCameraState): void {
+    this.#target.x = finite(state.target.x, 'target.x');
+    this.#target.y = 0;
+    this.#target.z = finite(state.target.z, 'target.z');
+    this.#radius = clamp(finite(state.radius, 'radius'), MIN_RADIUS, MAX_RADIUS);
+    this.#azimuthRad = normalizeAngle(finite(state.azimuthRad, 'azimuthRad'));
+    this.#elevationRad = clamp(finite(state.elevationRad, 'elevationRad'), MIN_ELEVATION, MAX_ELEVATION);
   }
 
   focus(target: MiniatureCameraTarget): void {
