@@ -2,6 +2,10 @@
 
 Civic Foundry is an original city-management, urban-development, transportation, economic-simulation, and municipal-management game built around deterministic simulation and inspectable causal systems. The production presentation path now targets GPU-rendered Windows desktop play while retaining the browser build as a development and smoke-test target.
 
+## Wiki
+
+Start with the **[Civic Foundry Wiki](docs/wiki/Home.md)** for a structured guide to the product vision, current roadmap, runtime architecture, simulation domains, rendering, persistence, contribution workflow, known technical debt, and project glossary. The wiki is an orientation layer; canonical technical authority remains current code, fresh verification evidence, this README, `docs/ARCHITECTURE.md`, `docs/SAVE_FORMAT.md`, and accepted ADRs.
+
 ## Canonical runtime
 
 **Civic Foundry 2.0 Phase 2R — Urban Fabric 2.0 is the current land/development/persistence layer.** The default save envelope is **Save V9** with `saveVersion: 9` and `gameVersion: '0.9.0-urban-fabric'`.
