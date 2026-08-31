@@ -54,12 +54,12 @@ export class InventorySystem {
 
   receiveCargo(firmId: string, token: CargoToken): void {
     const live = this.cargo.get(token.shipmentId); if (!live || live.commodity !== token.commodity || Math.abs(live.quantity - token.quantity) > 1e-9) throw new Error('cargo is not in transit');
-    this.add(firmId, live.commodity, live.quantity); this.cargo.delete(token.shipmentId);
+    this.restoreConservedCargo(firmId, live.commodity, live.quantity); this.cargo.delete(token.shipmentId);
   }
   completeExport(token: CargoToken): void { if (!this.cargo.has(token.shipmentId)) throw new Error('cargo is not in transit'); this.cargo.delete(token.shipmentId); }
   cancelCargo(token: CargoToken): void {
     const live = this.cargo.get(token.shipmentId); if (!live) throw new Error('cargo is not in transit');
-    if (live.sourceFirmId) this.add(live.sourceFirmId, live.commodity, live.quantity);
+    if (live.sourceFirmId) this.restoreConservedCargo(live.sourceFirmId, live.commodity, live.quantity);
     this.cargo.delete(token.shipmentId);
   }
   getCargo(shipmentId: string): CargoToken | undefined { const t = this.cargo.get(shipmentId); return t ? { ...t } : undefined; }
@@ -72,5 +72,6 @@ export class InventorySystem {
   }
   restoreState(state: InventoryStateSnapshot): void { this.records.clear(); this.cargo.clear(); for (const item of state.records) this.records.set(key(item.firmId,item.commodity), { ...item.record }); for (const item of state.cargo) this.cargo.set(item.token.shipmentId, { ...item.token }); }
   removeFirm(firmId: string): void { for (const c of commodities) this.records.delete(key(firmId,c)); }
+  private restoreConservedCargo(firmId: string, commodity: Commodity, quantity: number): void { const r = this.ensure(firmId, commodity); r.onHand += quantity; }
   private ensure(firmId: string, commodity: Commodity): MutableRecord { const k=key(firmId,commodity); let r=this.records.get(k); if(!r){r={onHand:0,targetStock:0,storageCapacity:100,reservedInbound:0,reservedOutbound:0};this.records.set(k,r);} return r; }
 }
