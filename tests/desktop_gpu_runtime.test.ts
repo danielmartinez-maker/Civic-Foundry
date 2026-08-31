@@ -5,12 +5,20 @@ import { readFile } from 'node:fs/promises';
 const text = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('GameApp uses the shared presentation contract while legacy GPU remains the default production path', async () => {
-  const source = await text('src/app/GameApp.ts');
-  assert.match(source, /rendering\/PresentationRenderer\.ts/);
-  assert.match(source, /rendering\/gpu\/GpuWorldRenderer\.ts/);
-  assert.match(source, /readonly renderer:\s*PresentationRenderer/);
-  assert.match(source, /new GpuWorldRenderer\(canvas\)/);
-  assert.doesNotMatch(source, /rendering\/WorldRenderer\.ts/);
+  const appSource = await text('src/app/GameApp.ts');
+  const factorySource = await text('src/rendering/PresentationRendererFactory.ts');
+
+  assert.match(appSource, /rendering\/PresentationRenderer\.ts/);
+  assert.match(appSource, /rendering\/PresentationRendererFactory\.ts/);
+  assert.match(appSource, /readonly renderer:\s*PresentationRenderer/);
+  assert.doesNotMatch(appSource, /rendering\/gpu\/GpuWorldRenderer\.ts/);
+  assert.doesNotMatch(appSource, /new GpuWorldRenderer\(canvas\)/);
+  assert.doesNotMatch(appSource, /rendering\/WorldRenderer\.ts/);
+
+  assert.match(factorySource, /gpu\/GpuWorldRenderer\.ts/);
+  assert.match(factorySource, /3d\/Civic3DWorldRenderer\.ts/);
+  assert.match(factorySource, /params\.get\('renderer'\) === 'civic-3d' \? 'civic-3d' : 'legacy-gpu'/);
+  assert.match(factorySource, /backend === 'civic-3d'[\s\S]*new Civic3DWorldRenderer\(canvas\)[\s\S]*new GpuWorldRenderer\(canvas\)/);
 });
 
 test('GPU renderer selects WebGL and never acquires a Canvas2D context', async () => {
