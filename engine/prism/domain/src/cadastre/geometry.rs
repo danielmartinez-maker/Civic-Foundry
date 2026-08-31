@@ -125,25 +125,25 @@ pub fn normalize_point(point: WorldPoint) -> Result<WorldPoint, P2AError> {
     Ok(int_to_world(normalize_int_point(point)?))
 }
 
-pub fn normalize_ring(ring: &PolygonRing) -> Result<PolygonRing, P2AError> {
+pub fn normalize_ring(ring: &[WorldPoint]) -> Result<PolygonRing, P2AError> {
     Ok(normalize_int_ring(ring)?
         .into_iter()
         .map(int_to_world)
         .collect())
 }
 
-pub fn polygon_area(ring: &PolygonRing) -> Result<f64, P2AError> {
+pub fn polygon_area(ring: &[WorldPoint]) -> Result<f64, P2AError> {
     let ring = normalize_int_ring(ring)?;
     let area2 = signed_area2(&ring)?;
     Ok((area2.unsigned_abs() as f64) / (2.0 * CENTIMETERS_PER_METER.powi(2)))
 }
 
-pub fn ring_self_intersects(ring: &PolygonRing) -> Result<bool, P2AError> {
+pub fn ring_self_intersects(ring: &[WorldPoint]) -> Result<bool, P2AError> {
     let ring = normalize_int_ring(ring)?;
     ring_self_intersects_int(&ring)
 }
 
-pub fn point_in_ring(point: WorldPoint, ring: &PolygonRing) -> Result<bool, P2AError> {
+pub fn point_in_ring(point: WorldPoint, ring: &[WorldPoint]) -> Result<bool, P2AError> {
     let point = normalize_int_point(point)?;
     let ring = prepare_boolean_ring(ring)?;
     Ok(
@@ -152,12 +152,12 @@ pub fn point_in_ring(point: WorldPoint, ring: &PolygonRing) -> Result<bool, P2AE
     )
 }
 
-pub fn ring_contains_ring(outer: &PolygonRing, inner: &PolygonRing) -> Result<bool, P2AError> {
+pub fn ring_contains_ring(outer: &[WorldPoint], inner: &[WorldPoint]) -> Result<bool, P2AError> {
     let remainder = polygon_difference(inner, outer)?;
     Ok(remainder.is_empty())
 }
 
-pub fn rings_materially_overlap(left: &PolygonRing, right: &PolygonRing) -> Result<bool, P2AError> {
+pub fn rings_materially_overlap(left: &[WorldPoint], right: &[WorldPoint]) -> Result<bool, P2AError> {
     for ring in polygon_intersection(left, right)? {
         if polygon_area(&ring)? > 0.0 {
             return Ok(true);
@@ -167,15 +167,15 @@ pub fn rings_materially_overlap(left: &PolygonRing, right: &PolygonRing) -> Resu
 }
 
 pub fn polygon_intersection(
-    subject: &PolygonRing,
-    clip: &PolygonRing,
+    subject: &[WorldPoint],
+    clip: &[WorldPoint],
 ) -> Result<Vec<PolygonRing>, P2AError> {
     boolean_two(subject, clip, BooleanOperation::Intersection)
 }
 
 pub fn polygon_difference(
-    subject: &PolygonRing,
-    clip: &PolygonRing,
+    subject: &[WorldPoint],
+    clip: &[WorldPoint],
 ) -> Result<Vec<PolygonRing>, P2AError> {
     boolean_two(subject, clip, BooleanOperation::Difference)
 }
@@ -187,7 +187,7 @@ pub fn polygon_union(rings: &[PolygonRing]) -> Result<Vec<PolygonRing>, P2AError
 
     let prepared = rings
         .iter()
-        .map(prepare_boolean_ring)
+        .map(|ring| prepare_boolean_ring(ring))
         .collect::<Result<Vec<_>, _>>()?;
     let split = split_rings(&prepared)?;
     let mut boundary = BTreeSet::new();
@@ -220,8 +220,8 @@ enum BooleanOperation {
 }
 
 fn boolean_two(
-    subject: &PolygonRing,
-    clip: &PolygonRing,
+    subject: &[WorldPoint],
+    clip: &[WorldPoint],
     operation: BooleanOperation,
 ) -> Result<Vec<PolygonRing>, P2AError> {
     let subject = prepare_boolean_ring(subject)?;
@@ -294,7 +294,7 @@ fn int_to_world(point: IntPoint) -> WorldPoint {
     }
 }
 
-fn normalize_int_ring(ring: &PolygonRing) -> Result<Vec<IntPoint>, P2AError> {
+fn normalize_int_ring(ring: &[WorldPoint]) -> Result<Vec<IntPoint>, P2AError> {
     let mut normalized = Vec::with_capacity(ring.len());
     for point in ring {
         let point = normalize_int_point(*point)?;
@@ -311,7 +311,7 @@ fn normalize_int_ring(ring: &PolygonRing) -> Result<Vec<IntPoint>, P2AError> {
     Ok(normalized)
 }
 
-fn prepare_boolean_ring(ring: &PolygonRing) -> Result<Vec<IntPoint>, P2AError> {
+fn prepare_boolean_ring(ring: &[WorldPoint]) -> Result<Vec<IntPoint>, P2AError> {
     let mut ring = normalize_int_ring(ring)?;
     if ring_self_intersects_int(&ring)? {
         return Err(geometry_error("self-intersecting-ring"));
