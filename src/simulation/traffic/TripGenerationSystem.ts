@@ -28,9 +28,9 @@ export class TripGenerationSystem {
     if (homes.length === 0) return [];
 
     const trips: TripRequest[] = [];
-    const commuterWeight = Math.max(1, Math.ceil(Math.max(0, employed) / homes.length));
+    const commuterWeight = Math.max(0, employed) / homes.length;
     const shopperPool = Math.max(0, Math.round(Math.max(0, population) * 0.25));
-    const shoppingWeight = Math.max(1, Math.ceil(shopperPool / homes.length));
+    const shoppingWeight = shopperPool / homes.length;
 
     if (jobs.length > 0 && employed > 0) {
       for (let i = 0; i < homes.length; i++) {
