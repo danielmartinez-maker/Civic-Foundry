@@ -19,6 +19,7 @@ import type { TrafficOverlayMode } from '../TrafficOverlayLayer.ts';
 import type { TransitOverlayMode } from '../TransitOverlayLayer.ts';
 import { createBabylonEngine } from './BabylonEngineFactory.ts';
 import { MiniatureCameraController } from './MiniatureCameraController.ts';
+import type { MiniatureCameraState } from './MiniatureCameraController.ts';
 import { MiniatureRenderPipeline } from './MiniatureRenderPipeline.ts';
 import type {
   PresentationEntityId,
@@ -102,6 +103,14 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
   get quarterTurns(): number { return this.controller.quarterTurns; }
   get currentUrbanFabricOverlayMode(): UrbanFabricOverlayMode { return this.urbanFabricOverlayMode; }
   get currentUrbanFabricSelectedParcelId(): string | null { return this.urbanFabricSelectedParcelId; }
+  get reviewCameraState(): MiniatureCameraState {
+    return this.controller.snapshot();
+  }
+
+  setReviewCamera(state: MiniatureCameraState): void {
+    this.controller.setState(state);
+    this.applyCameraState();
+  }
 
   setVisualTime(visualTime: VisualTime): void {
     if (this.visualTime === visualTime) return;
@@ -260,6 +269,7 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
 
     if (!this.scene || !this.camera || this.disposed) return;
     this.applyCameraState();
+    this.camera.getViewMatrix();
     this.buildingRuntime?.submit(this.lastSnapshot, Object.freeze({
       x: this.camera.position.x,
       y: this.camera.position.y,
@@ -325,7 +335,10 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
     scene.activeCamera = camera;
     this.camera = camera;
 
-    this.renderPipeline = new MiniatureRenderPipeline(scene, camera);
+    this.renderPipeline = new MiniatureRenderPipeline(scene, camera, {
+      enableDepthOfField: result.backend === 'webgpu',
+      enablePostProcessing: result.backend === 'webgpu',
+    });
     this.renderPipeline.setVisualTime(this.visualTime);
     this.buildingRuntime = await Civic3DBuildingRuntime.create(scene, {
       onDiagnostic: (message): void => this.pushDiagnostic(message),

@@ -9,17 +9,23 @@ import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPi
 import type { Scene } from '@babylonjs/core/scene.js';
 import type { VisualTime } from './presentation/PresentationTypes.ts';
 
+export type MiniatureRenderPipelineOptions = Readonly<{
+  enableDepthOfField?: boolean;
+  enablePostProcessing?: boolean;
+}>;
+
 export class MiniatureRenderPipeline {
   readonly ambientLight: HemisphericLight;
   readonly keyLight: DirectionalLight;
-  readonly pipeline: DefaultRenderingPipeline;
+  readonly pipeline: DefaultRenderingPipeline | null;
+  readonly postProcessingEnabled: boolean;
 
   private readonly scene: Scene;
   private readonly ground = MeshBuilder.CreateGround;
   private readonly groundMesh;
   private readonly groundMaterial: StandardMaterial;
 
-  constructor(scene: Scene, camera: ArcRotateCamera) {
+  constructor(scene: Scene, camera: ArcRotateCamera, options: MiniatureRenderPipelineOptions = {}) {
     this.scene = scene;
     this.scene.clearColor = new Color4(0.71, 0.78, 0.79, 1);
     this.scene.ambientColor = new Color3(0.34, 0.36, 0.35);
@@ -46,13 +52,20 @@ export class MiniatureRenderPipeline {
     this.groundMaterial.roughness = 0.96;
     this.groundMesh.material = this.groundMaterial;
 
-    this.pipeline = new DefaultRenderingPipeline('civic-miniature-pipeline', true, scene, [camera]);
-    this.pipeline.fxaaEnabled = true;
-    this.pipeline.bloomEnabled = false;
-    this.pipeline.depthOfFieldEnabled = true;
-    this.pipeline.depthOfField.fStop = 3.2;
-    this.pipeline.depthOfField.focalLength = 45;
-    this.pipeline.depthOfField.lensSize = 50;
+    this.postProcessingEnabled = options.enablePostProcessing ?? true;
+    this.pipeline = this.postProcessingEnabled
+      ? new DefaultRenderingPipeline('civic-miniature-pipeline', true, scene, [camera])
+      : null;
+    if (this.pipeline) {
+      this.pipeline.bloomEnabled = false;
+      if (options.enableDepthOfField ?? true) {
+        this.pipeline.depthOfFieldEnabled = true;
+        this.pipeline.depthOfField.fStop = 3.2;
+        this.pipeline.depthOfField.focalLength = 45;
+        this.pipeline.depthOfField.lensSize = 50;
+      }
+      this.pipeline.fxaaEnabled = false;
+    }
     this.updateFocusDistance(camera.radius);
   }
 
@@ -76,11 +89,13 @@ export class MiniatureRenderPipeline {
   }
 
   updateFocusDistance(distanceMeters: number): void {
-    this.pipeline.depthOfField.focusDistance = Math.max(1_000, distanceMeters * 1_000);
+    if (this.pipeline) {
+      this.pipeline.depthOfField.focusDistance = Math.max(1_000, distanceMeters * 1_000);
+    }
   }
 
   dispose(): void {
-    this.pipeline.dispose();
+    this.pipeline?.dispose();
     this.groundMesh.dispose();
     this.groundMaterial.dispose();
     this.keyLight.dispose();

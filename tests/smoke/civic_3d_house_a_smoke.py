@@ -97,9 +97,11 @@ def main() -> None:
         page.evaluate(
             """
             async () => {
-              const [{ Civic3DWorldRenderer }, { SimulationCore }] = await Promise.all([
+              const [{ Civic3DWorldRenderer }, { SimulationCore }, { serializeCore }, { resolvePresentationBackend }] = await Promise.all([
                 import('http://civic.test/src/rendering/3d/Civic3DWorldRenderer.js'),
                 import('http://civic.test/src/simulation/core/SimulationCore.js'),
+                import('http://civic.test/src/save/save.js'),
+                import('http://civic.test/src/rendering/PresentationRendererFactory.js'),
               ]);
 
               const canvas = document.createElement('canvas');
@@ -116,8 +118,8 @@ def main() -> None:
 
               const core = new SimulationCore({ width: 12, height: 10, seed: 108, startingFunds: 500000 });
               const house = {
-                id: 'browser-house-a',
-                parcelIds: ['parcel:browser-house-a'],
+                id: 'house-a-calibration-1',
+                parcelIds: ['parcel:house-a-calibration-1'],
                 typologyId: 'typology:residential_cottage',
                 footprint: [
                   { x: 115.5, y: 94 },
@@ -172,12 +174,24 @@ def main() -> None:
                   distressScore: 0,
                 },
               };
-              core.buildings.restoreV2([house]);
+              const houseB = {
+                ...house,
+                id: 'house-a-calibration-2',
+                parcelIds: ['parcel:house-a-calibration-2'],
+                footprint: [
+                  { x: 99.5, y: 94 },
+                  { x: 108.5, y: 94 },
+                  { x: 108.5, y: 106 },
+                  { x: 99.5, y: 106 },
+                ],
+              };
+              core.buildings.restoreV2([house, houseB]);
               core.utilitySnapshot = {
                 power: { production: 1, demand: 1, served: 1, unserved: 0, serviceRatio: 1 },
                 water: { production: 1, demand: 1, served: 1, unserved: 0, serviceRatio: 1 },
                 perBuilding: Object.freeze({
                   [house.id]: { power: 1, water: 1 },
+                  [houseB.id]: { power: 1, water: 1 },
                 }),
               };
 
@@ -187,7 +201,14 @@ def main() -> None:
               renderer.draw(core, 'none', null);
               await renderer.whenBuildingSceneIdle();
               renderer.draw(core, 'none', null);
-              window.__civic3dAcceptance = { renderer, core, canvas };
+              window.__civic3dAcceptance = {
+                renderer,
+                core,
+                canvas,
+                serializeCore,
+                resolvePresentationBackend,
+                saveBeforeCamera: JSON.stringify(serializeCore(core)),
+              };
             }
             """
         )
@@ -198,22 +219,29 @@ def main() -> None:
               if (!acceptance) return false;
               acceptance.renderer.draw(acceptance.core, 'none', null);
               const stats = acceptance.renderer.debugSceneStats();
-              return stats.loadedPrototypes >= 1 && stats.buildingInstances === 1;
+              return stats.loadedPrototypes >= 1 && stats.buildingInstances === 2;
             }""",
             timeout=15_000,
         )
 
         stats = page.evaluate("() => window.__civic3dAcceptance.renderer.debugSceneStats()")
         building_debug = page.evaluate(
-            "() => window.__civic3dAcceptance.renderer.debugBuildingState('building:browser-house-a')"
+            "() => window.__civic3dAcceptance.renderer.debugBuildingState('building:house-a-calibration-1')"
+        )
+        building_b_debug = page.evaluate(
+            "() => window.__civic3dAcceptance.renderer.debugBuildingState('building:house-a-calibration-2')"
         )
         engine_backend = page.evaluate(
             "() => window.__civic3dAcceptance.renderer.debugEngineBackend()"
         )
+        backend_from_query = page.evaluate(
+            "() => window.__civic3dAcceptance.resolvePresentationBackend('?renderer=civic-3d')"
+        )
         assert stats["backend"] == "civic-3d", stats
         assert engine_backend in {"webgpu", "webgl"}, engine_backend
+        assert backend_from_query == "civic-3d", backend_from_query
         assert stats["loadedPrototypes"] == 1, stats
-        assert stats["buildingInstances"] == 1, stats
+        assert stats["buildingInstances"] == 2, stats
         assert stats["fallbackBuildings"] == 0, stats
         assert stats["assetRequests"] >= 1, stats
         assert stats["cacheMisses"] >= 1, stats
@@ -221,7 +249,10 @@ def main() -> None:
         assert building_debug["assetId"] == "cf_bld_res_detached_house_a_low_v01", building_debug
         assert building_debug["lod"] in {"lod0", "lod1", "lod2"}, building_debug
         assert isinstance(building_debug["variationSeed"], int), building_debug
-        assert building_debug["structuralHandleId"].startswith("building:browser-house-a:structural:"), building_debug
+        assert building_debug["structuralHandleId"].startswith("building:house-a-calibration-1:structural:"), building_debug
+        assert building_b_debug is not None, building_b_debug
+        assert building_b_debug["assetId"] == building_debug["assetId"], (building_debug, building_b_debug)
+        assert building_b_debug["lod"] == building_debug["lod"], (building_debug, building_b_debug)
 
         before = page.evaluate(
             """() => ({
@@ -233,7 +264,7 @@ def main() -> None:
             """async () => {
               const { renderer, core } = window.__civic3dAcceptance;
               renderer.rotate(1);
-              renderer.zoomBy(0.8, 450, 320);
+              renderer.zoomBy(0.95, 450, 320);
               renderer.draw(core, 'none', null);
               await renderer.whenBuildingSceneIdle();
               renderer.draw(core, 'none', null);
@@ -248,7 +279,88 @@ def main() -> None:
         assert after["turns"] == (before["turns"] + 1) % 4, (before, after)
         assert after["zoom"] > before["zoom"], (before, after)
 
+        pick = page.evaluate(
+            """() => {
+              const { renderer, core } = window.__civic3dAcceptance;
+              const point = renderer.worldToCanvas(120, 100, core);
+              return {
+                point,
+                id: renderer.pickPresentationEntity(point.x, point.y),
+              };
+            }"""
+        )
+        assert pick["id"] == "building:house-a-calibration-1", pick
+
+        save_before_camera = page.evaluate(
+            "() => window.__civic3dAcceptance.saveBeforeCamera"
+        )
+        save_before_camera_object = json.loads(save_before_camera)
+        assert save_before_camera_object["saveVersion"] == 9, save_before_camera_object
+        assert save_before_camera_object["gameVersion"] == "0.9.0-urban-fabric", save_before_camera_object
+        assert "babylon" not in save_before_camera.lower(), save_before_camera
+        assert "structuralhandleid" not in save_before_camera.lower(), save_before_camera
+        assert "pipeline" not in save_before_camera.lower(), save_before_camera
+
+        save_after_camera = page.evaluate(
+            "() => JSON.stringify(window.__civic3dAcceptance.serializeCore(window.__civic3dAcceptance.core))"
+        )
+        assert save_after_camera == save_before_camera, "camera interaction mutated Save V9 authority"
+
+        rebuild_baseline = page.evaluate(
+            """() => ({
+              camera: window.__civic3dAcceptance.renderer.reviewCameraState,
+              a: window.__civic3dAcceptance.renderer.debugBuildingState('building:house-a-calibration-1'),
+              b: window.__civic3dAcceptance.renderer.debugBuildingState('building:house-a-calibration-2'),
+            })"""
+        )
+        page.evaluate(
+            """async ({ camera }) => {
+              const acceptance = window.__civic3dAcceptance;
+              acceptance.renderer.dispose();
+              await acceptance.renderer.whenDisposed();
+              const { Civic3DWorldRenderer } = await import('http://civic.test/src/rendering/3d/Civic3DWorldRenderer.js');
+              const renderer = new Civic3DWorldRenderer(acceptance.canvas);
+              await renderer.preloadAssets();
+              renderer.setReviewCamera(camera);
+              renderer.draw(acceptance.core, 'none', null);
+              await renderer.whenBuildingSceneIdle();
+              renderer.draw(acceptance.core, 'none', null);
+              acceptance.renderer = renderer;
+            }""",
+            {"camera": rebuild_baseline["camera"]},
+        )
+        page.wait_for_function(
+            "() => window.__civic3dAcceptance.renderer.debugSceneStats().buildingInstances === 2",
+            timeout=15_000,
+        )
+        rebuilt_a = page.evaluate(
+            "() => window.__civic3dAcceptance.renderer.debugBuildingState('building:house-a-calibration-1')"
+        )
+        rebuilt_b = page.evaluate(
+            "() => window.__civic3dAcceptance.renderer.debugBuildingState('building:house-a-calibration-2')"
+        )
+        rebuilt_stats = page.evaluate(
+            "() => window.__civic3dAcceptance.renderer.debugSceneStats()"
+        )
+        assert rebuilt_stats["loadedPrototypes"] == 1, rebuilt_stats
+        assert rebuilt_a["assetId"] == rebuild_baseline["a"]["assetId"], (rebuild_baseline, rebuilt_a)
+        assert rebuilt_a["lod"] == rebuild_baseline["a"]["lod"], (rebuild_baseline, rebuilt_a)
+        assert rebuilt_a["variationSeed"] == rebuild_baseline["a"]["variationSeed"], (rebuild_baseline, rebuilt_a)
+        assert rebuilt_b["assetId"] == rebuild_baseline["b"]["assetId"], (rebuild_baseline, rebuilt_b)
+        assert rebuilt_b["lod"] == rebuild_baseline["b"]["lod"], (rebuild_baseline, rebuilt_b)
+        assert rebuilt_b["variationSeed"] == rebuild_baseline["b"]["variationSeed"], (rebuild_baseline, rebuilt_b)
+        save_after_rebuild = page.evaluate(
+            "() => JSON.stringify(window.__civic3dAcceptance.serializeCore(window.__civic3dAcceptance.core))"
+        )
+        assert save_after_rebuild == save_before_camera, "renderer rebuild mutated Save V9 authority"
+
         page.wait_for_timeout(100)
+        page.evaluate(
+            """() => {
+              const scene = window.__civic3dAcceptance.renderer.scene;
+              for (let index = 0; index < 12; index += 1) scene.render();
+            }"""
+        )
         png = page.locator("#civic-3d-acceptance").screenshot(type="png")
         screenshot_path = OUTPUT / "house_a_browser.png"
         screenshot_path.write_bytes(png)
@@ -259,7 +371,7 @@ def main() -> None:
               const scene = renderer.scene;
               const camera = renderer.camera;
               if (!scene || !camera) return { missingScene: true };
-              const presentationId = 'building:browser-house-a';
+              const presentationId = 'building:house-a-calibration-1';
               const nodes = [...scene.transformNodes, ...scene.meshes]
                 .filter(node => node.metadata?.presentationEntityId === presentationId)
                 .map(node => {

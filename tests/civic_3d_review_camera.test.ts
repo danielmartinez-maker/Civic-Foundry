@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { Civic3DWorldRenderer } from '../src/rendering/3d/Civic3DWorldRenderer.ts';
 import { MiniatureCameraController } from '../src/rendering/3d/MiniatureCameraController.ts';
 
 test('fixed review camera state can be restored exactly and deterministically', () => {
@@ -24,4 +25,8 @@ test('fixed review camera state can be restored exactly and deterministically', 
 
   camera.setState(review);
   assert.deepEqual(camera.snapshot(), review);
+});
+
+test('3D renderer exposes a presentation-only review camera setter', () => {
+  assert.equal(typeof Civic3DWorldRenderer.prototype.setReviewCamera, 'function');
 });

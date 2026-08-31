@@ -22,6 +22,8 @@ Electron desktop host (optional local shell)
 
 `SimulationCore` remains the public gameplay facade. `SimulationKernel` owns deterministic tick execution. `WorldFoundation` remains the sole physical/geographic authority. `CadastralGraph` owns legal parcels and their topology. `CadastralRuntimeMutationService` coordinates runtime geometry changes across the owners that reference parcel IDs. Legacy grid lots remain available only as a derived compatibility view.
 
+The current default presentation remains `GpuWorldRenderer` backed by PixiJS WebGL. Tranche 1’s 3D presentation is opt-in through `?renderer=civic-3d`, which constructs `Civic3DWorldRenderer` with Babylon.js WebGPU-first initialization and a WebGL fallback. This tranche does not retire the legacy renderer or move simulation, World Foundation, cadastre, or Save V9 authority into presentation code.
+
 The Electron process is a local application host only. It does not own simulation state, persistence state, or gameplay authority, and the current desktop tranche exposes no generic IPC bridge. The browser development target and Electron desktop target execute the same built application and authoritative TypeScript simulation.
 
 ## Authority matrix
@@ -208,7 +210,7 @@ Legacy Canvas2D renderer/pass files are transitional migration references and ar
 
 ## Desktop and module-loading boundary
 
-The Windows desktop runtime uses Electron as a hardened local host around the same `dist/` application used by browser development. The desktop window loads local packaged content only, disables Node integration, enables context isolation and sandboxing, and denies unexpected navigation/window creation.
+The Windows desktop runtime currently uses Electron as a hardened local host around the same `dist/` application used by browser development. Tauri 2 is an approved later target, not an implemented part of Tranche 1. The desktop window loads local packaged content only, disables Node integration, enables context isolation and sandboxing, and denies unexpected navigation/window creation.
 
 Electron owns application-window lifecycle only. No simulation state crosses into the Electron main process and no generic IPC surface exists in the current tranche.
 

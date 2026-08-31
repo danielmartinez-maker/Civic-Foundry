@@ -228,3 +228,18 @@ The tranche also added the hardened Electron Windows host around the same local 
 Feature head `725c9cec539f1df32386c4c35e95c81a7fe134ab` passed GitHub Actions run `33137152536` with **600/600 Node tests**, core verification, Phase 6/7/Urban Fabric browser smokes, Isometric Pass A functional smoke, and Isometric Pass A visual smoke. PR #98 was then merged into `main` as `c2e7befd9174b65dadc90e1e381d892accf780c6`.
 
 Legacy Canvas2D renderer/pass sources remain in the repository only as transitional parity references. They are not instantiated by the production `GameApp` path; specialized visual parity, retained-scene performance work, installer/update packaging, optional WebGPU evaluation, and eventual legacy renderer deletion remain deferred presentation work.
+
+## 2026-08-31 — 3D Runtime Foundation / House A acceptance closure
+
+Closed the House A 3D vertical-slice acceptance gap on the existing Babylon 9.23/WebGPU-first branch without changing simulation or persistence authority.
+
+The acceptance closure adds:
+
+- a WebGL-safe miniature render path that keeps lights, ground, GLB geometry, camera controls, and presentation state mapping while avoiding the Babylon post-processing construction that blanked the Chromium fallback canvas;
+- deterministic camera-position handoff from the presentation camera controller to LOD reconciliation;
+- a presentation-only fixed review-camera setter;
+- House A browser acceptance for canonical picking, two-instance prototype sharing, camera orbit/zoom Save V9 immutability, and renderer teardown/rebuild identity preservation;
+- fixed front/rear/top/street/neighborhood/night/worn/construction review outputs with byte-identical front-scene repeat coverage;
+- operational 3D asset-pipeline documentation and the dedicated `test:smoke:3d-house` / `review:3d-house` commands.
+
+The current default remains `GpuWorldRenderer`/PixiJS WebGL. `Civic3DWorldRenderer` remains opt-in through `?renderer=civic-3d`; Electron remains the current desktop host, Tauri 2 remains deferred, and Save V9 remains unchanged. Generated GLBs and review PNGs remain ignored `dist/` evidence outputs rather than tracked source assets.
