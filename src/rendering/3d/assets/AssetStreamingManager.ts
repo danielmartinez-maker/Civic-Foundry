@@ -88,6 +88,7 @@ export class AssetStreamingManager<T extends DisposableScenePrototype> {
 
     this.cacheMisses += 1;
     this.incrementPending(key);
+    let ownsPendingClaim = true;
     try {
       const prototype = await this.broker.enqueue(key, request.priority, async () => {
         const loaded = await this.loadWithRetry({
@@ -102,6 +103,7 @@ export class AssetStreamingManager<T extends DisposableScenePrototype> {
       });
 
       this.decrementPending(key);
+      ownsPendingClaim = false;
       if (request.signal?.aborted || this.disposed) {
         this.disposeIfUnreferencedAndUnclaimed(key);
         throw abortError();
@@ -114,7 +116,10 @@ export class AssetStreamingManager<T extends DisposableScenePrototype> {
       }
       return this.createLease(key, request.assetId, request.lod, this.resources.acquire(key));
     } catch (error) {
-      if ((this.pendingConsumers.get(key) ?? 0) > 0) this.decrementPending(key);
+      if (ownsPendingClaim) {
+        this.decrementPending(key);
+        ownsPendingClaim = false;
+      }
       if (request.signal?.aborted) {
         this.disposeIfUnreferencedAndUnclaimed(key);
         throw abortError();
