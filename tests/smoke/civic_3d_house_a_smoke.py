@@ -34,7 +34,6 @@ def assert_canvas_has_variance(png: bytes) -> None:
     with Image.open(BytesIO(png)) as source:
         image = source.convert("RGBA")
         width, height = image.size
-        assert width >= 600 and height >= 400, image.size
         step_x = max(1, width // 80)
         step_y = max(1, height // 50)
         luminance: list[float] = []
@@ -47,13 +46,23 @@ def assert_canvas_has_variance(png: bytes) -> None:
                 luminance.append((r + g + b) / 3)
                 colors.add((r, g, b))
 
-    assert len(luminance) > 100, ("too few visible samples", len(luminance))
+    metrics = {
+        "size": (width, height),
+        "sample_count": len(luminance),
+        "luminance_min": min(luminance) if luminance else None,
+        "luminance_max": max(luminance) if luminance else None,
+        "luminance_span": (max(luminance) - min(luminance)) if luminance else None,
+        "color_count": len(colors),
+    }
+    print("CIVIC_3D_VISUAL_METRICS", metrics, flush=True)
+
+    assert width >= 600 and height >= 400, ("canvas too small", metrics)
+    assert len(luminance) > 100, ("too few visible samples", metrics)
     assert max(luminance) - min(luminance) > 20, (
         "insufficient 3d luminance range",
-        min(luminance),
-        max(luminance),
+        metrics,
     )
-    assert len(colors) > 12, ("insufficient 3d color variation", len(colors))
+    assert len(colors) > 12, ("insufficient 3d color variation", metrics)
 
 
 def main() -> None:
@@ -222,11 +231,17 @@ def main() -> None:
 
         page.wait_for_timeout(250)
         png = page.locator("#civic-3d-acceptance").screenshot(type="png")
+        screenshot_path = OUTPUT / "house_a_browser.png"
+        screenshot_path.write_bytes(png)
         assert_canvas_has_variance(png)
-        (OUTPUT / "house_a_browser.png").write_bytes(png)
 
         diagnostics = page.evaluate(
             "() => [...window.__civic3dAcceptance.renderer.assetDiagnostics()]"
+        )
+        print(
+            "CIVIC_3D_RUNTIME_DIAGNOSTICS",
+            {"stats": stats, "diagnostics": diagnostics, "browser_errors": errors},
+            flush=True,
         )
         assert not any("failed" in item.lower() for item in diagnostics), diagnostics
         assert not any("error" in item.lower() for item in diagnostics), diagnostics
