@@ -6,17 +6,17 @@ import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder.js';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode.js';
 import type { Node } from '@babylonjs/core/node.js';
 import type { Scene } from '@babylonjs/core/scene.js';
+import type { AssetLod } from '../assets/AssetCatalogV2.ts';
 import type {
   BabylonGlbPrototype,
   BabylonPrototypeInstance,
 } from '../assets/BabylonGlbPrototypeLoader.ts';
 import type { BuildingVisualState } from '../presentation/PresentationTypes.ts';
 import type {
-  BuildingLod,
   BuildingPickMetadata,
   BuildingSceneAdapter,
 } from './BuildingSceneLayer.ts';
-import type { BuildingAppearanceState } from './StateVisualResolver.ts';
+import type { BuildingAppearance } from './StateVisualResolver.ts';
 
 const MIN_PROXY_DIMENSION_M = 0.05;
 const SCAFFOLD_THICKNESS_M = 0.08;
@@ -156,8 +156,7 @@ function createScaffold(
     [halfWidth, halfDepth],
   ] as const;
 
-  for (let index = 0; index < corners.length; index += 1) {
-    const [x, z] = corners[index];
+  for (const [index, [x, z]] of corners.entries()) {
     const post = MeshBuilder.CreateBox(`${state.presentationId}:scaffold-post-${index}`, {
       width: SCAFFOLD_THICKNESS_M,
       height: postHeight,
@@ -168,9 +167,13 @@ function createScaffold(
     post.material = material;
   }
 
-  const railLevels = [Math.max(0.7, bounds.height * 0.34), Math.max(1.4, bounds.height * 0.68), bounds.height];
-  for (let levelIndex = 0; levelIndex < railLevels.length; levelIndex += 1) {
-    const y = Math.min(postHeight - 0.1, railLevels[levelIndex]);
+  const railLevels = [
+    Math.max(0.7, bounds.height * 0.34),
+    Math.max(1.4, bounds.height * 0.68),
+    bounds.height,
+  ] as const;
+  for (const [levelIndex, rawY] of railLevels.entries()) {
+    const y = Math.min(postHeight - 0.1, rawY);
     for (const z of [-halfDepth, halfDepth]) {
       const rail = MeshBuilder.CreateBox(`${state.presentationId}:scaffold-rail-x-${levelIndex}-${z}`, {
         width: halfWidth * 2,
@@ -207,7 +210,7 @@ function createFallbackMaterial(scene: Scene, presentationId: string): PBRMateri
 
 function applyBaselineAppearance(
   baseline: MaterialBaseline,
-  appearance: BuildingAppearanceState,
+  appearance: BuildingAppearance,
 ): void {
   const grime = clamp01(appearance.grimeAmount);
   const grimeBlend = grime * 0.34;
@@ -252,7 +255,7 @@ function makeHandle(
   };
 }
 
-export class BabylonBuildingSceneAdapter implements BuildingSceneAdapter<BabylonBuildingHandle, BabylonGlbPrototype> {
+export class BabylonBuildingSceneAdapter implements BuildingSceneAdapter<BabylonGlbPrototype, BabylonBuildingHandle> {
   private readonly scene: Scene;
 
   constructor(scene: Scene) {
@@ -262,7 +265,7 @@ export class BabylonBuildingSceneAdapter implements BuildingSceneAdapter<Babylon
   createAssetBuilding(
     state: BuildingVisualState,
     prototype: BabylonGlbPrototype,
-    _lod: BuildingLod,
+    _lod: AssetLod,
     pickMetadata: BuildingPickMetadata,
   ): BabylonBuildingHandle {
     const root = new TransformNode(`${state.presentationId}:root`, this.scene);
@@ -326,7 +329,7 @@ export class BabylonBuildingSceneAdapter implements BuildingSceneAdapter<Babylon
     );
   }
 
-  applyAppearance(handle: BabylonBuildingHandle, appearance: BuildingAppearanceState): void {
+  applyAppearance(handle: BabylonBuildingHandle, appearance: BuildingAppearance): void {
     const internal = handle as InternalBuildingHandle;
     if (internal.disposed) return;
     for (const baseline of internal.materialBaselines) {
