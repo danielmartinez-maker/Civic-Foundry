@@ -245,3 +245,57 @@ test('resource cache refcounts and scene prototype cache disposal are explicit',
   assert.deepEqual(disposed, [key]);
   assert.equal(prototypes.evict(key), false);
 });
+
+test('Babylon GLB prototype loader centralizes URL loading, instantiation, and presentation disposal', async () => {
+  const { BabylonGlbPrototypeLoader } = await import(
+    '../src/rendering/3d/assets/BabylonGlbPrototypeLoader.ts'
+  );
+  const scene = Object.freeze({ id: 'scene' });
+  const loadCalls: Array<Readonly<{ rootUrl: string; fileName: string; scene: unknown }>> = [];
+  const disposeCalls: string[] = [];
+  let rename: ((name: string) => string) | undefined;
+  const rootNode = Object.freeze({ dispose: () => { disposeCalls.push('root'); } });
+  const skeleton = Object.freeze({ dispose: () => { disposeCalls.push('skeleton'); } });
+  const animationGroup = Object.freeze({ dispose: () => { disposeCalls.push('animation'); } });
+  const container = Object.freeze({
+    instantiateModelsToScene: (nameFunction?: (name: string) => string) => {
+      rename = nameFunction;
+      return Object.freeze({
+        rootNodes: Object.freeze([rootNode]),
+        skeletons: Object.freeze([skeleton]),
+        animationGroups: Object.freeze([animationGroup]),
+      });
+    },
+    dispose: () => { disposeCalls.push('container'); },
+  });
+  const loader = new BabylonGlbPrototypeLoader(scene as never, {
+    loadAssetContainerAsync: async (rootUrl: string, fileName: string, receivedScene: unknown) => {
+      loadCalls.push(Object.freeze({ rootUrl, fileName, scene: receivedScene }));
+      return container as never;
+    },
+  });
+  const key = `${HOUSE_A}@lod0`;
+  const prototype = await loader.load({
+    key,
+    assetId: HOUSE_A,
+    lod: 'lod0',
+    url: `models/${HOUSE_A}_lod0.glb`,
+  });
+
+  assert.deepEqual(loadCalls, [{
+    rootUrl: 'models/',
+    fileName: `${HOUSE_A}_lod0.glb`,
+    scene,
+  }]);
+  assert.equal(prototype.key, key);
+
+  const instance = prototype.instantiate('building:b1');
+  assert.equal(rename?.('root'), 'building:b1:root');
+  assert.deepEqual(instance.rootNodes, [rootNode]);
+  instance.dispose();
+  assert.deepEqual(disposeCalls, ['animation', 'skeleton', 'root']);
+
+  prototype.dispose();
+  assert.deepEqual(disposeCalls, ['animation', 'skeleton', 'root', 'container']);
+  assert.throws(() => prototype.instantiate('building:b2'), /disposed/i);
+});
