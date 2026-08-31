@@ -67,6 +67,12 @@ export class MiniatureCameraController {
     });
   }
 
+  focus(target: MiniatureCameraTarget): void {
+    this.#target.x = finite(target.x, 'target.x');
+    this.#target.y = 0;
+    this.#target.z = finite(target.z, 'target.z');
+  }
+
   orbit(deltaX: number, deltaY: number): void {
     this.#azimuthRad = normalizeAngle(
       this.#azimuthRad + finite(deltaX, 'orbit deltaX') * ORBIT_RADIANS_PER_PIXEL,
