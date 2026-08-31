@@ -17,6 +17,8 @@ Electron desktop host (optional local shell)
       → parcel zoning / envelopes / massing / BuildingV2 / property systems
       → legacy city compatibility domains
     → GpuWorldRenderer
+      → deterministic base/vehicle presentation commands
+      → GpuAssetRegistry + retained Pixi sprite layers / bounded vehicle pools
       → PixiJS WebGL                     read-only presentation
 ```
 
@@ -192,7 +194,13 @@ The Task 13 runtime-mutation work does **not** change the schema: Save V9 remain
 
 Rendering and UI remain read-only consumers of simulation authority. The production world renderer is `GpuWorldRenderer`, backed by PixiJS 8/WebGL and the existing `IsometricCamera` projection/input contract.
 
-The renderer owns presentation-only GPU scene state for terrain, zoning, roads, structures, moving vehicles, overlays, parcel selection, and tool previews. It may derive visual geometry from authoritative snapshots, including `CadastralGraph.parcelPolygon()`, but it does not call simulation mutation APIs or create persistent state.
+The production base scene is manifest-driven. `PASS_A_ASSET_MANIFEST` remains the single asset identity authority; deterministic presentation command builders reuse the existing terrain variant, road autotile, construction-stage, building variant, vehicle-orientation, and depth-order helpers rather than forking simulation or visual rules. `GpuAssetRegistry` translates those canonical entries into cached Pixi atlas subtextures.
+
+Static terrain, road, building/construction, civic, utility, and vegetation display objects are retained by stable presentation key. Unchanged fingerprints preserve Pixi sprite identity; changed fingerprints update the existing object in place; removed keys are destroyed. Camera pan/zoom updates projected transforms and culling without replacing unchanged static display objects. Private, service, surface-transit, and freight vehicles use retained active identity plus fixed-size compatible sprite pools.
+
+`GpuWorldRenderer.debugSceneStats()` exposes presentation-only active/create/update/remove/reuse/pool counters for regression diagnostics. These counters are not persisted and are not simulation inputs. The compiled isometric browser smoke explicitly proves unchanged redraws and camera motion do not increase static creation counters.
+
+The renderer may derive visual geometry from authoritative snapshots, including `CadastralGraph.parcelPolygon()`, but it does not call simulation mutation APIs or create persistent state. Zoning, selection/tool previews, and the generic analytical overlay compatibility seam remain Pixi `Graphics` presentation in GPU Presentation Phase 2 because they do not yet have specialized retained overlay identities.
 
 Urban Fabric presentation includes:
 
@@ -202,9 +210,9 @@ Urban Fabric presentation includes:
 - canonical parcel inspector;
 - parcel selection routed through the renderer/tool compatibility coordinate seam.
 
-Analytical overlays are mutually exclusive so presentation state cannot ambiguously claim multiple active analytical modes. Selecting a parcel does not mutate cadastre, zoning, or property state.
+Analytical overlays are mutually exclusive so presentation state cannot ambiguously claim multiple active analytical modes. Selecting a parcel does not mutate cadastre, zoning, or property state. Specialized traffic/service/transit/economy/cadastral/zoning-envelope GPU parity is the next presentation tranche and must reuse existing canonical mapper outputs.
 
-Legacy Canvas2D renderer/pass files are transitional migration references and are not instantiated by the production `GameApp` path. Equivalent specialized GPU parity can replace and eventually remove them without changing simulation ownership.
+Legacy Canvas2D renderer/pass files are transitional migration references and are not instantiated by the production `GameApp` path. They may be removed only after the specialized GPU parity tranche passes its explicit usage audit and equivalent regression coverage exists; tests are not weakened merely to permit deletion.
 
 ## Desktop and module-loading boundary
 
@@ -247,6 +255,8 @@ Urban Fabric acceptance now includes:
 - deterministic fixed-seed mutation fuzzing with per-step graph validation and controlled-area conservation;
 - compiled browser coverage for Urban Fabric overlays, parcel inspection, `BuildingV2` materialization, Save V9, and post-load canonical ID preservation;
 - production-path contract coverage proving `GameApp` uses the WebGL renderer and the Electron host is local/sandboxed;
+- retained-scene unit coverage for canonical manifest selection, static identity updates/removal, vehicle command identity/orientation, and bounded vehicle-pool reuse;
+- compiled isometric browser proof that the atlas registry has no diagnostics and unchanged redraw/pan operations do not recreate static scene sprites;
 - all inherited Phase 1R, Phase 6/7, Urban Fabric, and isometric functional/visual gates.
 
-GitHub remains the durable canonical source of truth. The desktop GPU runtime was verified on PR #98 head `725c9cec`, merged into `main` as `c2e7befd`, and is now the production presentation path. Deferred Canvas2D parity work remains non-authoritative presentation migration work and does not alter simulation or persistence ownership.
+GitHub remains the durable canonical source of truth. Desktop GPU Runtime feature head `725c9cec539f1df32386c4c35e95c81a7fe134ab` passed GitHub Actions run `33137152536` before PR #98 was merged into `main` as `c2e7befd9174b65dadc90e1e381d892accf780c6`. GPU Presentation Phase 2 remains isolated on draft PR #99 until explicit integration approval.
