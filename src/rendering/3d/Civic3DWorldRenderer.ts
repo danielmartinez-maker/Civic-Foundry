@@ -2,6 +2,7 @@ import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera.js';
 import '@babylonjs/core/Culling/ray.js';
 import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine.js';
 import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector.js';
+import type { Node } from '@babylonjs/core/node.js';
 import { Scene } from '@babylonjs/core/scene.js';
 import type { SimulationCore } from '../../simulation/core/SimulationCore.ts';
 import { LEGACY_CELL_SIZE_METERS, type WorldPoint } from '../../world/cadastre/Geometry.ts';
@@ -19,13 +20,18 @@ import type { TransitOverlayMode } from '../TransitOverlayLayer.ts';
 import { createBabylonEngine } from './BabylonEngineFactory.ts';
 import { MiniatureCameraController } from './MiniatureCameraController.ts';
 import { MiniatureRenderPipeline } from './MiniatureRenderPipeline.ts';
-import type { VisualTime, WorldPresentationSnapshot } from './presentation/PresentationTypes.ts';
+import type {
+  PresentationEntityId,
+  VisualTime,
+  WorldPresentationSnapshot,
+} from './presentation/PresentationTypes.ts';
 import { WorldPresentationSnapshotBuilder } from './presentation/WorldPresentationSnapshotBuilder.ts';
 import { Civic3DBuildingRuntime } from './scene/Civic3DBuildingRuntime.ts';
 
 const INITIAL_RADIUS_METERS = 900;
 const PIXEL_PAN_SCALE = 0.0025;
 const MAX_ASSET_DIAGNOSTICS = 32;
+const PRESENTATION_ID_PATTERN = /^(building|parcel|road|vehicle|facility):.+$/;
 
 type PointerGesture = Readonly<{
   pointerId: number;
@@ -33,6 +39,21 @@ type PointerGesture = Readonly<{
   x: number;
   y: number;
 }>;
+
+type EngineBackend = 'webgpu' | 'webgl';
+
+function presentationIdFromNode(start: Node | null): PresentationEntityId | null {
+  let node = start;
+  while (node) {
+    const metadata = node.metadata as Readonly<{ presentationEntityId?: unknown }> | null | undefined;
+    const candidate = metadata?.presentationEntityId;
+    if (typeof candidate === 'string' && PRESENTATION_ID_PATTERN.test(candidate)) {
+      return candidate as PresentationEntityId;
+    }
+    node = node.parent;
+  }
+  return null;
+}
 
 export class Civic3DWorldRenderer implements PresentationRenderer {
   readonly backend = 'civic-3d' as const;
@@ -51,6 +72,7 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
   private readonly inputCleanups: Array<() => void> = [];
 
   private engine: AbstractEngine | null = null;
+  private engineBackend: EngineBackend | null = null;
   private scene: Scene | null = null;
   private camera: ArcRotateCamera | null = null;
   private renderPipeline: MiniatureRenderPipeline | null = null;
@@ -158,6 +180,22 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
     return Object.freeze({ x, y });
   }
 
+  pickPresentationEntity(clientX: number, clientY: number): PresentationEntityId | null {
+    const engine = this.engine;
+    const scene = this.scene;
+    const camera = this.camera;
+    if (!engine || !scene || !camera || this.disposed) return null;
+
+    this.applyCameraState();
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const renderX = (clientX - rect.left) * (engine.getRenderWidth() / rect.width);
+    const renderY = (clientY - rect.top) * (engine.getRenderHeight() / rect.height);
+    const hit = scene.pick(renderX, renderY, undefined, false, camera);
+    if (!hit?.hit || !hit.pickedMesh) return null;
+    return presentationIdFromNode(hit.pickedMesh);
+  }
+
   tilePolygon(x: number, y: number, core: SimulationCore): readonly RenderPoint[] {
     const x0 = x * LEGACY_CELL_SIZE_METERS;
     const z0 = y * LEGACY_CELL_SIZE_METERS;
@@ -175,8 +213,21 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
     await this.readyPromise;
   }
 
+  async whenBuildingSceneIdle(): Promise<void> {
+    await this.readyPromise;
+    await this.buildingRuntime?.whenIdle();
+  }
+
   assetDiagnostics(): readonly string[] {
     return Object.freeze([...this.diagnostics]);
+  }
+
+  debugEngineBackend(): EngineBackend | null {
+    return this.engineBackend;
+  }
+
+  debugBuildingState(presentationId: `building:${string}`) {
+    return this.buildingRuntime?.debugBuildingState(presentationId) ?? null;
   }
 
   resize(): void {
@@ -252,6 +303,7 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
       return;
     }
     this.engine = result.engine;
+    this.engineBackend = result.backend;
     this.diagnostics.push(...result.diagnostics);
     if (result.backend === 'webgl') this.pushDiagnostic('Babylon renderer running on WebGL fallback.');
 
@@ -298,6 +350,7 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
       this.camera = null;
       this.engine?.dispose();
       this.engine = null;
+      this.engineBackend = null;
       this.lastSnapshot = null;
       this.centeredOnWorld = false;
     }
