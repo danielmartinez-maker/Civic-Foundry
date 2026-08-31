@@ -9,6 +9,10 @@ export type BabylonPrototypeInstance = Readonly<{
   dispose(): void;
 }>;
 
+export type BabylonPrototypeInstantiationOptions = Readonly<{
+  cloneMaterials?: boolean;
+}>;
+
 type Disposable = Readonly<{ dispose(): void }>;
 
 type BabylonInstantiatedEntriesLike = Readonly<{
@@ -77,14 +81,17 @@ export class BabylonGlbPrototype {
     this.container = container;
   }
 
-  instantiate(namePrefix: string): BabylonPrototypeInstance {
+  instantiate(
+    namePrefix: string,
+    options: BabylonPrototypeInstantiationOptions = {},
+  ): BabylonPrototypeInstance {
     if (this.disposed) throw new Error(`Babylon GLB prototype '${this.key}' is disposed`);
     const prefix = namePrefix.trim();
     if (prefix.length === 0) throw new Error('Babylon GLB instance name prefix must be non-empty');
 
     const entries = this.container.instantiateModelsToScene(
       (sourceName: string): string => `${prefix}:${sourceName}`,
-      false,
+      options.cloneMaterials ?? false,
     );
     let instanceDisposed = false;
     return Object.freeze({
