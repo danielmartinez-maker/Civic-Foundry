@@ -7,10 +7,16 @@ import type { ServiceOverlayMode } from '../ServiceOverlayLayer.ts';
 import type { TrafficOverlayMode } from '../TrafficOverlayLayer.ts';
 import type { TransitOverlayMode } from '../TransitOverlayLayer.ts';
 import type { UrbanFabricOverlayMode } from '../CadastralOverlayLayer.ts';
+import type {
+  CellSelection,
+  PresentationRenderer,
+  PresentationSceneStats,
+  RenderPoint,
+} from '../PresentationRenderer.ts';
 import { IsometricCamera } from '../isometric/IsometricCamera.ts';
 
-export type GpuPoint = Readonly<{ x: number; y: number }>;
-export type CellSelection = Readonly<{ x: number; y: number }> | null;
+export type { CellSelection } from '../PresentationRenderer.ts';
+export type GpuPoint = RenderPoint;
 type RendererWorldSize = Readonly<{ width: number; height: number }>;
 type CellCoord = Readonly<{ x: number; y: number }>;
 
@@ -61,7 +67,9 @@ const OVERLAY_COLORS = Object.freeze({
 });
 
 // Presentation-only facade. Authoritative state remains inside SimulationCore.
-export class GpuWorldRenderer {
+export class GpuWorldRenderer implements PresentationRenderer {
+  readonly backend = 'legacy-gpu' as const;
+  readonly cameraInputOwner = 'app' as const;
   readonly canvas: HTMLCanvasElement;
   private readonly camera = new IsometricCamera();
   private readonly application = new Application();
@@ -136,6 +144,23 @@ export class GpuWorldRenderer {
 
   assetDiagnostics(): readonly string[] {
     return Object.freeze([]);
+  }
+
+  debugSceneStats(): PresentationSceneStats {
+    return Object.freeze({
+      backend: this.backend,
+      loadedPrototypes: 0,
+      buildingInstances: 0,
+      fallbackBuildings: 0,
+      assetRequests: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+    });
+  }
+
+  dispose(): void {
+    if (this.initialized) this.application.destroy();
+    this.initialized = false;
   }
 
   resize(): void {

@@ -37,3 +37,13 @@ jobs:
         run: npm run test:smoke:isometric
       - name: Isometric Pass A visual smoke
         run: python tests/smoke/isometric_visual_smoke.py
+      - name: Civic 3D House A browser smoke
+        run: npm run test:smoke:3d
+      - name: Preserve Civic 3D House A smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: civic-3d-house-a-smoke-${{ github.run_id }}
+          path: test-artifacts/civic-3d-house-a/
+          if-no-files-found: ignore
+          retention-days: 7

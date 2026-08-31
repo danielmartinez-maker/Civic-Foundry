@@ -20,6 +20,22 @@ python tests/smoke/isometric_visual_smoke.py
 
 `npm test` uses Node's built-in test runner with TypeScript strip-types. Source typechecking uses strict `tsc`. Browser smokes execute the compiled application in Chromium through Playwright.
 
+## 3D runtime foundation gate
+
+The Tranche 1 focused suites cover Babylon engine selection, the WebGL fallback rendering contract, deterministic review-camera state, Manifest V2/House A compilation, GLB streaming and cancellation, retained building reconstruction, canonical picking metadata, presentation state mapping, the authority firewall, and the desktop GPU runtime boundary.
+
+After the production build, run the real Chromium House A acceptance and fixed-camera evidence runner:
+
+```bash
+npm run build
+npm run test:smoke:3d-house
+npm run review:3d-house
+```
+
+The acceptance smoke requires the opt-in `civic-3d` backend, non-empty House A LOD0/LOD1/LOD2/collision outputs, a resident catalog prototype, two canonical building instances sharing the same asset/LOD prototype, canonical presentation picking, camera orbit/zoom without Save V9 mutation, and deterministic teardown/rebuild of the presentation layer. It must finish with `CIVIC_3D_HOUSE_A_SMOKE_PASS` and no browser/page errors. The existing `npm run test:smoke:3d` entry remains available as the CI-compatible alias.
+
+`npm run review:3d-house` writes nine fixed 900 × 640 PNGs to `dist/assets/reviews/house-a/` and repeats the front camera byte-for-byte. These PNGs are review evidence only; generated geometry and images are ignored build outputs and are never source-of-truth assets.
+
 ## Current verified baseline
 
 The merged desktop GPU runtime feature head `725c9cec539f1df32386c4c35e95c81a7fe134ab` passed GitHub Actions run **33137152536** before PR #98 was integrated into `main` as merge commit `c2e7befd9174b65dadc90e1e381d892accf780c6`.

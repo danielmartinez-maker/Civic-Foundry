@@ -4,6 +4,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
+const authoritativeRoots = ["src/simulation/", "src/world/", "src/save/"];
+
 const rules = [
   {
     importer: "src/simulation/",
@@ -43,9 +45,30 @@ function normalize(path) {
   return path.replaceAll("\\", "/").replace(/^\.\//, "");
 }
 
+function isAuthoritativeImporter(importer) {
+  return authoritativeRoots.some((prefix) => importer.startsWith(prefix));
+}
+
 export function checkArchitectureImport(importer, imported) {
   const normalizedImporter = normalize(importer);
   const normalizedImported = normalize(imported);
+
+  if (isAuthoritativeImporter(normalizedImporter)) {
+    if (normalizedImported.startsWith("@babylonjs/")) {
+      return {
+        rule: "authoritative-no-babylon",
+        importer: normalizedImporter,
+        imported: normalizedImported,
+      };
+    }
+    if (normalizedImported.startsWith("@gltf-transform/")) {
+      return {
+        rule: "authoritative-no-gltf-transform",
+        importer: normalizedImporter,
+        imported: normalizedImported,
+      };
+    }
+  }
 
   for (const boundary of rules) {
     if (
@@ -108,6 +131,12 @@ export async function runArchitectureCheck() {
     const source = await readFile(absolutePath, "utf8");
 
     for (const specifier of extractModuleSpecifiers(source)) {
+      const packageViolation = checkArchitectureImport(importer, specifier);
+      if (packageViolation) {
+        failures.push(packageViolation);
+        continue;
+      }
+
       const imported = resolveRelativeImport(absolutePath, specifier);
       if (!imported) continue;
       const violation = checkArchitectureImport(importer, imported);

@@ -30,3 +30,39 @@ test("application layer may consume simulation", () => {
     null,
   );
 });
+
+test("authoritative simulation, world, and save layers cannot import Babylon", () => {
+  assert.equal(
+    checkArchitectureImport("src/simulation/A.ts", "@babylonjs/core/scene.js")
+      ?.rule,
+    "authoritative-no-babylon",
+  );
+  assert.equal(
+    checkArchitectureImport("src/world/A.ts", "@babylonjs/core/Meshes/mesh.js")
+      ?.rule,
+    "authoritative-no-babylon",
+  );
+  assert.equal(
+    checkArchitectureImport("src/save/A.ts", "@babylonjs/loaders/glTF/index.js")
+      ?.rule,
+    "authoritative-no-babylon",
+  );
+});
+
+test("authoritative layers cannot import glTF Transform tooling", () => {
+  assert.equal(
+    checkArchitectureImport("src/simulation/A.ts", "@gltf-transform/core")
+      ?.rule,
+    "authoritative-no-gltf-transform",
+  );
+});
+
+test("3d presentation layer may import Babylon", () => {
+  assert.equal(
+    checkArchitectureImport(
+      "src/rendering/3d/A.ts",
+      "@babylonjs/core/scene.js",
+    ),
+    null,
+  );
+});

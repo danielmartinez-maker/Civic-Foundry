@@ -1,7 +1,8 @@
 import { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import type { CellCoord, SpeedMode, ZoneType } from '../simulation/core/types.ts';
 import { hydrateCore, serializeCore } from '../save/save.ts';
-import { GpuWorldRenderer, type CellSelection } from '../rendering/gpu/GpuWorldRenderer.ts';
+import { createPresentationRenderer, resolvePresentationBackend } from '../rendering/PresentationRendererFactory.ts';
+import type { CellSelection, PresentationRenderer } from '../rendering/PresentationRenderer.ts';
 import type { TrafficOverlayMode } from '../rendering/TrafficOverlayLayer.ts';
 import { mapServiceOverlay, type ServiceOverlayMode } from '../rendering/ServiceOverlayLayer.ts';
 import { mapTransitOverlay, type TransitOverlayMode } from '../rendering/TransitOverlayLayer.ts';
@@ -37,7 +38,7 @@ const TOOLS: readonly [ToolId, string, string][] = [
 export class GameApp {
   core: SimulationCore;
   readonly tools = new ToolController();
-  readonly renderer: GpuWorldRenderer;
+  readonly renderer: PresentationRenderer;
   private readonly hud: HudView;
   private readonly inspector: HTMLElement;
   private readonly notification: HTMLElement;
@@ -62,7 +63,8 @@ export class GameApp {
     this.core = new SimulationCore({ width: 40, height: 24, seed: 42, startingFunds: 250_000 });
     root.innerHTML = this.layoutHtml();
     const canvas = this.required<HTMLCanvasElement>('#world');
-    this.renderer = new GpuWorldRenderer(canvas);
+    const backend = resolvePresentationBackend(window.location.search);
+    this.renderer = createPresentationRenderer(canvas, backend);
     this.hud = new HudView(this.required('#hud'));
     this.inspector = this.required('#inspector-content');
     this.notification = this.required('#notification');
@@ -286,15 +288,18 @@ export class GameApp {
   private bindCanvas(canvas: HTMLCanvasElement): void {
     canvas.addEventListener('contextmenu', (event) => event.preventDefault());
     canvas.addEventListener('wheel', (event) => {
+      if (this.renderer.cameraInputOwner !== 'app') return;
       event.preventDefault();
       const rect = canvas.getBoundingClientRect();
       this.renderer.zoomBy(event.deltaY < 0 ? 1.12 : 0.89, event.clientX - rect.left, event.clientY - rect.top);
     }, { passive: false });
     canvas.addEventListener('pointerdown', (event) => {
-      if (event.button === 1 || event.button === 2) {
-        this.panPointer = { x: event.clientX, y: event.clientY };
-        canvas.setPointerCapture(event.pointerId);
-        return;
+      if (this.renderer.cameraInputOwner === 'app') {
+        if (event.button === 1 || event.button === 2) {
+          this.panPointer = { x: event.clientX, y: event.clientY };
+          canvas.setPointerCapture(event.pointerId);
+          return;
+        }
       }
       if (event.button !== 0) return;
       const cell = this.renderer.canvasToCell(event.clientX, event.clientY, this.core);
@@ -308,7 +313,7 @@ export class GameApp {
       }
     });
     canvas.addEventListener('pointermove', (event) => {
-      if (this.panPointer) {
+      if (this.renderer.cameraInputOwner === 'app' && this.panPointer) {
         this.renderer.pan(event.clientX - this.panPointer.x, event.clientY - this.panPointer.y);
         this.panPointer = { x: event.clientX, y: event.clientY };
         return;
@@ -318,7 +323,7 @@ export class GameApp {
       if (cell) this.previewPath = manhattanPath(this.dragRoadStart, cell);
     });
     canvas.addEventListener('pointerup', (event) => {
-      if (this.panPointer) {
+      if (this.renderer.cameraInputOwner === 'app' && this.panPointer) {
         this.panPointer = null;
         if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
         return;

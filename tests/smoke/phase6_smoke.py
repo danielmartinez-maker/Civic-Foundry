@@ -34,7 +34,7 @@ def main() -> None:
     errors: list[str] = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, executable_path="/usr/bin/chromium", args=["--no-sandbox", "--disable-dev-shm-usage"])
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
         page = browser.new_page(viewport={"width": 1680, "height": 1050})
         page.on("pageerror", lambda exc: errors.append(str(exc)))
         page.route("http://civic.test/**", route_asset)

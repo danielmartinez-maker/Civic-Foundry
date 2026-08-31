@@ -1,0 +1,734 @@
+{
+  "schemaVersion": 1,
+  "assetId": "cf_bld_res_detached_house_a_low_v01",
+  "category": "building",
+  "dimensions": {
+    "widthM": 9,
+    "depthM": 12,
+    "heightM": 7.6
+  },
+  "pivot": {
+    "convention": "ground-center",
+    "forward": "-Z",
+    "up": "+Y"
+  },
+  "placement": {
+    "snapMode": "parcel",
+    "zoneCompatibility": [
+      "residential"
+    ],
+    "density": [
+      "low"
+    ]
+  },
+  "materials": [
+    {
+      "id": "door_dark",
+      "family": "painted_wood",
+      "baseColor": "#343738",
+      "roughness": 0.75,
+      "metallic": 0
+    },
+    {
+      "id": "foundation_warm",
+      "family": "masonry",
+      "baseColor": "#b9aa91",
+      "roughness": 0.92,
+      "metallic": 0
+    },
+    {
+      "id": "glass_pale_blue",
+      "family": "glass",
+      "baseColor": "#b6ced4",
+      "roughness": 0.2,
+      "metallic": 0,
+      "alpha": 0.72
+    },
+    {
+      "id": "lawn_muted",
+      "family": "landscape",
+      "baseColor": "#7f956f",
+      "roughness": 1,
+      "metallic": 0
+    },
+    {
+      "id": "path_stone",
+      "family": "stone",
+      "baseColor": "#b9b2a3",
+      "roughness": 0.95,
+      "metallic": 0
+    },
+    {
+      "id": "roof_charcoal",
+      "family": "roofing",
+      "baseColor": "#45494b",
+      "roughness": 0.9,
+      "metallic": 0
+    },
+    {
+      "id": "stucco_cream",
+      "family": "stucco",
+      "baseColor": "#d8ceb7",
+      "roughness": 0.88,
+      "metallic": 0
+    },
+    {
+      "id": "trim_muted_green",
+      "family": "painted_wood",
+      "baseColor": "#70806e",
+      "roughness": 0.82,
+      "metallic": 0
+    }
+  ],
+  "sockets": [
+    {
+      "id": "front_entry",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": -4.4
+      },
+      "forward": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      }
+    },
+    {
+      "id": "rear_service",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "z": 4.6
+      },
+      "forward": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      }
+    },
+    {
+      "id": "exterior_light",
+      "position": {
+        "x": 0,
+        "y": 2.55,
+        "z": -4.36
+      },
+      "forward": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      }
+    },
+    {
+      "id": "tree_primary",
+      "position": {
+        "x": 3.55,
+        "y": 0,
+        "z": -4.7
+      },
+      "forward": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      }
+    }
+  ],
+  "stateChannels": {
+    "condition": [
+      "excellent",
+      "good",
+      "worn",
+      "distressed",
+      "unsafe"
+    ],
+    "occupancy": [
+      "vacant",
+      "occupied"
+    ],
+    "power": [
+      "off",
+      "on"
+    ],
+    "construction": [
+      "none",
+      "active"
+    ],
+    "night": [
+      "day",
+      "night"
+    ]
+  },
+  "runtime": {
+    "instancing": "thin",
+    "streamingClass": "normal",
+    "memoryClass": "small"
+  },
+  "art": {
+    "styleFamily": "civic-foundry-miniature",
+    "qualityTier": "standard"
+  },
+  "lods": [
+    {
+      "id": "lod0",
+      "maxTriangles": 600,
+      "parts": [
+        {
+          "id": "lawn",
+          "primitive": "box",
+          "size": {
+            "x": 8.6,
+            "y": 0.04,
+            "z": 11.2
+          },
+          "center": {
+            "x": 0,
+            "y": 0.02,
+            "z": 0
+          },
+          "material": "lawn_muted"
+        },
+        {
+          "id": "foundation",
+          "primitive": "box",
+          "size": {
+            "x": 8,
+            "y": 0.35,
+            "z": 10
+          },
+          "center": {
+            "x": 0,
+            "y": 0.175,
+            "z": 0.2
+          },
+          "material": "foundation_warm"
+        },
+        {
+          "id": "main_volume",
+          "primitive": "box",
+          "size": {
+            "x": 7.2,
+            "y": 4.7,
+            "z": 8.7
+          },
+          "center": {
+            "x": 0,
+            "y": 2.7,
+            "z": 0.2
+          },
+          "material": "stucco_cream"
+        },
+        {
+          "id": "gable_roof",
+          "primitive": "wedge",
+          "size": {
+            "x": 8,
+            "y": 2.2,
+            "z": 9.5
+          },
+          "center": {
+            "x": 0,
+            "y": 6.15,
+            "z": 0.2
+          },
+          "axis": "x",
+          "material": "roof_charcoal"
+        },
+        {
+          "id": "chimney",
+          "primitive": "box",
+          "size": {
+            "x": 0.62,
+            "y": 1.55,
+            "z": 0.62
+          },
+          "center": {
+            "x": 2.15,
+            "y": 6.45,
+            "z": 1.25
+          },
+          "material": "roof_charcoal"
+        },
+        {
+          "id": "front_door",
+          "primitive": "box",
+          "size": {
+            "x": 1.15,
+            "y": 2.15,
+            "z": 0.18
+          },
+          "center": {
+            "x": 0,
+            "y": 1.425,
+            "z": -4.24
+          },
+          "material": "door_dark"
+        },
+        {
+          "id": "entry_canopy",
+          "primitive": "box",
+          "size": {
+            "x": 2.35,
+            "y": 0.18,
+            "z": 1
+          },
+          "center": {
+            "x": 0,
+            "y": 2.72,
+            "z": -4.55
+          },
+          "material": "trim_muted_green"
+        },
+        {
+          "id": "entry_post_left",
+          "primitive": "box",
+          "size": {
+            "x": 0.13,
+            "y": 2.25,
+            "z": 0.13
+          },
+          "center": {
+            "x": -0.9,
+            "y": 1.5,
+            "z": -4.82
+          },
+          "material": "trim_muted_green"
+        },
+        {
+          "id": "entry_post_right",
+          "primitive": "box",
+          "size": {
+            "x": 0.13,
+            "y": 2.25,
+            "z": 0.13
+          },
+          "center": {
+            "x": 0.9,
+            "y": 1.5,
+            "z": -4.82
+          },
+          "material": "trim_muted_green"
+        },
+        {
+          "id": "front_window_left",
+          "primitive": "box",
+          "size": {
+            "x": 1.15,
+            "y": 1.2,
+            "z": 0.12
+          },
+          "center": {
+            "x": -2.1,
+            "y": 2.25,
+            "z": -4.21
+          },
+          "material": "glass_pale_blue"
+        },
+        {
+          "id": "front_window_right",
+          "primitive": "box",
+          "size": {
+            "x": 1.15,
+            "y": 1.2,
+            "z": 0.12
+          },
+          "center": {
+            "x": 2.1,
+            "y": 2.25,
+            "z": -4.21
+          },
+          "material": "glass_pale_blue"
+        },
+        {
+          "id": "front_window_left_header",
+          "primitive": "box",
+          "size": {
+            "x": 1.35,
+            "y": 0.1,
+            "z": 0.16
+          },
+          "center": {
+            "x": -2.1,
+            "y": 2.9,
+            "z": -4.24
+          },
+          "material": "trim_muted_green"
+        },
+        {
+          "id": "front_window_left_sill",
+          "primitive": "box",
+          "size": {
+            "x": 1.35,
+            "y": 0.1,
+            "z": 0.18
+          },
+          "center": {
+            "x": -2.1,
+            "y": 1.6,
+            "z": -4.25
+          },
+          "material": "trim_muted_green"
+        },
+        {
+          "id": "front_window_right_header",
+          "primitive": "box",
+          "size": {
+            "x": 1.35,
+            "y": 0.1,
+            "z": 0.16
+          },
+          "center": {
+            "x": 2.1,
+            "y": 2.9,
+            "z": -4.24
+          },
+          "material": "trim_muted_green"
+        },
+        {
+          "id": "front_window_right_sill",
+          "primitive": "box",
+          "size": {
+            "x": 1.35,
+            "y": 0.1,
+            "z": 0.18
+          },
+          "center": {
+            "x": 2.1,
+            "y": 1.6,
+            "z": -4.25
+          },
+          "material": "trim_muted_green"
+        },
+        {
+          "id": "side_window_left",
+          "primitive": "box",
+          "size": {
+            "x": 0.12,
+            "y": 1.05,
+            "z": 1.25
+          },
+          "center": {
+            "x": -3.62,
+            "y": 2.3,
+            "z": 0.4
+          },
+          "material": "glass_pale_blue"
+        },
+        {
+          "id": "side_window_right",
+          "primitive": "box",
+          "size": {
+            "x": 0.12,
+            "y": 1.05,
+            "z": 1.25
+          },
+          "center": {
+            "x": 3.62,
+            "y": 2.3,
+            "z": 0.4
+          },
+          "material": "glass_pale_blue"
+        },
+        {
+          "id": "front_path",
+          "primitive": "box",
+          "size": {
+            "x": 1.45,
+            "y": 0.06,
+            "z": 1.6
+          },
+          "center": {
+            "x": 0,
+            "y": 0.05,
+            "z": -5.15
+          },
+          "material": "path_stone"
+        },
+        {
+          "id": "shrub_left",
+          "primitive": "cylinder",
+          "radius": 0.3,
+          "height": 0.55,
+          "segments": 8,
+          "center": {
+            "x": -3,
+            "y": 0.295,
+            "z": -4.55
+          },
+          "material": "trim_muted_green"
+        },
+        {
+          "id": "shrub_right",
+          "primitive": "cylinder",
+          "radius": 0.3,
+          "height": 0.55,
+          "segments": 8,
+          "center": {
+            "x": 3,
+            "y": 0.295,
+            "z": -4.55
+          },
+          "material": "trim_muted_green"
+        },
+        {
+          "id": "fence_left_post",
+          "primitive": "box",
+          "size": {
+            "x": 0.13,
+            "y": 0.8,
+            "z": 0.13
+          },
+          "center": {
+            "x": -4.18,
+            "y": 0.4,
+            "z": 3.9
+          },
+          "material": "trim_muted_green"
+        },
+        {
+          "id": "fence_right_post",
+          "primitive": "box",
+          "size": {
+            "x": 0.13,
+            "y": 0.8,
+            "z": 0.13
+          },
+          "center": {
+            "x": 4.18,
+            "y": 0.4,
+            "z": 3.9
+          },
+          "material": "trim_muted_green"
+        }
+      ]
+    },
+    {
+      "id": "lod1",
+      "maxTriangles": 300,
+      "parts": [
+        {
+          "id": "lawn",
+          "primitive": "box",
+          "size": {
+            "x": 8.6,
+            "y": 0.04,
+            "z": 11.2
+          },
+          "center": {
+            "x": 0,
+            "y": 0.02,
+            "z": 0
+          },
+          "material": "lawn_muted"
+        },
+        {
+          "id": "foundation",
+          "primitive": "box",
+          "size": {
+            "x": 8,
+            "y": 0.35,
+            "z": 10
+          },
+          "center": {
+            "x": 0,
+            "y": 0.175,
+            "z": 0.2
+          },
+          "material": "foundation_warm"
+        },
+        {
+          "id": "main_volume",
+          "primitive": "box",
+          "size": {
+            "x": 7.2,
+            "y": 4.7,
+            "z": 8.7
+          },
+          "center": {
+            "x": 0,
+            "y": 2.7,
+            "z": 0.2
+          },
+          "material": "stucco_cream"
+        },
+        {
+          "id": "gable_roof",
+          "primitive": "wedge",
+          "size": {
+            "x": 8,
+            "y": 2.2,
+            "z": 9.5
+          },
+          "center": {
+            "x": 0,
+            "y": 6.15,
+            "z": 0.2
+          },
+          "axis": "x",
+          "material": "roof_charcoal"
+        },
+        {
+          "id": "chimney",
+          "primitive": "box",
+          "size": {
+            "x": 0.62,
+            "y": 1.55,
+            "z": 0.62
+          },
+          "center": {
+            "x": 2.15,
+            "y": 6.45,
+            "z": 1.25
+          },
+          "material": "roof_charcoal"
+        },
+        {
+          "id": "front_door",
+          "primitive": "box",
+          "size": {
+            "x": 1.15,
+            "y": 2.15,
+            "z": 0.18
+          },
+          "center": {
+            "x": 0,
+            "y": 1.425,
+            "z": -4.24
+          },
+          "material": "door_dark"
+        },
+        {
+          "id": "entry_canopy",
+          "primitive": "box",
+          "size": {
+            "x": 2.35,
+            "y": 0.18,
+            "z": 1
+          },
+          "center": {
+            "x": 0,
+            "y": 2.72,
+            "z": -4.55
+          },
+          "material": "trim_muted_green"
+        },
+        {
+          "id": "front_window_left",
+          "primitive": "box",
+          "size": {
+            "x": 1.15,
+            "y": 1.2,
+            "z": 0.12
+          },
+          "center": {
+            "x": -2.1,
+            "y": 2.25,
+            "z": -4.21
+          },
+          "material": "glass_pale_blue"
+        },
+        {
+          "id": "front_window_right",
+          "primitive": "box",
+          "size": {
+            "x": 1.15,
+            "y": 1.2,
+            "z": 0.12
+          },
+          "center": {
+            "x": 2.1,
+            "y": 2.25,
+            "z": -4.21
+          },
+          "material": "glass_pale_blue"
+        },
+        {
+          "id": "front_path",
+          "primitive": "box",
+          "size": {
+            "x": 1.45,
+            "y": 0.06,
+            "z": 1.6
+          },
+          "center": {
+            "x": 0,
+            "y": 0.05,
+            "z": -5.15
+          },
+          "material": "path_stone"
+        }
+      ]
+    },
+    {
+      "id": "lod2",
+      "maxTriangles": 100,
+      "parts": [
+        {
+          "id": "foundation",
+          "primitive": "box",
+          "size": {
+            "x": 8,
+            "y": 0.35,
+            "z": 10
+          },
+          "center": {
+            "x": 0,
+            "y": 0.175,
+            "z": 0.2
+          },
+          "material": "foundation_warm"
+        },
+        {
+          "id": "main_volume",
+          "primitive": "box",
+          "size": {
+            "x": 7.2,
+            "y": 4.7,
+            "z": 8.7
+          },
+          "center": {
+            "x": 0,
+            "y": 2.7,
+            "z": 0.2
+          },
+          "material": "stucco_cream"
+        },
+        {
+          "id": "gable_roof",
+          "primitive": "wedge",
+          "size": {
+            "x": 8,
+            "y": 2.2,
+            "z": 9.5
+          },
+          "center": {
+            "x": 0,
+            "y": 6.15,
+            "z": 0.2
+          },
+          "axis": "x",
+          "material": "roof_charcoal"
+        }
+      ]
+    }
+  ],
+  "collision": [
+    {
+      "id": "collision_body",
+      "primitive": "box",
+      "size": {
+        "x": 7.2,
+        "y": 5.05,
+        "z": 8.7
+      },
+      "center": {
+        "x": 0,
+        "y": 2.525,
+        "z": 0.2
+      }
+    }
+  ],
+  "bakedPeople": false,
+  "bakedVehicles": false,
+  "bakedText": false
+}

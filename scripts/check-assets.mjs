@@ -50,7 +50,7 @@ export async function runAssetPolicyCheck() {
     );
     for (const path of failures) console.error(`- ${path}`);
     console.error(
-      "Generated runtime assets belong in dist/. Approved large binary sources require Git LFS and architectural review.",
+      "Deterministic .asset.json recipes are allowed under assets/source/3d. Generated runtime assets belong in dist/. Approved large binary sources require Git LFS and architectural review.",
     );
     process.exitCode = 1;
     return;
