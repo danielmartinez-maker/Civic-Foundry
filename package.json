@@ -23,7 +23,8 @@
     "test:smoke": "python tests/smoke/phase6_smoke.py",
     "test:smoke:phase7": "python tests/smoke/phase7_land_housing_smoke.py",
     "test:smoke:urban-fabric": "python tests/smoke/urban_fabric_smoke.py",
-    "test:smoke:isometric": "python tests/smoke/isometric_pass_a_smoke.py"
+    "test:smoke:isometric": "python tests/smoke/isometric_pass_a_smoke.py",
+    "test:smoke:3d": "python tests/smoke/civic_3d_house_a_smoke.py"
   },
   "dependencies": {
     "@babylonjs/core": "9.23.0",
