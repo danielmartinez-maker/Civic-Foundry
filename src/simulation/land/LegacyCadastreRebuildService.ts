@@ -40,10 +40,11 @@ export class LegacyCadastreRebuildService {
     const previousGraph = new CadastralGraph(previous);
     const candidateGraph = new CadastralGraph(candidate);
 
-    // Canonical parcel operations are allowed to refine legacy parcel topology. If the
-    // legacy projection itself is unchanged (same zoned coverage and road frontage),
-    // rebuilding it would merely erase canonical splits/assemblies/easements. Treat the
-    // generated candidate as an already-represented projection and leave authority intact.
+    // A canonical split/assembly can be a strict refinement of the legacy projection.
+    // Only treat the generated candidate as already represented when that relationship is
+    // directional: current canonical parcels must either match the candidate geometry or
+    // descend from candidate parcel IDs. This prevents a newly split legacy candidate from
+    // being mistaken for an existing canonical refinement of a protected parcel.
     if (sameLegacyProjectionModuloCanonicalTopology(previousGraph, candidateGraph)) {
       return Object.freeze({ committed: true, changed: false });
     }
@@ -184,14 +185,32 @@ function groupParcelsByFingerprint(graph: CadastralGraph): Map<string, string[]>
   return result;
 }
 
-function sameLegacyProjectionModuloCanonicalTopology(left: CadastralGraph, right: CadastralGraph): boolean {
+function sameLegacyProjectionModuloCanonicalTopology(previous: CadastralGraph, candidate: CadastralGraph): boolean {
   const districtIds = new Set<string>();
-  for (const parcel of left.listParcels()) districtIds.add(parcel.zoningDistrictId);
-  for (const parcel of right.listParcels()) districtIds.add(parcel.zoningDistrictId);
+  for (const parcel of previous.listParcels()) districtIds.add(parcel.zoningDistrictId);
+  for (const parcel of candidate.listParcels()) districtIds.add(parcel.zoningDistrictId);
   for (const districtId of [...districtIds].sort()) {
-    if (districtCoverageFingerprint(left, districtId) !== districtCoverageFingerprint(right, districtId)) return false;
+    if (districtCoverageFingerprint(previous, districtId) !== districtCoverageFingerprint(candidate, districtId)) return false;
   }
-  return JSON.stringify(frontageRoadRefs(left)) === JSON.stringify(frontageRoadRefs(right));
+  if (JSON.stringify(frontageRoadRefs(previous)) !== JSON.stringify(frontageRoadRefs(candidate))) return false;
+
+  const previousFingerprints = new Set(previous.listParcels().map((parcel) => polygonFingerprint(previous.parcelPolygon(parcel.id))));
+  const candidateFingerprints = new Set(candidate.listParcels().map((parcel) => polygonFingerprint(candidate.parcelPolygon(parcel.id))));
+  const candidateIds = new Set(candidate.listParcels().map((parcel) => parcel.id));
+  const previousParcels = previous.listParcels();
+
+  for (const parcel of previousParcels) {
+    const fingerprint = polygonFingerprint(previous.parcelPolygon(parcel.id));
+    if (candidateFingerprints.has(fingerprint)) continue;
+    if (!parcel.historicalParentIds.some((parcelId) => candidateIds.has(parcelId))) return false;
+  }
+
+  for (const parcel of candidate.listParcels()) {
+    const fingerprint = polygonFingerprint(candidate.parcelPolygon(parcel.id));
+    if (previousFingerprints.has(fingerprint)) continue;
+    if (!previousParcels.some((previousParcel) => previousParcel.historicalParentIds.includes(parcel.id))) return false;
+  }
+  return true;
 }
 
 function districtCoverageFingerprint(graph: CadastralGraph, districtId: string): string {
@@ -218,7 +237,7 @@ function sameProjection(left: CadastralGraph, right: CadastralGraph): boolean {
 
 function polygonFingerprint(points: readonly WorldPoint[]): string {
   if (points.length === 0) return '';
-  const encoded = points.map(pointFingerprint);
+  const encoded = simplifyCollinear(points).map(pointFingerprint);
   const candidates: string[] = [];
   for (const sequence of [encoded, [...encoded].reverse()]) {
     for (let offset = 0; offset < sequence.length; offset += 1) {
@@ -227,6 +246,37 @@ function polygonFingerprint(points: readonly WorldPoint[]): string {
   }
   candidates.sort();
   return candidates[0] ?? '';
+}
+
+function simplifyCollinear(points: readonly WorldPoint[]): readonly WorldPoint[] {
+  let result = [...points];
+  let changed = true;
+  while (changed && result.length > 3) {
+    changed = false;
+    const next: WorldPoint[] = [];
+    for (let index = 0; index < result.length; index += 1) {
+      const previous = result[(index + result.length - 1) % result.length]!;
+      const current = result[index]!;
+      const following = result[(index + 1) % result.length]!;
+      if (pointIsRedundant(previous, current, following)) {
+        changed = true;
+        continue;
+      }
+      next.push(current);
+    }
+    if (next.length < 3) break;
+    result = next;
+  }
+  return Object.freeze(result);
+}
+
+function pointIsRedundant(previous: WorldPoint, current: WorldPoint, following: WorldPoint): boolean {
+  const cross = (current.x - previous.x) * (following.y - current.y)
+    - (current.y - previous.y) * (following.x - current.x);
+  if (Math.abs(cross) > 1e-7) return false;
+  const dot = (current.x - previous.x) * (current.x - following.x)
+    + (current.y - previous.y) * (current.y - following.y);
+  return dot <= 1e-7;
 }
 
 function pointFingerprint(point: WorldPoint): string {
