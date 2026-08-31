@@ -139,7 +139,7 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
     if (rect.width <= 0 || rect.height <= 0) return null;
     const renderX = (clientX - rect.left) * (engine.getRenderWidth() / rect.width);
     const renderY = (clientY - rect.top) * (engine.getRenderHeight() / rect.height);
-    const ray = scene.createPickingRay(renderX, renderY, Matrix.IdentityReadOnly, camera);
+    const ray = scene.createPickingRay(renderX, renderY, Matrix.Identity(), camera);
     if (Math.abs(ray.direction.y) < 1e-8) return null;
     const distance = -ray.origin.y / ray.direction.y;
     if (distance < 0) return null;
