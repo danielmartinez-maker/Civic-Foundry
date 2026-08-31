@@ -51,6 +51,7 @@ function reconcileCanonicalBuildingProjection(core: SimulationCoreBase): void {
 export class SimulationCore extends SimulationCoreBase {
   constructor(...args: ConstructorParameters<typeof SimulationCoreBase>) {
     super(...args);
+    this.tripGeneration.setDemandWeightMode('exact');
     this.kernel.registerTransactionParticipant({
       id: 'civic-foundry-authoritative-state',
       snapshot: () => captureAuthoritativeTransactionCheckpoint(this),
