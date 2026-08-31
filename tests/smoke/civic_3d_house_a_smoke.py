@@ -28,7 +28,9 @@ def route_asset(route, request):
 
 
 def assert_canvas_has_variance(png: bytes) -> None:
-    assert len(png) > 8_000, ("3d canvas screenshot unexpectedly small", len(png))
+    # Encoded PNG byte size is deliberately not used as a visual-content proxy:
+    # Chromium/SwiftShader output can compress the same valid frame very differently.
+    # Decode the actual pixels and assert visible geometric/color variation instead.
     with Image.open(BytesIO(png)) as source:
         image = source.convert("RGBA")
         width, height = image.size
