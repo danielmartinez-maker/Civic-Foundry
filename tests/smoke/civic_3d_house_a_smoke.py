@@ -29,9 +29,6 @@ def route_asset(route, request):
 
 
 def assert_canvas_has_variance(png: bytes) -> None:
-    # Encoded PNG byte size is deliberately not used as a visual-content proxy:
-    # Chromium/SwiftShader output can compress the same valid frame very differently.
-    # Decode the actual pixels and assert visible geometric/color variation instead.
     with Image.open(BytesIO(png)) as source:
         image = source.convert("RGBA")
         width, height = image.size
@@ -67,12 +64,17 @@ def assert_canvas_has_variance(png: bytes) -> None:
 
 
 def main() -> None:
-    if not (DIST / "src/rendering/3d/Civic3DWorldRenderer.js").is_file():
-        raise RuntimeError("3D renderer build missing; run npm run build first")
-    if not (DIST / "assets/manifests/catalog-v2.json").is_file():
-        raise RuntimeError("3D asset catalog missing; run npm run build first")
-    if not (DIST / "assets/models/cf_bld_res_detached_house_a_low_v01_lod0.glb").is_file():
-        raise RuntimeError("House A LOD0 missing; run npm run build first")
+    required = [
+        DIST / "src/rendering/3d/Civic3DWorldRenderer.js",
+        DIST / "assets/manifests/catalog-v2.json",
+        DIST / "assets/models/cf_bld_res_detached_house_a_low_v01_lod0.glb",
+        DIST / "assets/models/cf_bld_res_detached_house_a_low_v01_lod1.glb",
+        DIST / "assets/models/cf_bld_res_detached_house_a_low_v01_lod2.glb",
+        DIST / "assets/collisions/cf_bld_res_detached_house_a_low_v01_collision.glb",
+    ]
+    for path in required:
+        if not path.is_file() or path.stat().st_size <= 0:
+            raise RuntimeError(f"required 3D acceptance artifact missing or empty: {path}")
 
     OUTPUT.mkdir(parents=True, exist_ok=True)
     html = (DIST / "index.html").read_text().replace(
@@ -183,6 +185,8 @@ def main() -> None:
               await renderer.preloadAssets();
               renderer.zoomBy(0.12, 450, 320);
               renderer.draw(core, 'none', null);
+              await renderer.whenBuildingSceneIdle();
+              renderer.draw(core, 'none', null);
               window.__civic3dAcceptance = { renderer, core, canvas };
             }
             """
@@ -200,12 +204,24 @@ def main() -> None:
         )
 
         stats = page.evaluate("() => window.__civic3dAcceptance.renderer.debugSceneStats()")
+        building_debug = page.evaluate(
+            "() => window.__civic3dAcceptance.renderer.debugBuildingState('building:browser-house-a')"
+        )
+        engine_backend = page.evaluate(
+            "() => window.__civic3dAcceptance.renderer.debugEngineBackend()"
+        )
         assert stats["backend"] == "civic-3d", stats
+        assert engine_backend in {"webgpu", "webgl"}, engine_backend
         assert stats["loadedPrototypes"] == 1, stats
         assert stats["buildingInstances"] == 1, stats
         assert stats["fallbackBuildings"] == 0, stats
         assert stats["assetRequests"] >= 1, stats
         assert stats["cacheMisses"] >= 1, stats
+        assert building_debug is not None, building_debug
+        assert building_debug["assetId"] == "cf_bld_res_detached_house_a_low_v01", building_debug
+        assert building_debug["lod"] in {"lod0", "lod1", "lod2"}, building_debug
+        assert isinstance(building_debug["variationSeed"], int), building_debug
+        assert building_debug["structuralHandleId"].startswith("building:browser-house-a:structural:"), building_debug
 
         before = page.evaluate(
             """() => ({
@@ -214,10 +230,12 @@ def main() -> None:
             })"""
         )
         page.evaluate(
-            """() => {
+            """async () => {
               const { renderer, core } = window.__civic3dAcceptance;
               renderer.rotate(1);
               renderer.zoomBy(0.8, 450, 320);
+              renderer.draw(core, 'none', null);
+              await renderer.whenBuildingSceneIdle();
               renderer.draw(core, 'none', null);
             }"""
         )
@@ -230,7 +248,7 @@ def main() -> None:
         assert after["turns"] == (before["turns"] + 1) % 4, (before, after)
         assert after["zoom"] > before["zoom"], (before, after)
 
-        page.wait_for_timeout(250)
+        page.wait_for_timeout(100)
         png = page.locator("#civic-3d-acceptance").screenshot(type="png")
         screenshot_path = OUTPUT / "house_a_browser.png"
         screenshot_path.write_bytes(png)
@@ -262,12 +280,16 @@ def main() -> None:
                     className: node.getClassName?.() ?? 'unknown',
                     isEnabled: node.isEnabled?.() ?? null,
                     isVisible: typeof node.isVisible === 'boolean' ? node.isVisible : null,
+                    visibility: typeof node.visibility === 'number' ? node.visibility : null,
+                    totalVertices: typeof node.getTotalVertices === 'function' ? node.getTotalVertices() : null,
                     absolutePosition: absolute ? { x: absolute.x, y: absolute.y, z: absolute.z } : null,
                     bounds,
                   };
                 });
               const projectedCenter = renderer.worldToCanvas(120, 100, core);
               return {
+                publicBuildingState: renderer.debugBuildingState(presentationId),
+                engineBackend: renderer.debugEngineBackend(),
                 camera: {
                   alpha: camera.alpha,
                   beta: camera.beta,
@@ -283,6 +305,7 @@ def main() -> None:
               };
             }"""
         )
+        print("CIVIC_3D_SCENE_DIAGNOSTICS", scene_diagnostics, flush=True)
         (OUTPUT / "runtime_geometry.json").write_text(
             json.dumps(scene_diagnostics, indent=2, sort_keys=True), encoding="utf-8"
         )
@@ -293,7 +316,13 @@ def main() -> None:
         )
         print(
             "CIVIC_3D_RUNTIME_DIAGNOSTICS",
-            {"stats": stats, "diagnostics": diagnostics, "browser_errors": errors},
+            {
+                "stats": stats,
+                "building": building_debug,
+                "engine": engine_backend,
+                "diagnostics": diagnostics,
+                "browser_errors": errors,
+            },
             flush=True,
         )
         assert not any("failed" in item.lower() for item in diagnostics), diagnostics
