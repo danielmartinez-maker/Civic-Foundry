@@ -203,12 +203,7 @@ fn add_overlapping_parcel(snapshot: &mut CadastralSnapshot) {
     snapshot.parcels.push(Parcel {
         id: "p1".into(),
         block_id: "b0".into(),
-        boundary_edge_ids: vec![
-            "m-e0".into(),
-            "m-e1".into(),
-            "m-e2".into(),
-            "m-e3".into(),
-        ],
+        boundary_edge_ids: vec!["m-e0".into(), "m-e1".into(), "m-e2".into(), "m-e3".into()],
         area_m2: 400.0,
         centroid: point(10.0, 10.0),
         frontage_edge_ids: vec!["m-e0".into()],
