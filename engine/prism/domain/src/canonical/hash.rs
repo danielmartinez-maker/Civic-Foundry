@@ -257,9 +257,12 @@ fn write_watershed(writer: &mut CanonicalByteWriter, watershed: &WatershedRecord
     writer.u32(watershed.outlet_index);
     writer.u32(watershed.member_count);
     writer.u32(watershed.upstream_area_cells);
-    writer.option(watershed.primary_channel_id.as_ref(), |writer, channel_id| {
-        writer.string(channel_id);
-    });
+    writer.option(
+        watershed.primary_channel_id.as_ref(),
+        |writer, channel_id| {
+            writer.string(channel_id);
+        },
+    );
 }
 
 fn write_channel(writer: &mut CanonicalByteWriter, channel: &ChannelSegment) {
