@@ -40,15 +40,18 @@ test('legacy GPU renderer implements the shared contract without owning its type
   assert.doesNotMatch(source, /export type CellSelection\s*=/);
 });
 
-test('GameApp delegates renderer construction to the backend factory and keeps legacy GPU as the default', async () => {
-  const source = await text('src/app/GameApp.ts');
+test('GameApp delegates renderer construction to the backend factory and keeps backend ownership out of the app', async () => {
+  const appSource = await text('src/app/GameApp.ts');
+  const factorySource = await text('src/rendering/PresentationRendererFactory.ts');
 
-  assert.match(source, /rendering\/PresentationRenderer\.js/);
-  assert.match(source, /rendering\/PresentationRendererFactory\.js/);
-  assert.match(source, /readonly renderer:\s*PresentationRenderer/);
-  assert.match(
-    source,
-    /this\.renderer\s*=\s*createPresentationRenderer\(\s*this\.elements\.canvas,\s*options\?\.presentationRendererBackend\s*\?\?\s*'legacy-gpu'/s,
-  );
-  assert.doesNotMatch(source, /this\.renderer\s*=\s*new GpuWorldRenderer\(/);
+  assert.match(appSource, /rendering\/PresentationRenderer\.ts/);
+  assert.match(appSource, /rendering\/PresentationRendererFactory\.ts/);
+  assert.match(appSource, /readonly renderer:\s*PresentationRenderer/);
+  assert.match(appSource, /const backend\s*=\s*resolvePresentationBackend\(window\.location\.search\)/);
+  assert.match(appSource, /this\.renderer\s*=\s*createPresentationRenderer\(canvas, backend\)/);
+  assert.doesNotMatch(appSource, /new GpuWorldRenderer\(/);
+  assert.doesNotMatch(appSource, /new Civic3DWorldRenderer\(/);
+
+  assert.match(factorySource, /params\.get\('renderer'\)\s*===\s*'civic-3d'\s*\?\s*'civic-3d'\s*:\s*'legacy-gpu'/s);
+  assert.match(factorySource, /backend\s*===\s*'civic-3d'[\s\S]*new Civic3DWorldRenderer\(canvas\)[\s\S]*new GpuWorldRenderer\(canvas\)/);
 });
