@@ -19,6 +19,15 @@ pub struct CadastralGraph {
     lineage: Vec<ParcelLineageEvent>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct AabbEntry {
+    id: String,
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+}
+
 impl CadastralGraph {
     pub fn try_from_snapshot(mut snapshot: CadastralSnapshot) -> Result<Self, P2AError> {
         if let Some(issue) = validate_cadastral_snapshot(&snapshot).into_iter().next() {
@@ -157,6 +166,41 @@ impl CadastralGraph {
             })?;
         trace_boundary(parcel, &self.edges, &self.nodes)
     }
+
+    pub fn parcel_ids_in_aabb(
+        &self,
+        min_x: f64,
+        min_y: f64,
+        max_x: f64,
+        max_y: f64,
+    ) -> Result<Vec<String>, P2AError> {
+        validate_query_aabb(min_x, min_y, max_x, max_y)?;
+
+        let mut index = Vec::with_capacity(self.parcels.len());
+        for parcel_id in self.parcels.keys() {
+            let polygon = self.parcel_polygon(parcel_id)?;
+            let (parcel_min_x, parcel_min_y, parcel_max_x, parcel_max_y) = ring_bounds(&polygon);
+            index.push(AabbEntry {
+                id: parcel_id.clone(),
+                min_x: parcel_min_x,
+                min_y: parcel_min_y,
+                max_x: parcel_max_x,
+                max_y: parcel_max_y,
+            });
+        }
+        index.sort_by(|left, right| left.id.cmp(&right.id));
+
+        Ok(index
+            .into_iter()
+            .filter(|entry| {
+                entry.min_x <= max_x
+                    && entry.max_x >= min_x
+                    && entry.min_y <= max_y
+                    && entry.max_y >= min_y
+            })
+            .map(|entry| entry.id)
+            .collect())
+    }
 }
 
 impl TryFrom<CadastralSnapshot> for CadastralGraph {
@@ -258,6 +302,38 @@ fn walk_boundary(
     }
 
     (current_node_id == start_node_id).then_some(points)
+}
+
+fn ring_bounds(ring: &[WorldPoint]) -> (f64, f64, f64, f64) {
+    let first = ring
+        .first()
+        .expect("validated parcel polygons contain at least three points");
+    ring.iter().skip(1).fold(
+        (first.x, first.y, first.x, first.y),
+        |(min_x, min_y, max_x, max_y), point| {
+            (
+                min_x.min(point.x),
+                min_y.min(point.y),
+                max_x.max(point.x),
+                max_y.max(point.y),
+            )
+        },
+    )
+}
+
+fn validate_query_aabb(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Result<(), P2AError> {
+    if [min_x, min_y, max_x, max_y]
+        .into_iter()
+        .any(|value| !value.is_finite())
+        || min_x > max_x
+        || min_y > max_y
+    {
+        return Err(P2AError::CadastreValidation {
+            code: "query-invalid-aabb",
+            entity_id: None,
+        });
+    }
+    Ok(())
 }
 
 fn boundary_error(parcel_id: &str) -> P2AError {
