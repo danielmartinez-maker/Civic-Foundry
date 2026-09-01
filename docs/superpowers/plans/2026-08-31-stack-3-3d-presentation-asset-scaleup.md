@@ -38,11 +38,11 @@
 - Produces `runtime.estimatedCpuGeometryBytes`, `runtime.estimatedGpuGeometryBytes`, and `runtime.estimatedGpuMaterialBytes` as positive integers.
 - Compiler emits the same metadata from source recipes into `catalog-v2.json`.
 
-- [ ] **Step 1: Write RED contract tests** proving source validation rejects missing/invalid `semanticFamily` and runtime estimates, and manifest validation rejects invalid runtime budgets.
-- [ ] **Step 2: Run the focused Node test in CI and verify failure is caused by the missing production metadata contract.**
-- [ ] **Step 3: Extend source schema, manifest types/validation, and compiler manifest emission minimally.**
-- [ ] **Step 4: Run focused tests and existing asset/compiler tests to GREEN.**
-- [ ] **Step 5: Commit the production metadata contract.**
+- [x] **Step 1: Write RED contract tests** proving source validation rejects missing/invalid `semanticFamily` and runtime estimates, and manifest validation rejects invalid runtime budgets.
+- [x] **Step 2: Run the focused Node test in CI and verify failure is caused by the missing production metadata contract.**
+- [x] **Step 3: Extend source schema, manifest types/validation, and compiler manifest emission minimally.**
+- [x] **Step 4: Run focused tests and existing asset/compiler tests to GREEN.**
+- [x] **Step 5: Commit the production metadata contract.**
 
 ### Task 2: Controlled 14-Family Production Source Wave
 
@@ -55,11 +55,11 @@
 - Produces exactly 14 first-wave source asset IDs from the Stack 3 spec.
 - Every recipe contains LOD0/LOD1/LOD2, canonical pivot/axes, materials, sockets/state channels as appropriate, runtime budgets, and deterministic compiler output.
 
-- [ ] **Step 1: Write RED wave tests** that require all 14 IDs, category coverage, canonical pivot, three LODs, valid budgets, and deterministic two-pass compiler hashes.
-- [ ] **Step 2: Verify RED against the current single-House-A source tree.**
-- [ ] **Step 3: Add the 13 lightweight miniature-style source recipes and House A metadata.**
-- [ ] **Step 4: Run `npm run assets:3d:check`, the wave tests, compiler tests, and build output checks to GREEN.**
-- [ ] **Step 5: Commit the first production asset wave.**
+- [x] **Step 1: Write RED wave tests** that require all 14 IDs, category coverage, canonical pivot, three LODs, valid budgets, and deterministic two-pass compiler hashes.
+- [x] **Step 2: Verify RED against the current single-House-A source tree.**
+- [x] **Step 3: Add the 13 lightweight miniature-style source recipes and House A metadata.**
+- [x] **Step 4: Run `npm run assets:3d:check`, the wave tests, compiler tests, and build output checks to GREEN.**
+- [x] **Step 5: Commit the first production asset wave.**
 
 ### Task 3: Deterministic Semantic Catalog Selection
 
@@ -72,11 +72,11 @@
 - `AssetCatalogV2.listBySemanticFamily(family: string): readonly AssetManifestV2Entry[]` returns asset-ID-sorted entries.
 - `selectProductionAssetId(stableEntityId, semanticFamily, candidates, visualChannel): AssetId | null` is stable, input-order independent, and uses no runtime randomness.
 
-- [ ] **Step 1: Write RED tests** for family query ordering, input-order independence, stable selection, and empty-family behavior.
-- [ ] **Step 2: Verify RED.**
-- [ ] **Step 3: Implement semantic family indexing and deterministic selection using the existing stable hash/determinism helpers.**
-- [ ] **Step 4: Run focused tests and existing House A building-resolution tests to GREEN.**
-- [ ] **Step 5: Commit deterministic production selection.**
+- [x] **Step 1: Write RED tests** for family query ordering, input-order independence, stable selection, and empty-family behavior.
+- [x] **Step 2: Verify RED.**
+- [x] **Step 3: Implement semantic family indexing and deterministic selection using the existing stable hash/determinism helpers.**
+- [x] **Step 4: Run focused tests and existing House A building-resolution tests to GREEN.**
+- [x] **Step 5: Commit deterministic production selection.**
 
 ### Task 4: Generic Retained Production Scene Layer
 
@@ -91,11 +91,11 @@
 - `debugStats()` returns active/create/update/remove/unchanged counts plus prototype-budget estimates.
 - `reconstructionDigest()` returns a stable canonical digest of retained presentation identity/asset/LOD/transform/variation state.
 
-- [ ] **Step 1: Write RED tests** for zero-create second reconciliation, structural-only replacement, appearance-only update, deterministic teardown/rebuild digest, and bounded prototype counts.
-- [ ] **Step 2: Verify RED.**
-- [ ] **Step 3: Implement the generic layer by adapting the accepted BuildingSceneLayer retention/lease pattern without duplicating authority.**
-- [ ] **Step 4: Run focused tests plus BuildingSceneLayer regressions to GREEN.**
-- [ ] **Step 5: Commit retained production scene scale-up.**
+- [x] **Step 1: Write RED tests** for zero-create second reconciliation, structural-only replacement, appearance-only update, deterministic teardown/rebuild digest, and bounded prototype counts.
+- [x] **Step 2: Verify RED.**
+- [x] **Step 3: Implement the generic layer by adapting the accepted BuildingSceneLayer retention/lease pattern without duplicating authority.**
+- [x] **Step 4: Run focused tests plus BuildingSceneLayer regressions to GREEN.**
+- [x] **Step 5: Commit retained production scene scale-up.**
 
 ### Task 5: Babylon Generic Instance Adapter and Picking Stability
 
@@ -105,15 +105,15 @@
 - Test: `tests/stack3_picking_reconstruction.test.ts`
 
 **Interfaces:**
-- Generic Babylon handles bind `metadata.presentationEntityId` and preserve it across LOD/prototype replacement.
-- Renderer can resolve a picked mesh/node to `PresentationEntityId` without reading gameplay facts from Babylon.
+- Generic Babylon handles bind stable presentation/canonical metadata and preserve identity across LOD/prototype replacement.
+- Renderer resolves a picked mesh/node to a production presentation ID without reading gameplay facts from Babylon.
 - Appearance-only changes do not replace geometry handles.
 
-- [ ] **Step 1: Write RED tests** proving identity metadata survives LOD replacement and reconstruction and that pick resolution returns the stable presentation ID.
-- [ ] **Step 2: Verify RED.**
-- [ ] **Step 3: Implement the generic adapter and identity lookup seam using existing House A/Babylon conventions.**
-- [ ] **Step 4: Run focused tests, House A picking tests, and renderer contracts to GREEN.**
-- [ ] **Step 5: Commit stable generic picking.**
+- [x] **Step 1: Write RED tests** proving identity metadata survives LOD replacement and reconstruction and that pick resolution returns the stable presentation ID.
+- [x] **Step 2: Verify RED.**
+- [x] **Step 3: Implement the generic adapter and identity lookup seam using existing House A/Babylon conventions.**
+- [x] **Step 4: Run focused tests, House A picking tests, and renderer contracts to GREEN.**
+- [x] **Step 5: Commit stable generic picking.**
 
 ### Task 6: Representative Block/Neighborhood Structural Performance Fixtures
 
@@ -127,11 +127,11 @@
 - Neighborhood fixture contains at least 1,000 entities.
 - `summarizeProductionBudget(states, catalog)` returns entity count, unique prototypes, and explicit CPU/GPU estimate totals.
 
-- [ ] **Step 1: Write RED tests** for fixture size/category coverage, identical fixture digest across builds, prototype count <= 14, and memory totals derived from unique prototypes rather than instance count.
-- [ ] **Step 2: Verify RED.**
-- [ ] **Step 3: Implement deterministic fixture generation and structural budget summary.**
-- [ ] **Step 4: Run focused performance contracts to GREEN.**
-- [ ] **Step 5: Commit representative-scene budgets.**
+- [x] **Step 1: Write RED tests** for fixture size/category coverage, identical fixture digest across builds, prototype count <= 14, and memory totals derived from unique prototypes rather than instance count.
+- [x] **Step 2: Verify RED.**
+- [x] **Step 3: Implement deterministic fixture generation and structural budget summary.**
+- [x] **Step 4: Run focused performance contracts to GREEN.**
+- [x] **Step 5: Commit representative-scene budgets.**
 
 ### Task 7: Stack 3 Browser/Visual Acceptance
 
@@ -146,11 +146,11 @@
 - Smoke captures fixed-camera front/district/top/night-or-condition evidence where runtime hooks permit.
 - Smoke asserts camera orbit/zoom remains responsive, pick identity is stable, repeated unchanged reconciliation creates no new retained instances, and budget diagnostics remain bounded.
 
-- [ ] **Step 1: Add RED browser smoke entry and assertions before the representative-scene browser hook exists.**
-- [ ] **Step 2: Verify expected browser-smoke failure in CI.**
-- [ ] **Step 3: Add only the minimum runtime debug/fixture hook needed by the smoke; do not create simulation authority.**
-- [ ] **Step 4: Run Stack 3 smoke plus House A regression smoke to GREEN and preserve artifacts.**
-- [ ] **Step 5: Commit browser/visual acceptance.**
+- [x] **Step 1: Add RED browser smoke entry and assertions before the representative-scene browser hook exists.**
+- [x] **Step 2: Verify expected browser-smoke failure in CI.**
+- [x] **Step 3: Add only the minimum runtime debug/fixture hook needed by the smoke; do not create simulation authority.**
+- [x] **Step 4: Run Stack 3 smoke plus House A regression smoke to GREEN and preserve artifacts.**
+- [x] **Step 5: Commit browser/visual acceptance.**
 
 ### Task 8: Architecture Firewall, Report, and Full Acceptance
 
@@ -165,8 +165,8 @@
 **Interfaces:**
 - Completion report records exact head SHA, changed files, RED/GREEN defects, tests, verification, CI, risks, and authority statement.
 
-- [ ] **Step 1: Add/extend firewall tests proving authoritative directories do not import `src/rendering/3d` or asset-runtime modules.**
-- [ ] **Step 2: Run focused architecture/policy tests to GREEN.**
-- [ ] **Step 3: Run repository-wide verification: `npm test`, `npm run typecheck`, `npm run format:check`, `npm run assets:policy`, `npm run assets:3d:check`, `npm run build`, inherited browser/visual smoke, House A smoke, and Stack 3 smoke.**
-- [ ] **Step 4: Record exact acceptance evidence and remaining risks in the Stack 3 report.**
+- [x] **Step 1: Add/extend firewall tests proving authoritative directories do not import `src/rendering/3d` or asset-runtime modules.**
+- [x] **Step 2: Run focused architecture/policy tests to GREEN.**
+- [x] **Step 3: Run repository-wide verification: `npm test`, `npm run typecheck`, `npm run format:check`, `npm run assets:policy`, `npm run assets:3d:check`, `npm run build`, inherited browser/visual smoke, House A smoke, and Stack 3 smoke.**
+- [x] **Step 4: Record exact acceptance evidence and remaining risks in the Stack 3 report.**
 - [ ] **Step 5: Confirm CI success on the exact final head and leave the PR draft/unmerged unless separately authorized.**
