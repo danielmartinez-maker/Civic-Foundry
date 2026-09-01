@@ -110,7 +110,7 @@ export class ReferenceIntegrityValidator {
         domain: first.domain,
         operation,
         tick: first.tick,
-        entityIds: first.entityIds,
+        ...(first.entityIds === undefined ? {} : { entityIds: first.entityIds }),
       },
       `${this.issues.length} reference-integrity failure(s); first: ${first.message}`,
       first,
