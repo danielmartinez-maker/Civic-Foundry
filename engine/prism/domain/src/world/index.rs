@@ -29,7 +29,10 @@ impl WorldMirror {
         let terrain = &self.snapshot().terrain;
         let index = checked_grid_index(terrain.width, terrain.height, x, y, "terrain")?;
         terrain.samples.get(index).ok_or_else(|| {
-            world_query_error("query-out-of-bounds", "terrain sample index escaped validated grid")
+            world_query_error(
+                "query-out-of-bounds",
+                "terrain sample index escaped validated grid",
+            )
         })
     }
 
@@ -125,7 +128,10 @@ impl WorldMirror {
                 .cmp(&right.sort_key)
                 .then_with(|| left.id.cmp(&right.id))
         });
-        Ok(matches.into_iter().map(|entity| entity.id.clone()).collect())
+        Ok(matches
+            .into_iter()
+            .map(|entity| entity.id.clone())
+            .collect())
     }
 }
 
@@ -229,21 +235,13 @@ fn point_in_polygon(point: WorldPoint, entity: &GeographyEntity) -> bool {
     inside
 }
 
-fn point_on_segment(
-    point: WorldPoint,
-    start_x: f64,
-    start_y: f64,
-    end_x: f64,
-    end_y: f64,
-) -> bool {
+fn point_on_segment(point: WorldPoint, start_x: f64, start_y: f64, end_x: f64, end_y: f64) -> bool {
     const EPSILON: f64 = 1.0e-9;
-    let cross = (point.y - start_y) * (end_x - start_x)
-        - (point.x - start_x) * (end_y - start_y);
+    let cross = (point.y - start_y) * (end_x - start_x) - (point.x - start_x) * (end_y - start_y);
     if cross.abs() > EPSILON {
         return false;
     }
-    let dot = (point.x - start_x) * (end_x - start_x)
-        + (point.y - start_y) * (end_y - start_y);
+    let dot = (point.x - start_x) * (end_x - start_x) + (point.y - start_y) * (end_y - start_y);
     if dot < -EPSILON {
         return false;
     }
