@@ -21,6 +21,11 @@ export type PerformanceRecordOptions = Readonly<{
 
 export class PerformanceAttribution {
   private readonly records = new Map<string, PerformanceRecord>();
+  private readonly now: () => number;
+
+  constructor(now: () => number = defaultMonotonicNow) {
+    this.now = now;
+  }
 
   record(
     operation: string,
@@ -54,6 +59,19 @@ export class PerformanceAttribution {
     if (options.cache === "miss") record.cacheMisses += 1;
   }
 
+  measure<T>(
+    operation: string,
+    execute: () => T,
+    options: PerformanceRecordOptions = {},
+  ): T {
+    const startedAt = this.now();
+    try {
+      return execute();
+    } finally {
+      this.record(operation, Math.max(0, this.now() - startedAt), options);
+    }
+  }
+
   snapshot(): Readonly<Record<string, PerformanceMetric>> {
     const result: Record<string, PerformanceMetric> = {};
     for (const [operation, record] of [...this.records.entries()].sort(
@@ -83,4 +101,8 @@ export class PerformanceAttribution {
   reset(): void {
     this.records.clear();
   }
+}
+
+function defaultMonotonicNow(): number {
+  return globalThis.performance?.now() ?? Date.now();
 }
