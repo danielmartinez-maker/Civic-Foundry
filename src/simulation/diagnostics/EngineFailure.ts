@@ -42,11 +42,11 @@ export class EngineFailure extends Error {
   readonly domain: string;
   readonly operation: string;
   readonly tick: number;
-  readonly commandId?: string;
-  readonly entityIds?: readonly string[];
-  readonly revisions?: Readonly<Record<string, number>>;
-  readonly saveVersion?: number;
-  readonly parentOperation?: string;
+  readonly commandId: string | undefined;
+  readonly entityIds: readonly string[] | undefined;
+  readonly revisions: Readonly<Record<string, number>> | undefined;
+  readonly saveVersion: number | undefined;
+  readonly parentOperation: string | undefined;
 
   constructor(
     metadata: EngineFailureMetadata,
