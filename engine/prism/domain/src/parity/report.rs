@@ -18,7 +18,11 @@ pub struct P2AParityCase {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum P2AMutationCommand {
     Split {
         parcel_id: String,
@@ -122,11 +126,7 @@ fn apply_command(mirror: &mut P2AMirror, command: &P2AMutationCommand) -> Cadast
     }
 }
 
-fn step_report(
-    index: usize,
-    mirror: &P2AMirror,
-    result: CadastralMutationResult,
-) -> P2AParityStep {
+fn step_report(index: usize, mirror: &P2AMirror, result: CadastralMutationResult) -> P2AParityStep {
     let snapshot = mirror.cadastre.snapshot();
     let mut validation = validate_cadastral_snapshot(&snapshot)
         .into_iter()
