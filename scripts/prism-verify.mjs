@@ -1,7 +1,17 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const prismRoot = fileURLToPath(new URL("../engine/prism/", import.meta.url));
+
+export const prismPreflightCommands = Object.freeze([
+  Object.freeze([
+    "node",
+    "--experimental-strip-types",
+    "scripts/prism-p2a-fixtures.ts",
+    "--check",
+  ]),
+]);
 
 export const prismVerificationCommands = Object.freeze([
   Object.freeze(["fmt", "--all", "--", "--check"]),
@@ -45,9 +55,10 @@ export const prismVerificationCommands = Object.freeze([
   Object.freeze(["check", "--workspace", "--all-targets", "--locked"]),
 ]);
 
-function runCargo(args, cwd) {
+function runProcess(command, args, cwd) {
   return new Promise((resolve, reject) => {
-    const child = spawn("cargo", args, {
+    const executable = command === "node" ? process.execPath : command;
+    const child = spawn(executable, args, {
       cwd,
       shell: false,
       stdio: "inherit",
@@ -59,14 +70,17 @@ function runCargo(args, cwd) {
         resolve();
         return;
       }
-      reject(new Error(`cargo ${args.join(" ")} exited with code ${code}`));
+      reject(new Error(`${command} ${args.join(" ")} exited with code ${code}`));
     });
   });
 }
 
 export async function runPrismVerification(cwd = prismRoot) {
+  for (const [command, ...args] of prismPreflightCommands) {
+    await runProcess(command, args, projectRoot);
+  }
   for (const command of prismVerificationCommands) {
-    await runCargo([...command], cwd);
+    await runProcess("cargo", [...command], cwd);
   }
 }
 
