@@ -1,7 +1,7 @@
 # Stack 7 Branch and PR Classification
 
-**Repository:** `danielmartinez-maker/Civic-Foundry`  
-**Classification baseline:** `main@6e1b98704635c1c66927453f458cdc6b4ad6877b`  
+**Repository:** `danielmartinez-maker/Civic-Foundry`
+**Classification baseline:** `main@6e1b98704635c1c66927453f458cdc6b4ad6877b`
 **Stack 7 PR:** #115
 
 This file turns the repository-health inventory into an action matrix. Destructive cleanup remains conservative: an old name is not evidence that a ref can be deleted.
