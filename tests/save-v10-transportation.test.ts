@@ -105,4 +105,5 @@ test("explicit V9 remains loadable and initializes new Transportation 3R history
   assert.ok(
     restored.transportation3R.networkSnapshot().carriageways.length > 0,
   );
+  assert.equal(serializeCore(restored).saveVersion, 10);
 });
