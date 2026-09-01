@@ -68,17 +68,20 @@ fn assembly_reversed_order_is_canonical_and_removes_internal_boundary() {
     let result = graph.assemble_parcels(&["p1".to_owned(), "p0".to_owned()]);
 
     assert!(result.committed, "{:?}", result.rejection_reasons);
-    assert_eq!(
-        result.resulting_parcel_ids,
-        vec!["parcel:assembly:1:p0+p1"]
-    );
+    assert_eq!(result.resulting_parcel_ids, vec!["parcel:assembly:1:p0+p1"]);
     assert_eq!(result.retired_parcel_ids, vec!["p0", "p1"]);
     assert_eq!(
-        result.parcel_reference_rewrites.get("p0").map(String::as_str),
+        result
+            .parcel_reference_rewrites
+            .get("p0")
+            .map(String::as_str),
         Some("parcel:assembly:1:p0+p1")
     );
     assert_eq!(
-        result.parcel_reference_rewrites.get("p1").map(String::as_str),
+        result
+            .parcel_reference_rewrites
+            .get("p1")
+            .map(String::as_str),
         Some("parcel:assembly:1:p0+p1")
     );
     assert!(graph.get_parcel("p0").is_none());
