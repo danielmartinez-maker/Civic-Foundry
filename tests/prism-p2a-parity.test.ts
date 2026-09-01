@@ -88,6 +88,11 @@ test('TypeScript authority and native candidate produce identical P2A mutation r
   }
 });
 
+test('P2A parity fixture diagnostic capture', () => {
+  const fixture = `${stableStringify(buildP2AParityFixtureManifest())}\n`;
+  console.log(`P2A_PARITY_FIXTURE_BASE64 ${Buffer.from(fixture, 'utf8').toString('base64')}`);
+});
+
 type ValidationPair = Readonly<{ code: string; entityId: string | null }>;
 type LineageView = Readonly<{
   id: string;
