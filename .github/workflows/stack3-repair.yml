@@ -1,32 +1,13 @@
-name: Stack 3 Repair
+name: Stack 3 Repair (disabled)
 
 on:
-  push:
-    branches: [feature/stack-3-3d-presentation-asset-scaleup]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  repair:
+  disabled:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: feature/stack-3-3d-presentation-asset-scaleup
-          fetch-depth: 0
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: '22'
-      - run: node scripts/stack3-repair-task1.mjs
-      - shell: bash
-        run: |
-          if git diff --quiet; then
-            echo 'No repair changes required.'
-            exit 0
-          fi
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add tools/3d/asset-source-schema.mjs src/rendering/3d/assets/AssetManifestV2Validation.ts
-          git commit -m 'fix: collapse duplicate Stack 3 metadata validation'
-          git push origin HEAD:feature/stack-3-3d-presentation-asset-scaleup
+      - run: echo 'Repair write runner retired after controlled use.'
