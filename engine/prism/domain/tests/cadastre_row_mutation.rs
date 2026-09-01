@@ -116,10 +116,38 @@ fn single_parcel_fixture() -> CadastralSnapshot {
             node("n3", 0.0, 20.0),
         ],
         edges: vec![
-            edge("e0", "n0", "n1", "p0", ParcelEdgeKind::StreetFrontage, Some("south")),
-            edge("e1", "n1", "n2", "p0", ParcelEdgeKind::PropertyBoundary, None),
-            edge("e2", "n2", "n3", "p0", ParcelEdgeKind::PropertyBoundary, None),
-            edge("e3", "n3", "n0", "p0", ParcelEdgeKind::PropertyBoundary, None),
+            edge(
+                "e0",
+                "n0",
+                "n1",
+                "p0",
+                ParcelEdgeKind::StreetFrontage,
+                Some("south"),
+            ),
+            edge(
+                "e1",
+                "n1",
+                "n2",
+                "p0",
+                ParcelEdgeKind::PropertyBoundary,
+                None,
+            ),
+            edge(
+                "e2",
+                "n2",
+                "n3",
+                "p0",
+                ParcelEdgeKind::PropertyBoundary,
+                None,
+            ),
+            edge(
+                "e3",
+                "n3",
+                "n0",
+                "p0",
+                ParcelEdgeKind::PropertyBoundary,
+                None,
+            ),
         ],
         blocks: vec![UrbanBlock {
             id: "block".into(),
@@ -193,9 +221,7 @@ fn generated_id_collision_fixture() -> CadastralSnapshot {
         ),
     ]);
     snapshot.blocks[0].boundary = vec![p(0.0, 0.0), p(60.0, 0.0), p(60.0, 20.0), p(0.0, 20.0)];
-    snapshot.blocks[0]
-        .parcel_ids
-        .push("parcel:p0:row:1".into());
+    snapshot.blocks[0].parcel_ids.push("parcel:p0:row:1".into());
     snapshot.blocks[0].road_edge_ids.push("c-e0".into());
     snapshot.parcels.push(parcel(
         "parcel:p0:row:1",
@@ -247,7 +273,10 @@ fn parcel(
     Parcel {
         id: id.into(),
         block_id: "block".into(),
-        boundary_edge_ids: boundary_edge_ids.iter().map(|value| (*value).into()).collect(),
+        boundary_edge_ids: boundary_edge_ids
+            .iter()
+            .map(|value| (*value).into())
+            .collect(),
         area_m2,
         centroid,
         frontage_edge_ids: vec![frontage_edge_id.into()],
