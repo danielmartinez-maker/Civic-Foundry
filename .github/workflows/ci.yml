@@ -49,6 +49,9 @@ jobs:
       - name: Prism P1 release invariants
         working-directory: engine/prism
         run: cargo test -p prism-core --release --test p1_invariants --locked
+      - name: Prism P2A release invariants
+        working-directory: engine/prism
+        run: cargo test -p prism-domain --release --test p2a_invariants --locked
       - name: Prism workspace check
         working-directory: engine/prism
         run: cargo check --workspace --all-targets --locked
@@ -90,6 +93,9 @@ jobs:
       - name: Prism P1 release invariants
         working-directory: engine/prism
         run: cargo test -p prism-core --release --test p1_invariants --locked
+      - name: Prism P2A release invariants
+        working-directory: engine/prism
+        run: cargo test -p prism-domain --release --test p2a_invariants --locked
       - name: Prism workspace check
         working-directory: engine/prism
         run: cargo check --workspace --all-targets --locked
