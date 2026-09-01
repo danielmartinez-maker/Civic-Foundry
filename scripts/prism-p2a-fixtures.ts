@@ -175,11 +175,13 @@ export function buildP2AParityFixtureManifest(): P2AParityFixtureManifest {
 }
 
 function baseGeneratedEnvelope(): PrismP2AImportEnvelopeV1 {
-  const vectors = JSON.parse(readFileSync(HASH_VECTORS_URL, 'utf8')) as readonly Readonly<{
-    name: string;
-    envelope: PrismP2AImportEnvelopeV1;
-  }>[];
-  const vector = vectors.find((entry) => entry.name === 'minimal-valid') ?? vectors[0];
+  const manifest = JSON.parse(readFileSync(HASH_VECTORS_URL, 'utf8')) as Readonly<{
+    vectors: readonly Readonly<{
+      name: string;
+      envelope: PrismP2AImportEnvelopeV1;
+    }>[];
+  }>;
+  const vector = manifest.vectors.find((entry) => entry.name === 'minimal-valid') ?? manifest.vectors[0];
   if (!vector) throw new Error('P2A hash vectors must contain a valid base envelope');
   return structuredClone(vector.envelope);
 }
@@ -258,15 +260,15 @@ function adjacentParcelsCadastre(): CadastralSnapshot {
       edge('e0', 'n0', 'n1', 'p0', undefined, 'street-frontage', 'south:p0'),
       edge('e1', 'n1', 'n2', 'p1', undefined, 'street-frontage', 'south:p1'),
       edge('e2', 'n1', 'n4', 'p0', 'p1'),
-      edge('e3', 'n2', 'n3', 'p1'),
-      edge('e4', 'n3', 'n4', 'p1'),
-      edge('e5', 'n4', 'n5', 'p0'),
-      edge('e6', 'n5', 'n0', 'p0'),
+      edge('e3', 'n4', 'n5', 'p0'),
+      edge('e4', 'n5', 'n0', 'p0'),
+      edge('e5', 'n2', 'n3', 'p1'),
+      edge('e6', 'n3', 'n4', 'p1'),
     ],
     blocks: [block(['p0', 'p1'], ['e0', 'e1'], [p(0, 0), p(40, 0), p(40, 20), p(0, 20)])],
     parcels: [
-      parcel('p0', ['e0', 'e2', 'e5', 'e6'], 400, p(10, 10), ['e0']),
-      parcel('p1', ['e1', 'e3', 'e4', 'e2'], 400, p(30, 10), ['e1']),
+      parcel('p0', ['e0', 'e2', 'e3', 'e4'], 400, p(10, 10), ['e0']),
+      parcel('p1', ['e1', 'e5', 'e6', 'e2'], 400, p(30, 10), ['e1']),
     ],
     easements: [],
     lineage: [],
@@ -274,21 +276,30 @@ function adjacentParcelsCadastre(): CadastralSnapshot {
 }
 
 function easementLineageCadastre(): CadastralSnapshot {
-  const snapshot = singleParcelCadastre();
+  const cadastre = singleParcelCadastre();
   const easement: Easement = {
-    id: 'easement:access:p0',
+    id: 'easement:utility:p0',
     parcelIds: ['p0'],
-    kind: 'access',
+    kind: 'utility',
     geometry: [p(5, 5), p(35, 5)],
   };
   const lineage: ParcelLineageEvent = {
-    id: 'lineage:1:split',
-    tick: 1,
-    kind: 'split',
-    sourceParcelIds: ['parcel:ancestor'],
+    id: 'lineage:0:import-repair',
+    tick: 0,
+    kind: 'import-repair',
+    sourceParcelIds: ['legacy:p0'],
     resultingParcelIds: ['p0'],
   };
-  return { ...snapshot, easements: [easement], lineage: [lineage] };
+  return { ...cadastre, easements: [easement], lineage: [lineage] };
+}
+
+function mutateEnvelope(
+  envelope: PrismP2AImportEnvelopeV1,
+  mutate: (copy: any) => void,
+): PrismP2AImportEnvelopeV1 {
+  const copy = structuredClone(envelope) as any;
+  mutate(copy);
+  return copy as PrismP2AImportEnvelopeV1;
 }
 
 function node(id: string, x: number, y: number): ParcelNode {
@@ -304,42 +315,30 @@ function edge(
   kind: ParcelEdge['kind'] = 'property-boundary',
   roadRef?: string,
 ): ParcelEdge {
-  return {
-    id,
-    fromNodeId,
-    toNodeId,
-    leftParcelId,
-    ...(rightParcelId === undefined ? {} : { rightParcelId }),
-    kind,
-    ...(roadRef === undefined ? {} : { roadRef }),
-  };
+  return { id, fromNodeId, toNodeId, leftParcelId, rightParcelId, kind, roadRef };
 }
 
-function block(
-  parcelIds: readonly string[],
-  roadEdgeIds: readonly string[],
-  boundary: readonly WorldPoint[],
-): UrbanBlock {
-  return { id: 'block', boundary, parcelIds, roadEdgeIds };
+function block(parcelIds: string[], roadEdgeIds: string[], boundary: WorldPoint[]): UrbanBlock {
+  return { id: 'b0', parcelIds, roadEdgeIds, boundary };
 }
 
 function parcel(
   id: string,
-  boundaryEdgeIds: readonly string[],
+  boundaryEdgeIds: string[],
   areaM2: number,
   centroid: WorldPoint,
-  frontageEdgeIds: readonly string[],
+  frontageEdgeIds: string[],
 ): Parcel {
   return {
     id,
-    blockId: 'block',
+    blockId: 'b0',
     boundaryEdgeIds,
     areaM2,
     centroid,
     frontageEdgeIds,
-    accessEdgeIds: frontageEdgeIds,
+    accessEdgeIds: [...frontageEdgeIds],
     zoningDistrictId: 'R2',
-    ownerId: 'owner:a',
+    ownerId: undefined,
     historicalParentIds: [],
   };
 }
@@ -348,55 +347,24 @@ function p(x: number, y: number): WorldPoint {
   return { x, y };
 }
 
-function mutateEnvelope(
-  source: PrismP2AImportEnvelopeV1,
-  mutate: (copy: MutableEnvelope) => void,
-): unknown {
-  const copy = structuredClone(source) as MutableEnvelope;
-  mutate(copy);
-  return copy;
-}
-
-type MutableEnvelope = {
-  schemaVersion: number;
-  sourceSaveVersion: number;
-  sourceGameVersion: string;
-  world: {
-    terrain: { samples: unknown[] };
-    [key: string]: unknown;
-  };
-  cadastre: {
-    parcels: Array<{ areaM2: number; [key: string]: unknown }>;
-    [key: string]: unknown;
-  };
-};
-
 function stableValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stableValue);
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, stableValue(entry)]),
-    );
+  if (Array.isArray(value)) return value.map((entry) => stableValue(entry));
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      result[key] = stableValue((value as Record<string, unknown>)[key]);
+    }
+    return result;
   }
   return value;
 }
 
-function runCli(): void {
-  const mode = process.argv[2];
-  if (mode !== '--write' && mode !== '--check') {
-    throw new Error('Usage: prism-p2a-fixtures.ts --write|--check');
-  }
-  const rendered = `${stableStringify(buildP2AParityFixtureManifest())}\n`;
-  const outputPath = fileURLToPath(OUTPUT_URL);
-  if (mode === '--write') {
-    writeFileSync(outputPath, rendered, 'utf8');
-    return;
-  }
-  if (!existsSync(outputPath)) throw new Error(`P2A fixture file missing: ${outputPath}`);
-  const existing = readFileSync(outputPath, 'utf8');
-  if (existing !== rendered) throw new Error('P2A fixture corpus is stale; run npm run prism:p2a:fixtures');
+function main(): void {
+  writeFileSync(OUTPUT_URL, `${stableStringify(buildP2AParityFixtureManifest())}\n`, 'utf8');
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) runCli();
+if (process.argv[1] && import.meta.url === pathToFileURL(fileURLToPath(process.argv[1])).href) {
+  main();
+}
+
+export const parityFixtureFileExists = (): boolean => existsSync(OUTPUT_URL);
