@@ -112,6 +112,7 @@ export class ProductionSceneLayer<Handle> {
       }
 
       const structuralChange =
+        existing.state.canonicalId !== state.canonicalId ||
         existing.state.assetId !== state.assetId ||
         existing.state.structuralFingerprint !== state.structuralFingerprint ||
         existing.lod !== lod;
