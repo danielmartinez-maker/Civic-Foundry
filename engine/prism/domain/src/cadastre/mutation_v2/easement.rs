@@ -3,9 +3,7 @@ use std::collections::BTreeSet;
 use super::super::geometry::{normalize_point, point_in_ring};
 use super::super::graph::CadastralGraph;
 use super::super::types::{Easement, EasementKind, PolygonRing, WorldPoint};
-use super::{
-    CadastralMutationResult, committed, error_reason, point_key, rejected, unique_id,
-};
+use super::{CadastralMutationResult, committed, error_reason, point_key, rejected, unique_id};
 
 const EASEMENT_SAMPLE_STEPS: usize = 8;
 
