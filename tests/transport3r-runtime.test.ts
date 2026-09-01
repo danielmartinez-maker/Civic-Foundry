@@ -47,6 +47,7 @@ test("3R runtime owns the network projection while preserving legacy route shape
   const { roads, graph } = roadsWithDetour();
   const runtime = new Transportation3RRuntime();
   assert.equal(runtime.refreshNetwork(roads, graph), true);
+  assert.equal(runtime.refreshNetwork(roads, graph), false);
   assert.equal(graph.sourceRoadRevision, roads.revision);
   assert.ok(runtime.networkSnapshot().movements.length > 0);
 
