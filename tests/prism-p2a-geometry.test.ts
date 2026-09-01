@@ -1,6 +1,6 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   normalizePoint,
   normalizeRing,
@@ -9,25 +9,25 @@ import {
   polygonUnion,
   type PolygonRing,
   type WorldPoint,
-} from '../src/world/cadastre/Geometry.ts';
+} from "../src/world/cadastre/Geometry.ts";
 
 type NormalizationCase =
   | Readonly<{
       name: string;
-      kind: 'point';
+      kind: "point";
       input: WorldPoint;
       expected: WorldPoint;
     }>
   | Readonly<{
       name: string;
-      kind: 'ring';
+      kind: "ring";
       input: PolygonRing;
       expected: PolygonRing;
     }>;
 
 type BooleanCase = Readonly<{
   name: string;
-  operation: 'intersection' | 'union' | 'difference';
+  operation: "intersection" | "union" | "difference";
   subject: PolygonRing;
   clip?: PolygonRing;
   expected: readonly PolygonRing[];
@@ -39,12 +39,15 @@ type GeometryFixture = Readonly<{
 }>;
 
 const fixture = JSON.parse(
-  readFileSync(new URL('./fixtures/prism-p2a/geometry-cases.json', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL("./fixtures/prism-p2a/geometry-cases.json", import.meta.url),
+    "utf8",
+  ),
 ) as GeometryFixture;
 
-test('P2A geometry fixtures freeze the TypeScript centimeter normalization oracle', () => {
+test("P2A geometry fixtures freeze the TypeScript centimeter normalization oracle", () => {
   for (const entry of fixture.normalization) {
-    if (entry.kind === 'point') {
+    if (entry.kind === "point") {
       assert.deepEqual(normalizePoint(entry.input), entry.expected, entry.name);
     } else {
       assert.deepEqual(normalizeRing(entry.input), entry.expected, entry.name);
@@ -52,17 +55,17 @@ test('P2A geometry fixtures freeze the TypeScript centimeter normalization oracl
   }
 });
 
-test('P2A geometry fixtures freeze canonical TypeScript boolean outputs', () => {
+test("P2A geometry fixtures freeze canonical TypeScript boolean outputs", () => {
   for (const entry of fixture.booleans) {
     const actual = (() => {
       switch (entry.operation) {
-        case 'intersection':
+        case "intersection":
           assert.ok(entry.clip, `${entry.name} requires clip geometry`);
           return polygonIntersection(entry.subject, entry.clip);
-        case 'difference':
+        case "difference":
           assert.ok(entry.clip, `${entry.name} requires clip geometry`);
           return polygonDifference(entry.subject, entry.clip);
-        case 'union':
+        case "union":
           return polygonUnion(entry.subject, entry.clip);
       }
     })();

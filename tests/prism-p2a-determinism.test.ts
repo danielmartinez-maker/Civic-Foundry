@@ -1,17 +1,22 @@
-import assert from 'node:assert/strict';
-import test from 'node:test';
+import assert from "node:assert/strict";
+import test from "node:test";
 
-import { buildP2AParityFixtureManifest } from '../scripts/prism-p2a-fixtures.ts';
-import { prismCanonicalHashV1 } from '../src/prism/compat/P2ACanonicalHash.ts';
-import type { PrismP2AImportEnvelopeV1 } from '../src/prism/compat/P2AEnvelope.ts';
-import { CadastralGraph } from '../src/world/cadastre/CadastralGraph.ts';
-import { CadastralMutationSystem } from '../src/world/cadastre/CadastralMutationSystem.ts';
+import { buildP2AParityFixtureManifest } from "../scripts/prism-p2a-fixtures.ts";
+import { prismCanonicalHashV1 } from "../src/prism/compat/P2ACanonicalHash.ts";
+import type { PrismP2AImportEnvelopeV1 } from "../src/prism/compat/P2AEnvelope.ts";
+import { CadastralGraph } from "../src/world/cadastre/CadastralGraph.ts";
+import { CadastralMutationSystem } from "../src/world/cadastre/CadastralMutationSystem.ts";
 
 function hashEnvelope(envelope: PrismP2AImportEnvelopeV1): string {
-  return prismCanonicalHashV1({ world: envelope.world, cadastre: envelope.cadastre });
+  return prismCanonicalHashV1({
+    world: envelope.world,
+    cadastre: envelope.cadastre,
+  });
 }
 
-function reversedSetLikeArrays(envelope: PrismP2AImportEnvelopeV1): PrismP2AImportEnvelopeV1 {
+function reversedSetLikeArrays(
+  envelope: PrismP2AImportEnvelopeV1,
+): PrismP2AImportEnvelopeV1 {
   const copy = structuredClone(envelope);
   copy.world.geography.entities.reverse();
   copy.cadastre.nodes.reverse();
@@ -23,46 +28,62 @@ function reversedSetLikeArrays(envelope: PrismP2AImportEnvelopeV1): PrismP2AImpo
   return copy;
 }
 
-test('P2A canonical hash is invariant to top-level set-like array order', () => {
+test("P2A canonical hash is invariant to top-level set-like array order", () => {
   const fixture = buildP2AParityFixtureManifest().staticCases.find(
-    (entry) => entry.name === 'easement-lineage',
+    (entry) => entry.name === "easement-lineage",
   );
   assert.ok(fixture);
-  assert.equal(hashEnvelope(reversedSetLikeArrays(fixture.envelope)), hashEnvelope(fixture.envelope));
+  assert.equal(
+    hashEnvelope(reversedSetLikeArrays(fixture.envelope)),
+    hashEnvelope(fixture.envelope),
+  );
 });
 
-test('100 fresh TypeScript cadastral mirrors reproduce one canonical P2A hash', () => {
+test("100 fresh TypeScript cadastral mirrors reproduce one canonical P2A hash", () => {
   const fixture = buildP2AParityFixtureManifest().staticCases.find(
-    (entry) => entry.name === 'shared-boundary-block',
+    (entry) => entry.name === "shared-boundary-block",
   );
   assert.ok(fixture);
   const expected = hashEnvelope(fixture.envelope);
 
   for (let iteration = 0; iteration < 100; iteration += 1) {
-    const graph = new CadastralGraph(structuredClone(fixture.envelope.cadastre));
+    const graph = new CadastralGraph(
+      structuredClone(fixture.envelope.cadastre),
+    );
     assert.equal(
-      prismCanonicalHashV1({ world: fixture.envelope.world, cadastre: graph.snapshot() }),
+      prismCanonicalHashV1({
+        world: fixture.envelope.world,
+        cadastre: graph.snapshot(),
+      }),
       expected,
       `fresh mirror hash diverged at iteration ${iteration}`,
     );
   }
 });
 
-test('rejected P2A candidate mutation preserves canonical hash exactly', () => {
-  const fixture = buildP2AParityFixtureManifest().mutationCases.find((entry) => entry.name === 'split');
+test("rejected P2A candidate mutation preserves canonical hash exactly", () => {
+  const fixture = buildP2AParityFixtureManifest().mutationCases.find(
+    (entry) => entry.name === "split",
+  );
   assert.ok(fixture);
   const graph = new CadastralGraph(structuredClone(fixture.envelope.cadastre));
   const mutations = new CadastralMutationSystem(graph);
-  const before = prismCanonicalHashV1({ world: fixture.envelope.world, cadastre: graph.snapshot() });
+  const before = prismCanonicalHashV1({
+    world: fixture.envelope.world,
+    cadastre: graph.snapshot(),
+  });
 
-  const result = mutations.splitParcel('p0', [
+  const result = mutations.splitParcel("p0", [
     { x: 0, y: 0 },
     { x: 0.01, y: 0.01 },
   ]);
 
   assert.equal(result.committed, false);
   assert.equal(
-    prismCanonicalHashV1({ world: fixture.envelope.world, cadastre: graph.snapshot() }),
+    prismCanonicalHashV1({
+      world: fixture.envelope.world,
+      cadastre: graph.snapshot(),
+    }),
     before,
   );
 });

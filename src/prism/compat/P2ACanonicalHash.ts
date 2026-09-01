@@ -1,11 +1,11 @@
-import type { PrismP2AImportEnvelopeV1 } from './P2AEnvelope.ts';
+import type { PrismP2AImportEnvelopeV1 } from "./P2AEnvelope.ts";
 
 const FNV_OFFSET = 0xcbf29ce484222325n;
 const FNV_PRIME = 0x100000001b3n;
 const U64_MASK = 0xffffffffffffffffn;
 const textEncoder = new TextEncoder();
 
-type HashPayload = Pick<PrismP2AImportEnvelopeV1, 'world' | 'cadastre'>;
+type HashPayload = Pick<PrismP2AImportEnvelopeV1, "world" | "cadastre">;
 
 const TAG = {
   World: 1,
@@ -62,7 +62,9 @@ class CanonicalByteWriter {
 
   i64(value: number): void {
     if (!Number.isSafeInteger(value)) {
-      throw new Error(`PrismCanonicalHashV1 expected safe integer i64, found ${value}`);
+      throw new Error(
+        `PrismCanonicalHashV1 expected safe integer i64, found ${value}`,
+      );
     }
     const buffer = new ArrayBuffer(8);
     new DataView(buffer).setBigInt64(0, BigInt(value), true);
@@ -71,7 +73,9 @@ class CanonicalByteWriter {
 
   u64(value: number): void {
     if (!Number.isSafeInteger(value) || value < 0) {
-      throw new Error(`PrismCanonicalHashV1 expected safe integer u64, found ${value}`);
+      throw new Error(
+        `PrismCanonicalHashV1 expected safe integer u64, found ${value}`,
+      );
     }
     const buffer = new ArrayBuffer(8);
     new DataView(buffer).setBigUint64(0, BigInt(value), true);
@@ -80,7 +84,9 @@ class CanonicalByteWriter {
 
   f64(value: number): void {
     if (!Number.isFinite(value)) {
-      throw new Error(`PrismCanonicalHashV1 requires finite f64 values, found ${value}`);
+      throw new Error(
+        `PrismCanonicalHashV1 requires finite f64 values, found ${value}`,
+      );
     }
     const buffer = new ArrayBuffer(8);
     new DataView(buffer).setFloat64(0, value === 0 ? 0 : value, true);
@@ -122,7 +128,7 @@ export function fnv1a64Hex(bytes: Uint8Array): string {
     hash ^= BigInt(byte);
     hash = (hash * FNV_PRIME) & U64_MASK;
   }
-  return hash.toString(16).padStart(16, '0');
+  return hash.toString(16).padStart(16, "0");
 }
 
 export function prismCanonicalHashV1(value: HashPayload): string {
@@ -143,15 +149,22 @@ function compareUtf8Strings(left: string, right: string): number {
   return leftBytes.length - rightBytes.length;
 }
 
-function sortedById<T extends { readonly id: string }>(values: readonly T[]): T[] {
-  return [...values].sort((left, right) => compareUtf8Strings(left.id, right.id));
+function sortedById<T extends { readonly id: string }>(
+  values: readonly T[],
+): T[] {
+  return [...values].sort((left, right) =>
+    compareUtf8Strings(left.id, right.id),
+  );
 }
 
 function sortedStrings(values: readonly string[]): string[] {
   return [...values].sort(compareUtf8Strings);
 }
 
-function writeWorld(writer: CanonicalByteWriter, world: HashPayload['world']): void {
+function writeWorld(
+  writer: CanonicalByteWriter,
+  world: HashPayload["world"],
+): void {
   writer.tag(TAG.World);
   writer.string(world.mode);
   writer.i64(world.seed);
@@ -188,15 +201,21 @@ function writeWorld(writer: CanonicalByteWriter, world: HashPayload['world']): v
   writer.tag(TAG.Hydrology);
   writer.u32(world.hydrology.width);
   writer.u32(world.hydrology.height);
-  writer.array(world.hydrology.conditionedElevationMeters, (item) => writer.f64(item));
-  writer.array(world.hydrology.receiver, (item) => writer.option(item, (index) => writer.u32(index)));
+  writer.array(world.hydrology.conditionedElevationMeters, (item) =>
+    writer.f64(item),
+  );
+  writer.array(world.hydrology.receiver, (item) =>
+    writer.option(item, (index) => writer.u32(index)),
+  );
   writer.array(sortedById(world.hydrology.watersheds), (watershed) => {
     writer.tag(TAG.Watershed);
     writer.string(watershed.id);
     writer.u32(watershed.outletIndex);
     writer.u32(watershed.memberCount);
     writer.u32(watershed.upstreamAreaCells);
-    writer.option(watershed.primaryChannelId, (channelId) => writer.string(channelId));
+    writer.option(watershed.primaryChannelId, (channelId) =>
+      writer.string(channelId),
+    );
   });
   writer.array(sortedById(world.hydrology.channels), (channel) => {
     writer.tag(TAG.Channel);
@@ -252,7 +271,10 @@ function writeWorld(writer: CanonicalByteWriter, world: HashPayload['world']): v
   });
 }
 
-function writeCadastre(writer: CanonicalByteWriter, cadastre: HashPayload['cadastre']): void {
+function writeCadastre(
+  writer: CanonicalByteWriter,
+  cadastre: HashPayload["cadastre"],
+): void {
   writer.tag(TAG.Cadastre);
 
   writer.array(sortedById(cadastre.nodes), (node) => {
@@ -276,8 +298,12 @@ function writeCadastre(writer: CanonicalByteWriter, cadastre: HashPayload['cadas
     writer.tag(TAG.UrbanBlock);
     writer.string(block.id);
     writer.array(block.boundary, (point) => writePoint(writer, point));
-    writer.array(sortedStrings(block.parcelIds), (parcelId) => writer.string(parcelId));
-    writer.array(sortedStrings(block.roadEdgeIds), (edgeId) => writer.string(edgeId));
+    writer.array(sortedStrings(block.parcelIds), (parcelId) =>
+      writer.string(parcelId),
+    );
+    writer.array(sortedStrings(block.roadEdgeIds), (edgeId) =>
+      writer.string(edgeId),
+    );
   });
 
   writer.array(sortedById(cadastre.parcels), (parcel) => {
@@ -287,17 +313,25 @@ function writeCadastre(writer: CanonicalByteWriter, cadastre: HashPayload['cadas
     writer.array(parcel.boundaryEdgeIds, (edgeId) => writer.string(edgeId));
     writer.f64(parcel.areaM2);
     writePoint(writer, parcel.centroid);
-    writer.array(sortedStrings(parcel.frontageEdgeIds), (edgeId) => writer.string(edgeId));
-    writer.array(sortedStrings(parcel.accessEdgeIds), (edgeId) => writer.string(edgeId));
+    writer.array(sortedStrings(parcel.frontageEdgeIds), (edgeId) =>
+      writer.string(edgeId),
+    );
+    writer.array(sortedStrings(parcel.accessEdgeIds), (edgeId) =>
+      writer.string(edgeId),
+    );
     writer.string(parcel.zoningDistrictId);
     writer.option(parcel.ownerId, (ownerId) => writer.string(ownerId));
-    writer.array(sortedStrings(parcel.historicalParentIds), (parcelId) => writer.string(parcelId));
+    writer.array(sortedStrings(parcel.historicalParentIds), (parcelId) =>
+      writer.string(parcelId),
+    );
   });
 
   writer.array(sortedById(cadastre.easements), (easement) => {
     writer.tag(TAG.Easement);
     writer.string(easement.id);
-    writer.array(sortedStrings(easement.parcelIds), (parcelId) => writer.string(parcelId));
+    writer.array(sortedStrings(easement.parcelIds), (parcelId) =>
+      writer.string(parcelId),
+    );
     writer.string(easement.kind);
     writer.array(easement.geometry, (point) => writePoint(writer, point));
   });
@@ -311,12 +345,19 @@ function writeCadastre(writer: CanonicalByteWriter, cadastre: HashPayload['cadas
     writer.string(event.id);
     writer.u64(event.tick);
     writer.string(event.kind);
-    writer.array(sortedStrings(event.sourceParcelIds), (parcelId) => writer.string(parcelId));
-    writer.array(sortedStrings(event.resultingParcelIds), (parcelId) => writer.string(parcelId));
+    writer.array(sortedStrings(event.sourceParcelIds), (parcelId) =>
+      writer.string(parcelId),
+    );
+    writer.array(sortedStrings(event.resultingParcelIds), (parcelId) =>
+      writer.string(parcelId),
+    );
   });
 }
 
-function writePoint(writer: CanonicalByteWriter, point: { readonly x: number; readonly y: number }): void {
+function writePoint(
+  writer: CanonicalByteWriter,
+  point: { readonly x: number; readonly y: number },
+): void {
   writer.tag(TAG.Point);
   writer.f64(point.x);
   writer.f64(point.y);

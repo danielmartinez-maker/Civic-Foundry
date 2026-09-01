@@ -1,14 +1,14 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   fnv1a64Hex,
   prismCanonicalHashV1,
-} from '../src/prism/compat/P2ACanonicalHash.ts';
-import { exportPrismP2AEnvelope } from '../src/prism/compat/P2AExporter.ts';
-import type { PrismP2AImportEnvelopeV1 } from '../src/prism/compat/P2AEnvelope.ts';
-import { SimulationCore } from '../src/simulation/core/SimulationCore.ts';
+} from "../src/prism/compat/P2ACanonicalHash.ts";
+import { exportPrismP2AEnvelope } from "../src/prism/compat/P2AExporter.ts";
+import type { PrismP2AImportEnvelopeV1 } from "../src/prism/compat/P2AEnvelope.ts";
+import { SimulationCore } from "../src/simulation/core/SimulationCore.ts";
 
 type Mutable<T> = T extends readonly (infer Item)[]
   ? Mutable<Item>[]
@@ -30,7 +30,10 @@ type HashVectorFixture = Readonly<{
 }>;
 
 const hashVectors = JSON.parse(
-  readFileSync(new URL('./fixtures/prism-p2a/hash-vectors.json', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL("./fixtures/prism-p2a/hash-vectors.json", import.meta.url),
+    "utf8",
+  ),
 ) as HashVectorFixture;
 
 function mutableClone<T>(value: T): Mutable<T> {
@@ -38,10 +41,12 @@ function mutableClone<T>(value: T): Mutable<T> {
 }
 
 function envelope(seed = 17): PrismP2AImportEnvelopeV1 {
-  return exportPrismP2AEnvelope(new SimulationCore({ width: 8, height: 8, seed }));
+  return exportPrismP2AEnvelope(
+    new SimulationCore({ width: 8, height: 8, seed }),
+  );
 }
 
-test('Prism FNV-1a64 locks the mandated byte vectors', () => {
+test("Prism FNV-1a64 locks the mandated byte vectors", () => {
   for (const vector of hashVectors.fnvVectors) {
     assert.equal(
       fnv1a64Hex(new TextEncoder().encode(vector.utf8)),
@@ -51,13 +56,17 @@ test('Prism FNV-1a64 locks the mandated byte vectors', () => {
   }
 });
 
-test('PrismCanonicalHashV1 matches the frozen cross-language envelope vector', () => {
+test("PrismCanonicalHashV1 matches the frozen cross-language envelope vector", () => {
   for (const vector of hashVectors.vectors) {
-    assert.equal(prismCanonicalHashV1(vector.envelope), vector.expectedHash, vector.name);
+    assert.equal(
+      prismCanonicalHashV1(vector.envelope),
+      vector.expectedHash,
+      vector.name,
+    );
   }
 });
 
-test('frozen PrismCanonicalHashV1 vector is unchanged by set-like reordering', () => {
+test("frozen PrismCanonicalHashV1 vector is unchanged by set-like reordering", () => {
   const vector = hashVectors.vectors[0];
   assert.ok(vector);
   const shuffled = mutableClone(vector.envelope);
@@ -80,7 +89,8 @@ test('frozen PrismCanonicalHashV1 vector is unchanged by set-like reordering', (
     parcel.accessEdgeIds.reverse();
     parcel.historicalParentIds.reverse();
   }
-  for (const easement of shuffled.cadastre.easements) easement.parcelIds.reverse();
+  for (const easement of shuffled.cadastre.easements)
+    easement.parcelIds.reverse();
   for (const event of shuffled.cadastre.lineage) {
     event.sourceParcelIds.reverse();
     event.resultingParcelIds.reverse();
@@ -89,7 +99,7 @@ test('frozen PrismCanonicalHashV1 vector is unchanged by set-like reordering', (
   assert.equal(prismCanonicalHashV1(shuffled), vector.expectedHash);
 });
 
-test('PrismCanonicalHashV1 is deterministic and has a fixed lowercase 64-bit form', () => {
+test("PrismCanonicalHashV1 is deterministic and has a fixed lowercase 64-bit form", () => {
   const value = envelope();
   const first = prismCanonicalHashV1(value);
   const second = prismCanonicalHashV1(structuredClone(value));
@@ -98,7 +108,7 @@ test('PrismCanonicalHashV1 is deterministic and has a fixed lowercase 64-bit for
   assert.match(first, /^[0-9a-f]{16}$/);
 });
 
-test('PrismCanonicalHashV1 ignores envelope metadata and hashes only world plus cadastre', () => {
+test("PrismCanonicalHashV1 ignores envelope metadata and hashes only world plus cadastre", () => {
   const value = envelope();
 
   assert.equal(
@@ -107,7 +117,7 @@ test('PrismCanonicalHashV1 ignores envelope metadata and hashes only world plus 
   );
 });
 
-test('PrismCanonicalHashV1 canonicalizes set-like collection order', () => {
+test("PrismCanonicalHashV1 canonicalizes set-like collection order", () => {
   const original = mutableClone(envelope(23));
   const shuffled = mutableClone(original);
 
@@ -129,7 +139,8 @@ test('PrismCanonicalHashV1 canonicalizes set-like collection order', () => {
     parcel.accessEdgeIds.reverse();
     parcel.historicalParentIds.reverse();
   }
-  for (const easement of shuffled.cadastre.easements) easement.parcelIds.reverse();
+  for (const easement of shuffled.cadastre.easements)
+    easement.parcelIds.reverse();
   for (const event of shuffled.cadastre.lineage) {
     event.sourceParcelIds.reverse();
     event.resultingParcelIds.reverse();
@@ -138,7 +149,7 @@ test('PrismCanonicalHashV1 canonicalizes set-like collection order', () => {
   assert.equal(prismCanonicalHashV1(shuffled), prismCanonicalHashV1(original));
 });
 
-test('PrismCanonicalHashV1 preserves semantic terrain array order', () => {
+test("PrismCanonicalHashV1 preserves semantic terrain array order", () => {
   const ordered = mutableClone(envelope(29));
   assert.ok(ordered.world.terrain.samples.length >= 2);
   ordered.world.terrain.samples[0]!.elevationMeters = 101.25;
@@ -152,24 +163,27 @@ test('PrismCanonicalHashV1 preserves semantic terrain array order', () => {
   assert.notEqual(prismCanonicalHashV1(swapped), prismCanonicalHashV1(ordered));
 });
 
-test('PrismCanonicalHashV1 normalizes negative zero and rejects non-finite numbers', () => {
+test("PrismCanonicalHashV1 normalizes negative zero and rejects non-finite numbers", () => {
   const positiveZero = mutableClone(envelope(31));
   const negativeZero = mutableClone(positiveZero);
   positiveZero.world.terrain.samples[0]!.slope = 0;
   negativeZero.world.terrain.samples[0]!.slope = -0;
 
-  assert.equal(prismCanonicalHashV1(negativeZero), prismCanonicalHashV1(positiveZero));
+  assert.equal(
+    prismCanonicalHashV1(negativeZero),
+    prismCanonicalHashV1(positiveZero),
+  );
 
   const invalid = mutableClone(positiveZero);
   invalid.world.terrain.samples[0]!.slope = Number.POSITIVE_INFINITY;
   assert.throws(() => prismCanonicalHashV1(invalid), /finite/i);
 });
 
-test('PrismCanonicalHashV1 encodes optional-value presence explicitly', () => {
+test("PrismCanonicalHashV1 encodes optional-value presence explicitly", () => {
   const absent = mutableClone(envelope(37));
   const present = mutableClone(absent);
   absent.world.scenarioId = null;
-  present.world.scenarioId = 'hash-vector-scenario';
+  present.world.scenarioId = "hash-vector-scenario";
 
   assert.notEqual(prismCanonicalHashV1(absent), prismCanonicalHashV1(present));
 });
