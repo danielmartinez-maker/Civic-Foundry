@@ -1,4 +1,9 @@
-import { isDue, validateCadence, type KernelSystemDefinition, type SystemCadence } from './KernelTypes.ts';
+import {
+  isDue,
+  validateCadence,
+  type KernelSystemDefinition,
+  type SystemCadence,
+} from "./KernelTypes.ts";
 
 function ordinalCompare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -26,34 +31,59 @@ function duplicate(values: readonly string[]): string | undefined {
   return undefined;
 }
 
+function validateNamedList(
+  id: string,
+  label: string,
+  values: readonly string[],
+): readonly string[] {
+  const copy = [...values];
+  const empty = copy.find((value) => value.trim().length === 0);
+  if (empty !== undefined) throw new Error(`empty ${label} for system ${id}`);
+  const repeated = duplicate(copy);
+  if (repeated !== undefined) {
+    throw new Error(`duplicate ${label} for system ${id}: ${repeated}`);
+  }
+  return Object.freeze(copy);
+}
+
 function normalized(system: KernelSystemDefinition): KernelSystemDefinition {
   const id = system.id;
-  if (id.trim().length === 0) throw new Error('kernel system id must not be empty');
+  if (id.trim().length === 0) throw new Error("kernel system id must not be empty");
   validateCadence(system.cadence, `system ${id}`);
-  if (system.order !== undefined && !Number.isFinite(system.order)) throw new Error(`invalid order for system ${id}`);
+  if (system.order !== undefined && !Number.isFinite(system.order))
+    throw new Error(`invalid order for system ${id}`);
+  if (
+    system.performanceBudgetMs !== undefined &&
+    (!Number.isFinite(system.performanceBudgetMs) || system.performanceBudgetMs < 0)
+  ) {
+    throw new Error(`invalid performance budget for system ${id}`);
+  }
 
-  const reads = [...system.reads];
-  const writes = [...system.writes];
-  const after = [...(system.after ?? [])];
-  const before = [...(system.before ?? [])];
-
-  const duplicateRead = duplicate(reads);
-  if (duplicateRead !== undefined) throw new Error(`duplicate read domain for system ${id}: ${duplicateRead}`);
-  const duplicateWrite = duplicate(writes);
-  if (duplicateWrite !== undefined) throw new Error(`duplicate write domain for system ${id}: ${duplicateWrite}`);
+  const reads = validateNamedList(id, "read domain", system.reads);
+  const writes = validateNamedList(id, "write domain", system.writes);
+  const after = validateNamedList(id, "after dependency", system.after ?? []);
+  const before = validateNamedList(id, "before dependency", system.before ?? []);
+  const rngStreams = validateNamedList(id, "RNG stream", system.rngStreams ?? []);
+  const emits = validateNamedList(id, "emitted event", system.emits ?? []);
+  const invariants = validateNamedList(id, "invariant", system.invariants ?? []);
 
   const readSet = new Set(reads);
   const readWrite = writes.find((value) => readSet.has(value));
-  if (readWrite !== undefined) throw new Error(`domain declared as read and write for system ${id}: ${readWrite}`);
-  if (after.includes(id) || before.includes(id)) throw new Error(`self dependency for kernel system ${id}`);
+  if (readWrite !== undefined)
+    throw new Error(`domain declared as read and write for system ${id}: ${readWrite}`);
+  if (after.includes(id) || before.includes(id))
+    throw new Error(`self dependency for kernel system ${id}`);
 
   return Object.freeze({
     ...system,
-    reads: Object.freeze(reads),
-    writes: Object.freeze(writes),
+    reads,
+    writes,
     cadence: Object.freeze({ ...system.cadence }),
-    after: Object.freeze(after),
-    before: Object.freeze(before),
+    after,
+    before,
+    rngStreams,
+    emits,
+    invariants,
   });
 }
 
@@ -63,18 +93,22 @@ export class SystemScheduler {
 
   register(system: KernelSystemDefinition): void {
     const value = normalized(system);
-    if (this.systems.has(value.id)) throw new Error(`duplicate kernel system: ${value.id}`);
+    if (this.systems.has(value.id))
+      throw new Error(`duplicate kernel system: ${value.id}`);
     this.systems.set(value.id, value);
     this.compiled = null;
   }
 
   compile(): readonly KernelSystemDefinition[] {
     const ids = [...this.systems.keys()].sort(ordinalCompare);
-    const outgoing = new Map<string, Set<string>>(ids.map((id) => [id, new Set<string>()]));
+    const outgoing = new Map<string, Set<string>>(
+      ids.map((id) => [id, new Set<string>()]),
+    );
     const indegree = new Map<string, number>(ids.map((id) => [id, 0]));
 
     const addEdge = (from: string, to: string): void => {
-      if (!this.systems.has(from) || !this.systems.has(to)) throw new Error(`unknown kernel dependency: ${from} -> ${to}`);
+      if (!this.systems.has(from) || !this.systems.has(to))
+        throw new Error(`unknown kernel dependency: ${from} -> ${to}`);
       const edges = outgoing.get(from)!;
       if (edges.has(to)) return;
       edges.add(to);
@@ -108,13 +142,17 @@ export class SystemScheduler {
         const ordered = reaches(a.id, b.id) || reaches(b.id, a.id);
         const sharedWrite = a.writes.find((domain) => b.writes.includes(domain));
         if (sharedWrite !== undefined && !ordered) {
-          throw new Error(`ambiguous write conflict on domain ${sharedWrite}: ${a.id}, ${b.id}`);
+          throw new Error(
+            `ambiguous write conflict on domain ${sharedWrite}: ${a.id}, ${b.id}`,
+          );
         }
         const aWriteBRead = a.writes.find((domain) => b.reads.includes(domain));
         const bWriteARead = b.writes.find((domain) => a.reads.includes(domain));
         const readWriteDomain = aWriteBRead ?? bWriteARead;
         if (readWriteDomain !== undefined && !ordered) {
-          throw new Error(`ambiguous read/write conflict on domain ${readWriteDomain}: ${a.id}, ${b.id}`);
+          throw new Error(
+            `ambiguous read/write conflict on domain ${readWriteDomain}: ${a.id}, ${b.id}`,
+          );
         }
       }
     }
@@ -126,7 +164,9 @@ export class SystemScheduler {
       return order !== 0 ? order : ordinalCompare(a, b);
     };
 
-    const available = ids.filter((id) => indegree.get(id) === 0).sort(priorityCompare);
+    const available = ids
+      .filter((id) => indegree.get(id) === 0)
+      .sort(priorityCompare);
     const result: KernelSystemDefinition[] = [];
     while (available.length > 0) {
       const id = available.shift()!;
@@ -143,8 +183,10 @@ export class SystemScheduler {
     }
 
     if (result.length !== ids.length) {
-      const participants = ids.filter((id) => (indegree.get(id) ?? 0) > 0).sort(ordinalCompare);
-      throw new Error(`kernel dependency cycle: ${participants.join(' -> ')}`);
+      const participants = ids
+        .filter((id) => (indegree.get(id) ?? 0) > 0)
+        .sort(ordinalCompare);
+      throw new Error(`kernel dependency cycle: ${participants.join(" -> ")}`);
     }
 
     this.compiled = Object.freeze(result.slice());
@@ -152,12 +194,19 @@ export class SystemScheduler {
   }
 
   dueSystems(tick: number): readonly KernelSystemDefinition[] {
-    if (!Number.isInteger(tick) || tick < 0) throw new Error('kernel tick must be a non-negative integer');
+    if (!Number.isInteger(tick) || tick < 0)
+      throw new Error("kernel tick must be a non-negative integer");
     const ordered = this.compiled ?? this.compile();
     return Object.freeze(ordered.filter((system) => isDue(system.cadence, tick)));
   }
 
   listSystems(): readonly KernelSystemDefinition[] {
-    return Object.freeze([...this.systems.values()].sort((a, b) => ordinalCompare(a.id, b.id)));
+    return Object.freeze(
+      [...this.systems.values()].sort((a, b) => ordinalCompare(a.id, b.id)),
+    );
+  }
+
+  executionOrder(): readonly KernelSystemDefinition[] {
+    return this.compiled ?? this.compile();
   }
 }
