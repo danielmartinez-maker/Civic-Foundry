@@ -63,6 +63,37 @@ jobs:
       - name: Isometric Pass A visual smoke
         run: python tests/smoke/isometric_visual_smoke.py
 
+  prism-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Rust 1.98.0
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.98.0
+      - name: Prism format
+        working-directory: engine/prism
+        run: cargo fmt --all -- --check
+      - name: Prism Clippy
+        working-directory: engine/prism
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Prism P2A mutation tests
+        working-directory: engine/prism
+        run: cargo test -p prism-domain --test cadastre_mutation --locked
+      - name: Prism workspace tests
+        working-directory: engine/prism
+        run: cargo test --workspace --locked
+      - name: Prism P0 release invariants
+        working-directory: engine/prism
+        run: cargo test -p prism-core --release --test p0_invariants --locked
+      - name: Prism P1 release invariants
+        working-directory: engine/prism
+        run: cargo test -p prism-core --release --test p1_invariants --locked
+      - name: Prism workspace check
+        working-directory: engine/prism
+        run: cargo check --workspace --all-targets --locked
+
   prism-windows:
     runs-on: windows-latest
     steps:
