@@ -241,7 +241,9 @@ test("soak horizons are deterministic, explicit, and bound CI versus manual stre
 });
 
 test("CI deterministic soak horizons preserve identical checkpoints and explicit budgets", () => {
-  for (const horizon of SOAK_HORIZONS.filter((candidate) => candidate.runInCi)) {
+  for (const horizon of SOAK_HORIZONS.filter(
+    (candidate) => candidate.runInCi,
+  )) {
     runDeterministicSoak(horizon);
   }
 });
