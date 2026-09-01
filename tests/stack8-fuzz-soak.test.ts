@@ -27,10 +27,10 @@ const SOAK_HORIZONS = Object.freeze([
     }),
   }),
   Object.freeze({
-    id: "manual-extended",
+    id: "ci-extended",
     ticks: 10_000,
     checkpointEvery: 1_000,
-    runInCi: false,
+    runInCi: true,
     budgets: Object.freeze({
       maxRetainedEvents: 512,
       maxTraceEntries: 512,
@@ -73,6 +73,59 @@ function fixedSequence(seed: number): () => number {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
     return state;
   };
+}
+
+function runDeterministicSoak(horizon: (typeof SOAK_HORIZONS)[number]): void {
+  const left = new SimulationCore({ width: 14, height: 10, seed: 991 });
+  const right = new SimulationCore({ width: 14, height: 10, seed: 991 });
+  const initialTopologyRevision = left.roads.revision;
+  const leftHashes: string[] = [];
+  const rightHashes: string[] = [];
+
+  for (
+    let elapsed = horizon.checkpointEvery;
+    elapsed <= horizon.ticks;
+    elapsed += horizon.checkpointEvery
+  ) {
+    left.step(horizon.checkpointEvery);
+    right.step(horizon.checkpointEvery);
+    leftHashes.push(left.diagnostics.authorityHash());
+    rightHashes.push(right.diagnostics.authorityHash());
+
+    const leftDiagnostics = left.diagnostics.snapshot();
+    const rightDiagnostics = right.diagnostics.snapshot();
+    stableStringify(leftDiagnostics);
+    stableStringify(rightDiagnostics);
+
+    assert.equal(leftDiagnostics.simulation.faulted, false);
+    assert.equal(rightDiagnostics.simulation.faulted, false);
+    assert.ok(
+      leftDiagnostics.simulation.retainedEvents <=
+        horizon.budgets.maxRetainedEvents,
+      `${horizon.id}: event journal retention budget`,
+    );
+    assert.ok(
+      left.diagnostics.trace.list().length <= horizon.budgets.maxTraceEntries,
+      `${horizon.id}: diagnostic trace retention budget`,
+    );
+    assert.ok(
+      leftDiagnostics.simulation.commandQueueDepth <=
+        horizon.budgets.maxCommandQueueDepth,
+      `${horizon.id}: command queue depth budget`,
+    );
+    assert.ok(
+      left.roads.revision - initialTopologyRevision <=
+        horizon.budgets.maxTopologyRevisionDelta,
+      `${horizon.id}: topology revision churn budget`,
+    );
+    assert.ok(
+      leftDiagnostics.integrity.totalInvalidReferences <=
+        horizon.budgets.maxInvalidReferences,
+      `${horizon.id}: reference-integrity budget`,
+    );
+  }
+
+  assert.deepEqual(leftHashes, rightHashes, `${horizon.id}: authority hashes`);
 }
 
 test("Save V9 remains unchanged and save-load-continue preserves deterministic authority", () => {
@@ -167,12 +220,17 @@ test("revision and trace fuzz obey bounded retention and no-op invalidation budg
   assert.equal(trace.snapshot().nextSequence, 501);
 });
 
-test("soak horizons are deterministic, explicit, and keep long runs out of ordinary CI", () => {
+test("soak horizons are deterministic, explicit, and bound CI versus manual stress", () => {
   assert.deepEqual(
     SOAK_HORIZONS.map((horizon) => horizon.ticks),
     [500, 10_000, 100_000, 1_000_000],
   );
-  assert.equal(SOAK_HORIZONS.filter((horizon) => horizon.runInCi).length, 1);
+  assert.deepEqual(
+    SOAK_HORIZONS.filter((horizon) => horizon.runInCi).map(
+      (horizon) => horizon.ticks,
+    ),
+    [500, 10_000],
+  );
   for (const horizon of SOAK_HORIZONS) {
     assert.equal(horizon.ticks % horizon.checkpointEvery, 0);
     assert.equal(horizon.budgets.maxRetainedEvents, 512);
@@ -182,56 +240,8 @@ test("soak horizons are deterministic, explicit, and keep long runs out of ordin
   }
 });
 
-test("bounded deterministic soak produces identical checkpoint hashes and stays inside explicit budgets", () => {
-  const horizon = SOAK_HORIZONS.find((candidate) => candidate.runInCi)!;
-  const left = new SimulationCore({ width: 14, height: 10, seed: 991 });
-  const right = new SimulationCore({ width: 14, height: 10, seed: 991 });
-  const initialTopologyRevision = left.roads.revision;
-  const leftHashes: string[] = [];
-  const rightHashes: string[] = [];
-
-  for (
-    let elapsed = horizon.checkpointEvery;
-    elapsed <= horizon.ticks;
-    elapsed += horizon.checkpointEvery
-  ) {
-    left.step(horizon.checkpointEvery);
-    right.step(horizon.checkpointEvery);
-    leftHashes.push(left.diagnostics.authorityHash());
-    rightHashes.push(right.diagnostics.authorityHash());
-
-    const leftDiagnostics = left.diagnostics.snapshot();
-    const rightDiagnostics = right.diagnostics.snapshot();
-    stableStringify(leftDiagnostics);
-    stableStringify(rightDiagnostics);
-
-    assert.equal(leftDiagnostics.simulation.faulted, false);
-    assert.equal(rightDiagnostics.simulation.faulted, false);
-    assert.ok(
-      leftDiagnostics.simulation.retainedEvents <=
-        horizon.budgets.maxRetainedEvents,
-      "event journal retention budget",
-    );
-    assert.ok(
-      left.diagnostics.trace.list().length <= horizon.budgets.maxTraceEntries,
-      "diagnostic trace retention budget",
-    );
-    assert.ok(
-      leftDiagnostics.simulation.commandQueueDepth <=
-        horizon.budgets.maxCommandQueueDepth,
-      "command queue depth budget",
-    );
-    assert.ok(
-      left.roads.revision - initialTopologyRevision <=
-        horizon.budgets.maxTopologyRevisionDelta,
-      "topology revision churn budget",
-    );
-    assert.ok(
-      leftDiagnostics.integrity.totalInvalidReferences <=
-        horizon.budgets.maxInvalidReferences,
-      "reference-integrity budget",
-    );
+test("CI deterministic soak horizons preserve identical checkpoints and explicit budgets", () => {
+  for (const horizon of SOAK_HORIZONS.filter((candidate) => candidate.runInCi)) {
+    runDeterministicSoak(horizon);
   }
-
-  assert.deepEqual(leftHashes, rightHashes);
 });
