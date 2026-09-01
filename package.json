@@ -11,7 +11,7 @@
     "policy:check": "node scripts/repository-policy.mjs",
     "architecture:check": "node scripts/check-architecture.mjs",
     "format": "node scripts/format-changed.mjs --write",
-    "format:check": "npm run format && git diff --exit-code",
+    "format:check": "node scripts/format-changed.mjs --check",
     "assets:policy": "node scripts/check-assets.mjs",
     "assets:check": "python tools/render_isometric_atlases.py --check",
     "assets:build": "python tools/render_isometric_atlases.py",
