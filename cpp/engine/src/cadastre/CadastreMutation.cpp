@@ -209,7 +209,27 @@ bool has_easement(const CadastralGraph& graph, ParcelId parcel_id) {
   }
   return false;
 }
+
+civic::core::Result<void> invariant(bool failed, std::string message) {
+  if (!failed) return {};
+  return std::unexpected(civic::core::error(ErrorCode::invariant_failure, std::move(message)));
+}
 }  // namespace
+
+std::string_view mutation_stage_name(MutationStage stage) noexcept {
+  switch (stage) {
+    case MutationStage::snapshot_owners: return "snapshot-owners";
+    case MutationStage::clone_stage: return "clone-stage";
+    case MutationStage::apply_mutation: return "apply-mutation";
+    case MutationStage::rewrite_dependent_references: return "rewrite-dependent-references";
+    case MutationStage::validate_topology: return "validate-topology";
+    case MutationStage::validate_ownership_zoning_access: return "validate-ownership-zoning-access";
+    case MutationStage::validate_buildings_property_references: return "validate-buildings-property-references";
+    case MutationStage::validate_compatibility_projection: return "validate-compatibility-projection";
+    case MutationStage::atomic_commit: return "atomic-commit";
+  }
+  return "unknown";
+}
 
 std::uint64_t CadastralMutationService::next_sequence() const noexcept {
   return graph_.lineage().size() + 1U;
@@ -219,6 +239,21 @@ std::uint64_t CadastralMutationService::next_lineage_tick() const noexcept {
   std::uint64_t tick = 0;
   for (const auto& event : graph_.lineage()) tick = std::max(tick, event.tick);
   return tick + 1U;
+}
+
+civic::core::Result<void> CadastralMutationService::run_stage(
+    MutationStage stage,
+    const CadastralGraph& graph) const noexcept {
+  if (!stage_validator_) return {};
+  try {
+    return stage_validator_(stage, graph);
+  } catch (const std::exception& exception) {
+    return std::unexpected(civic::core::error(ErrorCode::internal_error, exception.what()));
+  } catch (...) {
+    return std::unexpected(civic::core::error(
+        ErrorCode::internal_error,
+        std::string{"mutation stage validator failed at "} + std::string{mutation_stage_name(stage)}));
+  }
 }
 
 civic::core::Result<void> CadastralMutationService::validate_dependents(
@@ -237,6 +272,103 @@ civic::core::Result<void> CadastralMutationService::validate_dependents(
   }
 }
 
+civic::core::Result<void> CadastralMutationService::validate_ownership_zoning_access(
+    const CadastralGraph& staged) const noexcept {
+  try {
+    for (const auto* parcel : staged.live_parcels()) {
+      if (auto result = invariant(parcel->block_id.empty(), "live parcel missing block identity"); !result) {
+        return result;
+      }
+      if (auto result = invariant(parcel->zoning_district_id.empty(), "live parcel missing zoning identity"); !result) {
+        return result;
+      }
+      if (auto result = invariant(parcel->owner_id.has_value() && parcel->owner_id->empty(),
+                                  "live parcel has empty owner identity"); !result) {
+        return result;
+      }
+      auto validates_boundary_reference = [&](const std::string& boundary_id) {
+        const auto* boundary = staged.find_boundary(boundary_id);
+        return boundary != nullptr &&
+               (boundary->left_parcel_id == parcel->id || boundary->right_parcel_id == parcel->id);
+      };
+      for (const auto& boundary_id : parcel->frontage_boundary_ids) {
+        if (!validates_boundary_reference(boundary_id)) {
+          return std::unexpected(civic::core::error(
+              ErrorCode::invariant_failure, "parcel frontage references foreign boundary"));
+        }
+      }
+      for (const auto& boundary_id : parcel->access_boundary_ids) {
+        if (!validates_boundary_reference(boundary_id)) {
+          return std::unexpected(civic::core::error(
+              ErrorCode::invariant_failure, "parcel access references foreign boundary"));
+        }
+      }
+    }
+    return {};
+  } catch (const std::exception& exception) {
+    return std::unexpected(civic::core::error(ErrorCode::internal_error, exception.what()));
+  }
+}
+
+civic::core::Result<void> CadastralMutationService::validate_compatibility_projection(
+    const CadastralGraph& staged) const noexcept {
+  try {
+    const auto projection = staged.legacy_lot_projection();
+    std::set<ParcelId> projected;
+    for (const auto& lot : projection.lots) {
+      const auto* parcel = staged.find(lot.parcel_id);
+      if (parcel == nullptr || !parcel->live) {
+        return std::unexpected(civic::core::error(
+            ErrorCode::invariant_failure, "legacy projection references non-live parcel"));
+      }
+      if (!projected.insert(lot.parcel_id).second) {
+        return std::unexpected(civic::core::error(
+            ErrorCode::invariant_failure, "legacy projection duplicates canonical parcel"));
+      }
+      if (!lot.faithful) {
+        const bool diagnosed = std::any_of(
+            projection.diagnostics.begin(), projection.diagnostics.end(),
+            [&](const std::string& diagnostic) {
+              return diagnostic.find(parcel->external_id) != std::string::npos;
+            });
+        if (!diagnosed) {
+          return std::unexpected(civic::core::error(
+              ErrorCode::invariant_failure, "unfaithful legacy projection lacks diagnostic"));
+        }
+      }
+    }
+    if (projected.size() != staged.live_parcels().size()) {
+      return std::unexpected(civic::core::error(
+          ErrorCode::invariant_failure, "legacy projection omitted live canonical parcel"));
+    }
+    return {};
+  } catch (const std::exception& exception) {
+    return std::unexpected(civic::core::error(ErrorCode::internal_error, exception.what()));
+  }
+}
+
+civic::core::Result<void> CadastralMutationService::finalize_transaction(
+    CadastreTransaction& transaction) const noexcept {
+  auto& staged = transaction.staged();
+
+  if (auto result = run_stage(MutationStage::rewrite_dependent_references, staged); !result) return result;
+
+  if (auto result = staged.validate(); !result) return result;
+  if (auto result = run_stage(MutationStage::validate_topology, staged); !result) return result;
+
+  if (auto result = validate_ownership_zoning_access(staged); !result) return result;
+  if (auto result = run_stage(MutationStage::validate_ownership_zoning_access, staged); !result) return result;
+
+  if (auto result = validate_dependents(staged); !result) return result;
+  if (auto result = run_stage(MutationStage::validate_buildings_property_references, staged); !result) return result;
+
+  if (auto result = validate_compatibility_projection(staged); !result) return result;
+  if (auto result = run_stage(MutationStage::validate_compatibility_projection, staged); !result) return result;
+
+  if (auto result = run_stage(MutationStage::atomic_commit, staged); !result) return result;
+  return transaction.commit();
+}
+
 civic::core::Result<MutationResult> CadastralMutationService::split(
     const ParcelSplitCommand& command) noexcept {
   const auto* source = graph_.find(command.parcel_id);
@@ -245,9 +377,20 @@ civic::core::Result<MutationResult> CadastralMutationService::split(
   }
   auto pieces = split_by_chord(source->boundary, command.cut);
   if (!pieces) return std::unexpected(pieces.error());
+  if (has_easement(graph_, source->id)) {
+    return std::unexpected(civic::core::error(
+        ErrorCode::conflict, "split parcel has easement; explicit easement rewrite required"));
+  }
+  if (auto result = run_stage(MutationStage::snapshot_owners, graph_); !result) {
+    return std::unexpected(result.error());
+  }
 
   CadastreTransaction transaction{graph_};
   auto& staged = transaction.staged();
+  if (auto result = run_stage(MutationStage::clone_stage, staged); !result) {
+    return std::unexpected(result.error());
+  }
+
   const auto sequence = next_sequence();
   const auto left_external = "parcel:" + source->external_id + ":split:" +
                              std::to_string(sequence) + ":0";
@@ -263,17 +406,15 @@ civic::core::Result<MutationResult> CadastralMutationService::split(
   if (auto result = staged.retire(source_id); !result) return std::unexpected(result.error());
   if (auto result = staged.insert(std::move(left)); !result) return std::unexpected(result.error());
   if (auto result = staged.insert(std::move(right)); !result) return std::unexpected(result.error());
-  if (has_easement(staged, source_id)) {
-    return std::unexpected(civic::core::error(
-        ErrorCode::conflict, "split parcel has easement; explicit easement rewrite required"));
-  }
   const auto tick = next_lineage_tick();
   if (auto result = staged.append_lineage({
           lineage_id(tick, "split"), tick, "split", {source_id}, {left_id, right_id}}); !result) {
     return std::unexpected(result.error());
   }
-  if (auto result = validate_dependents(staged); !result) return std::unexpected(result.error());
-  if (auto result = transaction.commit(); !result) return std::unexpected(result.error());
+  if (auto result = run_stage(MutationStage::apply_mutation, staged); !result) {
+    return std::unexpected(result.error());
+  }
+  if (auto result = finalize_transaction(transaction); !result) return std::unexpected(result.error());
   return MutationResult{{source_id}, {left_id, right_id}, graph_.revision()};
 }
 
@@ -313,6 +454,10 @@ civic::core::Result<MutationResult> CadastralMutationService::assemble(
     return std::unexpected(civic::core::error(
         ErrorCode::invalid_argument, "assembly parcels are disconnected"));
   }
+  if (auto result = run_stage(MutationStage::snapshot_owners, graph_); !result) {
+    return std::unexpected(result.error());
+  }
+
   std::string external = "parcel:assembly:" + std::to_string(next_sequence());
   std::vector<std::string> source_external_ids;
   source_external_ids.reserve(sources.size());
@@ -323,6 +468,9 @@ civic::core::Result<MutationResult> CadastralMutationService::assemble(
 
   CadastreTransaction transaction{graph_};
   auto& staged = transaction.staged();
+  if (auto result = run_stage(MutationStage::clone_stage, staged); !result) {
+    return std::unexpected(result.error());
+  }
   for (const auto id : ids) {
     if (auto result = staged.retire(id); !result) return std::unexpected(result.error());
   }
@@ -333,8 +481,10 @@ civic::core::Result<MutationResult> CadastralMutationService::assemble(
           lineage_id(tick, "assembly"), tick, "assembly", ids, {result_id}}); !result) {
     return std::unexpected(result.error());
   }
-  if (auto result = validate_dependents(staged); !result) return std::unexpected(result.error());
-  if (auto result = transaction.commit(); !result) return std::unexpected(result.error());
+  if (auto result = run_stage(MutationStage::apply_mutation, staged); !result) {
+    return std::unexpected(result.error());
+  }
+  if (auto result = finalize_transaction(transaction); !result) return std::unexpected(result.error());
   return MutationResult{ids, {result_id}, graph_.revision()};
 }
 
@@ -347,13 +497,10 @@ civic::core::Result<void> CadastralMutationService::create_easement(
   if (std::set<Point>{command.geometry.begin(), command.geometry.end()}.size() < 2U) {
     return std::unexpected(civic::core::error(ErrorCode::invalid_argument, "easement geometry collapses"));
   }
-
-  CadastreTransaction transaction{graph_};
-  auto& staged = transaction.staged();
   std::vector<Polygon> polygons;
   polygons.reserve(target_ids.size());
   for (const auto id : target_ids) {
-    const auto* parcel = staged.find(id);
+    const auto* parcel = graph_.find(id);
     if (parcel == nullptr || !parcel->live) {
       return std::unexpected(civic::core::error(ErrorCode::not_found, "easement parcel not found"));
     }
@@ -363,22 +510,32 @@ civic::core::Result<void> CadastralMutationService::create_easement(
     return std::unexpected(civic::core::error(
         ErrorCode::invalid_argument, "easement geometry must remain inside referenced parcel union"));
   }
+  if (auto result = run_stage(MutationStage::snapshot_owners, graph_); !result) return result;
+
+  CadastreTransaction transaction{graph_};
+  auto& staged = transaction.staged();
+  if (auto result = run_stage(MutationStage::clone_stage, staged); !result) return result;
   const auto id = command.id.empty()
       ? next_easement_id(staged, command.kind, target_ids)
       : command.id;
   if (auto result = staged.add_easement({id, target_ids, command.kind, command.geometry}); !result) {
     return std::unexpected(result.error());
   }
-  if (auto result = validate_dependents(staged); !result) return result;
-  return transaction.commit();
+  if (auto result = run_stage(MutationStage::apply_mutation, staged); !result) return result;
+  return finalize_transaction(transaction);
 }
 
 civic::core::Result<void> CadastralMutationService::remove_easement(std::string_view id) noexcept {
+  if (!graph_.easements().contains(std::string{id})) {
+    return std::unexpected(civic::core::error(ErrorCode::not_found, "easement not found"));
+  }
+  if (auto result = run_stage(MutationStage::snapshot_owners, graph_); !result) return result;
   CadastreTransaction transaction{graph_};
   auto& staged = transaction.staged();
+  if (auto result = run_stage(MutationStage::clone_stage, staged); !result) return result;
   if (auto result = staged.remove_easement(id); !result) return result;
-  if (auto result = validate_dependents(staged); !result) return result;
-  return transaction.commit();
+  if (auto result = run_stage(MutationStage::apply_mutation, staged); !result) return result;
+  return finalize_transaction(transaction);
 }
 
 civic::core::Result<MutationResult> CadastralMutationService::dedicate_right_of_way(
@@ -402,12 +559,19 @@ civic::core::Result<MutationResult> CadastralMutationService::dedicate_right_of_
     return std::unexpected(civic::core::error(
         ErrorCode::invalid_argument, "ROW dedication must leave one viable residual parcel"));
   }
+  if (auto stage = run_stage(MutationStage::snapshot_owners, graph_); !stage) {
+    return std::unexpected(stage.error());
+  }
+
   const auto external = "parcel:" + source->external_id + ":row:" + std::to_string(next_sequence());
   std::vector<const Parcel*> source_span{source};
   auto result = child_from(*source, external, std::move(residual->front()), inherited_parents(source_span));
 
   CadastreTransaction transaction{graph_};
   auto& staged = transaction.staged();
+  if (auto stage = run_stage(MutationStage::clone_stage, staged); !stage) {
+    return std::unexpected(stage.error());
+  }
   const auto old_id = source->id;
   const auto new_id = result.id;
   if (auto retired = staged.retire(old_id); !retired) return std::unexpected(retired.error());
@@ -417,8 +581,12 @@ civic::core::Result<MutationResult> CadastralMutationService::dedicate_right_of_
           lineage_id(tick, "right-of-way"), tick, "right-of-way", {old_id}, {new_id}}); !lineage) {
     return std::unexpected(lineage.error());
   }
-  if (auto dependent = validate_dependents(staged); !dependent) return std::unexpected(dependent.error());
-  if (auto committed = transaction.commit(); !committed) return std::unexpected(committed.error());
+  if (auto stage = run_stage(MutationStage::apply_mutation, staged); !stage) {
+    return std::unexpected(stage.error());
+  }
+  if (auto committed = finalize_transaction(transaction); !committed) {
+    return std::unexpected(committed.error());
+  }
   return MutationResult{{old_id}, {new_id}, graph_.revision()};
 }
 
