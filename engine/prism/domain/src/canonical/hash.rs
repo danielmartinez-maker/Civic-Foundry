@@ -12,6 +12,8 @@ use crate::world::types::{
     WorldFoundationMode, WorldFoundationSnapshot,
 };
 
+pub const PRISM_CANONICAL_HASH_VERSION: &str = "PrismCanonicalHashV1";
+
 const FNV_OFFSET_BASIS_64: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME_64: u64 = 0x0000_0100_0000_01b3;
 const JS_MAX_SAFE_INTEGER_U64: u64 = 9_007_199_254_740_991;
@@ -221,11 +223,11 @@ fn write_hydrology(writer: &mut CanonicalByteWriter, hydrology: &HydrologySnapsh
     writer.tag(TAG_HYDROLOGY);
     writer.u32(hydrology.width);
     writer.u32(hydrology.height);
-    writer.array(&hydrology.conditioned_elevation_meters, |writer, item| {
-        writer.f64(*item);
+    writer.array(&hydrology.conditioned_elevation_meters, |writer, value| {
+        writer.f64(*value);
     });
-    writer.array(&hydrology.receiver, |writer, item| {
-        writer.option(item.as_ref(), |writer, index| writer.u32(*index));
+    writer.array(&hydrology.receiver, |writer, value| {
+        writer.option(value.as_ref(), |writer, index| writer.u32(*index));
     });
 
     let mut watersheds = hydrology.watersheds.iter().collect::<Vec<_>>();
@@ -242,12 +244,14 @@ fn write_hydrology(writer: &mut CanonicalByteWriter, hydrology: &HydrologySnapsh
         write_channel(writer, channel);
     }
 
-    writer.array(&hydrology.flow_accumulation, |writer, item| {
-        writer.f64(*item);
+    writer.array(&hydrology.flow_accumulation, |writer, value| {
+        writer.f64(*value);
     });
-    writer.string_array(&hydrology.watershed_ids);
-    writer.array(&hydrology.flood_susceptibility, |writer, item| {
-        writer.f64(*item);
+    writer.array(&hydrology.watershed_ids, |writer, value| {
+        writer.string(value);
+    });
+    writer.array(&hydrology.flood_susceptibility, |writer, value| {
+        writer.f64(*value);
     });
 }
 
@@ -257,12 +261,9 @@ fn write_watershed(writer: &mut CanonicalByteWriter, watershed: &WatershedRecord
     writer.u32(watershed.outlet_index);
     writer.u32(watershed.member_count);
     writer.u32(watershed.upstream_area_cells);
-    writer.option(
-        watershed.primary_channel_id.as_ref(),
-        |writer, channel_id| {
-            writer.string(channel_id);
-        },
-    );
+    writer.option(watershed.primary_channel_id.as_ref(), |writer, channel_id| {
+        writer.string(channel_id);
+    });
 }
 
 fn write_channel(writer: &mut CanonicalByteWriter, channel: &ChannelSegment) {
@@ -289,20 +290,26 @@ fn write_geography(writer: &mut CanonicalByteWriter, entities: &[GeographyEntity
         writer.option(entity.parent_id.as_ref(), |writer, parent_id| {
             writer.string(parent_id);
         });
-        writer.tag(TAG_POLYGON);
-        writer.array(&entity.boundary.points, |writer, point| {
-            write_vec2(writer, point);
-        });
+        write_polygon(writer, &entity.boundary.points);
         writer.option(entity.name.as_ref(), |writer, name| writer.string(name));
         writer.string(&entity.sort_key);
     }
 }
 
-fn write_legacy_terrain(writer: &mut CanonicalByteWriter, legacy: &LegacyTerrainSnapshot) {
+fn write_polygon(writer: &mut CanonicalByteWriter, points: &[Vec2]) {
+    writer.tag(TAG_POLYGON);
+    writer.array(points, |writer, point| {
+        writer.tag(TAG_POINT);
+        writer.f64(point.x);
+        writer.f64(point.y);
+    });
+}
+
+fn write_legacy_terrain(writer: &mut CanonicalByteWriter, terrain: &LegacyTerrainSnapshot) {
     writer.tag(TAG_LEGACY_TERRAIN);
-    writer.u32(legacy.width);
-    writer.u32(legacy.height);
-    writer.array(&legacy.cells, |writer, cell| {
+    writer.u32(terrain.width);
+    writer.u32(terrain.height);
+    writer.array(&terrain.cells, |writer, cell| {
         writer.tag(TAG_TERRAIN_CELL);
         writer.f64(cell.elevation);
         writer.bool(cell.water);
@@ -417,12 +424,6 @@ fn write_cadastre(writer: &mut CanonicalByteWriter, cadastre: &CadastralSnapshot
     }
 }
 
-fn write_vec2(writer: &mut CanonicalByteWriter, point: &Vec2) {
-    writer.tag(TAG_POINT);
-    writer.f64(point.x);
-    writer.f64(point.y);
-}
-
 fn write_world_point(writer: &mut CanonicalByteWriter, point: WorldPoint) {
     writer.tag(TAG_POINT);
     writer.f64(point.x);
@@ -431,9 +432,8 @@ fn write_world_point(writer: &mut CanonicalByteWriter, point: WorldPoint) {
 
 fn world_foundation_mode(value: WorldFoundationMode) -> &'static str {
     match value {
-        WorldFoundationMode::Generated1r => "generated-1r",
         WorldFoundationMode::LegacyFlat => "legacy-flat",
-        WorldFoundationMode::LegacyExplicit => "legacy-explicit",
+        WorldFoundationMode::Generated1R => "generated-1r",
     }
 }
 
@@ -450,14 +450,14 @@ fn world_form_preset(value: WorldFormPreset) -> &'static str {
 
 fn soil_class(value: SoilClass) -> &'static str {
     match value {
-        SoilClass::Rock => "rock",
+        SoilClass::Bedrock => "bedrock",
         SoilClass::Gravel => "gravel",
         SoilClass::Sand => "sand",
         SoilClass::Loam => "loam",
+        SoilClass::Silt => "silt",
         SoilClass::Clay => "clay",
-        SoilClass::Alluvium => "alluvium",
         SoilClass::Peat => "peat",
-        SoilClass::FillDisturbed => "fill_disturbed",
+        SoilClass::Fill => "fill",
     }
 }
 
@@ -465,8 +465,8 @@ fn vegetation_class(value: VegetationClass) -> &'static str {
     match value {
         VegetationClass::None => "none",
         VegetationClass::Grass => "grass",
+        VegetationClass::Shrub => "shrub",
         VegetationClass::Forest => "forest",
-        VegetationClass::Scrub => "scrub",
         VegetationClass::Wetland => "wetland",
     }
 }
@@ -474,18 +474,9 @@ fn vegetation_class(value: VegetationClass) -> &'static str {
 fn surface_water_class(value: SurfaceWaterClass) -> &'static str {
     match value {
         SurfaceWaterClass::None => "none",
-        SurfaceWaterClass::Lake => "lake",
         SurfaceWaterClass::River => "river",
+        SurfaceWaterClass::Lake => "lake",
         SurfaceWaterClass::Coast => "coast",
-    }
-}
-
-fn biome(value: Biome) -> &'static str {
-    match value {
-        Biome::Grass => "grass",
-        Biome::Forest => "forest",
-        Biome::Rock => "rock",
-        Biome::Water => "water",
     }
 }
 
@@ -499,22 +490,30 @@ fn geography_kind(value: GeographyKind) -> &'static str {
     }
 }
 
+fn biome(value: Biome) -> &'static str {
+    match value {
+        Biome::Grass => "grass",
+        Biome::Forest => "forest",
+        Biome::Desert => "desert",
+        Biome::Tundra => "tundra",
+    }
+}
+
 fn parcel_edge_kind(value: ParcelEdgeKind) -> &'static str {
     match value {
-        ParcelEdgeKind::PropertyBoundary => "property-boundary",
         ParcelEdgeKind::StreetFrontage => "street-frontage",
-        ParcelEdgeKind::WaterBoundary => "water-boundary",
+        ParcelEdgeKind::PropertyBoundary => "property-boundary",
+        ParcelEdgeKind::Easement => "easement",
         ParcelEdgeKind::RightOfWay => "right-of-way",
-        ParcelEdgeKind::EasementBoundary => "easement-boundary",
     }
 }
 
 fn easement_kind(value: EasementKind) -> &'static str {
     match value {
-        EasementKind::Access => "access",
         EasementKind::Utility => "utility",
         EasementKind::Drainage => "drainage",
-        EasementKind::Pedestrian => "pedestrian",
+        EasementKind::Access => "access",
+        EasementKind::Other => "other",
     }
 }
 
