@@ -141,7 +141,7 @@ TEST(NativeDimensionalZoningRed, OverlayAndRestoreValidationRejectsDivergentStat
       .id = "bad:far",
       .kind = ZoningOverlayKind::downtown_bonus,
       .parcel_ids = {parcel},
-      .max_far_multiplier = 0.0,
+      .max_far_multiplier = -0.1,
   }).has_value());
 
   const std::array duplicate_assignments{
