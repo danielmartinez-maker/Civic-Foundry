@@ -14,8 +14,8 @@ import type {
   ParcelLineageEvent,
   ParcelNode,
   UrbanBlock,
-  WorldPoint,
 } from "../src/world/cadastre/CadastralTypes.ts";
+import type { WorldPoint } from "../src/world/cadastre/Geometry.ts";
 import {
   TerrainGrid,
   type TerrainCell,
@@ -354,9 +354,9 @@ function easementLineageCadastre(): CadastralSnapshot {
     geometry: [p(5, 5), p(35, 5)],
   };
   const lineage: ParcelLineageEvent = {
-    id: "lineage:0:import-repair",
+    id: "lineage:0:easement",
     tick: 0,
-    kind: "import-repair",
+    kind: "easement",
     sourceParcelIds: ["legacy:p0"],
     resultingParcelIds: ["p0"],
   };
@@ -390,9 +390,9 @@ function edge(
     fromNodeId,
     toNodeId,
     leftParcelId,
-    rightParcelId,
+    ...(rightParcelId === undefined ? {} : { rightParcelId }),
     kind,
-    roadRef,
+    ...(roadRef === undefined ? {} : { roadRef }),
   };
 }
 
@@ -420,7 +420,6 @@ function parcel(
     frontageEdgeIds,
     accessEdgeIds: [...frontageEdgeIds],
     zoningDistrictId: "R2",
-    ownerId: undefined,
     historicalParentIds: [],
   };
 }

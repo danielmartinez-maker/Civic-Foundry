@@ -26,7 +26,7 @@ test("P2A export is a one-way snapshot and cannot mutate live authority", () => 
   const core = new SimulationCore({ width: 8, height: 8, seed: 23 });
   const beforeWorld = core.world.snapshotAuthoritative();
   const beforeCadastre = core.cadastre.snapshot();
-  const clone = structuredClone(exportPrismP2AEnvelope(core)) as {
+  const clone = structuredClone(exportPrismP2AEnvelope(core)) as unknown as {
     world: { seed: number };
     cadastre: { parcels: Array<{ id: string }> };
   };
