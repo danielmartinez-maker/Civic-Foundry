@@ -463,6 +463,40 @@ LegacyLotProjection CadastralGraph::legacy_lot_projection() const {
           "parcel " + parcel->external_id + " cannot be faithfully represented by one 30m legacy lot cell");
     }
   }
+
+  std::sort(result.lots.begin(), result.lots.end(),
+            [](const LegacyLotProjectionEntry& left, const LegacyLotProjectionEntry& right) {
+              if (left.y != right.y) return left.y < right.y;
+              if (left.x != right.x) return left.x < right.x;
+              if (left.parcel_external_id != right.parcel_external_id) {
+                return left.parcel_external_id < right.parcel_external_id;
+              }
+              return left.parcel_id.value() < right.parcel_id.value();
+            });
+
+  for (std::size_t first = 0; first < result.lots.size();) {
+    std::size_t last = first + 1U;
+    while (last < result.lots.size() &&
+           result.lots[last].x == result.lots[first].x &&
+           result.lots[last].y == result.lots[first].y) {
+      ++last;
+    }
+    if (last - first > 1U) {
+      std::string diagnostic =
+          "legacy cell " + std::to_string(result.lots[first].x) + "," +
+          std::to_string(result.lots[first].y) +
+          " represents multiple live canonical parcels: ";
+      for (std::size_t index = first; index < last; ++index) {
+        if (index != first) diagnostic += ", ";
+        diagnostic += result.lots[index].parcel_external_id;
+      }
+      diagnostic += "; compatibility consumers must not collapse identities";
+      result.diagnostics.push_back(std::move(diagnostic));
+    }
+    first = last;
+  }
+
+  std::sort(result.diagnostics.begin(), result.diagnostics.end());
   return result;
 }
 
