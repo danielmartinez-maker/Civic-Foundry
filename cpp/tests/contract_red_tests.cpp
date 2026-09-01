@@ -12,9 +12,10 @@ TEST(NativeContractsRed, GeometryUsesIntegerCentimetersAndCanonicalWinding) {
   using namespace civic::geometry;
   Polygon polygon{{Point{100, 100}, Point{0, 100}, Point{0, 0}, Point{100, 0}}};
   const auto canonical = canonicalize(polygon);
-  EXPECT_EQ(signed_double_area(canonical), 20000);
-  EXPECT_EQ(canonical.vertices.front(), (Point{0, 0}));
-  EXPECT_TRUE(point_in_polygon(Point{50, 50}, canonical));
+  ASSERT_TRUE(canonical.has_value());
+  EXPECT_EQ(signed_double_area(*canonical), 20000);
+  EXPECT_EQ(canonical->vertices.front(), (Point{0, 0}));
+  EXPECT_TRUE(point_in_polygon(Point{50, 50}, *canonical));
 }
 
 TEST(NativeContractsRed, RandomStreamsMatchAcceptedXorShiftContract) {
