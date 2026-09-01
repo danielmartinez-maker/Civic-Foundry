@@ -66,6 +66,15 @@ jobs:
           rustup default 1.98.0
       - name: Install project dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Generate Prism P2A fixture capture
+        run: npm run prism:p2a:fixtures
+      - name: Upload Prism P2A fixture capture
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: prism-p2a-parity-corpus-${{ github.sha }}
+          path: tests/fixtures/prism-p2a/parity-cases.json
+          if-no-files-found: error
+          retention-days: 1
       - name: Prism P2A fixture preflight
         run: npm run prism:p2a:fixtures:check
       - name: Prism format
