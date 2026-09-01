@@ -56,6 +56,10 @@ export class GameApp {
   private tickAccumulator = 0;
   private fallbackSave: string | null = null;
   private lastTransitStatusTick = -1;
+  private readonly keydownListener = (event: KeyboardEvent): void => this.keydown(event);
+  private readonly notificationTimers = new Set<number>();
+  private frameRequest: number | null = null;
+  private disposed = false;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -74,7 +78,19 @@ export class GameApp {
     this.renderTransitPanel();
     this.renderEconomyPanel();
     this.updateOverlayLegend();
-    requestAnimationFrame((time) => this.frame(time));
+    this.scheduleFrame();
+  }
+
+  async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.frameRequest !== null) cancelAnimationFrame(this.frameRequest);
+    this.frameRequest = null;
+    window.removeEventListener('keydown', this.keydownListener);
+    for (const timer of this.notificationTimers) window.clearTimeout(timer);
+    this.notificationTimers.clear();
+    await this.renderer.destroy();
+    this.root.replaceChildren();
   }
 
   private layoutHtml(): string {
@@ -162,7 +178,7 @@ export class GameApp {
       this.flash(`${department} funding set to ${result}%.`, 'ok');
     }));
     this.bindTransitControls();
-    window.addEventListener('keydown', (event) => this.keydown(event));
+    window.addEventListener('keydown', this.keydownListener);
     this.updateSpeedButtons();
   }
 
@@ -370,7 +386,14 @@ export class GameApp {
     this.root.querySelectorAll<HTMLElement>('[data-tool]').forEach((button) => button.classList.toggle('active', button.dataset.tool === tool));
   }
 
+  private scheduleFrame(): void {
+    if (this.disposed) return;
+    this.frameRequest = requestAnimationFrame((time) => this.frame(time));
+  }
+
   private frame(time: number): void {
+    if (this.disposed) return;
+    this.frameRequest = null;
     const delta = Math.min(250, time - this.lastFrame);
     this.lastFrame = time;
     if (this.core.clock.speed > 0) {
@@ -390,7 +413,7 @@ export class GameApp {
     }
     this.renderDebug();
     this.renderServiceAlerts();
-    requestAnimationFrame((next) => this.frame(next));
+    this.scheduleFrame();
   }
 
   private renderInspector(): void {
@@ -489,10 +512,15 @@ export class GameApp {
   }
 
   private flash(message: string, kind: 'ok' | 'error'): void {
+    if (this.disposed) return;
     this.notification.textContent = message;
     this.notification.dataset.kind = kind;
     this.notification.classList.add('visible');
-    window.setTimeout(() => this.notification.classList.remove('visible'), 2500);
+    const timer = window.setTimeout(() => {
+      this.notificationTimers.delete(timer);
+      if (!this.disposed) this.notification.classList.remove('visible');
+    }, 2500);
+    this.notificationTimers.add(timer);
   }
 
   private required<T extends Element = HTMLElement>(selector: string): T {
