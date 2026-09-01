@@ -4,11 +4,16 @@
 
 #include <json-c/json.h>
 
+#include <algorithm>
+#include <charconv>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <new>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct cf_engine {
@@ -17,6 +22,81 @@ struct cf_engine {
 };
 
 namespace {
+void appendEscaped(std::string_view text, std::string& output) {
+    output.push_back('"');
+    for (const unsigned char ch : text) {
+        switch (ch) {
+            case '"': output += "\\\""; break;
+            case '\\': output += "\\\\"; break;
+            case '\b': output += "\\b"; break;
+            case '\f': output += "\\f"; break;
+            case '\n': output += "\\n"; break;
+            case '\r': output += "\\r"; break;
+            case '\t': output += "\\t"; break;
+            default:
+                if (ch < 0x20U) {
+                    constexpr char hex[] = "0123456789abcdef";
+                    output += "\\u00";
+                    output.push_back(hex[(ch >> 4U) & 0xfU]);
+                    output.push_back(hex[ch & 0xfU]);
+                } else {
+                    output.push_back(static_cast<char>(ch));
+                }
+                break;
+        }
+    }
+    output.push_back('"');
+}
+
+civic::Result<void> appendCanonical(json_object* value, std::string& output) {
+    switch (json_object_get_type(value)) {
+        case json_type_null: output += "null"; return {};
+        case json_type_boolean: output += json_object_get_boolean(value) ? "true" : "false"; return {};
+        case json_type_int: output += std::to_string(json_object_get_int64(value)); return {};
+        case json_type_double: {
+            const auto number = json_object_get_double(value);
+            if (!std::isfinite(number)) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure, "command payload contains non-finite number"));
+            char buffer[128]{};
+            const auto [ptr, error] = std::to_chars(std::begin(buffer), std::end(buffer), number, std::chars_format::general, std::numeric_limits<double>::max_digits10);
+            if (error != std::errc{}) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure, "failed to canonicalize command number"));
+            output.append(buffer, ptr); return {};
+        }
+        case json_type_string: appendEscaped(json_object_get_string(value), output); return {};
+        case json_type_array: {
+            output.push_back('[');
+            const auto count = json_object_array_length(value);
+            for (std::size_t index = 0; index < count; ++index) {
+                if (index != 0) output.push_back(',');
+                auto result = appendCanonical(json_object_array_get_idx(value, index), output);
+                if (!result) return result;
+            }
+            output.push_back(']'); return {};
+        }
+        case json_type_object: {
+            std::vector<std::string> keys;
+            json_object_object_foreach(value, object_key, object_child) { (void)object_child; keys.emplace_back(object_key); }
+            std::ranges::sort(keys);
+            output.push_back('{');
+            bool first = true;
+            for (const auto& key : keys) {
+                json_object* child = nullptr; json_object_object_get_ex(value, key.c_str(), &child);
+                if (!first) output.push_back(',');
+                first = false;
+                appendEscaped(key, output); output.push_back(':');
+                auto result = appendCanonical(child, output); if (!result) return result;
+            }
+            output.push_back('}'); return {};
+        }
+    }
+    return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure, "unknown command payload type"));
+}
+
+civic::Result<std::string> canonicalJson(json_object* value) {
+    std::string output;
+    auto result = appendCanonical(value, output);
+    if (!result) return std::unexpected(result.error());
+    return output;
+}
 cf_error_code map(civic::ErrorCode code) noexcept { return static_cast<cf_error_code>(static_cast<std::uint32_t>(code)); }
 void clear(cf_engine* engine) { if (engine) engine->last_error = {}; }
 cf_error_code fail(cf_engine* engine, civic::Error error) { if (engine) engine->last_error = std::move(error); return map(engine ? engine->last_error.code : civic::ErrorCode::internal_error); }
@@ -60,7 +140,12 @@ civic::Result<std::vector<civic::CommandEnvelope>> parseCommands(const uint8_t* 
         if (!json_object_object_get_ex(item,"sequence",&sequence)||json_object_get_type(sequence)!=json_type_int||json_object_get_int64(sequence)<=0) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"command.sequence must be positive"));
         if (!json_object_object_get_ex(item,"tick",&tick)||json_object_get_type(tick)!=json_type_int||json_object_get_int64(tick)<0) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"command.tick must be non-negative"));
         if (!json_object_object_get_ex(item,"type",&type)||json_object_get_type(type)!=json_type_string) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"command.type must be a string"));
-        std::string payloadText="null"; if (json_object_object_get_ex(item,"payload",&payload)) payloadText=json_object_to_json_string_ext(payload,JSON_C_TO_STRING_PLAIN);
+        std::string payloadText="null";
+        if (json_object_object_get_ex(item,"payload",&payload)) {
+            auto canonical = canonicalJson(payload);
+            if (!canonical) return std::unexpected(canonical.error());
+            payloadText = std::move(*canonical);
+        }
         std::vector<std::byte> bytes(payloadText.size()); std::memcpy(bytes.data(),payloadText.data(),payloadText.size());
         commands.push_back({static_cast<uint64_t>(json_object_get_int64(sequence)),static_cast<uint64_t>(json_object_get_int64(tick)),json_object_get_string(type),std::move(bytes)});
     }
