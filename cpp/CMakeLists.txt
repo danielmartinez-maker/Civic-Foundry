@@ -40,6 +40,7 @@ if(CIVIC_BUILD_TESTS)
     tests/cadastre_mutation_tests.cpp
     tests/parcel_generation_tests.cpp
     tests/legal_history_tests.cpp
+    tests/legal_history_row_tests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main)
   include(GoogleTest)
