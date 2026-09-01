@@ -26,7 +26,8 @@ fn run() -> Result<(), String> {
     let bytes = fs::read(&path).map_err(|error| format!("failed to read {path}: {error}"))?;
     let case: P2AParityCase =
         serde_json::from_slice(&bytes).map_err(|error| format!("invalid parity case: {error}"))?;
-    let report = run_parity_case(case).map_err(|error| format!("P2A parity import failed: {error}"))?;
+    let report =
+        run_parity_case(case).map_err(|error| format!("P2A parity import failed: {error}"))?;
     let json = serde_json::to_string(&report)
         .map_err(|error| format!("failed to encode parity report: {error}"))?;
     println!("{json}");
