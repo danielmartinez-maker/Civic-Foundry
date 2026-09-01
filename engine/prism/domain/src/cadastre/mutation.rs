@@ -115,7 +115,10 @@ fn split_parcel_candidate(
         return Err("generated-parcel-id-collision".to_owned());
     }
 
-    let parents = lineage_parents(&[source.id.clone()], &source.historical_parent_ids);
+    let parents = lineage_parents(
+        std::slice::from_ref(&source.id),
+        &source.historical_parent_ids,
+    );
     let mut specs = current_geometry_specs(graph, &before, &BTreeSet::from([source.id.clone()]))?;
     for (index, polygon) in pieces.into_iter().enumerate() {
         specs.push(ParcelGeometrySpec {
