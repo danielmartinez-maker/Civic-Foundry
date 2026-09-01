@@ -55,7 +55,7 @@ test("repository policy rejects generated and temporary repository paths", async
   assert.deepEqual(inspect("src/cache.ts"), []);
 });
 
-test("repository policy rejects oversized binary files outside approved asset roots", async () => {
+test("repository policy rejects oversized tracked binary files", async () => {
   const policy = (await import("../scripts/repository-policy.mjs")) as Record<
     string,
     unknown
@@ -66,8 +66,10 @@ test("repository policy rejects oversized binary files outside approved asset ro
   if (typeof inspect !== "function") return;
 
   assert.deepEqual(inspect("tmp/capture.png", 6 * 1024 * 1024), [
-    "tmp/capture.png: binary file exceeds 5 MiB outside approved asset roots",
+    "tmp/capture.png: binary file exceeds 5 MiB repository limit",
   ]);
-  assert.deepEqual(inspect("assets/source/house.glb", 6 * 1024 * 1024), []);
+  assert.deepEqual(inspect("assets/source/house.glb", 6 * 1024 * 1024), [
+    "assets/source/house.glb: binary file exceeds 5 MiB repository limit",
+  ]);
   assert.deepEqual(inspect("docs/diagram.png", 256 * 1024), []);
 });
