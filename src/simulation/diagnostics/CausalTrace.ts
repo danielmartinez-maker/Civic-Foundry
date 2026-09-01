@@ -14,13 +14,15 @@ export type CausalTraceEntry = CausalTraceInput &
   }>;
 
 export class CausalTraceBuffer {
+  readonly capacity: number;
   private readonly entries: CausalTraceEntry[] = [];
   private nextSequence = 1;
 
-  constructor(readonly capacity = 256) {
+  constructor(capacity = 256) {
     if (!Number.isInteger(capacity) || capacity <= 0) {
       throw new Error("causal trace capacity must be a positive integer");
     }
+    this.capacity = capacity;
   }
 
   append(input: CausalTraceInput): CausalTraceEntry {
