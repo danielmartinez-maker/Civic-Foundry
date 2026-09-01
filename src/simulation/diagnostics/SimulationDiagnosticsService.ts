@@ -39,6 +39,11 @@ export type SimulationDomainDiagnostics = Readonly<{
     facilities: number;
     activeJobs: number;
   }>;
+  integrity: Readonly<{
+    invalidBuildingParcelReferences: number;
+    invalidPropertyParcelReferences: number;
+    totalInvalidReferences: number;
+  }>;
 }>;
 
 export type SimulationDiagnosticsSource = Readonly<{
@@ -64,6 +69,7 @@ export type RuntimeDiagnosticsSnapshot = Readonly<{
   transit: SimulationDomainDiagnostics["transit"];
   economy: SimulationDomainDiagnostics["economy"];
   services: SimulationDomainDiagnostics["services"];
+  integrity: SimulationDomainDiagnostics["integrity"];
   performance: ReturnType<SimulationKernel["performance"]["snapshot"]>;
   revisions: Readonly<Record<string, number>>;
   determinism: Readonly<{
@@ -111,6 +117,7 @@ export class SimulationDiagnosticsService {
       transit: domains.transit,
       economy: domains.economy,
       services: domains.services,
+      integrity: domains.integrity,
       performance: kernel.performance,
       revisions,
       determinism: Object.freeze({ authorityHash: this.authorityHash() }),
