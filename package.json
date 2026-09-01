@@ -26,6 +26,7 @@
     "test:smoke:isometric": "python tests/smoke/isometric_pass_a_smoke.py",
     "test:smoke:3d": "python tests/smoke/civic_3d_house_a_smoke.py",
     "test:smoke:3d-house": "python tests/smoke/civic_3d_house_a_smoke.py",
+    "test:smoke:3d:stack3": "python tests/smoke/civic_3d_stack3_smoke.py",
     "review:3d-house": "python tests/smoke/civic_3d_house_a_review.py"
   },
   "dependencies": {
