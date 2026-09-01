@@ -97,10 +97,12 @@ fn easement_sampling_rejects_segment_that_leaves_and_reenters_target() {
     );
 
     assert!(!result.committed);
-    assert!(result
-        .rejection_reasons
-        .iter()
-        .any(|reason| reason == "easement-outside-parcel"));
+    assert!(
+        result
+            .rejection_reasons
+            .iter()
+            .any(|reason| reason == "easement-outside-parcel")
+    );
     assert_eq!(graph.snapshot(), before);
     assert_eq!(prism_cadastral_hash_v1(&graph), before_hash);
 }
