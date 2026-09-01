@@ -1,0 +1,52 @@
+name: Stack 3 3D Presentation Scale-Up
+
+on:
+  push:
+    branches: [feature/stack-3-3d-presentation-asset-scaleup]
+  pull_request:
+    branches: [design/3d-presentation-asset-program]
+
+permissions:
+  contents: read
+
+jobs:
+  stack3-targeted:
+    name: Stack 3 Targeted
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Node 22
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Stack 3 focused tests
+        shell: bash
+        run: node --experimental-strip-types --test tests/stack3_*.test.ts
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Asset source policy
+        run: npm run assets:policy
+      - name: Deterministic 3D asset compiler check
+        run: npm run assets:3d:check
+      - name: Production build
+        run: npm run build
+
+  stack3-full:
+    name: Stack 3 Full Repository Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Node 22
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Repository verification
+        run: npm run verify
