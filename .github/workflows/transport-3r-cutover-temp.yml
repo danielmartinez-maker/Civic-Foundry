@@ -1,0 +1,104 @@
+name: Transport 3R authority cutover
+
+on:
+  push:
+    branches:
+      - feature/stack-2-transportation-3r-completion
+
+permissions:
+  contents: write
+
+jobs:
+  cutover:
+    if: ${{ !contains(github.event.head_commit.message, '[3r-cutover-done]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stack-2-transportation-3r-completion
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Patch production authority seams
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing patch anchor in {path}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace(
+              "src/simulation/traffic/IntersectionSystem.ts",
+              "  enqueue(nodeId: string, incomingEdgeId: string, entry: IntersectionQueueEntry): void {",
+              "  enqueue(nodeId: string, incomingEdgeId: string, entry: IntersectionQueueEntry, _outgoingEdgeId?: string): void {",
+          )
+
+          replace(
+              "src/simulation/traffic/TrafficSystem.ts",
+              "        intersections.enqueue(edge.to, edge.id, {\n          vehicleId: vehicle.id,\n          travelerWeight: vehicle.travelerWeight,\n          queuedTick: tick,\n        });",
+              "        intersections.enqueue(edge.to, edge.id, {\n          vehicleId: vehicle.id,\n          travelerWeight: vehicle.travelerWeight,\n          queuedTick: tick,\n        }, nextEdge.id);",
+          )
+
+          replace(
+              "src/simulation/services/ServiceVehicleSystem.ts",
+              "        intersections.enqueue(edge.to, edge.id, {\n          vehicleId: vehicle.id,\n          travelerWeight: vehicle.vehicleType === 'garbage_truck' ? 2 : 1,\n          queuedTick: tick,\n          priority: isEmergency(vehicle.vehicleType) ? 'emergency' : 'normal',\n        });",
+              "        const nextEdgeId = route[vehicle.currentEdgeIndex + 1];\n        intersections.enqueue(edge.to, edge.id, {\n          vehicleId: vehicle.id,\n          travelerWeight: vehicle.vehicleType === 'garbage_truck' ? 2 : 1,\n          queuedTick: tick,\n          priority: isEmergency(vehicle.vehicleType) ? 'emergency' : 'normal',\n        }, nextEdgeId);",
+          )
+
+          replace(
+              "src/simulation/core/LegacySimulationCoreBase.ts",
+              "  terrain?: TerrainGrid;\n}>;",
+              "  terrain?: TerrainGrid;\n  intersectionSystem?: IntersectionSystem;\n}>;",
+          )
+          replace(
+              "src/simulation/core/LegacySimulationCoreBase.ts",
+              "    this.intersections = new IntersectionSystem();",
+              "    this.intersections = options.intersectionSystem ?? new IntersectionSystem();",
+          )
+          replace(
+              "src/simulation/core/LegacySimulationCoreBase.ts",
+              "  step(ticks = 1): void {\n    this.kernel.step(ticks);\n  }\n\n  private runLegacyV7Tick(): void {\n    this.transportationGraph.rebuildIfNeeded(this.roads);",
+              "  step(ticks = 1): void {\n    this.kernel.step(ticks);\n  }\n\n  protected refreshTransportationGraph(): void {\n    this.transportationGraph.rebuildIfNeeded(this.roads);\n  }\n\n  private runLegacyV7Tick(): void {\n    this.refreshTransportationGraph();",
+          )
+
+          replace(
+              "src/simulation/core/SimulationCoreBase.ts",
+              "import type { FloodEventResolvedPayload, FloodEventStartedPayload, WorldGeneratedPayload, WorldMigratedTo1RPayload } from '../../world/foundation/WorldFoundationTypes.ts';",
+              "import type { FloodEventResolvedPayload, FloodEventStartedPayload, WorldGeneratedPayload, WorldMigratedTo1RPayload } from '../../world/foundation/WorldFoundationTypes.ts';\nimport { Transportation3RRuntime } from '../transportation/Transportation3RRuntime.ts';\nimport { MovementAwareIntersectionAdapter } from '../transportation/MovementAwareIntersectionAdapter.ts';",
+          )
+          replace(
+              "src/simulation/core/SimulationCoreBase.ts",
+              "  readonly cadastralMutations: CadastralRuntimeMutationService;",
+              "  readonly cadastralMutations: CadastralRuntimeMutationService;\n  readonly transportation3R: Transportation3RRuntime;",
+          )
+          replace(
+              "src/simulation/core/SimulationCoreBase.ts",
+              "    super({ seed, terrain: world.legacyTerrain(), ...(options.startingFunds !== undefined ? { startingFunds: options.startingFunds } : {}) });\n    this.world = world;",
+              "    const transportation3R = new Transportation3RRuntime();\n    const movementIntersections = new MovementAwareIntersectionAdapter(transportation3R);\n    super({\n      seed,\n      terrain: world.legacyTerrain(),\n      ...(options.startingFunds !== undefined ? { startingFunds: options.startingFunds } : {}),\n      intersectionSystem: movementIntersections,\n    });\n    this.transportation3R = transportation3R;\n    movementIntersections.setNetworkRefresher(() => {\n      this.transportation3R.refreshNetwork(this.roads, this.transportationGraph);\n    });\n    movementIntersections.setQueuedOutgoingEdgeResolver((vehicleId) => this.queuedOutgoingEdge(vehicleId));\n    this.transportation3R.refreshNetwork(this.roads, this.transportationGraph);\n    this.world = world;",
+          )
+          replace(
+              "src/simulation/core/SimulationCoreBase.ts",
+              "  override buildRoad(cells: readonly CellCoord[], type: RoadType) {\n    const result = super.buildRoad(cells, type);\n    if (result.ok) this.rebuildCadastreFromLegacyState();",
+              "  override buildRoad(cells: readonly CellCoord[], type: RoadType) {\n    const result = super.buildRoad(cells, type);\n    if (result.ok) {\n      this.transportation3R.refreshNetwork(this.roads, this.transportationGraph);\n      this.rebuildCadastreFromLegacyState();\n    }",
+          )
+          replace(
+              "src/simulation/core/SimulationCoreBase.ts",
+              "  override step(ticks = 1): void {\n    super.step(ticks);\n    this.reconcileCanonicalBuildingProjection();\n  }",
+              "  override step(ticks = 1): void {\n    super.step(ticks);\n    this.reconcileCanonicalBuildingProjection();\n  }\n\n  protected override refreshTransportationGraph(): void {\n    this.transportation3R.refreshNetwork(this.roads, this.transportationGraph);\n  }\n\n  private queuedOutgoingEdge(vehicleId: string): string | undefined {\n    const trafficVehicle = this.traffic.getVehicle(vehicleId);\n    if (trafficVehicle) return trafficVehicle.edgeIds[trafficVehicle.currentEdgeIndex + 1];\n    const serviceVehicle = this.serviceVehicles.getVehicle(vehicleId);\n    if (!serviceVehicle) return undefined;\n    const route = serviceVehicle.state === 'returning' ? serviceVehicle.returnEdgeIds : serviceVehicle.edgeIds;\n    return route[serviceVehicle.currentEdgeIndex + 1];\n  }",
+          )
+      - run: npm run format
+      - name: Commit cutover and self-delete
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/transport-3r-cutover-temp.yml
+          git add src/simulation/core src/simulation/traffic src/simulation/services src/simulation/transportation tests
+          git commit -m "feat(transportation): cut production intersections to 3R [3r-cutover-done]"
+          git push origin HEAD:feature/stack-2-transportation-3r-completion
