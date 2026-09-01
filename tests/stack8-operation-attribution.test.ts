@@ -36,10 +36,7 @@ test("legacy pathfinding attributes transportation and freight searches with cac
   pathfinding.attachPerformanceAttribution(performance);
   const graph = new TransportationGraph();
 
-  assert.equal(
-    pathfinding.findRoute(graph, "missing-a", "missing-b"),
-    null,
-  );
+  assert.equal(pathfinding.findRoute(graph, "missing-a", "missing-b"), null);
   assert.equal(
     pathfinding.findRoute(graph, "missing-a", "missing-b", {
       costKey: "freight-free-flow",
