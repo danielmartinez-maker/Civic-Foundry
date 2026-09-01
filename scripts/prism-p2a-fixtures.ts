@@ -185,7 +185,12 @@ function baseGeneratedEnvelope(): PrismP2AImportEnvelopeV1 {
 }
 
 function legacyFlatEnvelope(): PrismP2AImportEnvelopeV1 {
-  const core = new SimulationCore({ terrain: flatTerrain(4, 3), seed: 311, startingFunds: 100_000 });
+  const core = new SimulationCore({
+    terrain: flatTerrain(4, 3),
+    terrainMode: 'legacy-flat',
+    seed: 311,
+    startingFunds: 100_000,
+  });
   const envelope = exportPrismP2AEnvelope(core);
   if (envelope.world.mode !== 'legacy-flat') {
     throw new Error(`legacy fixture expected legacy-flat world, found ${envelope.world.mode}`);
@@ -310,7 +315,11 @@ function edge(
   };
 }
 
-function block(parcelIds: readonly string[], roadEdgeIds: readonly string[], boundary: readonly WorldPoint[]): UrbanBlock {
+function block(
+  parcelIds: readonly string[],
+  roadEdgeIds: readonly string[],
+  boundary: readonly WorldPoint[],
+): UrbanBlock {
   return { id: 'block', boundary, parcelIds, roadEdgeIds };
 }
 
