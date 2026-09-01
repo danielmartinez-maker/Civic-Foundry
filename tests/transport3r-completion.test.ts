@@ -16,6 +16,7 @@ function topology(arcs: readonly RoutingArc[]): RoutingTopology {
     { junctionId: "A" },
     { junctionId: "B", incomingCarriagewayId: "c1" },
     { junctionId: "C", incomingCarriagewayId: "c3" },
+    { junctionId: "D" },
     { junctionId: "D", incomingCarriagewayId: "c2" },
     { junctionId: "D", incomingCarriagewayId: "c4" },
   ];
