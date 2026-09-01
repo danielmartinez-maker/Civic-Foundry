@@ -28,12 +28,23 @@ export {
 };
 
 export function serializeCore(core: SimulationCore): SaveV9 {
-  const sanitizedV7 = sanitizePausedServiceState(serializeCoreV7(core), core);
-  const v8 = serializeCoreV8(core, sanitizedV7);
-  return serializeCoreV9(core, v8);
+  return core.kernel.performance.measure('save.serialize', () => {
+    const sanitizedV7 = sanitizePausedServiceState(serializeCoreV7(core), core);
+    const v8 = serializeCoreV8(core, sanitizedV7);
+    return serializeCoreV9(core, v8);
+  });
 }
 
-export function hydrateCore(input: unknown): SimulationCore { return hydrateCoreV9(input); }
+export function hydrateCore(input: unknown): SimulationCore {
+  const startedAt = monotonicNow();
+  const core = hydrateCoreV9(input);
+  core.kernel.performance.record('save.hydrate', Math.max(0, monotonicNow() - startedAt));
+  return core;
+}
+
+function monotonicNow(): number {
+  return globalThis.performance?.now() ?? Date.now();
+}
 
 function sanitizePausedServiceState(save: SaveV7, core: SimulationCore): SaveV7 {
   const buildingIds = new Set(core.buildings.list().map((building) => building.id));
