@@ -360,7 +360,23 @@ function stableValue(value: unknown): unknown {
 }
 
 function main(): void {
-  writeFileSync(OUTPUT_URL, `${stableStringify(buildP2AParityFixtureManifest())}\n`, 'utf8');
+  const expected = `${stableStringify(buildP2AParityFixtureManifest())}\n`;
+  const check = process.argv.includes('--check');
+  const write = process.argv.includes('--write');
+  if (check === write) {
+    throw new Error('P2A fixture tool requires exactly one of --write or --check');
+  }
+  if (write) {
+    writeFileSync(OUTPUT_URL, expected, 'utf8');
+    return;
+  }
+  if (!existsSync(OUTPUT_URL)) {
+    throw new Error('P2A parity fixture file is missing; run npm run prism:p2a:fixtures');
+  }
+  const actual = readFileSync(OUTPUT_URL, 'utf8');
+  if (actual !== expected) {
+    throw new Error('P2A parity fixtures are stale; run npm run prism:p2a:fixtures');
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(fileURLToPath(process.argv[1])).href) {
