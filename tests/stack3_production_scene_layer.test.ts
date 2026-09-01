@@ -56,6 +56,17 @@ test('appearance changes update in place while structural changes replace', () =
   assert.equal(adapter.destroys, 1);
 });
 
+test('canonical identity changes replace the retained handle even when fingerprints are unchanged', () => {
+  const adapter = new FakeAdapter();
+  const layer = new ProductionSceneLayer(catalog, adapter);
+  layer.apply([state()], { x: 0, y: 10, z: 12 });
+  const result = layer.apply([state({ canonicalId: '2' })], { x: 0, y: 10, z: 12 });
+  assert.equal(adapter.creates, 2);
+  assert.equal(adapter.destroys, 1);
+  assert.equal(result.replaced, 1);
+  assert.match(layer.reconstructionDigest(), /\"canonicalId\":\"2\"/);
+});
+
 test('teardown and rebuild preserve deterministic reconstruction digest and budget counts', () => {
   const adapter = new FakeAdapter();
   const layer = new ProductionSceneLayer(catalog, adapter);
