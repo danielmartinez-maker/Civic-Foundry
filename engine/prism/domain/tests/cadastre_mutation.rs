@@ -9,7 +9,10 @@ fn split_conserves_area_and_retires_source_with_lineage() {
     let mut graph = CadastralGraph::try_from_snapshot(graph_40x20_fixture()).unwrap();
     let result = graph.split_parcel(
         "p0",
-        &[WorldPoint { x: 20.0, y: 0.0 }, WorldPoint { x: 20.0, y: 20.0 }],
+        &[
+            WorldPoint { x: 20.0, y: 0.0 },
+            WorldPoint { x: 20.0, y: 20.0 },
+        ],
     );
 
     assert!(result.committed, "{:?}", result.rejection_reasons);
@@ -46,7 +49,10 @@ fn invalid_split_is_atomic_and_preserves_hash() {
     let before_hash = prism_cadastral_hash_v1(&graph);
     let result = graph.split_parcel(
         "p0",
-        &[WorldPoint { x: 0.0, y: 0.0 }, WorldPoint { x: 0.01, y: 0.01 }],
+        &[
+            WorldPoint { x: 0.0, y: 0.0 },
+            WorldPoint { x: 0.01, y: 0.01 },
+        ],
     );
 
     assert!(!result.committed);
@@ -65,35 +71,65 @@ fn graph_40x20_fixture() -> CadastralSnapshot {
         ],
         edges: vec![
             ParcelEdge {
-                id: "e0".into(), from_node_id: "n0".into(), to_node_id: "n1".into(),
-                left_parcel_id: Some("p0".into()), right_parcel_id: None,
-                kind: ParcelEdgeKind::StreetFrontage, road_ref: Some("south".into()),
+                id: "e0".into(),
+                from_node_id: "n0".into(),
+                to_node_id: "n1".into(),
+                left_parcel_id: Some("p0".into()),
+                right_parcel_id: None,
+                kind: ParcelEdgeKind::StreetFrontage,
+                road_ref: Some("south".into()),
             },
-            edge("e1", "n1", "n2"), edge("e2", "n2", "n3"), edge("e3", "n3", "n0"),
+            edge("e1", "n1", "n2"),
+            edge("e2", "n2", "n3"),
+            edge("e3", "n3", "n0"),
         ],
         blocks: vec![UrbanBlock {
             id: "block".into(),
-            boundary: vec![p(0.0,0.0), p(40.0,0.0), p(40.0,20.0), p(0.0,20.0)],
-            parcel_ids: vec!["p0".into()], road_edge_ids: vec!["e0".into()],
+            boundary: vec![
+                p(0.0, 0.0),
+                p(40.0, 0.0),
+                p(40.0, 20.0),
+                p(0.0, 20.0),
+            ],
+            parcel_ids: vec!["p0".into()],
+            road_edge_ids: vec!["e0".into()],
         }],
         parcels: vec![Parcel {
-            id: "p0".into(), block_id: "block".into(),
+            id: "p0".into(),
+            block_id: "block".into(),
             boundary_edge_ids: vec!["e0".into(), "e1".into(), "e2".into(), "e3".into()],
-            area_m2: 800.0, centroid: p(20.0, 10.0),
-            frontage_edge_ids: vec!["e0".into()], access_edge_ids: vec!["e0".into()],
-            zoning_district_id: "R2".into(), owner_id: Some("owner:a".into()),
+            area_m2: 800.0,
+            centroid: p(20.0, 10.0),
+            frontage_edge_ids: vec!["e0".into()],
+            access_edge_ids: vec!["e0".into()],
+            zoning_district_id: "R2".into(),
+            owner_id: Some("owner:a".into()),
             historical_parent_ids: vec![],
         }],
-        easements: vec![], lineage: vec![],
+        easements: vec![],
+        lineage: vec![],
     }
 }
 
-fn p(x: f64, y: f64) -> WorldPoint { WorldPoint { x, y } }
-fn node(id: &str, x: f64, y: f64) -> ParcelNode { ParcelNode { id: id.into(), point: p(x, y) } }
+fn p(x: f64, y: f64) -> WorldPoint {
+    WorldPoint { x, y }
+}
+
+fn node(id: &str, x: f64, y: f64) -> ParcelNode {
+    ParcelNode {
+        id: id.into(),
+        point: p(x, y),
+    }
+}
+
 fn edge(id: &str, from: &str, to: &str) -> ParcelEdge {
     ParcelEdge {
-        id: id.into(), from_node_id: from.into(), to_node_id: to.into(),
-        left_parcel_id: Some("p0".into()), right_parcel_id: None,
-        kind: ParcelEdgeKind::PropertyBoundary, road_ref: None,
+        id: id.into(),
+        from_node_id: from.into(),
+        to_node_id: to.into(),
+        left_parcel_id: Some("p0".into()),
+        right_parcel_id: None,
+        kind: ParcelEdgeKind::PropertyBoundary,
+        road_ref: None,
     }
 }
