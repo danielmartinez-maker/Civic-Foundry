@@ -38,11 +38,8 @@ export function isFormattingManagedPath(path) {
 }
 
 export function normalizeMarkdown(source) {
-  const withoutTrailingWhitespace = source
-    .split(/\r?\n/)
-    .map((line) => line.replace(/[ \t]+$/u, ""))
-    .join("\n");
-  return `${withoutTrailingWhitespace.replace(/\n*$/u, "")}\n`;
+  const normalizedLineEndings = source.replace(/\r\n?/gu, "\n");
+  return `${normalizedLineEndings.replace(/\n*$/u, "")}\n`;
 }
 
 async function git(args) {
@@ -60,7 +57,13 @@ async function resolveComparisonBase() {
   }
 
   const branch = await git(["rev-parse", "--abbrev-ref", "HEAD"]);
-  if (branch === "main" || branch === "master") return "HEAD";
+  if (branch === "main" || branch === "master") {
+    try {
+      return await git(["rev-parse", "HEAD^"]);
+    } catch {
+      return "HEAD";
+    }
+  }
 
   for (const candidate of ["main", "origin/main", "master", "origin/master"]) {
     try {
