@@ -73,11 +73,10 @@ export type RuntimeDiagnosticsSnapshot = Readonly<{
 
 export class SimulationDiagnosticsService {
   readonly trace: CausalTraceBuffer;
+  private readonly source: SimulationDiagnosticsSource;
 
-  constructor(
-    private readonly source: SimulationDiagnosticsSource,
-    traceCapacity = 512,
-  ) {
+  constructor(source: SimulationDiagnosticsSource, traceCapacity = 512) {
+    this.source = source;
     this.trace = new CausalTraceBuffer(traceCapacity);
   }
 
