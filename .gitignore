@@ -1,6 +1,7 @@
 node_modules/
 dist/
 target/
+cpp/build*/
 .worktrees/
 test-artifacts/
 playwright-report/

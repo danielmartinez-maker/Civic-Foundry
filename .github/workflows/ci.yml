@@ -45,3 +45,104 @@ jobs:
           path: test-artifacts/
           if-no-files-found: ignore
           retention-days: 7
+
+  native-msvc:
+    runs-on: windows-latest
+    env:
+      VCPKG_ROOT: ${{ runner.temp }}\vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}\vcpkg-cache
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Node 22
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install TypeScript dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Cache vcpkg binary artifacts
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ runner.temp }}\vcpkg-cache
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('cpp/vcpkg.json') }}
+      - name: Bootstrap pinned vcpkg
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:VCPKG_DEFAULT_BINARY_CACHE" | Out-Null
+          git clone --depth 1 --branch 2026.07.29 https://github.com/microsoft/vcpkg.git "$env:VCPKG_ROOT"
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+      - name: Fetch exact Node-API headers and import library
+        shell: pwsh
+        run: |
+          $nodeVersion = node -p "process.versions.node"
+          $headersArchive = Join-Path $env:RUNNER_TEMP "node-headers.tar.gz"
+          Invoke-WebRequest -Uri "https://nodejs.org/dist/v$nodeVersion/node-v$nodeVersion-headers.tar.gz" -OutFile $headersArchive
+          tar -xzf $headersArchive -C $env:RUNNER_TEMP
+          $nodeHeaders = Join-Path $env:RUNNER_TEMP "node-v$nodeVersion\include\node"
+          $nodeLibrary = Join-Path $env:RUNNER_TEMP "node.lib"
+          Invoke-WebRequest -Uri "https://nodejs.org/dist/v$nodeVersion/win-x64/node.lib" -OutFile $nodeLibrary
+          "CIVIC_NODE_HEADERS=$nodeHeaders" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CIVIC_NODE_LIBRARY=$nodeLibrary" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Configure native engine
+        shell: pwsh
+        run: >-
+          cmake -S cpp -B cpp/build-msvc
+          "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          "-DCIVIC_NODE_INCLUDE_DIR=$env:CIVIC_NODE_HEADERS"
+          "-DCIVIC_NODE_LIBRARY=$env:CIVIC_NODE_LIBRARY"
+          -DCIVIC_BUILD_TESTS=ON
+          -DCIVIC_BUILD_NAPI=ON
+      - name: MSVC Debug build
+        run: cmake --build cpp/build-msvc --config Debug --parallel
+      - name: MSVC Debug tests
+        run: ctest --test-dir cpp/build-msvc -C Debug --output-on-failure
+      - name: TypeScript shadow bridge tests
+        run: node --experimental-strip-types --test tests/native-engine-bridge.test.ts
+      - name: Save V9 cross-language round trip
+        run: node --experimental-strip-types tests/native-v9-roundtrip.mjs cpp/build-msvc/Debug/civic_native.node
+      - name: MSVC Release build
+        run: cmake --build cpp/build-msvc --config Release --parallel
+
+  native-clang-sanitized:
+    runs-on: ubuntu-latest
+    env:
+      VCPKG_ROOT: ${{ runner.temp }}/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/vcpkg-cache
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install Clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang
+      - name: Cache vcpkg binary artifacts
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-${{ runner.os }}-clang-${{ hashFiles('cpp/vcpkg.json') }}
+      - name: Bootstrap pinned vcpkg
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          git clone --depth 1 --branch 2026.07.29 https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Configure Clang sanitizer build
+        run: >-
+          cmake -S cpp -B cpp/build-clang
+          -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCIVIC_BUILD_TESTS=ON
+          -DCIVIC_BUILD_NAPI=OFF
+          -DCIVIC_ENABLE_SANITIZERS=ON
+      - name: Clang build
+        run: cmake --build cpp/build-clang --parallel
+      - name: Clang sanitizer tests
+        run: ctest --test-dir cpp/build-clang --output-on-failure
