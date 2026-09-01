@@ -48,7 +48,7 @@ fn repeated_easement_ids_are_stably_suffixed() {
     assert!(first.committed);
     assert!(second.committed);
     assert!(graph.get_easement("easement:access:p0").is_some());
-    assert!(graph.get_easement("easement:access:p0#1").is_some());
+    assert!(graph.get_easement("easement:access:p0:1").is_some());
 }
 
 #[test]
