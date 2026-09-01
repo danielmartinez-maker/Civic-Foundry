@@ -8,6 +8,8 @@ import { hydrateCoreV9, serializeCoreV9 } from '../src/save/saveV9.ts';
 import { serializeCoreV8 } from '../src/save/saveV8.ts';
 import { CadastralGraph } from '../src/world/cadastre/CadastralGraph.ts';
 import { CadastralMutationSystem } from '../src/world/cadastre/CadastralMutationSystem.ts';
+import { exportPrismP2AEnvelope } from '../src/prism/compat/P2AExporter.ts';
+import { prismCanonicalHashV1 } from '../src/prism/compat/P2ACanonicalHash.ts';
 
 function flatTerrain(width = 8, height = 6): TerrainGrid {
   const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({
@@ -101,6 +103,24 @@ function runtimeMutationSaveCore(): SimulationCore {
   return core;
 }
 
+function splitBesideRuntimeBuilding(core: SimulationCore): void {
+  const building = core.buildings.listV2()[0];
+  assert.ok(building);
+  const sourceParcelId = building.parcelIds[0];
+  assert.ok(sourceParcelId);
+  const parcelPolygon = core.cadastre.parcelPolygon(sourceParcelId);
+  const buildingMaxX = Math.max(...building.footprint.map((point) => point.x));
+  const parcelMaxX = Math.max(...parcelPolygon.map((point) => point.x));
+  assert.ok(parcelMaxX - buildingMaxX > 0.2, 'fixture must leave a safe split corridor beside the building');
+  const safeX = buildingMaxX + (parcelMaxX - buildingMaxX) / 2;
+  const ys = parcelPolygon.map((point) => point.y);
+  const mutation = core.cadastralMutations.splitParcel(sourceParcelId, [
+    { x: safeX, y: Math.min(...ys) },
+    { x: safeX, y: Math.max(...ys) },
+  ]);
+  assert.equal(mutation.committed, true, mutation.rejectionReasons.join('; '));
+}
+
 test('Save V9 round-trip preserves Urban Fabric authority exactly', () => {
   const core = urbanFabricCore();
   const save = serializeCoreV9(core);
@@ -128,18 +148,7 @@ test('Save V9 preserves historical property transactions across runtime parcel r
   const transactionBefore = structuredClone(core.propertyMarket.listTransactions()[0]);
   assert.ok(transactionBefore);
 
-  const parcelPolygon = core.cadastre.parcelPolygon(sourceParcelId);
-  const buildingMaxX = Math.max(...buildingBefore.footprint.map((point) => point.x));
-  const parcelMaxX = Math.max(...parcelPolygon.map((point) => point.x));
-  assert.ok(parcelMaxX - buildingMaxX > 0.2, 'fixture must leave a safe split corridor beside the building');
-  const safeX = buildingMaxX + (parcelMaxX - buildingMaxX) / 2;
-  const ys = parcelPolygon.map((point) => point.y);
-
-  const mutation = core.cadastralMutations.splitParcel(sourceParcelId, [
-    { x: safeX, y: Math.min(...ys) },
-    { x: safeX, y: Math.max(...ys) },
-  ]);
-  assert.equal(mutation.committed, true, mutation.rejectionReasons.join('; '));
+  splitBesideRuntimeBuilding(core);
   assert.equal(core.cadastre.getParcel(sourceParcelId), undefined);
   assert.ok(
     core.cadastre.listLineage().some((event) => event.sourceParcelIds.includes(sourceParcelId)),
@@ -267,4 +276,31 @@ test('default save API advances to V9 while explicit V8 remains available', () =
 
   const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version?: unknown };
   assert.equal(packageJson.version, '0.9.0-urban-fabric');
+});
+
+test('P2A export and canonical hashing do not interfere with Save V9 authority', () => {
+  const core = runtimeMutationSaveCore();
+  splitBesideRuntimeBuilding(core);
+  const before = serializeCoreV9(core);
+
+  const envelope = exportPrismP2AEnvelope(core);
+  const firstHash = prismCanonicalHashV1(envelope);
+  const secondHash = prismCanonicalHashV1(exportPrismP2AEnvelope(core));
+
+  assert.equal(firstHash, secondHash);
+  assert.deepEqual(serializeCoreV9(core), before);
+  assert.doesNotMatch(JSON.stringify(before), /(?:p2a|prism)/i);
+});
+
+test('runtime-mutated Save V9 round-trip reproduces the exact P2A envelope and hash', () => {
+  const core = runtimeMutationSaveCore();
+  splitBesideRuntimeBuilding(core);
+  const beforeEnvelope = exportPrismP2AEnvelope(core);
+  const beforeHash = prismCanonicalHashV1(beforeEnvelope);
+
+  const restored = hydrateCoreV9(structuredClone(serializeCoreV9(core)));
+  const afterEnvelope = exportPrismP2AEnvelope(restored);
+
+  assert.deepEqual(afterEnvelope, beforeEnvelope);
+  assert.equal(prismCanonicalHashV1(afterEnvelope), beforeHash);
 });
