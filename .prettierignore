@@ -2,5 +2,11 @@ dist/
 node_modules/
 .worktrees/
 test-artifacts/
+coverage/
+.tmp/
+.cache/
+playwright-report/
+target/
 assets/source/
 docs/superpowers/
+*.tsbuildinfo

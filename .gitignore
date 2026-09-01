@@ -1,10 +1,15 @@
 node_modules/
 dist/
+target/
 .worktrees/
 test-artifacts/
+playwright-report/
 coverage/
 .tmp/
 .cache/
+.pytest_cache/
+__pycache__/
+*.py[cod]
 .vscode/
 .idea/
 *.tsbuildinfo
