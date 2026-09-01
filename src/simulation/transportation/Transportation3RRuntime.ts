@@ -1,20 +1,29 @@
-import type { RoadSystem } from '../../world/roads/RoadSystem.ts';
-import type { EdgeTrafficMetric } from '../traffic/TrafficSystem.ts';
-import type { RouteResult } from '../traffic/PathfindingSystem.ts';
-import type { TransportationEdge, TransportationGraph } from '../traffic/TransportationGraph.ts';
-import { DynamicRoutingSystem, type DynamicRouteOptions } from './DynamicRoutingSystem.ts';
-import { GeneralizedTravelCostSystem } from './GeneralizedTravelCostSystem.ts';
-import { IntersectionControlSystem } from './IntersectionControlSystem.ts';
-import { buildLaneGroups } from './LaneGroupBuilder.ts';
+import type { RoadSystem } from "../../world/roads/RoadSystem.ts";
+import type { EdgeTrafficMetric } from "../traffic/TrafficSystem.ts";
+import type { RouteResult } from "../traffic/PathfindingSystem.ts";
+import type {
+  TransportationEdge,
+  TransportationGraph,
+} from "../traffic/TransportationGraph.ts";
+import {
+  DynamicRoutingSystem,
+  type DynamicRouteOptions,
+} from "./DynamicRoutingSystem.ts";
+import { GeneralizedTravelCostSystem } from "./GeneralizedTravelCostSystem.ts";
+import { IntersectionControlSystem } from "./IntersectionControlSystem.ts";
+import { buildLaneGroups } from "./LaneGroupBuilder.ts";
 import {
   LegacyRoadNetworkAdapter,
   type LegacyAuthorityProjection,
-} from './LegacyRoadNetworkAdapter.ts';
-import { LegacyTransportationGraphAdapter } from './LegacyTransportationGraphAdapter.ts';
-import { ParkingAuthoritySystem } from './ParkingAuthoritySystem.ts';
-import { buildRoutingTopology, type RoutingTopology } from './RoutingTopology.ts';
-import { TransportationIncidentSystem } from './TransportationIncidentSystem.ts';
-import { TransportNetworkStore } from './TransportNetworkStore.ts';
+} from "./LegacyRoadNetworkAdapter.ts";
+import { LegacyTransportationGraphAdapter } from "./LegacyTransportationGraphAdapter.ts";
+import { ParkingAuthoritySystem } from "./ParkingAuthoritySystem.ts";
+import {
+  buildRoutingTopology,
+  type RoutingTopology,
+} from "./RoutingTopology.ts";
+import { TransportationIncidentSystem } from "./TransportationIncidentSystem.ts";
+import { TransportNetworkStore } from "./TransportNetworkStore.ts";
 import type {
   Carriageway,
   CarriagewayId,
@@ -23,7 +32,7 @@ import type {
   TransportNetworkSnapshot,
   TurnMovement,
   TurnMovementId,
-} from './TransportNetworkTypes.ts';
+} from "./TransportNetworkTypes.ts";
 
 export type LegacyDynamicRouteOptions = DynamicRouteOptions &
   Readonly<{
@@ -34,7 +43,12 @@ function legacyNodeId(x: number, y: number): string {
   return `n:${x},${y}`;
 }
 
-function legacyEdgeId(fromX: number, fromY: number, toX: number, toY: number): string {
+function legacyEdgeId(
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+): string {
   return `e:${legacyNodeId(fromX, fromY)}>${legacyNodeId(toX, toY)}`;
 }
 
@@ -61,13 +75,17 @@ export class Transportation3RRuntime {
   refreshNetwork(roads: RoadSystem, graph: TransportationGraph): boolean {
     const projection = this.networkAdapter.projectAuthorityIfNeeded(roads);
     const mutation = this.networkStore.replaceAuthority(projection.authority);
-    if (!mutation.ok) throw new Error(mutation.reason ?? 'transport authority rejected');
+    if (!mutation.ok)
+      throw new Error(mutation.reason ?? "transport authority rejected");
 
-    const graphChanged = graph.loadProjection(this.graphAdapter.project(projection));
+    const graphChanged = graph.loadProjection(
+      this.graphAdapter.project(projection),
+    );
     const topologyChanged =
       mutation.changed ||
       this.currentSnapshot === undefined ||
-      this.currentSnapshot.topologyRevision !== this.networkStore.topologyRevision;
+      this.currentSnapshot.topologyRevision !==
+        this.networkStore.topologyRevision;
     this.projection = projection;
 
     if (topologyChanged) {
@@ -91,9 +109,12 @@ export class Transportation3RRuntime {
     simulationTick: number,
   ): number {
     this.incidents.advance(simulationTick);
-    const metricByEdge = new Map(edgeMetrics.map((metric) => [metric.edgeId, metric]));
+    const metricByEdge = new Map(
+      edgeMetrics.map((metric) => [metric.edgeId, metric]),
+    );
     const travelTimeTicksByCarriageway: Record<CarriagewayId, number> = {};
-    const congestionPenaltyTicksByCarriageway: Record<CarriagewayId, number> = {};
+    const congestionPenaltyTicksByCarriageway: Record<CarriagewayId, number> =
+      {};
     const incidentPenaltyTicksByCarriageway: Record<CarriagewayId, number> = {};
     const blockedCarriagewayIds: CarriagewayId[] = [];
 
@@ -111,12 +132,19 @@ export class Transportation3RRuntime {
       const segment = this.segmentByCarriageway.get(carriageway.id);
       const effects = segment
         ? this.incidents.effectsForSegment(segment.id)
-        : { capacityMultiplier: 1, closedLaneIds: [], traversalPenaltyTicks: 0 };
-      incidentPenaltyTicksByCarriageway[carriageway.id] = effects.traversalPenaltyTicks;
+        : {
+            capacityMultiplier: 1,
+            closedLaneIds: [],
+            traversalPenaltyTicks: 0,
+          };
+      incidentPenaltyTicksByCarriageway[carriageway.id] =
+        effects.traversalPenaltyTicks;
       const closed = new Set(effects.closedLaneIds);
       const allLanesClosed =
-        carriageway.laneIds.length > 0 && carriageway.laneIds.every((laneId) => closed.has(laneId));
-      if (effects.capacityMultiplier <= 0 || allLanesClosed) blockedCarriagewayIds.push(carriageway.id);
+        carriageway.laneIds.length > 0 &&
+        carriageway.laneIds.every((laneId) => closed.has(laneId));
+      if (effects.capacityMultiplier <= 0 || allLanesClosed)
+        blockedCarriagewayIds.push(carriageway.id);
     }
 
     return this.dynamicRouting.updateState({
@@ -138,25 +166,38 @@ export class Transportation3RRuntime {
     const endJunctionId = this.junctionByLegacyNode.get(endNodeId);
     if (!topology || !startJunctionId || !endJunctionId) return null;
 
-    const route = this.dynamicRouting.findRoute(topology, startJunctionId, endJunctionId, {
-      permissions: options.permissions,
-      destinationAccessible: options.destinationAccessible,
-      ...(options.costKey === undefined ? {} : { costKey: options.costKey }),
-      ...(options.edgeCost
-        ? {
-            carriagewayCost: (carriagewayId: CarriagewayId): number => {
-              const edgeId = this.legacyEdgeByCarriageway.get(carriagewayId);
-              const edge = edgeId ? graph.getEdge(edgeId) : undefined;
-              return edge ? options.edgeCost!(edge) : Number.NaN;
-            },
-          }
-        : {}),
-    });
+    const route = this.dynamicRouting.findRoute(
+      topology,
+      startJunctionId,
+      endJunctionId,
+      {
+        permissions: options.permissions,
+        destinationAccessible: options.destinationAccessible,
+        ...(options.costKey === undefined ? {} : { costKey: options.costKey }),
+        ...(options.edgeCost
+          ? {
+              carriagewayCost: (carriagewayId: CarriagewayId): number => {
+                const edgeId = this.legacyEdgeByCarriageway.get(carriagewayId);
+                const edge = edgeId ? graph.getEdge(edgeId) : undefined;
+                return edge ? options.edgeCost!(edge) : Number.NaN;
+              },
+            }
+          : {}),
+      },
+    );
     if (!route) return null;
 
-    const nodeIds = route.junctionIds.map((junctionId) => this.legacyNodeByJunction.get(junctionId));
-    const edgeIds = route.carriagewayIds.map((carriagewayId) => this.legacyEdgeByCarriageway.get(carriagewayId));
-    if (nodeIds.some((nodeId) => nodeId === undefined) || edgeIds.some((edgeId) => edgeId === undefined)) return null;
+    const nodeIds = route.junctionIds.map((junctionId) =>
+      this.legacyNodeByJunction.get(junctionId),
+    );
+    const edgeIds = route.carriagewayIds.map((carriagewayId) =>
+      this.legacyEdgeByCarriageway.get(carriagewayId),
+    );
+    if (
+      nodeIds.some((nodeId) => nodeId === undefined) ||
+      edgeIds.some((edgeId) => edgeId === undefined)
+    )
+      return null;
     return Object.freeze({
       nodeIds: Object.freeze(nodeIds as string[]),
       edgeIds: Object.freeze(edgeIds as string[]),
@@ -166,7 +207,9 @@ export class Transportation3RRuntime {
 
   segmentIdForLegacyEdge(edgeId: string): string | undefined {
     const carriagewayId = this.carriagewayByLegacyEdge.get(edgeId);
-    return carriagewayId ? this.segmentByCarriageway.get(carriagewayId)?.id : undefined;
+    return carriagewayId
+      ? this.segmentByCarriageway.get(carriagewayId)?.id
+      : undefined;
   }
 
   carriagewayIdForLegacyEdge(edgeId: string): CarriagewayId | undefined {
@@ -200,18 +243,24 @@ export class Transportation3RRuntime {
   incidentCapacityMultipliers(): Readonly<Record<string, number>> {
     const result: Record<string, number> = {};
     for (const segment of this.networkSnapshot().segments) {
-      result[segment.id] = this.incidents.effectsForSegment(segment.id).capacityMultiplier;
+      result[segment.id] = this.incidents.effectsForSegment(
+        segment.id,
+      ).capacityMultiplier;
     }
     return Object.freeze(result);
   }
 
   incidentAdjustedEdgeCost(edge: TransportationEdge, baseCost: number): number {
     const carriagewayId = this.carriagewayByLegacyEdge.get(edge.id);
-    const segment = carriagewayId ? this.segmentByCarriageway.get(carriagewayId) : undefined;
+    const segment = carriagewayId
+      ? this.segmentByCarriageway.get(carriagewayId)
+      : undefined;
     if (!segment) return baseCost;
     const effects = this.incidents.effectsForSegment(segment.id);
     if (effects.capacityMultiplier <= 0) return Number.POSITIVE_INFINITY;
-    return Math.max(edge.freeFlowTicks, baseCost) + effects.traversalPenaltyTicks;
+    return (
+      Math.max(edge.freeFlowTicks, baseCost) + effects.traversalPenaltyTicks
+    );
   }
 
   private rebuildIndexes(snapshot: TransportNetworkSnapshot): void {
@@ -222,8 +271,12 @@ export class Transportation3RRuntime {
     this.segmentByCarriageway.clear();
     this.movementByTurn.clear();
 
-    const junctionById = new Map(snapshot.junctions.map((junction) => [junction.id, junction]));
-    const segmentById = new Map(snapshot.segments.map((segment) => [segment.id, segment]));
+    const junctionById = new Map(
+      snapshot.junctions.map((junction) => [junction.id, junction]),
+    );
+    const segmentById = new Map(
+      snapshot.segments.map((segment) => [segment.id, segment]),
+    );
     for (const junction of snapshot.junctions) {
       const nodeId = legacyNodeId(junction.x, junction.y);
       this.junctionByLegacyNode.set(nodeId, junction.id);
