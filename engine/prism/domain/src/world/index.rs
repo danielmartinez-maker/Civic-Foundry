@@ -124,8 +124,9 @@ impl WorldMirror {
             .filter(|entity| kind.is_none_or(|kind| entity.kind == kind))
             .collect::<Vec<_>>();
         matches.sort_by(|left, right| {
-            left.sort_key
-                .cmp(&right.sort_key)
+            geography_depth(right.kind)
+                .cmp(&geography_depth(left.kind))
+                .then_with(|| left.sort_key.cmp(&right.sort_key))
                 .then_with(|| left.id.cmp(&right.id))
         });
         Ok(matches
