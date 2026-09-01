@@ -1,0 +1,39 @@
+name: Transport 3R exact branch formatter
+
+on:
+  push:
+    branches:
+      - feature/stack-2-transportation-3r-completion
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: ${{ !contains(github.event.head_commit.message, '[transport-format-done]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/stack-2-transportation-3r-completion
+          fetch-depth: 0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Generate exact branch-diff formatting
+        shell: bash
+        run: |
+          npm run format:check || true
+          test -d test-artifacts/format-expected
+          cp -R test-artifacts/format-expected/. .
+      - name: Commit exact formatting and self-delete
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/transport-3r-format-temp.yml .transport-3r-format-trigger
+          git add src tests
+          git commit -m "style(transportation): apply exact branch formatting [transport-format-done]"
+          git push origin HEAD:feature/stack-2-transportation-3r-completion
