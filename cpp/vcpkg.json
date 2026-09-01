@@ -1,0 +1,9 @@
+{
+  "name": "civic-foundry-native",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "clipper2",
+    "gtest",
+    "nlohmann-json"
+  ]
+}
