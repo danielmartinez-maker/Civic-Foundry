@@ -9,6 +9,8 @@ Start with **[Civic Foundry Wiki Home](wiki/Home.md)** for a structured overview
 ## Canonical technical references
 
 - [Architecture](ARCHITECTURE.md) — runtime boundaries and authoritative ownership.
+- [Stack 8 architecture baseline & failure map](architecture/STACK_8_BASELINE_AND_FAILURE_MAP.md) — authoritative ownership, integration boundaries, transactions, structured failures, deterministic repro, scheduler/revision contracts, diagnostics, performance and lifecycle audit.
+- [Stack 8 cross-domain regression matrix](architecture/STACK_8_REGRESSION_MATRIX.md) — permanent test ownership for integration seams and replay/transaction expectations.
 - [Save Format](SAVE_FORMAT.md) — persistence and migration authority.
 - [Simulation](SIMULATION.md) — simulation-system behavior and contracts.
 - [Testing](TESTING.md) — verification strategy and test gates.
