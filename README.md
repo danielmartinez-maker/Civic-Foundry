@@ -1,6 +1,10 @@
 # Civic Foundry
 
-Civic Foundry is an original city-management, urban-development, transportation, economic-simulation, and municipal-management game built around deterministic simulation and inspectable causal systems. The validated Electron/PixiJS desktop stack remains the current compatibility runtime while Civic Foundry migrates toward the native Windows Prism Engine destination.
+Civic Foundry is an original city-management, urban-development, transportation, economic-simulation, and municipal-management game built around deterministic simulation and inspectable causal systems. The production presentation path now targets GPU-rendered Windows desktop play while retaining the browser build as a development and smoke-test target.
+
+## Wiki
+
+Start with the **[Civic Foundry Wiki](docs/wiki/Home.md)** for a structured guide to the product vision, current roadmap, runtime architecture, simulation domains, rendering, persistence, contribution workflow, known technical debt, and project glossary. The wiki is an orientation layer; canonical technical authority remains current code, fresh verification evidence, this README, `docs/ARCHITECTURE.md`, `docs/SAVE_FORMAT.md`, and accepted ADRs.
 
 ## Canonical runtime
 
@@ -8,22 +12,10 @@ Civic Foundry is an original city-management, urban-development, transportation,
 
 Phase 2R extends the accepted Phase 1R world foundation instead of replacing it. `WorldFoundation` remains the sole physical/geographic authority; `CadastralGraph` is the canonical legal-land authority. Existing V7/V8 gameplay systems remain behind explicit compatibility seams until later replacement phases assume ownership.
 
-Current authoritative compatibility runtime:
+Current runtime path:
 
 ```text
-Electron → TypeScript SimulationCore → PixiJS/WebGL
-```
-
-Destination runtime under active migration:
-
-```text
-CivicFoundry.exe → Prism Engine (Rust) → native game domains → D3D12
-```
-
-The current compatibility path expands to:
-
-```text
-Electron desktop host
+Electron desktop host (optional)
   → GameApp
     → SimulationCore facade
       → SimulationKernel + WorldFoundation + CadastralGraph
@@ -34,17 +26,15 @@ Electron desktop host
 
 `SimulationCore.world` remains authoritative for terrain, geography, hydrology, and physical-world state. `SimulationCore.cadastre` owns legal parcels/topology. `LotSystem` is rebuilt from cadastral state and survives only as a derived compatibility facade for inherited cell-based consumers. `GpuWorldRenderer` reads those systems for presentation and does not own simulation or save state.
 
-Prism P0 establishes only the native foundation under `engine/prism/`: generational entity identity, aligned memory primitives, deterministic job-DAG compilation, deterministic diagnostics/bootstrap probing, release-mode invariant coverage, and a native executable shell. P0 does not transfer gameplay authority, introduce Save V10, or add D3D12 rendering. That boundary is recorded in `docs/adr/0003-native-prism-bootstrap.md`.
+## Desktop GPU runtime
 
-## Transitional desktop GPU runtime
+The production `GameApp` world-rendering path uses PixiJS 8 with WebGL explicitly selected for broad Windows GPU compatibility. The existing `IsometricCamera` remains the projection and interaction contract for panning, anchored zoom, rotation, cell picking, and world/canvas conversion.
 
-The current compatibility `GameApp` world-rendering path uses PixiJS 8 with WebGL explicitly selected for broad Windows GPU compatibility. The existing `IsometricCamera` remains the projection and interaction contract for panning, anchored zoom, rotation, cell picking, and world/canvas conversion.
+Electron provides the native desktop window around the same local `dist/` build used by browser development. The desktop host loads only local application content with Node integration disabled, context isolation enabled, sandboxing enabled, and unexpected navigation/window creation denied. The current desktop tranche exposes no generic IPC bridge.
 
-Electron provides the transitional desktop window around the same local `dist/` build used by browser development. The desktop host loads only local application content with Node integration disabled, context isolation enabled, sandboxing enabled, and unexpected navigation/window creation denied. The current desktop tranche exposes no generic IPC bridge.
+The static TypeScript build remains in place. PixiJS's pinned browser ESM module is copied to `dist/vendor/pixi.mjs` and resolved through the local import map in `index.html`; no CDN runtime dependency or TypeScript `paths` alias is required. This boundary is recorded in `docs/adr/0002-desktop-gpu-runtime.md`.
 
-The static TypeScript build remains in place. PixiJS's pinned browser ESM module is copied to `dist/vendor/pixi.mjs` and resolved through the local import map in `index.html`; no CDN runtime dependency or TypeScript `paths` alias is required. This transitional boundary is recorded historically in `docs/adr/0002-desktop-gpu-runtime.md`, which is superseded as the destination architecture by ADR 0003.
-
-Legacy Canvas2D renderer/pass sources remain temporarily as migration references for specialized visual parity, but the compatibility `GameApp` path no longer instantiates them. Electron/PixiJS/WebGL is not a Prism architectural constraint and is not the final native production host.
+Legacy Canvas2D renderer/pass sources remain temporarily as migration references for specialized visual parity, but the production `GameApp` path no longer instantiates them.
 
 ## Phase 1R — World Foundation 2.0
 
@@ -102,7 +92,7 @@ The preserved gameplay layer still includes:
 - housing affordability, renter/owner tenure economics, persistent relocation, development policy, developer capital allocation, and inherited redevelopment safeguards;
 - deterministic isometric GPU presentation with terrain, zoning, roads, structures, active vehicle markers, analytical overlays, selection, and tool previews.
 
-These domains continue through the deterministic TypeScript compatibility architecture while later Civic Foundry 2.0 / Prism tranches progressively replace ownership behind parity gates.
+These domains continue through the deterministic kernel compatibility architecture while later Civic Foundry 2.0 tranches progressively replace ownership behind parity gates.
 
 ## Compatibility boundaries
 
@@ -114,8 +104,7 @@ Phase 2R establishes land/building authority without claiming later systems:
 - legacy building records remain available to inherited systems while canonical `BuildingV2` state is stored separately;
 - existing V7/V8 identifiers and historical behavior are preserved through explicit compatibility projections;
 - lane-level road authority, turn movements, signals, explicit parking, crashes, and the final transportation replacement belong to **3R — Transportation Engine 2.0**;
-- presentation code reads snapshots and emits presentation commands; it cannot manufacture simulation outcomes or canonical save state;
-- Prism P0 owns no gameplay domain and does not create dual authority with the TypeScript runtime.
+- presentation code reads snapshots and emits presentation commands; it cannot manufacture simulation outcomes or canonical save state.
 
 ## Persistence
 
@@ -133,11 +122,9 @@ V9 hydration restores the inherited V8 candidate first so `WorldFoundation` exis
 
 Save V8 remains the explicit Phase 1R format with `saveVersion: 8` and `gameVersion: '0.8.0-world-foundation'`. Loading V8 through the current API deterministically constructs the V9 Urban Fabric state without rewriting or repurposing the V8 schema. Older migration continues through the progressive compatibility chain.
 
-Prism P0 does not change persistence. Save V10 and native persistence migration remain excluded until a later reviewed tranche establishes ownership and migration contracts.
-
 ## Toolchain
 
-Civic Foundry uses the Engineering Baseline v1 pinned local toolchain with the native Prism P0 extension:
+Civic Foundry uses the Engineering Baseline v1 pinned local toolchain with the ADR 0002 desktop/GPU extension:
 
 - Node.js 22;
 - TypeScript 5.8.3 ES modules with strict compiler settings;
@@ -145,13 +132,10 @@ Civic Foundry uses the Engineering Baseline v1 pinned local toolchain with the n
 - ESLint 10 plus TypeScript ESLint for static analysis;
 - Prettier 3 for deterministic repository/tooling/test/document formatting;
 - `clipper2-ts` for deterministic polygon clipping/offsetting behind the cadastral geometry wrapper;
-- PixiJS 8.20.1 with WebGL for the transitional compatibility renderer;
-- Electron 44 for the transitional local Windows desktop host;
+- PixiJS 8.20.1 with WebGL for production world rendering;
+- Electron 44 for the local Windows desktop host;
 - Python Playwright + Chromium for compiled browser smoke tests;
-- deterministic procedural isometric atlas generation/validation;
-- Rust 1.98.0 / Rust 2024 for Prism Engine P0;
-- Cargo resolver 3 with committed `engine/prism/Cargo.lock`;
-- no third-party Rust crates in P0.
+- deterministic procedural isometric atlas generation/validation.
 
 Install JavaScript dependencies from the committed lockfile:
 
@@ -159,14 +143,10 @@ Install JavaScript dependencies from the committed lockfile:
 npm ci
 ```
 
-The committed `rust-toolchain.toml` pins the native Rust toolchain used by Prism.
-
 ## Commands
 
 ```bash
 npm run verify
-npm run prism:verify
-npm run verify:all
 npm test
 npm run typecheck
 npm run lint
@@ -182,12 +162,11 @@ npm run test:smoke:urban-fabric
 npm run test:smoke:isometric
 npm run dev
 npm run desktop
-cargo run --manifest-path engine/prism/Cargo.toml -p prism-host --release --locked
 ```
 
-`npm run verify` remains the canonical legacy authoritative-runtime gate: formatting, static analysis, repository/architecture policy, strict typechecking, tests, asset policy/validation, and the compatibility production build. `npm run prism:verify` is the native Prism gate. `npm run verify:all` runs both and is the full local gate during dual-stack migration. CI then runs the inherited browser/visual smoke suites plus the Windows-native Prism host smoke.
+`npm run verify` is the canonical core gate used by contributors and CI: formatting, static analysis, repository/architecture policy, strict typechecking, tests, asset policy/validation, and the production build. CI then runs the browser and visual smoke suites.
 
-`npm run build` compiles the compatibility application into `dist/`, copies the pinned local browser runtime dependencies, and generates the deterministic atlases. `npm run dev` serves that compiled browser build on port 5173. `npm run desktop` performs a compatibility production build and launches it inside the hardened Electron host; it is transitional and is not the final Prism production host.
+`npm run build` compiles the application into `dist/`, copies the pinned local browser runtime dependencies, and generates the deterministic atlases. `npm run dev` serves the compiled browser build on port 5173. `npm run desktop` performs a production build and launches that local build inside the hardened Electron desktop host.
 
 Engineering and contribution policy is documented in [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TESTING.md](docs/TESTING.md), and [docs/adr/](docs/adr/).
 
@@ -197,18 +176,15 @@ Phase 1R acceptance established deterministic world generation, hydrology, spati
 
 Urban Fabric 2.0 adds repository-wide verification for cadastral geometry/topology, parcel mutation, dimensional zoning, envelopes/compliance, mixed-use massing, lifecycle/renovation, HBU/property/site assembly, runtime cadastral authority, Save V9 migration/round-trip/reference validation, deterministic mutation fuzzing, and compiled Urban Fabric browser behavior.
 
-The accepted desktop GPU tranche proved the production-presentation boundary with WebGL, local PixiJS resolution, and a hardened Electron host while retaining the inherited browser and visual smoke gates. ADR 0003 now supersedes that tranche as the destination architecture.
-
-Prism P0 adds exact-toolchain Rust verification, 128-bit generational entity identity, safe 64-byte aligned memory, deterministic job-DAG compilation, deterministic diagnostics/bootstrap output, release-mode structural invariant tests, and Windows-native executable smoke coverage without transferring gameplay authority.
+The desktop GPU runtime adds contract coverage for the production WebGL renderer, local PixiJS module resolution, and hardened Electron host while retaining the inherited browser and visual smoke gates. PR #98 head `725c9cec` passed GitHub Actions run `33137152536` and was merged into `main` as merge commit `c2e7befd` on 2026-08-27 (America/Monterrey). The production `GameApp` path on `main` therefore uses `GpuWorldRenderer`; legacy Canvas2D sources remain only as migration references until specialized parity work retires them.
 
 ## Roadmap
 
 0. Civic Foundry 2.0 Phase 0A — Kernel Skeleton & Deterministic Scheduling ✅
 1. **1R — World Foundation 2.0 ✅** — geography hierarchy, irregular geometry, terrain/soils, hydrology/flooding, deterministic world generation, spatial index, world-aware costs, Save V8, compatibility facade
 2. **2R — Urban Fabric 2.0 ✅** — true cadastral parcels, dimensional zoning, mixed-use `BuildingV2`, deterioration/renovation, HBU/redevelopment, parcel splitting/assembly, Save V9, cadastral diagnostics
-3. **Desktop GPU Runtime ✅ (transitional)** — PixiJS/WebGL renderer and hardened Windows Electron host while preserving simulation/save authority
-4. **Prism Engine P0 — native bootstrap** — Rust workspace, entity identity, aligned memory, deterministic job graph, diagnostics, native host, verification and Windows smoke; no gameplay authority transfer
-5. **3R — Transportation Engine 2.0** — lane/turn/signal/parking/crash authority and dynamic routing replacement
-6. Later Civic Foundry 2.0 / Prism systems continue under progressive replacement and parity gates.
+3. **Desktop GPU Runtime ✅ — PR #98** — PixiJS/WebGL production renderer and hardened Windows Electron host while preserving simulation/save authority
+4. **3R — Transportation Engine 2.0** — lane/turn/signal/parking/crash authority and dynamic routing replacement
+5. Later Civic Foundry 2.0 systems continue under the progressive replacement architecture in `docs/superpowers/specs/2026-08-24-civic-foundry-2.0-master-design.md`.
 
-See `docs/ARCHITECTURE.md`, `docs/SAVE_FORMAT.md`, `docs/adr/0003-native-prism-bootstrap.md`, and `docs/superpowers/` for architecture, persistence, design specifications, and implementation plans.
+See `docs/ARCHITECTURE.md`, `docs/SAVE_FORMAT.md`, and `docs/superpowers/` for architecture, persistence, design specifications, and implementation plans.

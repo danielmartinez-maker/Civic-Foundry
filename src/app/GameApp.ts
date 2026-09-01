@@ -17,6 +17,13 @@ import { mapEconomyOverlay, type EconomyOverlayMode } from '../rendering/Economy
 
 const STORAGE_KEY = 'civic-foundry-save-v7';
 const LEGACY_STORAGE_KEY = 'civic-foundry-save-v6';
+const SERVICE_DEPARTMENT_LABELS: Readonly<Record<ServiceDepartment, string>> = Object.freeze({
+  fire: 'Fire',
+  police: 'Police',
+  healthcare: 'Healthcare',
+  education: 'Education',
+  garbage: 'Waste',
+});
 const TOOLS: readonly [ToolId, string, string][] = [
   ['inspect', 'Inspect', 'I'], ['road-local', 'Local', 'R'], ['road-collector', 'Collector', 'C'], ['road-arterial', 'Arterial', 'A'],
   ['zone-residential', 'Residential', '1'], ['zone-commercial', 'Commercial', '2'], ['zone-industrial', 'Industrial', '3'],
@@ -74,16 +81,16 @@ export class GameApp {
     const toolButtons = TOOLS.map(([id, label, key]) => `<button class="tool-btn" data-tool="${id}" data-testid="tool-${id}"><span>${label}</span><kbd>${key}</kbd></button>`).join('');
     const speedButtons = [0, 1, 2, 4].map((speed) => `<button data-speed="${speed}" data-testid="speed-${speed}">${speed === 0 ? 'Pause' : `${speed}×`}</button>`).join('');
     const taxRows = (['residential', 'commercial', 'industrial'] as ZoneType[]).map((zone) => `<label class="tax-row"><span>${zone[0]!.toUpperCase()}</span><input data-tax="${zone}" type="number" min="0" max="25" step="0.5" value="10"><b>%</b></label>`).join('');
-    const serviceBudgetRows = (['fire', 'police', 'healthcare', 'education', 'garbage'] as ServiceDepartment[]).map((department) => `<label class="tax-row"><span>${department[0]!.toUpperCase()}${department.slice(1, 4)}</span><input data-service-budget="${department}" data-testid="budget-${department}" type="number" min="50" max="150" step="5" value="100"><b>%</b></label>`).join('');
+    const serviceBudgetRows = (['fire', 'police', 'healthcare', 'education', 'garbage'] as ServiceDepartment[]).map((department) => `<label class="tax-row"><span>${SERVICE_DEPARTMENT_LABELS[department]}</span><input data-service-budget="${department}" data-testid="budget-${department}" type="number" min="50" max="150" step="5" value="100"><b>%</b></label>`).join('');
     return `<div class="game-shell">
-      <header class="topbar"><div><div class="eyebrow">PHASE VI · FIRMS, PRODUCTION & FREIGHT</div><h1>CIVIC FOUNDRY</h1></div>
+      <header class="topbar"><div><div class="eyebrow">URBAN FABRIC 2.0 · DESKTOP GPU RUNTIME</div><h1>CIVIC FOUNDRY</h1></div>
         <div class="top-actions"><button data-action="save" data-testid="save">Save V9</button><button data-action="load" data-testid="load">Load</button></div></header>
       <section id="hud" class="hud"></section>
       <main class="workspace">
         <aside class="toolbox"><h2>Build</h2>${toolButtons}
           <div class="panel-section"><h3>Speed</h3><div class="segmented">${speedButtons}</div></div>
           <div class="panel-section"><h3>Traffic</h3><select id="overlay" data-testid="traffic-overlay"><option value="none">Off</option><option value="congestion">Congestion</option><option value="speed">Speed</option><option value="volume">Volume</option><option value="bottlenecks">Bottlenecks</option></select></div>
-          <div class="panel-section"><h3>Services</h3><select id="service-overlay" data-testid="service-overlay"><option value="none">Off</option><option value="quality">Combined quality</option><option value="fire">Fire</option><option value="police">Police</option><option value="healthcare">Healthcare</option><option value="education">Education</option><option value="garbage">Garbage</option></select></div>
+          <div class="panel-section"><h3>Services</h3><select id="service-overlay" data-testid="service-overlay"><option value="none">Off</option><option value="quality">Combined quality</option><option value="fire">Fire</option><option value="police">Police</option><option value="healthcare">Healthcare</option><option value="education">Education</option><option value="garbage">Waste</option></select></div>
           <div class="panel-section"><h3>Transit overlay</h3><select id="transit-overlay" data-testid="transit-overlay"><option value="none">Off</option><option value="routes">Routes / modes</option><option value="access">Stop access</option><option value="ridership">Ridership</option><option value="crowding">Crowding</option><option value="wait">Average wait</option><option value="reliability">Reliability</option><option value="mode-share">Mode share</option><option value="accessibility">Person accessibility</option></select></div>
           <div class="panel-section"><h3>Economy / freight</h3><select id="economy-overlay" data-testid="economy-overlay"><option value="none">Off</option><option value="firm-health">Firm health</option><option value="jobs">Jobs</option><option value="production">Production stock</option><option value="shortages">Shortages</option><option value="freight-volume">Freight volume</option><option value="freight-routes">Freight routes</option><option value="logistics-delay">Logistics delay</option><option value="gateways">Gateways</option><option value="trade-flow">Trade flow</option></select><p id="overlay-legend" class="legend"></p><div data-economy-summary data-testid="economy-panel" class="economy-summary"></div></div>
           <div class="panel-section transit-panel" data-testid="transit-panel"><h3>Transit lines</h3>

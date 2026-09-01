@@ -249,22 +249,4 @@ Urban Fabric acceptance now includes:
 - production-path contract coverage proving `GameApp` uses the WebGL renderer and the Electron host is local/sandboxed;
 - all inherited Phase 1R, Phase 6/7, Urban Fabric, and isometric functional/visual gates.
 
-GitHub remains the durable canonical source of truth. Desktop GPU runtime work remains isolated on PR #98 until the tranche is reviewed and explicitly approved for integration.
-
-## Native Prism P1 substrate
-
-Prism Engine v5.1 P1 lives under `engine/prism/` as a parallel native substrate on the progressive-replacement path. P1 establishes deterministic native execution primitives without transferring Civic Foundry gameplay authority.
-
-P1 provides:
-
-- generational 128-bit entity identity with stale-handle rejection and deterministic slot reuse;
-- explicit stable component IDs, canonical archetype keys, 64-byte-aligned component storage, and bounded hot-chunk sizing;
-- transactional ECS structural-command commits and deterministic add/remove migration;
-- deterministic job-DAG wave compilation with dependency, cycle, and unordered resource-hazard validation;
-- a persistent worker pool with deterministic task/result ordering across variable completion timing;
-- executor epochs and graph barriers that defer authoritative structural retirement until deterministic commit boundaries;
-- stable, non-authoritative profiler snapshots keyed by `JobId`.
-
-The P1 authority boundary is strict. `SimulationCore`, `SimulationKernel`, `WorldFoundation`, `CadastralGraph`, the TypeScript domain systems, Save V9, IPC, and rendering remain authoritative exactly as documented above. Prism P1 does not import cadastral/world state, define gameplay rules, replace Save V9, introduce Save V10/native persistence, or take over the player-facing runtime.
-
-Any first transfer of Civic Foundry runtime authority into Prism requires a later parity-gated migration tranche with an explicit ownership decision and corresponding architecture record. P1 is therefore an execution substrate milestone, not an authority handoff.
+GitHub remains the durable canonical source of truth. The desktop GPU runtime was verified on PR #98 head `725c9cec`, merged into `main` as `c2e7befd`, and is now the production presentation path. Deferred Canvas2D parity work remains non-authoritative presentation migration work and does not alter simulation or persistence ownership.

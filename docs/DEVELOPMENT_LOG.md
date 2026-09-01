@@ -213,37 +213,18 @@ Exact-head Civic Foundry CI run **#992** then passed on `fa23d77b`, including **
 
 ### Final documentation gate
 
-The implementation head is green. The documentation/reconciliation checkpoint that records the resolved Task 13 boundary requires its own exact-head CI run before PR #63 is treated as integration-ready.
+At this checkpoint, the implementation head was green and the documentation/reconciliation checkpoint still required its own exact-head CI run before PR #63 could be treated as integration-ready. That final reconciliation head subsequently passed CI run **#993** with the full then-current gate.
 
 ### Integration boundary
 
-PR #63 remains isolated from `main`. No merge is performed automatically. The tranche should only move to `main` after the final branch verification is green and explicit integration approval is given.
+At this checkpoint, PR #63 remained isolated from `main` pending explicit approval. It was subsequently approved and merged into `main` as merge commit `ee296a988a0be6db5a3f535c08e21ffb085906cc` on 2026-08-27. Save V9, cadastral land authority, and the Urban Fabric runtime described above are therefore part of the integrated baseline rather than an isolated feature branch.
 
-## 2026-08-27 — Prism Engine P0 Native Bootstrap
+## 2026-08-27 — Desktop GPU Runtime / PR #98 integrated
 
-Established the first native Prism Engine foundation without transferring Civic Foundry gameplay authority. P0 introduced the pinned Rust 1.98.0 workspace, 128-bit generational entity registry, safe 64-byte aligned memory primitive, deterministic read/write-aware job-DAG compiler, deterministic diagnostics/bootstrap probe, native `prism-host` executable shell, release-mode invariant stress coverage, and dedicated Windows CI smoke.
+PR #98 replaced the production `GameApp` Canvas2D world-rendering path with `GpuWorldRenderer` backed by PixiJS 8/WebGL while preserving the authoritative TypeScript simulation, Save V9, `IsometricCamera`, tools, HUD, inspector, and compatibility boundaries.
 
-The existing TypeScript `SimulationCore`, `WorldFoundation`, `CadastralGraph`, Save V9, Electron/PixiJS compatibility runtime, and inherited browser/visual regression stack remain authoritative and unchanged in ownership. Prism P0 contains no Save V10, Chrono-Lattice, D3D12 rendering, gameplay migration, or dual authority.
+The tranche also added the hardened Electron Windows host around the same local `dist/` build used for browser development. Node integration is disabled, context isolation and sandboxing are enabled, unexpected navigation/window creation is denied, and no generic IPC or new simulation authority was introduced.
 
-## 2026-08-29 — Prism Engine P1 Deterministic Substrate
+Feature head `725c9cec539f1df32386c4c35e95c81a7fe134ab` passed GitHub Actions run `33137152536` with **600/600 Node tests**, core verification, Phase 6/7/Urban Fabric browser smokes, Isometric Pass A functional smoke, and Isometric Pass A visual smoke. PR #98 was then merged into `main` as `c2e7befd9174b65dadc90e1e381d892accf780c6`.
 
-P1 was implemented on `feature/prism-p1` / draft PR #105 against `design/prism-engine-v5.1`, extending the P0 bootstrap into a deterministic native ECS and parallel-execution substrate while preserving the progressive-replacement boundary.
-
-P1 adds:
-
-- stable component type IDs, canonical archetype keys, 64-byte-aligned column storage, and bounded hot-archetype chunk sizing;
-- transactional ECS spawn/despawn/add/remove structural commits with deterministic migration and swap-removal location repair;
-- generational entity retirement with stale-GUID rejection and deterministic slot reuse only after the structural barrier;
-- deterministic job-DAG wave compilation with dependency, cycle, and unordered resource-hazard validation;
-- a persistent worker pool with work stealing while preserving stable exactly-once task/result identity;
-- executor epochs and graph barriers that isolate parallel completion order from authoritative structural mutation order;
-- non-authoritative profiling keyed by `JobId` and excluded from strict state hashing;
-- release-mode P1 invariant coverage wired into the native verification gate.
-
-TDD/review hardening closed several contract gaps before the implementation checkpoint was accepted. The executor now rejects structural command buffers whose issuer does not match the executing job, rejected executions do not partially advance profiler/epoch state, duplicate structural keys and invalid migrations fail atomically, stale double-despawn is rejected, and an integration test proves that reversed worker timing cannot change post-barrier entity retirement/reuse or the strict ECS hash.
-
-Implementation checkpoint `34833fd557456b535ef1ea009d84f7095d4176a1` passed full CI run **#1149** (`33287289359`): repository verification, Rust formatting, Clippy with warnings denied, workspace tests, P0 and P1 release invariants, release workspace check, Windows `prism-host` startup, inherited Phase 6/7 browser smokes, Urban Fabric browser smoke, and isometric functional/visual regression smoke.
-
-P1 transfers no gameplay authority. `SimulationCore`, `SimulationKernel`, `WorldFoundation`, `CadastralGraph`, TypeScript domain systems, Save V9, Electron/Pixi presentation, and existing IPC/runtime boundaries remain authoritative. P1 introduces no Save V10/native persistence and no world/cadastre import. Any first authority transfer requires a later parity-gated migration decision.
-
-PR #105 remains isolated from the Prism design branch until its final documentation head passes exact-head verification and explicit integration approval is given.
+Legacy Canvas2D renderer/pass sources remain in the repository only as transitional parity references. They are not instantiated by the production `GameApp` path; specialized visual parity, retained-scene performance work, installer/update packaging, optional WebGPU evaluation, and eventual legacy renderer deletion remain deferred presentation work.
