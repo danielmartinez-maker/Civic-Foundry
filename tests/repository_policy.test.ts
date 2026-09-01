@@ -79,7 +79,7 @@ test("formatting contract covers supported repository text types", async () => {
     string,
     unknown
   >;
-  const managed = formatter.isPrettierManagedPath;
+  const managed = formatter.isFormattingManagedPath;
 
   assert.equal(typeof managed, "function");
   if (typeof managed !== "function") return;
@@ -95,7 +95,25 @@ test("formatting contract covers supported repository text types", async () => {
     assert.equal(managed(path), true, path);
   }
 
-  for (const path of ["tools/check.py", "assets/source/sheet.svg", ".gitignore"]) {
+  for (const path of [
+    "tools/check.py",
+    "assets/source/sheet.svg",
+    ".gitignore",
+  ]) {
     assert.equal(managed(path), false, path);
   }
+});
+
+test("markdown formatting is stable without table reflow", async () => {
+  const formatter = (await import("../scripts/format-changed.mjs")) as Record<
+    string,
+    unknown
+  >;
+  const normalize = formatter.normalizeMarkdown;
+
+  assert.equal(typeof normalize, "function");
+  if (typeof normalize !== "function") return;
+
+  const source = "| A | B |  \n| --- | --- |\n| 1 | 2 |\n\n";
+  assert.equal(normalize(source), "| A | B |\n| --- | --- |\n| 1 | 2 |\n");
 });
