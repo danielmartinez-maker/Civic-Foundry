@@ -29,6 +29,7 @@ export type AssetManifestV2Entry = Readonly<{
   assetId: AssetId;
   revision: number;
   category: AssetCategory;
+  semanticFamily: string;
   geometry: Readonly<{
     lod0: AssetModelReference;
     lod1?: AssetModelReference;
@@ -67,6 +68,9 @@ export type AssetManifestV2Entry = Readonly<{
     instancing: 'thin' | 'hardware' | 'unique';
     streamingClass: 'critical' | 'near' | 'normal' | 'background';
     memoryClass: 'tiny' | 'small' | 'medium' | 'large';
+    estimatedCpuGeometryBytes: number;
+    estimatedGpuGeometryBytes: number;
+    estimatedGpuMaterialBytes: number;
   }>;
   art: Readonly<{
     styleFamily: string;

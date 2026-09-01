@@ -24,6 +24,7 @@ function entry(assetId: AssetId, category: AssetCategory = 'building'): AssetMan
     assetId,
     revision: 1,
     category,
+    semanticFamily: `test-${category}`,
     geometry: Object.freeze({
       lod0: `models/${assetId}_lod0.glb`,
       lod1: `models/${assetId}_lod1.glb`,
@@ -40,6 +41,9 @@ function entry(assetId: AssetId, category: AssetCategory = 'building'): AssetMan
       instancing: 'thin' as const,
       streamingClass: 'near' as const,
       memoryClass: 'small' as const,
+      estimatedCpuGeometryBytes: 4096,
+      estimatedGpuGeometryBytes: 8192,
+      estimatedGpuMaterialBytes: 2048,
     }),
     art: Object.freeze({ styleFamily: 'civic-miniature', qualityTier: 'calibration' }),
   });

@@ -39,11 +39,21 @@ jobs:
         run: python tests/smoke/isometric_visual_smoke.py
       - name: Civic 3D House A browser smoke
         run: npm run test:smoke:3d
+      - name: Stack 3 production district browser smoke
+        run: npm run test:smoke:3d:stack3
       - name: Preserve Civic 3D House A smoke evidence
         if: always()
         uses: actions/upload-artifact@v4.6.2
         with:
           name: civic-3d-house-a-smoke-${{ github.run_id }}
           path: test-artifacts/civic-3d-house-a/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Preserve Stack 3 browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: civic-3d-stack3-smoke-${{ github.run_id }}
+          path: test-artifacts/civic-3d-stack3/
           if-no-files-found: ignore
           retention-days: 7

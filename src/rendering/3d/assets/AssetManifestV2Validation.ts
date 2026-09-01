@@ -98,6 +98,9 @@ function validateEntry(value: unknown, index: number, errors: string[]): string 
   if (!isNonEmptyString(value.category) || !CATEGORIES.has(value.category as AssetCategory)) {
     errors.push(`${path}.category is not supported`);
   }
+  if (!isNonEmptyString(value.semanticFamily)) {
+    errors.push(`${path}.semanticFamily must be non-empty`);
+  }
 
   if (!isRecord(value.geometry)) {
     errors.push(`${path}.geometry must be an object`);
@@ -219,6 +222,15 @@ function validateEntry(value: unknown, index: number, errors: string[]): string 
     }
     if (!isNonEmptyString(value.runtime.memoryClass) || !MEMORY_CLASSES.has(value.runtime.memoryClass)) {
       errors.push(`${path}.runtime.memoryClass is not supported`);
+    }
+    for (const key of [
+      'estimatedCpuGeometryBytes',
+      'estimatedGpuGeometryBytes',
+      'estimatedGpuMaterialBytes',
+    ] as const) {
+      if (!Number.isInteger(value.runtime[key]) || Number(value.runtime[key]) <= 0) {
+        errors.push(`${path}.runtime.${key} must be a positive integer`);
+      }
     }
   }
 

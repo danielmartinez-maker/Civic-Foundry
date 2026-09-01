@@ -31,6 +31,11 @@ const rules = [
   },
   { importer: "src/save/", forbidden: "src/app/", rule: "save-no-app" },
   { importer: "src/save/", forbidden: "src/ui/", rule: "save-no-ui" },
+  {
+    importer: "src/save/",
+    forbidden: "src/rendering/",
+    rule: "save-no-rendering",
+  },
   { importer: "src/data/", forbidden: "src/app/", rule: "data-no-app" },
   { importer: "src/data/", forbidden: "src/ui/", rule: "data-no-ui" },
   {

@@ -26,6 +26,7 @@ const TOP_LEVEL_KEYS = new Set([
   'schemaVersion',
   'assetId',
   'category',
+  'semanticFamily',
   'dimensions',
   'pivot',
   'placement',
@@ -239,6 +240,9 @@ export function validateAssetSource(source) {
   if (!isNonEmptyString(source.category) || !CATEGORIES.has(source.category)) {
     errors.push('category is not supported');
   }
+  if (!isNonEmptyString(source.semanticFamily)) {
+    errors.push('semanticFamily must be non-empty');
+  }
   validateDimensions(source.dimensions, errors);
 
   if (!isRecord(source.pivot)) {
@@ -341,7 +345,14 @@ export function validateAssetSource(source) {
   } else {
     validateUnknownKeys(
       source.runtime,
-      new Set(['instancing', 'streamingClass', 'memoryClass']),
+      new Set([
+        'instancing',
+        'streamingClass',
+        'memoryClass',
+        'estimatedCpuGeometryBytes',
+        'estimatedGpuGeometryBytes',
+        'estimatedGpuMaterialBytes',
+      ]),
       'runtime',
       errors,
     );
@@ -353,6 +364,15 @@ export function validateAssetSource(source) {
     }
     if (!MEMORY.has(source.runtime.memoryClass)) {
       errors.push('runtime.memoryClass is not supported');
+    }
+    for (const key of [
+      'estimatedCpuGeometryBytes',
+      'estimatedGpuGeometryBytes',
+      'estimatedGpuMaterialBytes',
+    ]) {
+      if (!Number.isInteger(source.runtime[key]) || source.runtime[key] <= 0) {
+        errors.push(`runtime.${key} must be a positive integer`);
+      }
     }
   }
 

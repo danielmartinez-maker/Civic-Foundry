@@ -8,6 +8,14 @@ export type PresentationEntityId =
   | `vehicle:${string}`
   | `facility:${string}`;
 
+export type ProductionPresentationEntityId =
+  | PresentationEntityId
+  | `prop:${string}`
+  | `transit:${string}`
+  | `vegetation:${string}`
+  | `construction:${string}`
+  | `landmark:${string}`;
+
 export type VisualCondition = 'excellent' | 'good' | 'worn' | 'distressed' | 'unsafe';
 export type VisualOccupancy = 'occupied' | 'vacant';
 export type VisualTime = 'day' | 'night';
@@ -16,6 +24,20 @@ export type SceneTransform = Readonly<{
   positionM: Readonly<{ x: number; y: number; z: number }>;
   rotationYRad: number;
   scale: Readonly<{ x: number; y: number; z: number }>;
+}>;
+
+export type ProductionVisualState = Readonly<{
+  presentationId: ProductionPresentationEntityId;
+  canonicalId: string;
+  assetId: AssetId;
+  transform: Readonly<{
+    positionM: Readonly<{ x: number; y: number; z: number }>;
+    rotationY: number;
+    scale: Readonly<{ x: number; y: number; z: number }>;
+  }>;
+  variationSeed: number;
+  structuralFingerprint: string;
+  appearanceFingerprint: string;
 }>;
 
 export type BuildingVisualState = Readonly<{

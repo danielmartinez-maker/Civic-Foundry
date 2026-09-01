@@ -18,6 +18,7 @@ function houseEntry(): AssetManifestV2Entry {
     assetId: HOUSE_A,
     revision: 1,
     category: 'building',
+    semanticFamily: 'residential-detached-low',
     geometry: Object.freeze({
       lod0: `models/${HOUSE_A}_lod0.glb`,
       lod1: `models/${HOUSE_A}_lod1.glb`,
@@ -30,7 +31,14 @@ function houseEntry(): AssetManifestV2Entry {
     sockets: Object.freeze([]),
     materials: Object.freeze([]),
     stateChannels: Object.freeze({}),
-    runtime: Object.freeze({ instancing: 'thin', streamingClass: 'near', memoryClass: 'small' }),
+    runtime: Object.freeze({
+      instancing: 'thin',
+      streamingClass: 'near',
+      memoryClass: 'small',
+      estimatedCpuGeometryBytes: 4096,
+      estimatedGpuGeometryBytes: 8192,
+      estimatedGpuMaterialBytes: 2048,
+    }),
     art: Object.freeze({ styleFamily: 'civic-miniature', qualityTier: 'calibration' }),
   });
 }

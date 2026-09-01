@@ -21,18 +21,23 @@ import { createBabylonEngine } from './BabylonEngineFactory.ts';
 import { MiniatureCameraController } from './MiniatureCameraController.ts';
 import type { MiniatureCameraState } from './MiniatureCameraController.ts';
 import { MiniatureRenderPipeline } from './MiniatureRenderPipeline.ts';
+import { buildStack3AcceptanceDistrict } from './presentation/Stack3AcceptanceDistrict.ts';
 import type {
-  PresentationEntityId,
+  ProductionPresentationEntityId,
+  ProductionVisualState,
   VisualTime,
   WorldPresentationSnapshot,
 } from './presentation/PresentationTypes.ts';
 import { WorldPresentationSnapshotBuilder } from './presentation/WorldPresentationSnapshotBuilder.ts';
+import type { ProductionPickIdentity } from './scene/BabylonProductionSceneAdapter.ts';
 import { Civic3DBuildingRuntime } from './scene/Civic3DBuildingRuntime.ts';
+import { Civic3DProductionRuntime } from './scene/Civic3DProductionRuntime.ts';
+import type { ProductionSceneStats } from './scene/ProductionSceneLayer.ts';
 
 const INITIAL_RADIUS_METERS = 900;
 const PIXEL_PAN_SCALE = 0.0025;
 const MAX_ASSET_DIAGNOSTICS = 32;
-const PRESENTATION_ID_PATTERN = /^(building|parcel|road|vehicle|facility):.+$/;
+const PRESENTATION_ID_PATTERN = /^(building|parcel|road|vehicle|facility|prop|transit|vegetation|construction|landmark):.+$/;
 
 type PointerGesture = Readonly<{
   pointerId: number;
@@ -43,13 +48,16 @@ type PointerGesture = Readonly<{
 
 type EngineBackend = 'webgpu' | 'webgl';
 
-function presentationIdFromNode(start: Node | null): PresentationEntityId | null {
+function presentationIdFromNode(start: Node | null): ProductionPresentationEntityId | null {
   let node = start;
   while (node) {
-    const metadata = node.metadata as Readonly<{ presentationEntityId?: unknown }> | null | undefined;
-    const candidate = metadata?.presentationEntityId;
+    const metadata = node.metadata as Readonly<{
+      presentationEntityId?: unknown;
+      presentationId?: unknown;
+    }> | null | undefined;
+    const candidate = metadata?.presentationEntityId ?? metadata?.presentationId;
     if (typeof candidate === 'string' && PRESENTATION_ID_PATTERN.test(candidate)) {
-      return candidate as PresentationEntityId;
+      return candidate as ProductionPresentationEntityId;
     }
     node = node.parent;
   }
@@ -78,11 +86,14 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
   private camera: ArcRotateCamera | null = null;
   private renderPipeline: MiniatureRenderPipeline | null = null;
   private buildingRuntime: Civic3DBuildingRuntime | null = null;
+  private productionRuntime: Civic3DProductionRuntime | null = null;
   private disposePromise: Promise<void> | null = null;
   private pointerGesture: PointerGesture | null = null;
   private visualTime: VisualTime = 'day';
   private lastSnapshot: WorldPresentationSnapshot | null = null;
   private centeredOnWorld = false;
+  private productionDistrictCentered = false;
+  private reviewCameraExplicitlySet = false;
   private disposed = false;
   private urbanFabricOverlayMode: UrbanFabricOverlayMode = 'none';
   private urbanFabricSelectedParcelId: string | null = null;
@@ -108,6 +119,7 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
   }
 
   setReviewCamera(state: MiniatureCameraState): void {
+    this.reviewCameraExplicitlySet = true;
     this.controller.setState(state);
     this.applyCameraState();
   }
@@ -189,7 +201,7 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
     return Object.freeze({ x, y });
   }
 
-  pickPresentationEntity(clientX: number, clientY: number): PresentationEntityId | null {
+  pickPresentationEntity(clientX: number, clientY: number): ProductionPresentationEntityId | null {
     const engine = this.engine;
     const scene = this.scene;
     const camera = this.camera;
@@ -237,6 +249,49 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
 
   debugBuildingState(presentationId: `building:${string}`) {
     return this.buildingRuntime?.debugBuildingState(presentationId) ?? null;
+  }
+
+  async loadStack3AcceptanceDistrict(scale: 'block' | 'neighborhood'): Promise<void> {
+    await this.readyPromise;
+    if (this.disposed || !this.scene || !this.camera) {
+      throw new Error('Civic3DWorldRenderer is not available for Stack 3 production presentation');
+    }
+
+    const states = buildStack3AcceptanceDistrict(scale);
+    if (!this.productionDistrictCentered && !this.reviewCameraExplicitlySet) {
+      this.frameProductionDistrict(states);
+    }
+    this.productionDistrictCentered = true;
+    this.applyCameraState();
+    this.camera.getViewMatrix();
+
+    const runtime = await this.ensureProductionRuntime();
+    await runtime.apply(states, this.controller.position());
+    this.renderPipeline?.setVisualTime(this.visualTime);
+    this.renderPipeline?.updateFocusDistance(this.controller.snapshot().radius);
+    this.scene.render();
+  }
+
+  debugProductionSceneStats(): ProductionSceneStats {
+    return this.productionRuntime?.debugStats() ?? Object.freeze({
+      active: 0,
+      created: 0,
+      updated: 0,
+      removed: 0,
+      unchanged: 0,
+      replaced: 0,
+      uniquePrototypes: 0,
+      estimatedCpuBytes: 0,
+      estimatedGpuBytes: 0,
+    });
+  }
+
+  debugProductionReconstructionDigest(): string {
+    return this.productionRuntime?.debugReconstructionDigest() ?? '';
+  }
+
+  debugProductionPickIdentities(): readonly ProductionPickIdentity[] {
+    return this.productionRuntime?.debugPickIdentities() ?? Object.freeze([]);
   }
 
   resize(): void {
@@ -350,11 +405,49 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
     this.applyCameraState();
   }
 
+  private async ensureProductionRuntime(): Promise<Civic3DProductionRuntime> {
+    if (this.productionRuntime) return this.productionRuntime;
+    const scene = this.scene;
+    if (!scene || this.disposed) {
+      throw new Error('Civic3DWorldRenderer cannot create a production runtime after disposal');
+    }
+    const runtime = await Civic3DProductionRuntime.create(scene);
+    if (this.disposed) {
+      runtime.dispose();
+      throw new Error('Civic3DWorldRenderer was disposed while creating the production runtime');
+    }
+    this.productionRuntime = runtime;
+    return runtime;
+  }
+
+  private frameProductionDistrict(states: readonly ProductionVisualState[]): void {
+    if (states.length === 0) return;
+    let minX = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let minZ = Number.POSITIVE_INFINITY;
+    let maxZ = Number.NEGATIVE_INFINITY;
+    for (const state of states) {
+      minX = Math.min(minX, state.transform.positionM.x);
+      maxX = Math.max(maxX, state.transform.positionM.x);
+      minZ = Math.min(minZ, state.transform.positionM.z);
+      maxZ = Math.max(maxZ, state.transform.positionM.z);
+    }
+    const span = Math.max(maxX - minX, maxZ - minZ);
+    const current = this.controller.snapshot();
+    this.controller.setState({
+      ...current,
+      target: { x: (minX + maxX) / 2, y: 0, z: (minZ + maxZ) / 2 },
+      radius: Math.max(90, span * 1.55),
+    });
+  }
+
   private async disposeInternal(): Promise<void> {
     await this.readyPromise;
     try {
+      this.productionRuntime?.dispose();
       await this.buildingRuntime?.dispose();
     } finally {
+      this.productionRuntime = null;
       this.buildingRuntime = null;
       this.renderPipeline?.dispose();
       this.renderPipeline = null;
@@ -366,6 +459,7 @@ export class Civic3DWorldRenderer implements PresentationRenderer {
       this.engineBackend = null;
       this.lastSnapshot = null;
       this.centeredOnWorld = false;
+      this.productionDistrictCentered = false;
     }
   }
 
