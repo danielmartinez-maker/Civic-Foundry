@@ -2,6 +2,7 @@
 #include <limits>
 #include <vector>
 #include <civic/core/Kernel.hpp>
+#include <civic/core/NativeEngine.hpp>
 #include <civic/core/RandomStreamRegistry.hpp>
 #include <civic/core/StrongId.hpp>
 
@@ -73,4 +74,15 @@ TEST(SchedulerContracts, DetectsCyclesConflictsAndInvalidCadence) {
     EXPECT_FALSE(conflict.compile());
     civic::SystemScheduler invalid;
     EXPECT_FALSE(invalid.registerSystem({"bad", {2,2}, {}, {}, {}, {}, 0, {}}));
+}
+
+TEST(NativeEngineContracts, StepZeroIsSideEffectFreeAndDomainsAreExplicitlyUnowned) {
+    auto created = civic::NativeEngine::create({42, 7, civic::SpeedMode::fast}); ASSERT_TRUE(created);
+    auto before = (*created)->snapshot(); ASSERT_TRUE(before);
+    ASSERT_TRUE((*created)->step(0));
+    auto after = (*created)->snapshot(); ASSERT_TRUE(after);
+    EXPECT_EQ(before->json, after->json);
+    EXPECT_NE(after->json.find("\"speed\":2"), std::string::npos);
+    auto world = (*created)->domainHash("world"); ASSERT_TRUE(world);
+    EXPECT_EQ(world->ownership, civic::DomainOwnership::unowned);
 }
