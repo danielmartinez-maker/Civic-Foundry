@@ -10,6 +10,8 @@ This matrix is the canonical map from repository contracts to local commands and
 
 `npm run verify` remains a compatibility command for existing branches and plans. It runs Tier 1 plus deterministic asset-source validation and the production build. New completion evidence should use `verify:full` when the required browser runtime is available.
 
+The network-backed dependency audit is intentionally separate from `verify:fast` so the inner loop remains usable offline. CI runs `npm run security:audit` before the expensive browser setup; the same command reproduces that supply-chain check locally when npm registry access is available.
+
 ## Suite matrix
 
 | Suite | Command | CI job / step | Runtime class | Required? | Platform | Owner domain |
@@ -22,6 +24,7 @@ This matrix is the canonical map from repository contracts to local commands and
 | Test TypeScript | `npm run typecheck:tests` | `acceptance` / Fast verification | Fast | Yes | Portable | Test architecture |
 | Node unit/integration/invariant/persistence tests | `npm test` | `acceptance` / Fast verification | Fast/medium | Yes | Portable | All simulation domains |
 | Asset repository policy | `npm run assets:policy` | `acceptance` / Fast verification | Fast | Yes | Portable | Assets / repository |
+| Dependency security audit | `npm run security:audit` | `acceptance` / Dependency security audit | Network-backed | Yes in CI | Portable + npm registry | Supply chain |
 | Deterministic atlas source validation | `npm run assets:check` | `acceptance` / Asset source validation | Medium | Yes | Portable + Python/Pillow | Assets |
 | Production build | `npm run build` | `acceptance` / Production build | Medium | Yes | Portable | Build / presentation |
 | Phase 6 browser smoke | `npm run test:smoke` | `acceptance` / Portable browser and visual acceptance | Browser | Yes | Chromium | Gameplay integration |
