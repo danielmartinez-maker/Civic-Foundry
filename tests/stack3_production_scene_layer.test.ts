@@ -64,7 +64,8 @@ test('canonical identity changes replace the retained handle even when fingerpri
   assert.equal(adapter.creates, 2);
   assert.equal(adapter.destroys, 1);
   assert.equal(result.replaced, 1);
-  assert.match(layer.reconstructionDigest(), /\"canonicalId\":\"2\"/);
+  const digest = JSON.parse(layer.reconstructionDigest()) as Array<{ canonicalId: string }>;
+  assert.equal(digest[0]?.canonicalId, '2');
 });
 
 test('teardown and rebuild preserve deterministic reconstruction digest and budget counts', () => {
