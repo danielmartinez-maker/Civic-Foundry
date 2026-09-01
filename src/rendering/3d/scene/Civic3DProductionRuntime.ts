@@ -47,6 +47,7 @@ function prototypeKey(assetId: AssetId, lod: AssetLod): string {
 }
 
 export class Civic3DProductionRuntime {
+  private readonly scene: Scene;
   private readonly catalog: AssetCatalogV2;
   private readonly streaming: AssetStreamingManager<BabylonGlbPrototype>;
   private readonly layer: ProductionSceneLayer<BabylonProductionHandle>;
@@ -55,12 +56,14 @@ export class Civic3DProductionRuntime {
   private disposed = false;
 
   private constructor(
+    scene: Scene,
     catalog: AssetCatalogV2,
     streaming: AssetStreamingManager<BabylonGlbPrototype>,
     layer: ProductionSceneLayer<BabylonProductionHandle>,
     adapter: BabylonProductionSceneAdapter,
     leases: Map<string, AssetLease<BabylonGlbPrototype>>,
   ) {
+    this.scene = scene;
     this.catalog = catalog;
     this.streaming = streaming;
     this.layer = layer;
@@ -88,7 +91,7 @@ export class Civic3DProductionRuntime {
       return lease.prototype;
     });
     const layer = new ProductionSceneLayer<BabylonProductionHandle>(catalog, adapter);
-    return new Civic3DProductionRuntime(catalog, streaming, layer, adapter, leases);
+    return new Civic3DProductionRuntime(scene, catalog, streaming, layer, adapter, leases);
   }
 
   async apply(
@@ -114,6 +117,7 @@ export class Civic3DProductionRuntime {
       for (const key of newlyAcquired.reverse()) {
         this.leases.get(key)?.release();
         this.leases.delete(key);
+        this.streaming.evict(key);
       }
       throw error;
     }
@@ -123,7 +127,12 @@ export class Civic3DProductionRuntime {
       if (required.has(key)) continue;
       lease.release();
       this.leases.delete(key);
+      this.streaming.evict(key);
     }
+
+    // GLB nodes can exist structurally before their first PBR effects are ready. Waiting here
+    // makes an accepted production apply visually complete before the caller renders a frame.
+    await this.scene.whenReadyAsync();
     return stats;
   }
 
