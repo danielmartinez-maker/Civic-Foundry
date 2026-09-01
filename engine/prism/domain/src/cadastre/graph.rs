@@ -321,12 +321,7 @@ fn ring_bounds(ring: &[WorldPoint]) -> (f64, f64, f64, f64) {
     )
 }
 
-fn validate_query_aabb(
-    min_x: f64,
-    min_y: f64,
-    max_x: f64,
-    max_y: f64,
-) -> Result<(), P2AError> {
+fn validate_query_aabb(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Result<(), P2AError> {
     if [min_x, min_y, max_x, max_y]
         .into_iter()
         .any(|value| !value.is_finite())
