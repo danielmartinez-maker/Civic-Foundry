@@ -73,3 +73,29 @@ test("repository policy rejects oversized tracked binary files", async () => {
   ]);
   assert.deepEqual(inspect("docs/diagram.png", 256 * 1024), []);
 });
+
+test("formatting contract covers supported repository text types", async () => {
+  const formatter = (await import("../scripts/format-changed.mjs")) as Record<
+    string,
+    unknown
+  >;
+  const managed = formatter.isPrettierManagedPath;
+
+  assert.equal(typeof managed, "function");
+  if (typeof managed !== "function") return;
+
+  for (const path of [
+    "src/example.ts",
+    "scripts/tool.mjs",
+    "package.json",
+    "docs/guide.md",
+    ".github/workflows/ci.yml",
+    ".github/workflows/ci.yaml",
+  ]) {
+    assert.equal(managed(path), true, path);
+  }
+
+  for (const path of ["tools/check.py", "assets/source/sheet.svg", ".gitignore"]) {
+    assert.equal(managed(path), false, path);
+  }
+});
