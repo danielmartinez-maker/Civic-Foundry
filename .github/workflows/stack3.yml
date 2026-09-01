@@ -58,5 +58,21 @@ jobs:
         run: |
           python -m pip install playwright==1.55.0 Pillow==11.3.0
           python -m playwright install --with-deps chromium
-      - name: Repository verification
-        run: npm run verify
+      - name: Format check
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Repository policy
+        run: npm run policy:check
+      - name: Architecture policy
+        run: npm run architecture:check
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Full unit test suite
+        run: npm test
+      - name: Asset source policy
+        run: npm run assets:policy
+      - name: Asset compiler checks
+        run: npm run assets:check
+      - name: Production build
+        run: npm run build
