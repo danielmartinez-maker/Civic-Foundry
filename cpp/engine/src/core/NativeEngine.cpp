@@ -1,18 +1,33 @@
 #include <civic/core/NativeEngine.hpp>
 
 #include <algorithm>
+#include <cstring>
+#include <limits>
 #include <sstream>
 
 namespace civic {
 namespace {
 std::string escapeJson(std::string_view value) {
     std::string output{"\""};
-    for (const char ch : value) {
-        if (ch == '\\' || ch == '"') { output.push_back('\\'); output.push_back(ch); }
-        else if (ch == '\n') output += "\\n";
-        else if (ch == '\r') output += "\\r";
-        else if (ch == '\t') output += "\\t";
-        else output.push_back(ch);
+    for (const unsigned char ch : value) {
+        switch (ch) {
+            case '"': output += "\\\""; break;
+            case '\\': output += "\\\\"; break;
+            case '\b': output += "\\b"; break;
+            case '\f': output += "\\f"; break;
+            case '\n': output += "\\n"; break;
+            case '\r': output += "\\r"; break;
+            case '\t': output += "\\t"; break;
+            default:
+                if (ch < 0x20U) {
+                    constexpr char hex[] = "0123456789abcdef";
+                    output += "\\u00";
+                    output.push_back(hex[(ch >> 4U) & 0xfU]);
+                    output.push_back(hex[ch & 0xfU]);
+                } else {
+                    output.push_back(static_cast<char>(ch));
+                }
+        }
     }
     output.push_back('"'); return output;
 }

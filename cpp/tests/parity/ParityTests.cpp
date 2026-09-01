@@ -60,3 +60,19 @@ TEST(CAbi, CommandParserRejectsTrailingNonWhitespace) {
     EXPECT_EQ(cf_engine_submit_commands(engine, reinterpret_cast<const uint8_t*>(good.data()), good.size()), CF_ERROR_NONE);
     cf_engine_destroy(engine);
 }
+
+
+TEST(CAbi, SnapshotEscapesControlCharactersInCommandIdentity) {
+    cf_engine* engine = nullptr;
+    const cf_engine_config config{29, 0, 1};
+    ASSERT_EQ(cf_engine_create(&config, &engine), CF_ERROR_NONE);
+    const std::string command = R"([{"sequence":1,"tick":10,"type":"\u0001","payload":null}])";
+    ASSERT_EQ(cf_engine_submit_commands(engine, reinterpret_cast<const uint8_t*>(command.data()), command.size()), CF_ERROR_NONE);
+    cf_buffer snapshot{};
+    ASSERT_EQ(cf_engine_get_snapshot(engine, &snapshot), CF_ERROR_NONE);
+    const std::string text(reinterpret_cast<const char*>(snapshot.data), snapshot.size);
+    EXPECT_EQ(text.find(static_cast<char>(1)), std::string::npos);
+    EXPECT_NE(text.find("\\u0001"), std::string::npos);
+    cf_buffer_free(snapshot);
+    cf_engine_destroy(engine);
+}
