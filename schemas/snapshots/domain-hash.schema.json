@@ -1,1 +1,24 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Civic Foundry Native Domain Hash","type":"object","required":["domain","ownership","version","value"],"properties":{"domain":{"enum":["kernel","world","cadastre","buildings","transportation","population","economy","services"]},"ownership":{"enum":["owned","unowned"]},"version":{"const":1},"value":{"type":"string","pattern":"^[0-9]+$"}},"additionalProperties":false}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Civic Foundry Native Domain Hash",
+  "type": "object",
+  "required": ["domain", "ownership", "version", "value"],
+  "properties": {
+    "domain": {
+      "enum": [
+        "kernel",
+        "world",
+        "cadastre",
+        "buildings",
+        "transportation",
+        "population",
+        "economy",
+        "services"
+      ]
+    },
+    "ownership": { "enum": ["owned", "unowned"] },
+    "version": { "const": 1 },
+    "value": { "type": "string", "pattern": "^[0-9]+$" }
+  },
+  "additionalProperties": false
+}

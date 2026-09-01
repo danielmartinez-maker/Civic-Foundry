@@ -86,7 +86,7 @@ function historicalParcelFixture() {
   });
   const historical = structuredClone(save.propertyMarket.transactions[0]);
   assert.ok(historical);
-  historical.id = "property-tx:roundtrip-history";
+  historical.id = "property:tx:2";
   historical.parcelIds = [retiredParcelId];
   save.propertyMarket.transactions.push(historical);
   save.propertyMarket.nextTransactionId += 1;
@@ -100,7 +100,11 @@ function firstMismatch(left, right, path = "") {
       return `${path}/length: ${left.length} !== ${right.length}`;
     }
     for (let index = 0; index < left.length; index += 1) {
-      const mismatch = firstMismatch(left[index], right[index], `${path}/${index}`);
+      const mismatch = firstMismatch(
+        left[index],
+        right[index],
+        `${path}/${index}`,
+      );
       if (mismatch) return mismatch;
     }
     return undefined;
@@ -119,7 +123,11 @@ function firstMismatch(left, right, path = "") {
     if (keyMismatch) return keyMismatch;
     for (const key of leftKeys) {
       const escaped = key.replaceAll("~", "~0").replaceAll("/", "~1");
-      const mismatch = firstMismatch(left[key], right[key], `${path}/${escaped}`);
+      const mismatch = firstMismatch(
+        left[key],
+        right[key],
+        `${path}/${escaped}`,
+      );
       if (mismatch) return mismatch;
     }
     return undefined;

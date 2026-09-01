@@ -1,5 +1,5 @@
-import { NativeEngineBridge } from './NativeEngineBridge.ts';
-import type { NativeCommand, NativeDomainHash } from './NativeEngineTypes.ts';
+import { NativeEngineBridge } from "./NativeEngineBridge.ts";
+import type { NativeCommand, NativeDomainHash } from "./NativeEngineTypes.ts";
 
 export type ShadowReferenceRuntime = Readonly<{
   submit: (commands: readonly NativeCommand[]) => void;
@@ -33,12 +33,22 @@ export class ShadowSimulationRunner {
     this.reference.step(ticks);
   }
 
-  compareDomains(domains: readonly string[]): readonly ShadowDomainComparison[] {
-    return Object.freeze(domains.map((domain) => {
-      const native = this.native.domainHash(domain);
-      if (native.ownership === 'unowned' || !this.reference.domainHash) return Object.freeze({ domain, native });
-      const reference = this.reference.domainHash(domain);
-      return Object.freeze({ domain, native, reference, matches: reference === native.value });
-    }));
+  compareDomains(
+    domains: readonly string[],
+  ): readonly ShadowDomainComparison[] {
+    return Object.freeze(
+      domains.map((domain) => {
+        const native = this.native.domainHash(domain);
+        if (native.ownership === "unowned" || !this.reference.domainHash)
+          return Object.freeze({ domain, native });
+        const reference = this.reference.domainHash(domain);
+        return Object.freeze({
+          domain,
+          native,
+          reference,
+          matches: reference === native.value,
+        });
+      }),
+    );
   }
 }

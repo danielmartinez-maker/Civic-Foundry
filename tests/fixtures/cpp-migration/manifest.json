@@ -10,38 +10,76 @@
       "seed": 101,
       "commands": [],
       "targetTicks": [9, 10, 49, 50, 99, 100, 249, 250],
-      "expectedDomainHashes": { "legacy-authoritative-save@250": "515e41e0c8a188ab0ce36dee114d1a6b7236d8b6c82b9d0ae4f7cc5146e54f31" },
-      "expectedInvariants": { "deterministicReplay": true, "finiteState": true },
+      "expectedDomainHashes": {
+        "legacy-authoritative-save@250": "515e41e0c8a188ab0ce36dee114d1a6b7236d8b6c82b9d0ae4f7cc5146e54f31"
+      },
+      "expectedInvariants": {
+        "deterministicReplay": true,
+        "finiteState": true
+      },
       "classification": "PARITY"
     },
     {
       "id": "small-road-zoning-city",
       "source": "tests/fixtures/kernel-v7-parity/baseline.json#city-development",
       "seed": 102,
-      "commands": ["collector-spine", "residential-zone", "commercial-zone", "industrial-zone"],
+      "commands": [
+        "collector-spine",
+        "residential-zone",
+        "commercial-zone",
+        "industrial-zone"
+      ],
       "targetTicks": [50, 250, 500],
-      "expectedDomainHashes": { "legacy-authoritative-save@500": "64ba3c64b5768163e93a79b9db9d6e818264aa5d01059ac887bdf00b79b1b88f" },
-      "expectedInvariants": { "deterministicReplay": true, "finiteState": true },
+      "expectedDomainHashes": {
+        "legacy-authoritative-save@500": "64ba3c64b5768163e93a79b9db9d6e818264aa5d01059ac887bdf00b79b1b88f"
+      },
+      "expectedInvariants": {
+        "deterministicReplay": true,
+        "finiteState": true
+      },
       "classification": "PARITY"
     },
     {
       "id": "saved-urban-fabric-v9-city",
       "source": "tests/save-v9.test.ts#Save V9 round-trip preserves Urban Fabric authority exactly",
       "seed": 91,
-      "commands": ["build-road", "paint-zone", "restore-building", "assign-R5", "property-sale"],
+      "commands": [
+        "build-road",
+        "paint-zone",
+        "restore-building",
+        "assign-R5",
+        "property-sale"
+      ],
       "targetTicks": [0],
-      "expectedDomainHashes": { "urbanFabric": "runtime-fixture:urban-fabric-v9", "buildings": "runtime-fixture:buildings-v9", "propertyMarket": "runtime-fixture:property-market-v9" },
-      "expectedInvariants": { "saveRoundTrip": true, "liveParcelReferences": true },
+      "expectedDomainHashes": {
+        "urbanFabric": "runtime-fixture:urban-fabric-v9",
+        "buildings": "runtime-fixture:buildings-v9",
+        "propertyMarket": "runtime-fixture:property-market-v9"
+      },
+      "expectedInvariants": {
+        "saveRoundTrip": true,
+        "liveParcelReferences": true
+      },
       "classification": "PARITY"
     },
     {
       "id": "active-transit-city",
       "source": "tests/fixtures/kernel-v7-parity/baseline.json#transit",
       "seed": 104,
-      "commands": ["collector-spine", "two-surface-stops", "bus-line", "fleet-limit-4"],
+      "commands": [
+        "collector-spine",
+        "two-surface-stops",
+        "bus-line",
+        "fleet-limit-4"
+      ],
       "targetTicks": [100, 500, 1000],
-      "expectedDomainHashes": { "legacy-authoritative-save@1000": "66049d790a306d41e56bc6f9ee8e8a879504a99b339890d25e475ac315b664de" },
-      "expectedInvariants": { "deterministicReplay": true, "passengerWeightConserved": true },
+      "expectedDomainHashes": {
+        "legacy-authoritative-save@1000": "66049d790a306d41e56bc6f9ee8e8a879504a99b339890d25e475ac315b664de"
+      },
+      "expectedInvariants": {
+        "deterministicReplay": true,
+        "passengerWeightConserved": true
+      },
       "classification": "PARITY"
     },
     {
@@ -50,8 +88,13 @@
       "seed": 105,
       "commands": ["collector-spine", "mixed-zoning", "utilities"],
       "targetTicks": [250, 1000, 2000],
-      "expectedDomainHashes": { "legacy-authoritative-save@2000": "f0c71dcfa52fd90dd312f91b1328ecd1fda3c4d88937a47ccce2129243eb56d6" },
-      "expectedInvariants": { "deterministicReplay": true, "inventoryNonNegative": true },
+      "expectedDomainHashes": {
+        "legacy-authoritative-save@2000": "f0c71dcfa52fd90dd312f91b1328ecd1fda3c4d88937a47ccce2129243eb56d6"
+      },
+      "expectedInvariants": {
+        "deterministicReplay": true,
+        "inventoryNonNegative": true
+      },
       "classification": "PARITY"
     },
     {
@@ -60,8 +103,15 @@
       "seed": 93,
       "commands": ["build-road", "paint-zone", "property-sale", "split-parcel"],
       "targetTicks": [10],
-      "expectedDomainHashes": { "urbanFabric": "runtime-fixture:cadastral-history", "propertyMarket": "runtime-fixture:historical-transactions" },
-      "expectedInvariants": { "lineagePreserved": true, "historicalTransactionsPreserved": true, "liveParcelReferences": true },
+      "expectedDomainHashes": {
+        "urbanFabric": "runtime-fixture:cadastral-history",
+        "propertyMarket": "runtime-fixture:historical-transactions"
+      },
+      "expectedInvariants": {
+        "lineagePreserved": true,
+        "historicalTransactionsPreserved": true,
+        "liveParcelReferences": true
+      },
       "classification": "PARITY"
     }
   ]

@@ -1,4 +1,7 @@
-export const NATIVE_DOMAIN_OWNERSHIP = Object.freeze({ owned: 1, unowned: 2 } as const);
+export const NATIVE_DOMAIN_OWNERSHIP = Object.freeze({
+  owned: 1,
+  unowned: 2,
+} as const);
 
 export type NativeEngineHandle = object;
 
@@ -27,13 +30,19 @@ export type NativeEvent = Readonly<{
 }>;
 
 export type NativeDomainHash = Readonly<{
-  ownership: 'owned' | 'unowned';
+  ownership: "owned" | "unowned";
   version: number;
   value: bigint;
 }>;
 
 export interface NativeEngineAddon {
-  createEngine(config?: Readonly<{ seed?: number; startTick?: number; speed?: 0 | 1 | 2 | 4 }>): NativeEngineHandle;
+  createEngine(
+    config?: Readonly<{
+      seed?: number;
+      startTick?: number;
+      speed?: 0 | 1 | 2 | 4;
+    }>,
+  ): NativeEngineHandle;
   destroyEngine(handle: NativeEngineHandle): void;
   submitCommands(handle: NativeEngineHandle, commandsJson: string): void;
   step(handle: NativeEngineHandle, ticks: number): void;
@@ -41,5 +50,8 @@ export interface NativeEngineAddon {
   saveV9(handle: NativeEngineHandle): string;
   getSnapshot(handle: NativeEngineHandle): string;
   getEvents(handle: NativeEngineHandle): string;
-  getDomainHash(handle: NativeEngineHandle, domain: string): Readonly<{ ownership: number; version: number; value: bigint }>;
+  getDomainHash(
+    handle: NativeEngineHandle,
+    domain: string,
+  ): Readonly<{ ownership: number; version: number; value: bigint }>;
 }
