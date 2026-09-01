@@ -169,4 +169,4 @@
 - [x] **Step 2: Run focused architecture/policy tests to GREEN.**
 - [x] **Step 3: Run repository-wide verification: `npm test`, `npm run typecheck`, `npm run format:check`, `npm run assets:policy`, `npm run assets:3d:check`, `npm run build`, inherited browser/visual smoke, House A smoke, and Stack 3 smoke.**
 - [x] **Step 4: Record exact acceptance evidence and remaining risks in the Stack 3 report.**
-- [ ] **Step 5: Confirm CI success on the exact final head and leave the PR draft/unmerged unless separately authorized.**
+- [x] **Step 5: Confirm CI success on the exact final head and leave the PR draft/unmerged unless separately authorized.**
