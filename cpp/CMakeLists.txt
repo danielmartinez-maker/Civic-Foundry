@@ -17,6 +17,7 @@ add_library(civic_engine STATIC
   engine/src/world/WorldFoundation.cpp
   engine/src/cadastre/Cadastre.cpp
   engine/src/cadastre/CadastreMutation.cpp
+  engine/src/cadastre/ParcelGeneration.cpp
   engine/src/urban/UrbanFabric.cpp
 )
 target_include_directories(civic_engine PUBLIC engine/include)
