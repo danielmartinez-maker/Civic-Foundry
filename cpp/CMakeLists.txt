@@ -45,6 +45,7 @@ if(CIVIC_BUILD_TESTS)
     tests/transactional_mutation_tests.cpp
     tests/legacy_projection_tests.cpp
     tests/dimensional_zoning_tests.cpp
+    tests/buildable_envelope_tests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main)
   include(GoogleTest)
