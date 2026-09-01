@@ -57,20 +57,20 @@ export function createReproBundle(input: ReproBundleInput): ReproBundle {
         a.type.localeCompare(b.type),
     )
     .map((command) => Object.freeze({ ...command }));
-  const schedulerManifest = input.schedulerManifest.map((system) =>
-    Object.freeze({
-      ...system,
-      cadence: Object.freeze({ ...system.cadence }),
-      reads: Object.freeze([...system.reads]),
-      writes: Object.freeze([...system.writes]),
-      rngStreams: Object.freeze([...system.rngStreams]),
-      emits: Object.freeze([...system.emits]),
-      invariants:
-        system.invariants === undefined
-          ? undefined
-          : Object.freeze([...system.invariants]),
-    }),
-  );
+  const schedulerManifest: readonly ReproSchedulerSystem[] =
+    input.schedulerManifest.map((system) =>
+      Object.freeze({
+        ...system,
+        cadence: Object.freeze({ ...system.cadence }),
+        reads: Object.freeze([...system.reads]),
+        writes: Object.freeze([...system.writes]),
+        rngStreams: Object.freeze([...system.rngStreams]),
+        emits: Object.freeze([...system.emits]),
+        ...(system.invariants === undefined
+          ? {}
+          : { invariants: Object.freeze([...system.invariants]) }),
+      }),
+    );
   const bundle: ReproBundle = Object.freeze({
     bundleVersion: 1,
     gameVersion: input.gameVersion,
@@ -81,10 +81,18 @@ export function createReproBundle(input: ReproBundleInput): ReproBundle {
     rngStreams: sortedNumberRecord(input.rngStreams),
     schedulerManifest: Object.freeze(schedulerManifest),
     revisions: sortedNumberRecord(input.revisions),
-    expectedFailureCode: input.expectedFailureCode,
-    preFailureAuthorityHash: input.preFailureAuthorityHash,
-    invariantResults: input.invariantResults,
-    performance: input.performance,
+    ...(input.expectedFailureCode === undefined
+      ? {}
+      : { expectedFailureCode: input.expectedFailureCode }),
+    ...(input.preFailureAuthorityHash === undefined
+      ? {}
+      : { preFailureAuthorityHash: input.preFailureAuthorityHash }),
+    ...(input.invariantResults === undefined
+      ? {}
+      : { invariantResults: input.invariantResults }),
+    ...(input.performance === undefined
+      ? {}
+      : { performance: input.performance }),
   });
   stableStringify(bundle);
   return bundle;
