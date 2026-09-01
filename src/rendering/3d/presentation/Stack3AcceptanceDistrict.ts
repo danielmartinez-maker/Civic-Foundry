@@ -1,6 +1,6 @@
 import type { AssetId, AssetManifestV2Entry } from '../assets/AssetManifestV2.ts';
 import type { ProductionPresentationEntityId, ProductionVisualState } from './PresentationTypes.ts';
-import { deterministicVisualSeed } from './VisualDeterminism.ts';
+import { visualSeed } from './VisualDeterminism.ts';
 
 export const STACK3_PRODUCTION_ASSET_IDS = Object.freeze([
   'cf_bld_res_detached_house_a_low_v01',
@@ -51,7 +51,7 @@ export function buildStack3AcceptanceDistrict(scale: 'block' | 'neighborhood'): 
           rotationY,
           scale: Object.freeze({ x: 1, y: 1, z: 1 }),
         }),
-        variationSeed: deterministicVisualSeed(presentationId, assetId, 'stack3-acceptance'),
+        variationSeed: visualSeed(presentationId, assetId, 'stack3-acceptance'),
         structuralFingerprint,
         appearanceFingerprint: `${assetId}:default`,
       }));
