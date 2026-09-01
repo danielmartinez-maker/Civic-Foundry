@@ -44,14 +44,19 @@ function validate(input: GeneralizedTravelCostInput): void {
   finiteNonNegative(input.reliabilityPenaltyTicks, "reliabilityPenaltyTicks");
   finiteNonNegative(input.parkingSearchTicks, "parkingSearchTicks");
   finiteNonNegative(input.moneyCost, "moneyCost");
-  finiteNonNegative(input.moneyWeightTicksPerCurrency, "moneyWeightTicksPerCurrency");
+  finiteNonNegative(
+    input.moneyWeightTicksPerCurrency,
+    "moneyWeightTicksPerCurrency",
+  );
   if (!Number.isSafeInteger(input.transferCount) || input.transferCount < 0) {
     throw new Error("transferCount must be a non-negative safe integer");
   }
 }
 
 export class GeneralizedTravelCostSystem {
-  evaluate(input: GeneralizedTravelCostInput): GeneralizedTravelCostResult | null {
+  evaluate(
+    input: GeneralizedTravelCostInput,
+  ): GeneralizedTravelCostResult | null {
     validate(input);
     if (!input.available) return null;
 
@@ -64,9 +69,17 @@ export class GeneralizedTravelCostSystem {
       parkingSearchTicks: input.parkingSearchTicks,
       moneyImpedanceTicks: input.moneyCost * input.moneyWeightTicksPerCurrency,
     });
-    const totalTicks = Object.values(breakdown).reduce((total, value) => total + value, 0);
-    if (!Number.isFinite(totalTicks)) throw new Error("generalized travel cost must remain finite");
+    const totalTicks = Object.values(breakdown).reduce(
+      (total, value) => total + value,
+      0,
+    );
+    if (!Number.isFinite(totalTicks))
+      throw new Error("generalized travel cost must remain finite");
 
-    return Object.freeze({ input: Object.freeze({ ...input }), totalTicks, breakdown });
+    return Object.freeze({
+      input: Object.freeze({ ...input }),
+      totalTicks,
+      breakdown,
+    });
   }
 }
