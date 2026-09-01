@@ -1,6 +1,6 @@
-import { LandHousingUiController } from '../ui/LandHousingUiController.ts';
-import { UrbanFabricUiController } from '../ui/UrbanFabricUiController.ts';
-import { GameApp } from './GameApp.ts';
+import { LandHousingUiController } from "../ui/LandHousingUiController.ts";
+import { UrbanFabricUiController } from "../ui/UrbanFabricUiController.ts";
+import { GameApp } from "./GameApp.ts";
 
 export class CivicRuntime {
   readonly app: GameApp;
