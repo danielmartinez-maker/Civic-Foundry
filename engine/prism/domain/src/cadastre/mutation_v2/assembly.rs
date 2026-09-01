@@ -4,9 +4,9 @@ use super::super::geometry::{polygon_area, polygon_union};
 use super::super::graph::CadastralGraph;
 use super::super::types::ParcelLineageKind;
 use super::{
-    committed, create_lineage_event, current_geometry_specs, error_reason, lineage_parents,
-    mutation_sequence, rebuild_snapshot, rejected, CadastralMutationResult, ParcelGeometrySpec,
-    AREA_TOLERANCE_M2,
+    AREA_TOLERANCE_M2, CadastralMutationResult, ParcelGeometrySpec, committed,
+    create_lineage_event, current_geometry_specs, error_reason, lineage_parents, mutation_sequence,
+    rebuild_snapshot, rejected,
 };
 
 impl CadastralGraph {
@@ -47,7 +47,10 @@ fn assembly_candidate(
         })
         .collect::<Result<Vec<_>, _>>()?;
     let first = &sources[0];
-    if sources.iter().any(|parcel| parcel.block_id != first.block_id) {
+    if sources
+        .iter()
+        .any(|parcel| parcel.block_id != first.block_id)
+    {
         return Err("assembly-requires-one-block".to_owned());
     }
     if sources
@@ -56,7 +59,10 @@ fn assembly_candidate(
     {
         return Err("assembly-requires-one-zoning-district".to_owned());
     }
-    if sources.iter().any(|parcel| parcel.owner_id != first.owner_id) {
+    if sources
+        .iter()
+        .any(|parcel| parcel.owner_id != first.owner_id)
+    {
         return Err("assembly-requires-common-owner".to_owned());
     }
 
@@ -129,10 +135,7 @@ fn assembly_candidate(
         .map(|source_id| (source_id, result_id.clone()))
         .collect::<BTreeMap<_, _>>();
 
-    Ok((
-        candidate,
-        committed(vec![result_id], source_ids, rewrites),
-    ))
+    Ok((candidate, committed(vec![result_id], source_ids, rewrites)))
 }
 
 fn selection_is_connected(
