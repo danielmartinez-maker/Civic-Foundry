@@ -40,8 +40,14 @@ import {
   BUILDING_VARIANTS,
   type BuildingIntensity,
 } from "../../data/buildings.ts";
-import { TransportationGraph } from "../traffic/TransportationGraph.ts";
-import { PathfindingSystem } from "../traffic/PathfindingSystem.ts";
+import {
+  TransportationGraph,
+  type TransportationEdge,
+} from "../traffic/TransportationGraph.ts";
+import {
+  PathfindingSystem,
+  type RouteResult,
+} from "../traffic/PathfindingSystem.ts";
 import { TripGenerationSystem } from "../traffic/TripGenerationSystem.ts";
 import { IntersectionSystem } from "../traffic/IntersectionSystem.ts";
 import { TrafficSystem } from "../traffic/TrafficSystem.ts";
@@ -77,8 +83,10 @@ import { TransitNetworkSystem } from "../transit/TransitNetworkSystem.ts";
 import { PersonTripSystem } from "../mobility/PersonTripSystem.ts";
 import {
   MobilityScheduler,
+  type MobilityPersonTrip,
   type MobilitySnapshot,
 } from "../mobility/MobilityScheduler.ts";
+import type { JourneyPlan } from "../transit/JourneyPlanner.ts";
 import { EconomyScheduler } from "../economy/EconomyScheduler.ts";
 import { DevelopmentFeasibilitySystem } from "../development/DevelopmentFeasibilitySystem.ts";
 import { DeveloperMarketSystem } from "../development/DeveloperMarketSystem.ts";
@@ -563,15 +571,54 @@ export class LegacySimulationCore {
     this.transportationGraph.rebuildIfNeeded(this.roads);
   }
 
+  protected prepareTransportationRouting(): void {}
+
+  protected roadTravelTime(edge: TransportationEdge): number {
+    return this.traffic.getEdgeTravelTime(edge);
+  }
+
+  protected transportationCostEpoch(): number {
+    return this.traffic.congestionEpoch;
+  }
+
+  protected routeCarTrip(
+    _trip: MobilityPersonTrip,
+    startNodeId: string,
+    endNodeId: string,
+  ): RouteResult | null {
+    return this.pathfinding.findRoute(
+      this.transportationGraph,
+      startNodeId,
+      endNodeId,
+      {
+        edgeCost: (edge) => this.roadTravelTime(edge),
+        costKey: `mobility-car:${this.transportationCostEpoch()}`,
+      },
+    );
+  }
+
+  protected generalizedTravelCost(
+    _mode: "car" | "transit",
+    _trip: MobilityPersonTrip,
+    plan: JourneyPlan,
+  ): number | null {
+    return plan.totalGeneralizedCost;
+  }
+
+  protected reserveCarTrip(_trip: MobilityPersonTrip): boolean {
+    return true;
+  }
+
   private runLegacyV7Tick(): void {
     this.refreshTransportationGraph();
+    this.prepareTransportationRouting();
     this.serviceVehicles.syncFleet(this.services);
 
     const serviceEvents = this.serviceVehicles.step(
       this.transportationGraph,
       this.intersections,
       this.pathfinding,
-      (edge) => this.traffic.getEdgeTravelTime(edge),
+      (edge) => this.roadTravelTime(edge),
       this.clock.tick,
     );
     this.serviceDispatch.applyVehicleEvents(serviceEvents, this.clock.tick);
@@ -595,7 +642,7 @@ export class LegacySimulationCore {
       population: this.population.population,
       graph: this.transportationGraph,
       pathfinding: this.pathfinding,
-      roadTravelTime: (edge) => this.traffic.getEdgeTravelTime(edge),
+      roadTravelTime: (edge) => this.roadTravelTime(edge),
       utilityRatio: Math.min(
         this.utilitySnapshot.power.serviceRatio,
         this.utilitySnapshot.water.serviceRatio,
@@ -622,8 +669,13 @@ export class LegacySimulationCore {
       roadGraph: this.transportationGraph,
       transit: this.transit,
       pathfinding: this.pathfinding,
-      roadTravelTime: (edge) => this.traffic.getEdgeTravelTime(edge),
-      costEpoch: this.traffic.congestionEpoch,
+      roadTravelTime: (edge) => this.roadTravelTime(edge),
+      costEpoch: this.transportationCostEpoch(),
+      routeCar: (trip, startNodeId, endNodeId) =>
+        this.routeCarTrip(trip, startNodeId, endNodeId),
+      generalizedCost: (mode, trip, plan) =>
+        this.generalizedTravelCost(mode, trip, plan),
+      reserveCarTrip: (trip) => this.reserveCarTrip(trip),
       generateTrips: () =>
         this.clock.tick % 100 === 0
           ? this.personTrips.generate(
@@ -740,7 +792,7 @@ export class LegacySimulationCore {
       this.serviceVehicles,
       this.transportationGraph,
       this.pathfinding,
-      (edge) => this.traffic.getEdgeTravelTime(edge),
+      (edge) => this.roadTravelTime(edge),
       this.clock.tick,
     );
 
@@ -770,7 +822,7 @@ export class LegacySimulationCore {
           this.services,
           this.transportationGraph,
           this.pathfinding,
-          (edge) => this.traffic.getEdgeTravelTime(edge),
+          (edge) => this.roadTravelTime(edge),
           {
             utilizationByFacility,
             costKey: `service:${department}:${this.traffic.congestionEpoch}`,
@@ -787,7 +839,7 @@ export class LegacySimulationCore {
       this.services,
       this.transportationGraph,
       this.pathfinding,
-      (edge) => this.traffic.getEdgeTravelTime(edge),
+      (edge) => this.roadTravelTime(edge),
     );
     this.neighborhoodSnapshot = this.neighborhoodQuality.evaluate(occupied, {
       accessByBuilding: this.serviceAccessByBuilding,

@@ -55,6 +55,11 @@ import type {
 } from "../../world/foundation/WorldFoundationTypes.ts";
 import { Transportation3RRuntime } from "../transportation/Transportation3RRuntime.ts";
 import { MovementAwareIntersectionAdapter } from "../transportation/MovementAwareIntersectionAdapter.ts";
+import { VEHICLE_PERMISSION } from "../transportation/TransportNetworkTypes.ts";
+import type { TransportationEdge } from "../traffic/TransportationGraph.ts";
+import type { RouteResult } from "../traffic/PathfindingSystem.ts";
+import type { MobilityPersonTrip } from "../mobility/MobilityScheduler.ts";
+import type { JourneyPlan } from "../transit/JourneyPlanner.ts";
 
 export type SimulationCoreOptions = Readonly<{
   width?: number;
@@ -338,6 +343,118 @@ export class SimulationCore extends LegacySimulationCore {
 
   protected override refreshTransportationGraph(): void {
     this.transportation3R.refreshNetwork(this.roads, this.transportationGraph);
+  }
+
+  protected override prepareTransportationRouting(): void {
+    for (const outcome of this.traffic.recentOutcomes) {
+      this.transportation3R.parking.release(`trip:${outcome.tripId}`);
+    }
+    this.transportation3R.updateCosts(
+      this.transportationGraph,
+      this.traffic.edgeMetrics,
+      this.clock.tick,
+    );
+  }
+
+  protected override roadTravelTime(edge: TransportationEdge): number {
+    return this.transportation3R.incidentAdjustedEdgeCost(
+      edge,
+      this.traffic.getEdgeTravelTime(edge),
+    );
+  }
+
+  protected override transportationCostEpoch(): number {
+    return this.transportation3R.dynamicRouting.costEpoch;
+  }
+
+  protected override routeCarTrip(
+    trip: MobilityPersonTrip,
+    startNodeId: string,
+    endNodeId: string,
+  ): RouteResult | null {
+    return this.transportation3R.findLegacyRoute(
+      this.transportationGraph,
+      startNodeId,
+      endNodeId,
+      {
+        permissions: VEHICLE_PERMISSION.privateCar,
+        destinationAccessible: this.carDestinationAvailable(
+          trip.destinationBuildingId,
+        ),
+      },
+    );
+  }
+
+  protected override generalizedTravelCost(
+    mode: "car" | "transit",
+    trip: MobilityPersonTrip,
+    plan: JourneyPlan,
+  ): number | null {
+    const reliabilityPenaltyTicks =
+      mode === "car"
+        ? this.trafficSnapshot.congestionIndex * 20
+        : (1 - this.mobilitySnapshot.reliability) * 20;
+    if (mode === "car") {
+      const parking = this.parkingState(trip.destinationBuildingId);
+      return (
+        this.transportation3R.generalizedCosts.evaluate({
+          mode,
+          available: parking === null || parking.available > 0,
+          inVehicleTimeTicks: plan.inVehicleTicks,
+          waitTimeTicks: 0,
+          accessEgressTicks: 0,
+          transferCount: 0,
+          transferPenaltyTicks: 0,
+          reliabilityPenaltyTicks,
+          parkingSearchTicks: parking?.searchPenaltyTicks ?? 0,
+          moneyCost: parking?.pricePerTrip ?? 0,
+          moneyWeightTicksPerCurrency: 4,
+        })?.totalTicks ?? null
+      );
+    }
+    return (
+      this.transportation3R.generalizedCosts.evaluate({
+        mode,
+        available: true,
+        inVehicleTimeTicks: plan.inVehicleTicks,
+        waitTimeTicks: plan.expectedWaitTicks,
+        accessEgressTicks: plan.walkingTicks,
+        transferCount: plan.transfers,
+        transferPenaltyTicks:
+          plan.transfers > 0 ? plan.transferPenaltyTicks / plan.transfers : 0,
+        reliabilityPenaltyTicks,
+        parkingSearchTicks: 0,
+        moneyCost: plan.fare,
+        moneyWeightTicksPerCurrency: 4,
+      })?.totalTicks ?? null
+    );
+  }
+
+  protected override reserveCarTrip(trip: MobilityPersonTrip): boolean {
+    const parking = this.parkingState(trip.destinationBuildingId);
+    if (parking === null) return true;
+    return (
+      this.transportation3R.parking.reserve(
+        trip.destinationBuildingId,
+        `trip:${trip.sourceTripId}`,
+      ) !== null
+    );
+  }
+
+  private parkingState(destinationBuildingId: string) {
+    const hasExplicitParking = this.transportation3R.parking
+      .snapshot()
+      .facilities.some(
+        (facility) => facility.destinationId === destinationBuildingId,
+      );
+    return hasExplicitParking
+      ? this.transportation3R.parking.destinationState(destinationBuildingId)
+      : null;
+  }
+
+  private carDestinationAvailable(destinationBuildingId: string): boolean {
+    const parking = this.parkingState(destinationBuildingId);
+    return parking === null || parking.available > 0;
   }
 
   private queuedOutgoingEdge(vehicleId: string): string | undefined {

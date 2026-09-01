@@ -304,9 +304,13 @@ export class ServiceVehicleSystem {
     const route =
       vehicle.state === "outbound" ? vehicle.edgeIds : vehicle.returnEdgeIds;
     if (
-      route
-        .slice(vehicle.currentEdgeIndex)
-        .every((edgeId) => graph.getEdge(edgeId))
+      route.slice(vehicle.currentEdgeIndex).every((edgeId) => {
+        const edge = graph.getEdge(edgeId);
+        return (
+          edge !== undefined &&
+          Number.isFinite(this.edgeTravelTicks(vehicle, edge, edgeCost))
+        );
+      })
     )
       return true;
     const start = vehicle.currentNodeId;
