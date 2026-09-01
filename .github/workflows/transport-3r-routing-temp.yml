@@ -21,90 +21,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Patch routing and generalized cost seams
-        shell: python
-        run: |
-          from pathlib import Path
-
-          def replace(path, old, new, count=1):
-              p = Path(path)
-              text = p.read_text()
-              if old not in text:
-                  raise SystemExit(f"missing patch anchor in {path}: {old[:120]!r}")
-              p.write_text(text.replace(old, new, count))
-
-          # MobilityScheduler: production-supplied route, generalized-cost, and parking reservation hooks.
-          replace(
-              "src/simulation/mobility/MobilityScheduler.ts",
-              "  costEpoch?: number;\n  generateTrips: () => readonly MobilityPersonTrip[];",
-              "  costEpoch?: number;\n  routeCar?: (trip: MobilityPersonTrip, startNodeId: string, endNodeId: string) => RouteResult | null;\n  generalizedCost?: (mode: 'car' | 'transit', trip: MobilityPersonTrip, plan: JourneyPlan) => number | null;\n  reserveCarTrip?: (trip: MobilityPersonTrip) => boolean;\n  generateTrips: () => readonly MobilityPersonTrip[];",
-          )
-          replace(
-              "src/simulation/mobility/MobilityScheduler.ts",
-              "    const carRoute = context.pathfinding.findRoute(context.roadGraph, start, end, {\n      edgeCost: context.roadTravelTime,\n      costKey: `mobility-car:${context.costEpoch ?? Math.floor(context.tick / 10)}`,\n    });\n    const carPlan = this.carJourneyPlan(carRoute);\n    const transitPlan = this.journeyPlanner.plan(this.multimodalGraph, start, end, {\n      mode: 'transit',\n      transferPenaltyTicks: 20,\n      fareWeightTicksPerCurrency: 4,\n      costKey: `mobility-transit:${context.costEpoch ?? Math.floor(context.tick / 10)}`,\n    });\n    const choice = this.modeChoice.choose(carPlan, transitPlan, { crowdingPenaltyTicks: this.crowdingPenaltyTicks + this.capacityPressureTicks() });\n\n    if (choice.mode === 'car' && carRoute) {\n      context.submitCarTrip(trip, trip.travelerWeight, carRoute);\n      this.record({ mode: 'car', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: choice.chosenCost, expectedWaitTicks: 0 });\n      return;\n    }\n    if (choice.mode === 'transit' && transitPlan && this.enqueueTransitTrip(trip, transitPlan, context.transit)) {\n      this.record({ mode: 'transit', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: choice.chosenCost, expectedWaitTicks: transitPlan.expectedWaitTicks });\n      return;\n    }\n    this.record({ mode: 'unmet', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: Number.POSITIVE_INFINITY, expectedWaitTicks: 0 });",
-              "    const carRoute = context.routeCar\n      ? context.routeCar(trip, start, end)\n      : context.pathfinding.findRoute(context.roadGraph, start, end, {\n          edgeCost: context.roadTravelTime,\n          costKey: `mobility-car:${context.costEpoch ?? Math.floor(context.tick / 10)}`,\n        });\n    const rawCarPlan = this.carJourneyPlan(carRoute);\n    const rawTransitPlan = this.journeyPlanner.plan(this.multimodalGraph, start, end, {\n      mode: 'transit',\n      transferPenaltyTicks: 20,\n      fareWeightTicksPerCurrency: 4,\n      costKey: `mobility-transit:${context.costEpoch ?? Math.floor(context.tick / 10)}`,\n    });\n    const carPlan = this.applyGeneralizedCost('car', trip, rawCarPlan, context);\n    const transitPlan = this.applyGeneralizedCost('transit', trip, rawTransitPlan, context);\n    const choice = this.modeChoice.choose(carPlan, transitPlan, {\n      crowdingPenaltyTicks: this.crowdingPenaltyTicks + this.capacityPressureTicks(),\n    });\n    const reserveCar = (): boolean => context.reserveCarTrip?.(trip) ?? true;\n\n    if (choice.mode === 'car' && carRoute && carPlan && reserveCar()) {\n      context.submitCarTrip(trip, trip.travelerWeight, carRoute);\n      this.record({ mode: 'car', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: choice.carCost, expectedWaitTicks: 0 });\n      return;\n    }\n    if (transitPlan && this.enqueueTransitTrip(trip, transitPlan, context.transit)) {\n      this.record({ mode: 'transit', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: choice.transitCost, expectedWaitTicks: transitPlan.expectedWaitTicks });\n      return;\n    }\n    if (choice.mode === 'transit' && carRoute && carPlan && reserveCar()) {\n      context.submitCarTrip(trip, trip.travelerWeight, carRoute);\n      this.record({ mode: 'car', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: choice.carCost, expectedWaitTicks: 0 });\n      return;\n    }\n    this.record({ mode: 'unmet', travelerWeight: trip.travelerWeight, purpose: trip.purpose, chosenCost: Number.POSITIVE_INFINITY, expectedWaitTicks: 0 });",
-          )
-          replace(
-              "src/simulation/mobility/MobilityScheduler.ts",
-              "  private carJourneyPlan(route: RouteResult | null): JourneyPlan | null {",
-              "  private applyGeneralizedCost(\n    mode: 'car' | 'transit',\n    trip: MobilityPersonTrip,\n    plan: JourneyPlan | null,\n    context: MobilityTickContext,\n  ): JourneyPlan | null {\n    if (!plan) return null;\n    const cost = context.generalizedCost?.(mode, trip, plan);\n    if (cost === null) return null;\n    if (cost === undefined) return plan;\n    if (!Number.isFinite(cost) || cost < 0) throw new Error('invalid generalized travel cost');\n    return Object.freeze({ ...plan, totalGeneralizedCost: cost });\n  }\n\n  private carJourneyPlan(route: RouteResult | null): JourneyPlan | null {",
-          )
-
-          # Legacy core gets overridable transportation seams; legacy defaults preserve behavior.
-          replace(
-              "src/simulation/core/LegacySimulationCoreBase.ts",
-              'import { TransportationGraph } from "../traffic/TransportationGraph.ts";\nimport { PathfindingSystem } from "../traffic/PathfindingSystem.ts";',
-              'import { TransportationGraph, type TransportationEdge } from "../traffic/TransportationGraph.ts";\nimport { PathfindingSystem, type RouteResult } from "../traffic/PathfindingSystem.ts";',
-          )
-          replace(
-              "src/simulation/core/LegacySimulationCoreBase.ts",
-              '  MobilityScheduler,\n  type MobilitySnapshot,\n} from "../mobility/MobilityScheduler.ts";',
-              '  MobilityScheduler,\n  type MobilityPersonTrip,\n  type MobilitySnapshot,\n} from "../mobility/MobilityScheduler.ts";\nimport type { JourneyPlan } from "../transit/JourneyPlanner.ts";',
-          )
-          p = Path("src/simulation/core/LegacySimulationCoreBase.ts")
-          text = p.read_text().replace("this.traffic.getEdgeTravelTime(edge)", "this.roadTravelTime(edge)")
-          p.write_text(text)
-          replace(
-              "src/simulation/core/LegacySimulationCoreBase.ts",
-              "  protected refreshTransportationGraph(): void {\n    this.transportationGraph.rebuildIfNeeded(this.roads);\n  }",
-              "  protected refreshTransportationGraph(): void {\n    this.transportationGraph.rebuildIfNeeded(this.roads);\n  }\n\n  protected prepareTransportationRouting(): void {}\n\n  protected roadTravelTime(edge: TransportationEdge): number {\n    return this.traffic.getEdgeTravelTime(edge);\n  }\n\n  protected transportationCostEpoch(): number {\n    return this.traffic.congestionEpoch;\n  }\n\n  protected routeCarTrip(\n    _trip: MobilityPersonTrip,\n    startNodeId: string,\n    endNodeId: string,\n  ): RouteResult | null {\n    return this.pathfinding.findRoute(this.transportationGraph, startNodeId, endNodeId, {\n      edgeCost: (edge) => this.roadTravelTime(edge),\n      costKey: `mobility-car:${this.transportationCostEpoch()}`,\n    });\n  }\n\n  protected generalizedTravelCost(\n    _mode: 'car' | 'transit',\n    _trip: MobilityPersonTrip,\n    plan: JourneyPlan,\n  ): number | null {\n    return plan.totalGeneralizedCost;\n  }\n\n  protected reserveCarTrip(_trip: MobilityPersonTrip): boolean {\n    return true;\n  }",
-          )
-          replace(
-              "src/simulation/core/LegacySimulationCoreBase.ts",
-              "  private runLegacyV7Tick(): void {\n    this.refreshTransportationGraph();\n    this.serviceVehicles.syncFleet(this.services);",
-              "  private runLegacyV7Tick(): void {\n    this.refreshTransportationGraph();\n    this.prepareTransportationRouting();\n    this.serviceVehicles.syncFleet(this.services);",
-          )
-          replace(
-              "src/simulation/core/LegacySimulationCoreBase.ts",
-              "      roadTravelTime: (edge) => this.roadTravelTime(edge),\n      costEpoch: this.traffic.congestionEpoch,",
-              "      roadTravelTime: (edge) => this.roadTravelTime(edge),\n      costEpoch: this.transportationCostEpoch(),\n      routeCar: (trip, startNodeId, endNodeId) =>\n        this.routeCarTrip(trip, startNodeId, endNodeId),\n      generalizedCost: (mode, trip, plan) =>\n        this.generalizedTravelCost(mode, trip, plan),\n      reserveCarTrip: (trip) => this.reserveCarTrip(trip),",
-          )
-
-          # Production core overrides those seams with the 3R authority.
-          replace(
-              "src/simulation/core/SimulationCoreBase.ts",
-              'import { MovementAwareIntersectionAdapter } from "../transportation/MovementAwareIntersectionAdapter.ts";',
-              'import { MovementAwareIntersectionAdapter } from "../transportation/MovementAwareIntersectionAdapter.ts";\nimport { VEHICLE_PERMISSION } from "../transportation/TransportNetworkTypes.ts";\nimport type { TransportationEdge } from "../traffic/TransportationGraph.ts";\nimport type { RouteResult } from "../traffic/PathfindingSystem.ts";\nimport type { MobilityPersonTrip } from "../mobility/MobilityScheduler.ts";\nimport type { JourneyPlan } from "../transit/JourneyPlanner.ts";',
-          )
-          replace(
-              "src/simulation/core/SimulationCoreBase.ts",
-              "  protected override refreshTransportationGraph(): void {\n    this.transportation3R.refreshNetwork(this.roads, this.transportationGraph);\n  }",
-              "  protected override refreshTransportationGraph(): void {\n    this.transportation3R.refreshNetwork(this.roads, this.transportationGraph);\n  }\n\n  protected override prepareTransportationRouting(): void {\n    for (const outcome of this.traffic.recentOutcomes) {\n      this.transportation3R.parking.release(`trip:${outcome.tripId}`);\n    }\n    this.transportation3R.updateCosts(\n      this.transportationGraph,\n      this.traffic.edgeMetrics,\n      this.clock.tick,\n    );\n  }\n\n  protected override roadTravelTime(edge: TransportationEdge): number {\n    return this.transportation3R.incidentAdjustedEdgeCost(\n      edge,\n      this.traffic.getEdgeTravelTime(edge),\n    );\n  }\n\n  protected override transportationCostEpoch(): number {\n    return this.transportation3R.dynamicRouting.costEpoch;\n  }\n\n  protected override routeCarTrip(\n    trip: MobilityPersonTrip,\n    startNodeId: string,\n    endNodeId: string,\n  ): RouteResult | null {\n    return this.transportation3R.findLegacyRoute(\n      this.transportationGraph,\n      startNodeId,\n      endNodeId,\n      {\n        permissions: VEHICLE_PERMISSION.privateCar,\n        destinationAccessible: this.carDestinationAvailable(trip.destinationBuildingId),\n      },\n    );\n  }\n\n  protected override generalizedTravelCost(\n    mode: 'car' | 'transit',\n    trip: MobilityPersonTrip,\n    plan: JourneyPlan,\n  ): number | null {\n    const reliabilityPenaltyTicks =\n      mode === 'car'\n        ? this.trafficSnapshot.congestionIndex * 20\n        : (1 - this.mobilitySnapshot.reliability) * 20;\n    if (mode === 'car') {\n      const parking = this.parkingState(trip.destinationBuildingId);\n      return this.transportation3R.generalizedCosts.evaluate({\n        mode,\n        available: parking === null || parking.available > 0,\n        inVehicleTimeTicks: plan.inVehicleTicks,\n        waitTimeTicks: 0,\n        accessEgressTicks: 0,\n        transferCount: 0,\n        transferPenaltyTicks: 0,\n        reliabilityPenaltyTicks,\n        parkingSearchTicks: parking?.searchPenaltyTicks ?? 0,\n        moneyCost: parking?.pricePerTrip ?? 0,\n        moneyWeightTicksPerCurrency: 4,\n      })?.totalTicks ?? null;\n    }\n    return this.transportation3R.generalizedCosts.evaluate({\n      mode,\n      available: true,\n      inVehicleTimeTicks: plan.inVehicleTicks,\n      waitTimeTicks: plan.expectedWaitTicks,\n      accessEgressTicks: plan.walkingTicks,\n      transferCount: plan.transfers,\n      transferPenaltyTicks:\n        plan.transfers > 0 ? plan.transferPenaltyTicks / plan.transfers : 0,\n      reliabilityPenaltyTicks,\n      parkingSearchTicks: 0,\n      moneyCost: plan.fare,\n      moneyWeightTicksPerCurrency: 4,\n    })?.totalTicks ?? null;\n  }\n\n  protected override reserveCarTrip(trip: MobilityPersonTrip): boolean {\n    const parking = this.parkingState(trip.destinationBuildingId);\n    if (parking === null) return true;\n    return (\n      this.transportation3R.parking.reserve(\n        trip.destinationBuildingId,\n        `trip:${trip.sourceTripId}`,\n      ) !== null\n    );\n  }\n\n  private parkingState(destinationBuildingId: string) {\n    const hasExplicitParking = this.transportation3R.parking\n      .snapshot()\n      .facilities.some((facility) => facility.destinationId === destinationBuildingId);\n    return hasExplicitParking\n      ? this.transportation3R.parking.destinationState(destinationBuildingId)\n      : null;\n  }\n\n  private carDestinationAvailable(destinationBuildingId: string): boolean {\n    const parking = this.parkingState(destinationBuildingId);\n    return parking === null || parking.available > 0;\n  }",
-          )
-
-          # Active service routes treat incident-closed edges as invalid and reroute deterministically.
-          replace(
-              "src/simulation/services/ServiceVehicleSystem.ts",
-              "    if (route.slice(vehicle.currentEdgeIndex).every((edgeId) => graph.getEdge(edgeId))) return true;",
-              "    if (\n      route.slice(vehicle.currentEdgeIndex).every((edgeId) => {\n        const edge = graph.getEdge(edgeId);\n        return edge !== undefined && Number.isFinite(this.edgeTravelTicks(vehicle, edge, edgeCost));\n      })\n    ) return true;",
-          )
+      - run: python scripts/transport3r-routing-cutover.py
       - run: npm run format
       - name: Commit routing cutover and self-delete
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm -f .github/workflows/transport-3r-routing-temp.yml
+          git rm -f .github/workflows/transport-3r-routing-temp.yml scripts/transport3r-routing-cutover.py
           git add src/simulation/core src/simulation/mobility src/simulation/services src/simulation/transportation tests
           git commit -m "feat(transportation): cut routing and mode choice to 3R [3r-routing-done]"
           git push origin HEAD:feature/stack-2-transportation-3r-completion
