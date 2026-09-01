@@ -85,12 +85,7 @@ fn graph_40x20_fixture() -> CadastralSnapshot {
         ],
         blocks: vec![UrbanBlock {
             id: "block".into(),
-            boundary: vec![
-                p(0.0, 0.0),
-                p(40.0, 0.0),
-                p(40.0, 20.0),
-                p(0.0, 20.0),
-            ],
+            boundary: vec![p(0.0, 0.0), p(40.0, 0.0), p(40.0, 20.0), p(0.0, 20.0)],
             parcel_ids: vec!["p0".into()],
             road_edge_ids: vec!["e0".into()],
         }],
