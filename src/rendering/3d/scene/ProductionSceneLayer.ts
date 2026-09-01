@@ -34,9 +34,11 @@ export type ProductionSceneStats = Readonly<{
   estimatedGpuBytes: number;
 }>;
 
+export type ProductionSceneCameraPosition = Readonly<{ x: number; y: number; z: number }>;
+
 const distance = (
   state: ProductionVisualState,
-  camera: Readonly<{ x: number; y: number; z: number }>,
+  camera: ProductionSceneCameraPosition,
 ): number => {
   const dx = state.transform.positionM.x - camera.x;
   const dy = state.transform.positionM.y - camera.y;
@@ -44,7 +46,11 @@ const distance = (
   return Math.hypot(dx, dy, dz);
 };
 
-function chooseLod(asset: AssetManifestV2Entry, state: ProductionVisualState, camera: Readonly<{ x: number; y: number; z: number }>): AssetLod {
+export function selectProductionLod(
+  asset: AssetManifestV2Entry,
+  state: ProductionVisualState,
+  camera: ProductionSceneCameraPosition,
+): AssetLod {
   const d = distance(state, camera);
   if (d < 40 || !asset.geometry.lod1) return 'lod0';
   if (d < 140 || !asset.geometry.lod2) return 'lod1';
@@ -78,7 +84,7 @@ export class ProductionSceneLayer<Handle> {
     this.adapter = adapter;
   }
 
-  apply(states: readonly ProductionVisualState[], camera: Readonly<{ x: number; y: number; z: number }>): ProductionSceneStats {
+  apply(states: readonly ProductionVisualState[], camera: ProductionSceneCameraPosition): ProductionSceneStats {
     let created = 0;
     let updated = 0;
     let removed = 0;
@@ -96,7 +102,7 @@ export class ProductionSceneLayer<Handle> {
     for (const state of [...states].sort((left, right) => left.presentationId.localeCompare(right.presentationId))) {
       const asset = this.catalog.get(state.assetId);
       if (!asset) throw new Error(`Unknown production asset '${state.assetId}' for '${state.presentationId}'`);
-      const lod = chooseLod(asset, state, camera);
+      const lod = selectProductionLod(asset, state, camera);
       const existing = this.retained.get(state.presentationId);
       if (!existing) {
         const handle = this.adapter.create({ state, asset, lod });
