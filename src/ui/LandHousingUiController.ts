@@ -13,12 +13,16 @@ export class LandHousingUiController {
   private readonly overlayContext: CanvasRenderingContext2D;
   private readonly worldCanvas: HTMLCanvasElement;
   private readonly legend: HTMLElement;
+  private readonly section: HTMLElement;
+  private readonly abortController = new AbortController();
   private readonly panelRenderer = new LandHousingPanel();
   private readonly policyRenderer = new DevelopmentPolicyPanel();
   private mode: LandHousingOverlayMode = 'none';
   private synchronizing = false;
   private lastPanelBucket = -1;
   private lastCore: GameApp['core'] | null = null;
+  private frameRequest: number | null = null;
+  private disposed = false;
 
   constructor(private readonly app: GameApp, private readonly root: HTMLElement) {
     const economySection = this.required<HTMLElement>('[data-testid="economy-panel"]').closest<HTMLElement>('.panel-section');
@@ -39,6 +43,7 @@ export class LandHousingUiController {
       <div data-testid="land-housing-panel" class="economy-summary"></div>
       <div data-policy-host></div>`;
     economySection.insertAdjacentElement('afterend', section);
+    this.section = section;
     this.panel = this.required('[data-testid="land-housing-panel"]');
     this.policyHost = this.required('[data-policy-host]');
     this.select = this.required<HTMLSelectElement>('[data-testid="land-housing-overlay"]');
@@ -70,10 +75,21 @@ export class LandHousingUiController {
     this.lastCore = this.app.core;
     this.lastPanelBucket = Math.floor(this.app.core.clock.tick / 10);
     this.renderOverlay();
-    requestAnimationFrame(() => this.frame());
+    this.scheduleFrame();
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.abortController.abort();
+    if (this.frameRequest !== null) cancelAnimationFrame(this.frameRequest);
+    this.frameRequest = null;
+    this.overlayCanvas.remove();
+    this.section.remove();
   }
 
   renderPanel(): void {
+    if (this.disposed) return;
     this.panel.innerHTML = this.panelRenderer.render(
       this.app.core.landHousingMarketSnapshot,
       this.app.core.housingChoiceSnapshot,
@@ -85,6 +101,7 @@ export class LandHousingUiController {
   }
 
   renderOverlay(): void {
+    if (this.disposed) return;
     this.resizeOverlay();
     const rect = this.worldCanvas.getBoundingClientRect();
     this.overlayContext.clearRect(0, 0, rect.width, rect.height);
@@ -148,7 +165,7 @@ export class LandHousingUiController {
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Policy update failed.';
       }
-    });
+    }, { signal: this.abortController.signal });
   }
 
   private syncPolicyControls(): void {
@@ -176,7 +193,7 @@ export class LandHousingUiController {
       }
       this.legend.textContent = mapLandHousingOverlay(this.app.core, this.mode).legend;
       this.renderOverlay();
-    });
+    }, { signal: this.abortController.signal });
 
     for (const selector of EXISTING_OVERLAY_SELECTORS) {
       this.required<HTMLSelectElement>(selector).addEventListener('change', (event) => {
@@ -186,11 +203,18 @@ export class LandHousingUiController {
         this.mode = 'none';
         this.select.value = 'none';
         this.renderOverlay();
-      });
+      }, { signal: this.abortController.signal });
     }
   }
 
+  private scheduleFrame(): void {
+    if (this.disposed) return;
+    this.frameRequest = requestAnimationFrame(() => this.frame());
+  }
+
   private frame(): void {
+    if (this.disposed) return;
+    this.frameRequest = null;
     const currentCore = this.app.core;
     const bucket = Math.floor(currentCore.clock.tick / 10);
     if (currentCore !== this.lastCore || bucket !== this.lastPanelBucket) {
@@ -201,7 +225,7 @@ export class LandHousingUiController {
       if (coreChanged) this.syncPolicyControls();
     }
     if (this.mode !== 'none') this.renderOverlay();
-    requestAnimationFrame(() => this.frame());
+    this.scheduleFrame();
   }
 
   private resizeOverlay(): void {
