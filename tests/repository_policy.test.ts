@@ -35,3 +35,39 @@ test("repository policy preserves GameApp interpolation guard", () => {
     ),
   );
 });
+
+test("repository policy rejects generated and temporary repository paths", async () => {
+  const policy = (await import("../scripts/repository-policy.mjs")) as Record<
+    string,
+    unknown
+  >;
+  const inspect = policy.inspectRepositoryPathPolicy;
+
+  assert.equal(typeof inspect, "function");
+  if (typeof inspect !== "function") return;
+
+  assert.deepEqual(inspect("dist/app.js"), [
+    "dist/app.js: generated/build output must not be tracked",
+  ]);
+  assert.deepEqual(inspect("target/debug/prism"), [
+    "target/debug/prism: generated/build output must not be tracked",
+  ]);
+  assert.deepEqual(inspect("src/cache.ts"), []);
+});
+
+test("repository policy rejects oversized binary files outside approved asset roots", async () => {
+  const policy = (await import("../scripts/repository-policy.mjs")) as Record<
+    string,
+    unknown
+  >;
+  const inspect = policy.inspectRepositoryFilePolicy;
+
+  assert.equal(typeof inspect, "function");
+  if (typeof inspect !== "function") return;
+
+  assert.deepEqual(inspect("tmp/capture.png", 6 * 1024 * 1024), [
+    "tmp/capture.png: binary file exceeds 5 MiB outside approved asset roots",
+  ]);
+  assert.deepEqual(inspect("assets/source/house.glb", 6 * 1024 * 1024), []);
+  assert.deepEqual(inspect("docs/diagram.png", 256 * 1024), []);
+});
