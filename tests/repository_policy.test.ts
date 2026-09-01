@@ -115,8 +115,5 @@ test("markdown formatting normalizes line endings without table reflow", async (
   if (typeof normalize !== "function") return;
 
   const source = "| A | B |  \r\n| --- | --- |\r\n| 1 | 2 |\r\n\r\n";
-  assert.equal(
-    normalize(source),
-    "| A | B |  \n| --- | --- |\n| 1 | 2 |\n",
-  );
+  assert.equal(normalize(source), "| A | B |  \n| --- | --- |\n| 1 | 2 |\n");
 });
