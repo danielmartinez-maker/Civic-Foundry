@@ -208,7 +208,8 @@ test("bounded deterministic soak produces identical checkpoint hashes and stays 
     assert.equal(leftDiagnostics.simulation.faulted, false);
     assert.equal(rightDiagnostics.simulation.faulted, false);
     assert.ok(
-      leftDiagnostics.simulation.retainedEvents <= horizon.budgets.maxRetainedEvents,
+      leftDiagnostics.simulation.retainedEvents <=
+        horizon.budgets.maxRetainedEvents,
       "event journal retention budget",
     );
     assert.ok(
