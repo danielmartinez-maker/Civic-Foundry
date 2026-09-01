@@ -26,12 +26,18 @@ test("SimulationCore exposes renderer-independent read-only engine health diagno
     core.traffic.activeVehicles.length,
   );
   assert.equal(snapshot.economy.firms, core.economyDomain.firms.list().length);
+  assert.deepEqual(snapshot.integrity, {
+    invalidBuildingParcelReferences: 0,
+    invalidPropertyParcelReferences: 0,
+    totalInvalidReferences: 0,
+  });
   assert.equal(
     snapshot.determinism.authorityHash,
     deterministicHash(captureAuthoritativeTransactionCheckpoint(core)),
   );
   assert.equal(Object.isFrozen(snapshot), true);
   assert.equal(Object.isFrozen(snapshot.simulation), true);
+  assert.equal(Object.isFrozen(snapshot.integrity), true);
 });
 
 test("diagnostic authority hashing is stable and changes only with authoritative state", () => {
