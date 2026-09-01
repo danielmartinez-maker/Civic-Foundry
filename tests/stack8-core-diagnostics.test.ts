@@ -16,7 +16,7 @@ test("SimulationCore exposes renderer-independent read-only engine health diagno
   assert.equal(snapshot.buildings.canonical, core.buildings.listV2().length);
   assert.equal(snapshot.transport.segments, core.transportationGraph.edges.length);
   assert.equal(snapshot.transport.activeVehicles, core.traffic.activeVehicles.length);
-  assert.equal(snapshot.economy.firms, core.economyDomain.firms.listFirms().length);
+  assert.equal(snapshot.economy.firms, core.economyDomain.firms.list().length);
   assert.equal(
     snapshot.determinism.authorityHash,
     deterministicHash(captureAuthoritativeTransactionCheckpoint(core)),
