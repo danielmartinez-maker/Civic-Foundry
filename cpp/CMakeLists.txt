@@ -13,6 +13,7 @@ add_library(civic_engine STATIC
   engine/src/geometry/Geometry.cpp
   engine/src/world/Terrain.cpp
   engine/src/world/Hydrology.cpp
+  engine/src/world/WorldFoundation.cpp
   engine/src/cadastre/Cadastre.cpp
   engine/src/urban/UrbanFabric.cpp
 )

@@ -13,6 +13,7 @@ struct SoilProperties final { double infiltration_mm_per_hour{}; double bearing_
 [[nodiscard]] const SoilProperties& soil_properties(SoilClass soil) noexcept;
 struct TerrainPhysicalSample final {
   double elevation_meters{}; double slope{}; double aspect_radians{}; SoilClass soil_class{SoilClass::loam}; double soil_depth_meters{}; double bearing_capacity_kpa{}; double bedrock_depth_meters{}; double groundwater_depth_meters{}; VegetationClass vegetation_class{VegetationClass::none}; double contamination_index{}; double land_preparation_multiplier{1}; SurfaceWaterClass surface_water{SurfaceWaterClass::none}; bool buildable{true};
+  bool operator==(const TerrainPhysicalSample&) const = default;
 };
 struct TerrainField final {
   std::uint32_t width{}; std::uint32_t height{}; double meters_per_cell{30}; std::vector<TerrainPhysicalSample> samples{};
