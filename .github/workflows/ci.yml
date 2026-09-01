@@ -37,6 +37,9 @@ jobs:
       - name: Prism Clippy
         working-directory: engine/prism
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Prism P2A mutation tests
+        working-directory: engine/prism
+        run: cargo test -p prism-domain --test cadastre_mutation --locked
       - name: Prism workspace tests
         working-directory: engine/prism
         run: cargo test --workspace --locked
