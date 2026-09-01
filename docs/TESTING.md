@@ -1,6 +1,6 @@
-# Testing — Current Urban Fabric 2.0 Gate
+# Testing — Current Urban Fabric + Production 3D Gate
 
-## Required CI commands
+## Required repository verification
 
 The canonical core verification gate is:
 
@@ -8,7 +8,9 @@ The canonical core verification gate is:
 npm run verify
 ```
 
-It expands to formatting, lint, repository policy, architecture policy, strict typechecking, Node tests, asset policy/validation, and the production build. CI then runs the compiled browser and visual regression stack:
+It expands to formatting, lint, repository policy, architecture policy, strict TypeScript typechecking, the complete Node test suite, asset policy/validation, and the production build.
+
+CI then runs the compiled browser/visual regression stack, including:
 
 ```bash
 npm run test:smoke
@@ -16,15 +18,46 @@ npm run test:smoke:phase7
 npm run test:smoke:urban-fabric
 npm run test:smoke:isometric
 python tests/smoke/isometric_visual_smoke.py
+npm run test:smoke:3d-house
+npm run test:smoke:3d:stack3
 ```
 
-`npm test` uses Node's built-in test runner with TypeScript strip-types. Source typechecking uses strict `tsc`. Browser smokes execute the compiled application in Chromium through Playwright.
+Node tests use the built-in Node test runner with TypeScript strip-types. Source typechecking uses strict `tsc`. Browser smokes execute the compiled `dist/` application in Chromium through Playwright request routing under the controlled `http://civic.test/` origin.
 
-## 3D runtime foundation gate
+A feature slice is green only when its relevant RED/acceptance test passes and the exact resulting GitHub head passes its full required CI. Downstream browser/visual failures are treated as real integration defects unless evidence proves infrastructure failure.
 
-The Tranche 1 focused suites cover Babylon engine selection, the WebGL fallback rendering contract, deterministic review-camera state, Manifest V2/House A compilation, GLB streaming and cancellation, retained building reconstruction, canonical picking metadata, presentation state mapping, the authority firewall, and the desktop GPU runtime boundary.
+## Regression layers
 
-After the production build, run the real Chromium House A acceptance and fixed-camera evidence runner:
+All inherited deterministic simulation/world/save suites remain mandatory. They cover the simulation kernel, world generation/hydrology, roads/transportation, traffic, transit, services, utilities, firms/freight, housing/relocation, development/property systems, cadastral mutation, persistence migrations, and the default isometric/GPU presentation path.
+
+Urban Fabric and Stack 3 are not allowed to clear their own acceptance by weakening older assertions, changing Save V9 semantics, or bypassing repository/architecture policy.
+
+## Urban Fabric authority acceptance
+
+Dedicated tests continue to cover:
+
+- canonical cadastral graph construction, geometry, topology, access/frontage, lineage, and validation;
+- deterministic legal parcel generation and legacy lot projection;
+- split, assembly, easement, and right-of-way operations;
+- `CadastralRuntimeMutationService` cross-domain coordination and rollback;
+- parcel zoning, envelopes, compliance, physical massing, mixed-use allocation, and `BuildingV2` identity;
+- lifecycle, maintenance, renovation/adaptive reuse, displacement/redevelopment gates;
+- property holdings/history and deterministic highest-and-best-use/site assembly;
+- runtime proof that development materializes canonical `BuildingV2` from cadastral parcel identity;
+- Save V9 exact round-trip, migration, reference validation, and deterministic continuation;
+- World Foundation physical/geographic regressions and static-world invariants.
+
+`tests/urban-fabric-fuzz.test.ts` remains the fixed-seed mutation fuzz gate and checks graph validity, deterministic snapshot reconstruction, coherent failed operations, committed-mutation coverage, and controlled-area conservation.
+
+`tests/smoke/urban_fabric_smoke.py` remains the compiled runtime acceptance for parcel/building creation, overlays/inspection, Save V9 serialization/hydration, and canonical ID preservation.
+
+## House A 3D foundation gate
+
+The accepted House A calibration tranche remains mandatory and is not superseded by Stack 3.
+
+Focused tests cover Babylon engine selection/fallback, deterministic camera state, Asset Manifest V2, deterministic compilation, GLB streaming/cancellation, retained building reconstruction, canonical pick metadata, presentation state mapping, authority firewall, and desktop/browser runtime boundaries.
+
+After the production build:
 
 ```bash
 npm run build
@@ -32,231 +65,160 @@ npm run test:smoke:3d-house
 npm run review:3d-house
 ```
 
-The acceptance smoke requires the opt-in `civic-3d` backend, non-empty House A LOD0/LOD1/LOD2/collision outputs, a resident catalog prototype, two canonical building instances sharing the same asset/LOD prototype, canonical presentation picking, camera orbit/zoom without Save V9 mutation, and deterministic teardown/rebuild of the presentation layer. It must finish with `CIVIC_3D_HOUSE_A_SMOKE_PASS` and no browser/page errors. The existing `npm run test:smoke:3d` entry remains available as the CI-compatible alias.
+The House A smoke requires the opt-in `civic-3d` backend, generated LOD/collision artifacts, resident prototype sharing, canonical presentation identity, camera orbit/zoom without Save V9 mutation, and deterministic teardown/rebuild. Fixed-camera review PNGs remain generated review evidence only.
 
-`npm run review:3d-house` writes nine fixed 900 × 640 PNGs to `dist/assets/reviews/house-a/` and repeats the front camera byte-for-byte. These PNGs are review evidence only; generated geometry and images are ignored build outputs and are never source-of-truth assets.
+## Stack 3 focused contract gate
 
-## Current verified baseline
+Stack 3 adds these focused suites:
 
-The merged desktop GPU runtime feature head `725c9cec539f1df32386c4c35e95c81a7fe134ab` passed GitHub Actions run **33137152536** before PR #98 was integrated into `main` as merge commit `c2e7befd9174b65dadc90e1e381d892accf780c6`.
-
-That verification completed with:
-
-- **600/600 Node tests**;
-- strict TypeScript typecheck;
-- source lint with zero errors;
-- repository and architecture policy checks;
-- asset policy and isometric asset source validation;
-- production build and atlas generation;
-- Phase 6 compiled browser smoke;
-- Phase 7 compiled browser smoke;
-- dedicated Urban Fabric compiled browser smoke;
-- Isometric Pass A functional browser smoke;
-- Isometric Pass A visual smoke.
-
-This is exact evidence for the merged PR #98 feature tranche. The merge commit itself does not currently expose a separate attached post-merge status context, so do not describe that absence as a new verification run.
-
-The prior Urban Fabric Task 13 checkpoint remains useful historical evidence: head `fa23d77bdaba7f8d260b10ca2d75507f38ed81a6` passed CI run **#992** with **595/595 Node tests** and the then-current full browser/visual stack. PR #63 later passed its final exact-head reconciliation gate and was merged into `main`; it is no longer an isolated integration vehicle.
-
-## Regression layers
-
-### Existing city regressions
-
-All inherited deterministic suites remain mandatory. They cover the simulation kernel, world generation/flooding, roads/transportation, traffic, public services, transit, firms/freight, housing/relocation, developer markets, persistence migrations, and isometric presentation.
-
-Urban Fabric is not allowed to clear its own tests by weakening these older gates.
-
-### Urban Fabric unit/integration coverage
-
-Dedicated suites cover:
-
-- canonical cadastral graph construction, snapshot restoration, adjacency, area, centroid, frontage/access, and validation;
-- legal parcel generation from legacy roads/zoning while preserving legacy `lot:x,y` identity in the compatibility facade;
-- low-level split, assembly, easement creation/removal, and right-of-way dedication with atomic failure behavior and lineage;
-- runtime `CadastralRuntimeMutationService` coordination across cadastre, parcel zoning, canonical buildings, property holdings/history, and the derived lot facade;
-- split success with geometry-based building reassignment and stable canonical building identity;
-- split rejection when a canonical building crosses the cut, with no dependent-domain mutation;
-- assembly rewrites plus atomic owner/zoning conflict rejection;
-- right-of-way residual rewrites plus building-intersection rejection;
-- easement create/remove through the public runtime transaction boundary;
-- twin-core deterministic split → assembly sequences with deep-equal results and snapshots;
-- an injected live commit fault that forces `runtime-commit-rollback` and proves byte-for-byte restoration of every dependent domain;
-- dimensional zoning districts and parcel assignments;
-- buildable envelopes from setbacks, coverage, height, FAR, and minimum parcel dimensions;
-- zoning-compliance rejection by dimensional/use reason;
-- deterministic physical massing and mixed-use floor allocation;
-- physical building metrics derived from real floor area;
-- independent canonical `BuildingV2` storage, deterministic ordering, duplicate rejection, and legacy-cell spatial lookup;
-- lifecycle deterioration, maintenance, distress, renovation, adaptive reuse, and relocation gates;
-- property holdings/transactions and atomic multi-parcel transfers;
-- highest-and-best-use and physical redevelopment pressure;
-- deterministic site-assembly enumeration/economics;
-- runtime proof that development awards use cadastral parcel identity and materialize `BuildingV2` state;
-- grandfathered compatibility behavior when multiple legacy structures share one canonical parcel;
-- Urban Fabric renderer overlays and canonical parcel inspector behavior;
-- Save V9 exact round-trip, migration, reference validation, and continuation.
-
-## Deterministic cadastral fuzz gate
-
-`tests/urban-fabric-fuzz.test.ts` runs the fixed seed set:
-
-```ts
-[3, 7, 11, 19, 31, 47, 73, 101]
+```text
+tests/stack3_asset_contract.test.ts
+tests/stack3_asset_wave.test.ts
+tests/stack3_asset_selection.test.ts
+tests/stack3_production_scene_layer.test.ts
+tests/stack3_picking_reconstruction.test.ts
+tests/stack3_scene_budget.test.ts
 ```
 
-For each seed, the test executes **80 deterministic mutation attempts** over a controlled cadastral fixture. The sequence mixes:
+They prove the following contracts.
 
-- parcel splits;
-- easement creation;
-- easement removal;
-- compatible parcel assembly;
-- right-of-way dedication.
+### Production metadata/compiler
 
-After every step the test requires:
+Every source/manifest entry requires `semanticFamily` plus positive CPU/GPU geometry/material estimates. The compiler must emit the same production metadata deterministically and preserve the canonical meter/pivot/LOD contract.
 
-1. `validateCadastralGraph(graph).valid === true`;
-2. snapshot reconstruction through `new CadastralGraph(graph.snapshot())` to remain byte-equivalent;
-3. failed operations to leave a coherent graph;
-4. enough committed operations to ensure the sequence is exercising mutations rather than only rejecting inputs.
+### Controlled 14-family wave
 
-At the end of every seed, controlled land accounting requires:
+The first production source wave contains exactly the approved 14 asset IDs. Every family supplies canonical axes/pivot, LOD0/LOD1/LOD2, runtime estimates, materials/state channels as applicable, and compiler-valid geometry/collision metadata.
 
-`private parcel area + successfully dedicated ROW area = original controlled area ± 0.05 m²`
+### Deterministic semantic selection
 
-This gate specifically targets topology/reference drift that is difficult to expose with only isolated hand-authored mutation tests.
+`AssetCatalogV2.listBySemanticFamily(...)` returns stable asset-ID ordering. `selectProductionAssetId(...)` is input-order independent, stable for the same identity/family/channel, handles empty candidate sets, and uses no runtime randomness.
 
-## Runtime cadastral transaction acceptance
+### Retained production reconciliation
 
-`tests/urban-fabric-runtime-mutations.test.ts` is the Task 13 coordinator gate. It requires:
+`ProductionSceneLayer` must:
 
-1. property transaction history to accept retired parcel IDs only when cadastral lineage recognizes them;
-2. runtime split to rewrite canonical building, zoning, and current holding references atomically;
-3. split crossing a building to reject without changing any participating domain;
-4. assembly to conserve one valid owner/zoning state and reject conflicting state atomically;
-5. right-of-way dedication to transfer live references to the residual parcel and preserve area/value rules;
-6. easement create/remove to mutate only legal cadastral state while still using the runtime boundary;
-7. `SimulationCore.cadastralMutations` to preserve surviving building identity through continued simulation;
-8. identical cores plus identical mutation sequences to produce deep-equal results and snapshots;
-9. a forced commit-stage exception to return `runtime-commit-rollback` and restore cadastre, zoning, canonical buildings, property market, and legacy lots byte-for-byte.
+- create a new entity once;
+- create nothing on an identical second reconciliation;
+- update appearance-only changes in place;
+- structurally replace asset/fingerprint/LOD/canonical-identity changes;
+- remove departed entities;
+- reconstruct the same deterministic digest after teardown/rebuild;
+- report memory from unique active prototypes rather than instance count.
 
-The commit fault injector is an optional narrow dependency used only to prove rollback. It does not introduce global mutable test state or a general event framework.
+Canonical identity replacement has a dedicated regression so a stable presentation ID cannot retain stale pick/canonical metadata.
 
-## Urban Fabric browser smoke
+### Picking/reconstruction
 
-`tests/smoke/urban_fabric_smoke.py` boots the compiled application and verifies the player-facing/runtime integration boundary.
+Generic Babylon pick identity is bound to retained roots/descendants, survives LOD/prototype reconstruction, and can be resolved by walking parent identity. Babylon metadata maps back to stable presentation identity only; it never becomes simulation state.
 
-The smoke:
+### Representative structural budgets
 
-1. boots with no page or console errors;
-2. replaces the demo city with a deterministic flat test world;
-3. builds a real local road;
-4. paints a small residential district;
-5. places real power/water infrastructure;
-6. advances 600 live simulation ticks;
-7. requires at least one canonical cadastral parcel;
-8. requires at least one runtime-created `BuildingV2`;
-9. requires the legacy lot compatibility projection to remain available;
-10. toggles the cadastre overlay;
-11. toggles the zoning-envelope overlay;
-12. clicks a compatibility cell and requires the inspector/renderer to resolve the exact same canonical parcel ID;
-13. serializes through the current public API and requires `saveVersion: 9` / `gameVersion: "0.9.0-urban-fabric"`;
-14. hydrates the save;
-15. requires sorted canonical parcel IDs and `BuildingV2` IDs to remain identical after reload.
+`Stack3AcceptanceDistrict` is deterministic and exposes:
 
-The CI step is named **Urban Fabric browser smoke** and executes `npm run test:smoke:urban-fabric`.
+- `block`: 112 entities, all 14 asset IDs;
+- `neighborhood`: 1008 entities, all 14 asset IDs.
+
+Budget assertions require no more than 14 unique prototypes for the fixed wave and derive CPU/GPU estimates from unique prototypes. This catches accidental instance-count multiplication and uncontrolled prototype growth.
+
+## Stack 3 architecture firewall gate
+
+`tests/architecture_policy.test.ts` and `scripts/check-architecture.mjs` protect authoritative directories from the rendering runtime.
+
+Required rules include:
+
+- `src/simulation/` may not import `src/rendering/`;
+- `src/world/` may not import `src/rendering/`;
+- `src/save/` may not import `src/rendering/`;
+- authoritative simulation/world/save code may not import `@babylonjs/*`;
+- authoritative simulation/world/save code may not import `@gltf-transform/*`.
+
+The Stack 3 TDD addition specifically introduced a RED test for Save -> `src/rendering/3d` before adding the broader `save-no-rendering` production rule.
+
+## Stack 3 Chromium acceptance
+
+The compiled browser acceptance is:
+
+```bash
+npm run build
+npm run test:smoke:3d:stack3
+```
+
+`tests/smoke/civic_3d_stack3_smoke.py` requires the catalog and LOD0/LOD1/LOD2 GLBs for all 14 production assets before booting the renderer.
+
+The smoke then requires:
+
+1. a dedicated `Civic3DWorldRenderer` canvas;
+2. deterministic 112-entity block fixture load;
+3. `active === 112` and initial `created === 112`;
+4. exactly 14 unique active production prototypes;
+5. declared GPU estimate greater than zero and within the acceptance bound;
+6. 112 unique production presentation IDs and canonical IDs;
+7. visible screenshot luminance/color variance for the district;
+8. identical second reconciliation with zero create/remove/replace and 112 unchanged;
+9. identical reconstruction digest and stable pick identity list;
+10. responsive orbit/zoom state changes;
+11. deterministic explicit front/top review cameras;
+12. night presentation evidence;
+13. byte-identical Save V9 before and after camera/visual operations;
+14. no serialized presentation/Babylon metadata;
+15. renderer teardown/recreate with restored camera and fixture producing the same digest, picks, and structural counts;
+16. final Save V9 still byte-identical.
+
+The smoke emits:
+
+```text
+test-artifacts/civic-3d-stack3/district.png
+test-artifacts/civic-3d-stack3/front.png
+test-artifacts/civic-3d-stack3/top.png
+test-artifacts/civic-3d-stack3/night.png
+```
+
+CI uploads these files as diagnostic evidence. Screenshots are not source-of-truth assets.
+
+## First-frame visual readiness regression
+
+The original Stack 3 browser RED could construct all 112 retained entities and 14 prototypes while the captured Chromium canvas was still only the clear color. That isolated structural readiness from actual shader/material visual readiness.
+
+The runtime acceptance boundary therefore requires `Civic3DProductionRuntime.apply(...)` to await Babylon scene readiness after retained reconciliation/prototype changes and before the caller captures the accepted frame. The smoke keeps its visual-variance assertion; it was not weakened to accommodate an empty frame.
+
+## LOD-residency regression
+
+`AssetStreamingManager` intentionally keeps zero-reference prototypes resident until eviction/disposal for general cache reuse. The production runtime therefore has an additional ownership rule: after a successful retained-scene replacement, obsolete production `asset@lod` leases are released and then explicitly evicted at zero reference count. Acquisition-failure cleanup does the same for newly acquired unused keys.
+
+This ordering is important: old prototypes are evicted only after old retained instances have been destroyed/replaced. The acceptance objective is bounded LOD cycling without disposing geometry/material resources still used by live handles.
 
 ## Save V9 acceptance
 
-Current default persistence is Save V9. Tests require:
+Current default persistence remains Save V9. Tests continue to require exact Urban Fabric round-trip, deterministic continuation, deterministic V8 -> V9 migration, live-reference validity, historical lineage validation, derived lot reconstruction, and inherited World Foundation restoration ordering.
 
-- exact Urban Fabric cadastral/zoning/building/property round-trip;
-- deterministic continuation after load;
-- V8 → V9 migration to be deterministic;
-- no fabricated legal/property history during migration;
-- legacy lots rebuilt from persisted cadastral topology;
-- live parcel references in parcel zoning, `BuildingV2`, and current holdings to resolve to live cadastral parcels;
-- historical property transaction parcel IDs to resolve to either a current live parcel or a retired parcel recognized by persisted cadastral lineage;
-- mutation → Save V9 → hydrate → continue to preserve property history and all live cross-domain references;
-- explicit Save V8 compatibility to remain available and unchanged;
-- inherited World Foundation restoration to occur before dependent legacy gameplay construction.
+Stack 3 adds a stronger negative persistence contract: camera state, Babylon metadata, asset/Lod residency, production fixtures, retained-handle identity, and visual-time presentation changes must not change serialized Save V9.
 
-Older serializers/hydrators remain independently covered so backward compatibility is not conflated with current schema behavior.
+## Full Stack 3 acceptance sequence
 
-## Cadastral validation acceptance
+Before Stack 3 can be called complete, the exact final feature head must pass:
 
-`CadastralValidator` rejects or reports:
+```bash
+npm run format:check
+npm run lint
+npm run policy:check
+npm run architecture:check
+npm run typecheck
+npm test
+npm run assets:policy
+npm run assets:3d:check
+npm run build
+npm run test:smoke
+npm run test:smoke:phase7
+npm run test:smoke:urban-fabric
+npm run test:smoke:isometric
+python tests/smoke/isometric_visual_smoke.py
+npm run test:smoke:3d-house
+npm run test:smoke:3d:stack3
+```
 
-- duplicate node/edge/block/parcel/easement/lineage IDs;
-- missing nodes, edges, blocks, or parcels;
-- orphan nodes;
-- zero-length or duplicate shared boundaries;
-- invalid parcel boundary chains;
-- parcel area mismatches;
-- invalid frontage/access references;
-- private parcel overlap;
-- invalid easement parcel references;
-- lineage cycles.
-
-Geometry-changing operations are expected to build a complete candidate snapshot and pass this validator before live replacement.
-
-## Development/massing acceptance
-
-Controlled fixtures require:
-
-- legal envelopes to respect actual parcel geometry and dimensional controls;
-- setbacks that disconnect a narrow parcel to report the constraint rather than fabricate a continuous envelope;
-- larger legal massing to produce corresponding real floor area, costs, and revenue;
-- mixed-use allocations to conserve usable floor area;
-- illegal candidates to stop before developer bidding;
-- physical candidate identity to survive through bids/awards;
-- runtime awards to use one canonical parcel identity rather than multiple derived frontage lots.
-
-## Lifecycle/redevelopment acceptance
-
-Tests require:
-
-- maintenance to slow deterioration;
-- chronic vacancy to increase distress;
-- renovation/adaptive reuse to obey zoning and return hurdles;
-- occupied redevelopment to respect canonical relocation state;
-- unresolved households to block demolition;
-- redevelopment stages to progress through explicit acquisition/demolition/construction/lease-up gates;
-- physical redevelopment pressure to remain deterministic and explanatory.
-
-## World Foundation regressions
-
-Urban Fabric continues to run the complete 1R physical-world coverage:
-
-- polygon/segment geometry;
-- geography hierarchy;
-- engineering terrain/soil classes;
-- six deterministic world presets;
-- priority-flood and D8 hydrology;
-- design-storm water balance;
-- scenario overrides and named RNG isolation;
-- World Foundation snapshot persistence;
-- terrain-preparation economics;
-- spatial-index correctness/performance;
-- long-run proof that ordinary simulation ticks do not mutate static world authority.
-
-This is important because legal parcel geometry is layered onto, not substituted for, World Foundation.
-
-## Browser regression stack
-
-The compiled browser stack remains mandatory because several important boundaries are not proven by Node-only tests:
-
-- actual UI event ordering;
-- overlay mutual exclusion;
-- canvas coordinate picking;
-- parcel inspector handoff;
-- save/load through compiled modules;
-- rendering and atlas integration;
-- browser console/page errors.
-
-Playwright request routing serves the compiled `dist` tree under the controlled `http://civic.test/` origin.
+The permanent Stack 3 GitHub workflow additionally runs its focused Stack 3 suites and repository-wide gate. A historical green run is evidence only for the commit/merge ref it actually tested.
 
 ## Completion rule
 
-A task slice may be called green only after its relevant RED/acceptance test has passed and the full CI gate for the resulting head is successful. A failed downstream browser/visual gate is treated as a real integration defect unless evidence proves infrastructure failure.
-
-Historical feature-specific exact-head checkpoints remain valid evidence for the commits they tested, but a merged or later repository state must not be described as verified by a run that did not execute against that state. Live documentation should identify whether evidence applies to a feature head, PR merge ref, or post-merge `main` commit.
+A Stack 3 implementation report may state acceptance only after exact-head CI confirms all required gates. PR #114 remains draft and unmerged until that evidence is green and merge is explicitly authorized separately. If any required browser/visual gate is red, Stack 3 remains incomplete even if all unit/type/build gates are green.
