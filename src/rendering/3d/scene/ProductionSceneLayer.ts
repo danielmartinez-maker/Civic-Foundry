@@ -1,6 +1,9 @@
 import type { AssetId, AssetManifestV2Entry } from '../assets/AssetManifestV2.ts';
 import type { AssetLod } from '../assets/AssetCatalogV2.ts';
-import type { ProductionVisualState } from '../presentation/PresentationTypes.ts';
+import type {
+  ProductionPresentationEntityId,
+  ProductionVisualState,
+} from '../presentation/PresentationTypes.ts';
 
 export type ProductionAssetCatalogLike = Readonly<{
   get(assetId: AssetId): AssetManifestV2Entry | undefined;
@@ -64,7 +67,7 @@ function digestState<Handle>(entry: RetainedProductionEntry<Handle>): unknown {
 export class ProductionSceneLayer<Handle> {
   private readonly catalog: ProductionAssetCatalogLike;
   private readonly adapter: ProductionSceneAdapter<Handle>;
-  private readonly retained = new Map<string, RetainedProductionEntry<Handle>>();
+  private readonly retained = new Map<ProductionPresentationEntityId, RetainedProductionEntry<Handle>>();
   private lastStats: ProductionSceneStats = Object.freeze({
     active: 0, created: 0, updated: 0, removed: 0, unchanged: 0, replaced: 0,
     uniquePrototypes: 0, estimatedCpuBytes: 0, estimatedGpuBytes: 0,
