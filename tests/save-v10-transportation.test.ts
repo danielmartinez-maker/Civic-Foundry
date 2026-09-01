@@ -3,7 +3,10 @@ import test from "node:test";
 import { hydrateCore, serializeCore } from "../src/save/save.ts";
 import { serializeCoreV9 } from "../src/save/saveV9.ts";
 import { SimulationCore } from "../src/simulation/core/SimulationCore.ts";
-import { TerrainGrid, type TerrainCell } from "../src/world/terrain/TerrainGrid.ts";
+import {
+  TerrainGrid,
+  type TerrainCell,
+} from "../src/world/terrain/TerrainGrid.ts";
 
 function flat(width = 8, height = 6): TerrainGrid {
   const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({
@@ -16,7 +19,10 @@ function flat(width = 8, height = 6): TerrainGrid {
 }
 
 function transportationCore(): SimulationCore {
-  const core = new SimulationCore({ terrain: flat(), startingFunds: 1_000_000 });
+  const core = new SimulationCore({
+    terrain: flat(),
+    startingFunds: 1_000_000,
+  });
   assert.equal(
     core.buildRoad(
       [
@@ -87,8 +93,16 @@ test("explicit V9 remains loadable and initializes new Transportation 3R history
   assert.equal(v9.saveVersion, 9);
 
   const restored = hydrateCore(structuredClone(v9));
-  assert.equal(restored.transportation3R.incidents.snapshot().incidents.length, 0);
-  assert.equal(restored.transportation3R.parking.snapshot().facilities.length, 0);
+  assert.equal(
+    restored.transportation3R.incidents.snapshot().incidents.length,
+    0,
+  );
+  assert.equal(
+    restored.transportation3R.parking.snapshot().facilities.length,
+    0,
+  );
   assert.equal(restored.transportation3R.dynamicRouting.costEpoch, 0);
-  assert.ok(restored.transportation3R.networkSnapshot().carriageways.length > 0);
+  assert.ok(
+    restored.transportation3R.networkSnapshot().carriageways.length > 0,
+  );
 });

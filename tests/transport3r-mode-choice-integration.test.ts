@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MobilityScheduler, type MobilityPersonTrip } from "../src/simulation/mobility/MobilityScheduler.ts";
+import {
+  MobilityScheduler,
+  type MobilityPersonTrip,
+} from "../src/simulation/mobility/MobilityScheduler.ts";
 import { PathfindingSystem } from "../src/simulation/traffic/PathfindingSystem.ts";
 import { TransportationGraph } from "../src/simulation/traffic/TransportationGraph.ts";
 import { TransitNetworkSystem } from "../src/simulation/transit/TransitNetworkSystem.ts";
 import { TreasurySystem } from "../src/simulation/treasury/TreasurySystem.ts";
 import { RoadSystem } from "../src/world/roads/RoadSystem.ts";
-import { TerrainGrid, type TerrainCell } from "../src/world/terrain/TerrainGrid.ts";
+import {
+  TerrainGrid,
+  type TerrainCell,
+} from "../src/world/terrain/TerrainGrid.ts";
 
 function fixture() {
   const cells: TerrainCell[] = Array.from({ length: 6 * 5 }, () => ({

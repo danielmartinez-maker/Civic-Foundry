@@ -47,10 +47,8 @@ export function hydrateCoreV10(input: unknown): SimulationCore {
   }
 
   const save = input as unknown as SaveV10;
-  const {
-    transportation3R: _transportation3R,
-    ...withoutTransportation
-  } = save;
+  const { transportation3R: _transportation3R, ...withoutTransportation } =
+    save;
   const v9: SaveV9 = {
     ...withoutTransportation,
     saveVersion: 9,
@@ -83,32 +81,44 @@ function validateTransportationReferences(
 
   for (const control of state.intersections.controls) {
     if (!junctionIds.has(control.junctionId)) {
-      throw new Error(`V10 intersection control references missing junction: ${control.junctionId}`);
+      throw new Error(
+        `V10 intersection control references missing junction: ${control.junctionId}`,
+      );
     }
   }
   for (const queue of state.intersections.queues) {
     if (!movementIds.has(queue.movementId)) {
-      throw new Error(`V10 intersection queue references missing movement: ${queue.movementId}`);
+      throw new Error(
+        `V10 intersection queue references missing movement: ${queue.movementId}`,
+      );
     }
   }
   for (const pending of state.intersections.pendingReleased) {
     if (!junctionIds.has(pending.junctionId)) {
-      throw new Error(`V10 released queue references missing junction: ${pending.junctionId}`);
+      throw new Error(
+        `V10 released queue references missing junction: ${pending.junctionId}`,
+      );
     }
     for (const release of pending.releases) {
       if (!movementIds.has(release.movementId)) {
-        throw new Error(`V10 released queue references missing movement: ${release.movementId}`);
+        throw new Error(
+          `V10 released queue references missing movement: ${release.movementId}`,
+        );
       }
     }
   }
   for (const item of state.intersections.serviceCredits) {
     if (!movementIds.has(item.movementId)) {
-      throw new Error(`V10 service credit references missing movement: ${item.movementId}`);
+      throw new Error(
+        `V10 service credit references missing movement: ${item.movementId}`,
+      );
     }
   }
   for (const item of state.intersections.lastSteppedTicks) {
     if (!junctionIds.has(item.junctionId)) {
-      throw new Error(`V10 stepped tick references missing junction: ${item.junctionId}`);
+      throw new Error(
+        `V10 stepped tick references missing junction: ${item.junctionId}`,
+      );
     }
   }
 
@@ -116,37 +126,49 @@ function validateTransportationReferences(
     state.dynamicRouting.state.travelTimeTicksByCarriageway,
   )) {
     if (!carriagewayIds.has(id)) {
-      throw new Error(`V10 routing state references missing carriageway: ${id}`);
+      throw new Error(
+        `V10 routing state references missing carriageway: ${id}`,
+      );
     }
   }
   for (const id of Object.keys(
     state.dynamicRouting.state.congestionPenaltyTicksByCarriageway,
   )) {
     if (!carriagewayIds.has(id)) {
-      throw new Error(`V10 congestion state references missing carriageway: ${id}`);
+      throw new Error(
+        `V10 congestion state references missing carriageway: ${id}`,
+      );
     }
   }
   for (const id of Object.keys(
     state.dynamicRouting.state.incidentPenaltyTicksByCarriageway,
   )) {
     if (!carriagewayIds.has(id)) {
-      throw new Error(`V10 incident routing state references missing carriageway: ${id}`);
+      throw new Error(
+        `V10 incident routing state references missing carriageway: ${id}`,
+      );
     }
   }
   for (const id of state.dynamicRouting.state.blockedCarriagewayIds) {
     if (!carriagewayIds.has(id)) {
-      throw new Error(`V10 blocked routing state references missing carriageway: ${id}`);
+      throw new Error(
+        `V10 blocked routing state references missing carriageway: ${id}`,
+      );
     }
   }
   for (const id of state.dynamicRouting.state.blockedMovementIds) {
     if (!movementIds.has(id)) {
-      throw new Error(`V10 blocked routing state references missing movement: ${id}`);
+      throw new Error(
+        `V10 blocked routing state references missing movement: ${id}`,
+      );
     }
   }
 
   for (const incident of state.incidents.incidents) {
     if (!segmentIds.has(incident.segmentId)) {
-      throw new Error(`V10 incident references missing segment: ${incident.segmentId}`);
+      throw new Error(
+        `V10 incident references missing segment: ${incident.segmentId}`,
+      );
     }
     for (const laneId of incident.laneIds) {
       if (!laneIds.has(laneId)) {

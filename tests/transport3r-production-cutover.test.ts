@@ -3,7 +3,10 @@ import test from "node:test";
 import { SimulationCore } from "../src/simulation/core/SimulationCore.ts";
 import { LegacySimulationCore } from "../src/simulation/core/LegacySimulationCore.ts";
 import { MovementAwareIntersectionAdapter } from "../src/simulation/transportation/MovementAwareIntersectionAdapter.ts";
-import { TerrainGrid, type TerrainCell } from "../src/world/terrain/TerrainGrid.ts";
+import {
+  TerrainGrid,
+  type TerrainCell,
+} from "../src/world/terrain/TerrainGrid.ts";
 
 function flat(width = 9, height = 9): TerrainGrid {
   const cells: TerrainCell[] = Array.from({ length: width * height }, () => ({
@@ -16,16 +19,28 @@ function flat(width = 9, height = 9): TerrainGrid {
 }
 
 test("production SimulationCore cuts intersection authority over while legacy remains an oracle", () => {
-  const core = new SimulationCore({ terrain: flat(), startingFunds: 1_000_000 });
-  const legacy = new LegacySimulationCore({ terrain: flat(), startingFunds: 1_000_000 });
+  const core = new SimulationCore({
+    terrain: flat(),
+    startingFunds: 1_000_000,
+  });
+  const legacy = new LegacySimulationCore({
+    terrain: flat(),
+    startingFunds: 1_000_000,
+  });
 
   assert.ok(core.intersections instanceof MovementAwareIntersectionAdapter);
-  assert.equal(legacy.intersections instanceof MovementAwareIntersectionAdapter, false);
+  assert.equal(
+    legacy.intersections instanceof MovementAwareIntersectionAdapter,
+    false,
+  );
   assert.ok(core.transportation3R);
 });
 
 test("production legacy-shaped intersection facade and 3R movement queues are the same live authority", () => {
-  const core = new SimulationCore({ terrain: flat(), startingFunds: 1_000_000 });
+  const core = new SimulationCore({
+    terrain: flat(),
+    startingFunds: 1_000_000,
+  });
   assert.equal(
     core.buildRoad(
       [
@@ -56,9 +71,13 @@ test("production legacy-shaped intersection facade and 3R movement queues are th
 
   const movement = core.transportation3R
     .networkSnapshot()
-    .movements.find((candidate) => candidate.allowed && candidate.turnKind === "through");
+    .movements.find(
+      (candidate) => candidate.allowed && candidate.turnKind === "through",
+    );
   assert.ok(movement);
-  const nodeId = core.transportation3R.legacyNodeIdForJunction(movement.junctionId);
+  const nodeId = core.transportation3R.legacyNodeIdForJunction(
+    movement.junctionId,
+  );
   const incomingEdgeId = core.transportation3R.legacyEdgeIdForCarriageway(
     movement.fromCarriagewayId,
   );
@@ -78,8 +97,14 @@ test("production legacy-shaped intersection facade and 3R movement queues are th
     outgoingEdgeId,
   );
 
-  assert.equal(core.transportation3R.intersections.queueLength(movement.junctionId), 1);
+  assert.equal(
+    core.transportation3R.intersections.queueLength(movement.junctionId),
+    1,
+  );
   assert.equal(core.intersections.queueLength(nodeId), 1);
   const legacyProjection = core.intersections.snapshot();
-  assert.equal(legacyProjection[nodeId]?.[0]?.entries[0]?.vehicleId, "vehicle:cutover");
+  assert.equal(
+    legacyProjection[nodeId]?.[0]?.entries[0]?.vehicleId,
+    "vehicle:cutover",
+  );
 });

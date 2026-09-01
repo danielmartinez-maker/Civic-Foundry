@@ -39,12 +39,18 @@ export class MovementAwareIntersectionAdapter extends IntersectionSystem {
     entry: IntersectionQueueEntry,
     outgoingEdgeId?: string,
   ): void {
-    if (entry.released) throw new Error("released intersection entries are snapshot-only");
+    if (entry.released)
+      throw new Error("released intersection entries are snapshot-only");
     this.refreshNetwork?.();
     const movementId = this.resolveMovement(
       nodeId,
       incomingEdgeId,
-      outgoingEdgeId ?? this.resolveQueuedOutgoingEdge?.(entry.vehicleId, nodeId, incomingEdgeId),
+      outgoingEdgeId ??
+        this.resolveQueuedOutgoingEdge?.(
+          entry.vehicleId,
+          nodeId,
+          incomingEdgeId,
+        ),
     );
     this.runtime.intersections.enqueue(movementId, this.toMovementEntry(entry));
   }
@@ -76,10 +82,7 @@ export class MovementAwareIntersectionAdapter extends IntersectionSystem {
   override snapshot(): IntersectionSnapshot {
     this.refreshNetwork?.();
     const snapshot = this.runtime.intersections.snapshot();
-    const result = new Map<
-      string,
-      Map<string, IntersectionQueueEntry[]>
-    >();
+    const result = new Map<string, Map<string, IntersectionQueueEntry[]>>();
     const append = (
       junctionId: JunctionId,
       movementId: TurnMovementId,
@@ -94,7 +97,8 @@ export class MovementAwareIntersectionAdapter extends IntersectionSystem {
         movement.fromCarriagewayId,
       );
       if (!nodeId || !incomingEdgeId) return;
-      const approaches = result.get(nodeId) ?? new Map<string, IntersectionQueueEntry[]>();
+      const approaches =
+        result.get(nodeId) ?? new Map<string, IntersectionQueueEntry[]>();
       const entries = approaches.get(incomingEdgeId) ?? [];
       entries.push(Object.freeze({ ...entry }));
       approaches.set(incomingEdgeId, entries);
@@ -106,7 +110,8 @@ export class MovementAwareIntersectionAdapter extends IntersectionSystem {
         .networkSnapshot()
         .movements.find((candidate) => candidate.id === queue.movementId);
       if (!movement) continue;
-      for (const entry of queue.entries) append(movement.junctionId, queue.movementId, entry);
+      for (const entry of queue.entries)
+        append(movement.junctionId, queue.movementId, entry);
     }
     for (const pending of snapshot.pendingReleased) {
       for (const release of pending.releases) {
@@ -135,7 +140,8 @@ export class MovementAwareIntersectionAdapter extends IntersectionSystem {
                     entries: Object.freeze(
                       [...entries].sort(
                         (a, b) =>
-                          Number(Boolean(a.released)) - Number(Boolean(b.released)) ||
+                          Number(Boolean(a.released)) -
+                            Number(Boolean(b.released)) ||
                           (a.priority === "emergency" ? 0 : 1) -
                             (b.priority === "emergency" ? 0 : 1) ||
                           a.queuedTick - b.queuedTick ||
@@ -163,7 +169,9 @@ export class MovementAwareIntersectionAdapter extends IntersectionSystem {
       for (const approach of snapshot[nodeId] ?? []) {
         for (const entry of approach.entries) {
           if (seenVehicles.has(entry.vehicleId)) {
-            throw new Error(`duplicate intersection vehicle ${entry.vehicleId}`);
+            throw new Error(
+              `duplicate intersection vehicle ${entry.vehicleId}`,
+            );
           }
           seenVehicles.add(entry.vehicleId);
           const outgoingEdgeId = this.resolveQueuedOutgoingEdge?.(
@@ -226,14 +234,21 @@ export class MovementAwareIntersectionAdapter extends IntersectionSystem {
     outgoingEdgeId?: string,
   ): TurnMovementId {
     const explicit = outgoingEdgeId
-      ? this.runtime.movementIdForLegacyTurn(nodeId, incomingEdgeId, outgoingEdgeId)
+      ? this.runtime.movementIdForLegacyTurn(
+          nodeId,
+          incomingEdgeId,
+          outgoingEdgeId,
+        )
       : undefined;
     if (explicit) return explicit;
 
     const junctionId = this.runtime.junctionIdForLegacyNode(nodeId);
-    const incomingCarriagewayId = this.runtime.carriagewayIdForLegacyEdge(incomingEdgeId);
+    const incomingCarriagewayId =
+      this.runtime.carriagewayIdForLegacyEdge(incomingEdgeId);
     if (!junctionId || !incomingCarriagewayId) {
-      throw new Error(`cannot map legacy intersection approach ${nodeId}/${incomingEdgeId}`);
+      throw new Error(
+        `cannot map legacy intersection approach ${nodeId}/${incomingEdgeId}`,
+      );
     }
     const candidates = this.runtime
       .networkSnapshot()
