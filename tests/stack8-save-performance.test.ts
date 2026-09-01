@@ -10,7 +10,10 @@ test("canonical Save V9 serialization and hydration publish runtime performance 
 
   const save = serializeCore(core);
   assert.equal(save.saveVersion, 9);
-  assert.equal(core.diagnostics.snapshot().performance["save.serialize"]?.calls, 1);
+  assert.equal(
+    core.diagnostics.snapshot().performance["save.serialize"]?.calls,
+    1,
+  );
 
   const loaded = hydrateCore(save);
   assert.equal(
