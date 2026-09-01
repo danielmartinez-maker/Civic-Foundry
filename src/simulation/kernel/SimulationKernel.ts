@@ -151,9 +151,13 @@ export class SimulationKernel {
           } finally {
             const duration = this.now() - started;
             if (Number.isFinite(duration) && duration >= 0) {
-              this.performance.record(system.id, duration, {
-                budgetMs: system.performanceBudgetMs,
-              });
+              this.performance.record(
+                system.id,
+                duration,
+                system.performanceBudgetMs === undefined
+                  ? {}
+                  : { budgetMs: system.performanceBudgetMs },
+              );
             }
           }
         }
