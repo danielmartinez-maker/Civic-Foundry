@@ -5,7 +5,6 @@ use prism_domain::cadastre::types::{
 use prism_domain::canonical::hash::prism_cadastral_hash_v1;
 
 #[test]
-#[ignore = "diagnostic: isolate accepted split workspace failure"]
 fn split_conserves_area_and_retires_source_with_lineage() {
     let mut graph = CadastralGraph::try_from_snapshot(graph_40x20_fixture()).unwrap();
     let result = graph.split_parcel(
