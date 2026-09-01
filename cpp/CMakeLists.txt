@@ -34,6 +34,7 @@ if(CIVIC_BUILD_TESTS)
   add_executable(civic_engine_tests
     tests/contract_red_tests.cpp
     tests/world_foundation_tests.cpp
+    tests/cadastre_mutation_tests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main)
   include(GoogleTest)
