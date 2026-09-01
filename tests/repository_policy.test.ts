@@ -104,7 +104,7 @@ test("formatting contract covers supported repository text types", async () => {
   }
 });
 
-test("markdown formatting is stable without table reflow", async () => {
+test("markdown formatting normalizes line endings without table reflow", async () => {
   const formatter = (await import("../scripts/format-changed.mjs")) as Record<
     string,
     unknown
@@ -114,6 +114,9 @@ test("markdown formatting is stable without table reflow", async () => {
   assert.equal(typeof normalize, "function");
   if (typeof normalize !== "function") return;
 
-  const source = "| A | B |  \n| --- | --- |\n| 1 | 2 |\n\n";
-  assert.equal(normalize(source), "| A | B |\n| --- | --- |\n| 1 | 2 |\n");
+  const source = "| A | B |  \r\n| --- | --- |\r\n| 1 | 2 |\r\n\r\n";
+  assert.equal(
+    normalize(source),
+    "| A | B |  \n| --- | --- |\n| 1 | 2 |\n",
+  );
 });
