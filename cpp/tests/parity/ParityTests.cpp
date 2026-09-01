@@ -49,3 +49,14 @@ TEST(CAbi, DomainHashCanonicalizesSemanticCommandPayloadAndMarksUnownedDomains) 
     cf_engine_destroy(left);
     cf_engine_destroy(right);
 }
+
+TEST(CAbi, CommandParserRejectsTrailingNonWhitespace) {
+    cf_engine* engine = nullptr;
+    const cf_engine_config config{23, 0, 1};
+    ASSERT_EQ(cf_engine_create(&config, &engine), CF_ERROR_NONE);
+    const std::string bad = R"([] trailing)";
+    EXPECT_EQ(cf_engine_submit_commands(engine, reinterpret_cast<const uint8_t*>(bad.data()), bad.size()), CF_ERROR_SERIALIZATION_FAILURE);
+    const std::string good = "[]\n\t ";
+    EXPECT_EQ(cf_engine_submit_commands(engine, reinterpret_cast<const uint8_t*>(good.data()), good.size()), CF_ERROR_NONE);
+    cf_engine_destroy(engine);
+}

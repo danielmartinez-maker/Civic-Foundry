@@ -40,3 +40,9 @@ TEST(SaveV9, RejectsMalformedInheritedTransitAndEconomyState) {
     const auto badEconomy = R"({"saveVersion":9,"gameVersion":"0.9.0-urban-fabric","seed":7,"clock":{"tick":11,"speed":1},"terrain":{},"world":{},"economyDomain":{"inventories":{"records":[{"firmId":"f1","commodity":"goods"},{"firmId":"f1","commodity":"goods"}],"cargo":[]},"financials":[]},"urbanFabric":{"parcels":[],"lineage":[]},"zoningV2":{"parcelAssignments":[]},"buildingsV2":[],"propertyMarket":{"holdings":[],"transactions":[],"nextTransactionId":1}})";
     EXPECT_FALSE(civic::parseSaveV9(badEconomy));
 }
+
+TEST(SaveV9, RejectsTrailingNonWhitespaceAfterValidObject) {
+    EXPECT_FALSE(civic::parseSaveV9(minimalSave() + " garbage"));
+    EXPECT_FALSE(civic::parseSaveV9(minimalSave() + " {}"));
+    EXPECT_TRUE(civic::parseSaveV9(minimalSave() + "\n\t "));
+}

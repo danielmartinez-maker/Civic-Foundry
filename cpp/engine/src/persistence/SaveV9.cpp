@@ -8,16 +8,33 @@
 
 #include <limits>
 
+namespace {
+bool hasOnlyJsonWhitespace(std::string_view text, std::size_t offset) {
+    if (offset > text.size()) return false;
+    for (std::size_t index = offset; index < text.size(); ++index) {
+        const char ch = text[index];
+        if (ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n') return false;
+    }
+    return true;
+}
+} // namespace
+
 namespace civic {
 Result<SaveV9Dto> parseSaveV9(std::string_view json) {
     using namespace save_v9_detail;
+    if (json.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, "save JSON exceeds parser size limit"));
+    }
     json_tokener* tokener = json_tokener_new();
     if (!tokener) return std::unexpected(make_error(ErrorCode::internal_error, "failed to allocate JSON parser"));
     json_object* raw = json_tokener_parse_ex(tokener, json.data(), static_cast<int>(json.size()));
     const auto error = json_tokener_get_error(tokener);
+    const auto parse_end = json_tokener_get_parse_end(tokener);
     json_tokener_free(tokener);
     JsonPtr root{raw, json_object_put};
-    if (error != json_tokener_success || !root || !isObject(root.get())) return std::unexpected(make_error(ErrorCode::serialization_failure, "save must be valid JSON object"));
+    if (error != json_tokener_success || !root || !isObject(root.get()) || !hasOnlyJsonWhitespace(json, parse_end)) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, "save must be one complete valid JSON object"));
+    }
 
     json_object* save_version = nullptr;
     if (!json_object_object_get_ex(root.get(), "saveVersion", &save_version) || !save_version || json_object_get_type(save_version) != json_type_int || json_object_get_int64(save_version) != 9) {

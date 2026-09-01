@@ -124,14 +124,26 @@ cf_error_code guarded(cf_engine* engine, Operation&& operation) noexcept {
     }
 }
 
+bool hasOnlyJsonWhitespace(const uint8_t* data, size_t size, size_t offset) {
+    if (offset > size) return false;
+    for (size_t index = offset; index < size; ++index) {
+        const auto ch = static_cast<char>(data[index]);
+        if (ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n') return false;
+    }
+    return true;
+}
+
 civic::Result<std::vector<civic::CommandEnvelope>> parseCommands(const uint8_t* data, size_t size) {
     if (!data && size != 0) return std::unexpected(civic::make_error(civic::ErrorCode::invalid_argument, "command buffer is null"));
+    if (size > static_cast<size_t>(std::numeric_limits<int>::max())) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure, "command JSON exceeds parser size limit"));
     json_tokener* tokener = json_tokener_new();
     if (!tokener) return std::unexpected(civic::make_error(civic::ErrorCode::internal_error, "failed to allocate command parser"));
     json_object* raw = json_tokener_parse_ex(tokener, reinterpret_cast<const char*>(data), static_cast<int>(size));
-    const auto parse_error = json_tokener_get_error(tokener); json_tokener_free(tokener);
+    const auto parse_error = json_tokener_get_error(tokener);
+    const auto parse_end = json_tokener_get_parse_end(tokener);
+    json_tokener_free(tokener);
     std::unique_ptr<json_object, decltype(&json_object_put)> root{raw, json_object_put};
-    if (parse_error != json_tokener_success || !root || json_object_get_type(root.get()) != json_type_array) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure, "commands must be a JSON array"));
+    if (parse_error != json_tokener_success || !root || json_object_get_type(root.get()) != json_type_array || !hasOnlyJsonWhitespace(data, size, parse_end)) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure, "commands must be one complete JSON array"));
     std::vector<civic::CommandEnvelope> commands;
     for (std::size_t i = 0; i < json_object_array_length(root.get()); ++i) {
         auto* item = json_object_array_get_idx(root.get(), i);
