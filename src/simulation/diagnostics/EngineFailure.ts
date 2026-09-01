@@ -96,7 +96,11 @@ export function engineFailure(
   message: string,
   cause?: unknown,
 ): EngineFailure {
-  return new EngineFailure(metadata, message, cause === undefined ? undefined : { cause });
+  return new EngineFailure(
+    metadata,
+    message,
+    cause === undefined ? undefined : { cause },
+  );
 }
 
 export function normalizeEngineFailure(

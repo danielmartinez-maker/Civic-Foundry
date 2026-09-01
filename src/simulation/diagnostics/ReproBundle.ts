@@ -38,15 +38,24 @@ export type ReproBundle = Readonly<{
 export type ReproBundleInput = Omit<ReproBundle, "bundleVersion"> &
   Readonly<{ bundleVersion?: 1 }>;
 
-function sortedNumberRecord(values: Readonly<Record<string, number>>): Readonly<Record<string, number>> {
+function sortedNumberRecord(
+  values: Readonly<Record<string, number>>,
+): Readonly<Record<string, number>> {
   return Object.freeze(
-    Object.fromEntries(Object.entries(values).sort(([a], [b]) => a.localeCompare(b))),
+    Object.fromEntries(
+      Object.entries(values).sort(([a], [b]) => a.localeCompare(b)),
+    ),
   );
 }
 
 export function createReproBundle(input: ReproBundleInput): ReproBundle {
   const commands = [...input.commands]
-    .sort((a, b) => a.sequence - b.sequence || a.tick - b.tick || a.type.localeCompare(b.type))
+    .sort(
+      (a, b) =>
+        a.sequence - b.sequence ||
+        a.tick - b.tick ||
+        a.type.localeCompare(b.type),
+    )
     .map((command) => Object.freeze({ ...command }));
   const schedulerManifest = input.schedulerManifest.map((system) =>
     Object.freeze({
@@ -57,7 +66,9 @@ export function createReproBundle(input: ReproBundleInput): ReproBundle {
       rngStreams: Object.freeze([...system.rngStreams]),
       emits: Object.freeze([...system.emits]),
       invariants:
-        system.invariants === undefined ? undefined : Object.freeze([...system.invariants]),
+        system.invariants === undefined
+          ? undefined
+          : Object.freeze([...system.invariants]),
     }),
   );
   const bundle: ReproBundle = Object.freeze({

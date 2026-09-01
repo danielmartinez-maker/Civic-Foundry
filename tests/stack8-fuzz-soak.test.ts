@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 
 import { SimulationCore } from "../src/simulation/core/SimulationCore.ts";
 import { captureAuthoritativeTransactionCheckpoint } from "../src/simulation/core/AuthoritativeTransactionCheckpoint.ts";
-import { deterministicHash, stableStringify } from "../src/simulation/diagnostics/DeterministicDiagnostics.ts";
+import {
+  deterministicHash,
+  stableStringify,
+} from "../src/simulation/diagnostics/DeterministicDiagnostics.ts";
 import { RevisionRegistry } from "../src/simulation/diagnostics/RevisionRegistry.ts";
 import { CausalTraceBuffer } from "../src/simulation/diagnostics/CausalTrace.ts";
 import { TransactionCoordinator } from "../src/simulation/transactions/TransactionCoordinator.ts";
@@ -67,7 +70,11 @@ test("fixed-seed transaction mutation fuzz always restores the exact pre-mutatio
     const key = (["a", "b", "c"] as const)[next() % 3]!;
     state[key] += (next() % 31) - 15;
     coordinator.rollback(checkpoint);
-    assert.equal(deterministicHash(state), before, `seed regression at iteration ${iteration}`);
+    assert.equal(
+      deterministicHash(state),
+      before,
+      `seed regression at iteration ${iteration}`,
+    );
   }
 });
 
@@ -87,7 +94,11 @@ test("revision and trace fuzz obey bounded retention and no-op invalidation budg
     const authority = next() % 2 === 0 ? "topology" : "cadastre";
     const changed = next() % 5 === 0;
     if (authority === "topology" && changed) semanticTopologyChanges += 1;
-    revisions.recordMutation(authority, changed, `fuzz-${authority}-${iteration}`);
+    revisions.recordMutation(
+      authority,
+      changed,
+      `fuzz-${authority}-${iteration}`,
+    );
     trace.append({
       code: changed ? "semantic-mutation" : "noop-observation",
       domain: authority,
@@ -116,7 +127,10 @@ test("bounded deterministic soak produces identical checkpoint hashes and finite
     stableStringify(right.diagnostics.snapshot());
     assert.equal(left.kernel.diagnosticSnapshot().faulted, false);
     assert.equal(right.kernel.diagnosticSnapshot().faulted, false);
-    assert.ok(left.kernel.events.list().length <= 512, "event journal retention budget");
+    assert.ok(
+      left.kernel.events.list().length <= 512,
+      "event journal retention budget",
+    );
   }
 
   assert.deepEqual(leftHashes, rightHashes);

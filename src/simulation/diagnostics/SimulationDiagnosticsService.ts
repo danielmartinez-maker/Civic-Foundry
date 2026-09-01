@@ -1,4 +1,7 @@
-import type { SimulationKernel, KernelSchedulerManifestEntry } from "../kernel/SimulationKernel.ts";
+import type {
+  SimulationKernel,
+  KernelSchedulerManifestEntry,
+} from "../kernel/SimulationKernel.ts";
 import { CausalTraceBuffer } from "./CausalTrace.ts";
 import { deterministicHash } from "./DeterministicDiagnostics.ts";
 
@@ -87,7 +90,9 @@ export class SimulationDiagnosticsService {
     const domains = this.source.captureDomains();
     const revisions = Object.freeze(
       Object.fromEntries(
-        Object.entries(this.source.revisions()).sort(([a], [b]) => a.localeCompare(b)),
+        Object.entries(this.source.revisions()).sort(([a], [b]) =>
+          a.localeCompare(b),
+        ),
       ),
     );
     return Object.freeze({
@@ -98,7 +103,8 @@ export class SimulationDiagnosticsService {
         retainedEvents: kernel.retainedEvents,
         transactionRollbacks: kernel.transactionRollbacks,
         registeredSystems: this.source.kernel.schedulerManifest(),
-        invariantFailures: kernel.lastFailure?.category === "InvariantViolation" ? 1 : 0,
+        invariantFailures:
+          kernel.lastFailure?.category === "InvariantViolation" ? 1 : 0,
       }),
       world: domains.world,
       buildings: domains.buildings,

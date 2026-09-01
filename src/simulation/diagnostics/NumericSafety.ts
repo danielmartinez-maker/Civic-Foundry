@@ -8,7 +8,8 @@ export function assertFiniteRecord(value: unknown, path: string): void {
     assertFiniteNumber(value, path);
     return;
   }
-  if (value === null || value === undefined || typeof value !== "object") return;
+  if (value === null || value === undefined || typeof value !== "object")
+    return;
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index++) {
       assertFiniteRecord(value[index], `${path}[${index}]`);
@@ -18,6 +19,9 @@ export function assertFiniteRecord(value: unknown, path: string): void {
   for (const key of Object.keys(value as Record<string, unknown>).sort((a, b) =>
     a.localeCompare(b),
   )) {
-    assertFiniteRecord((value as Record<string, unknown>)[key], `${path}.${key}`);
+    assertFiniteRecord(
+      (value as Record<string, unknown>)[key],
+      `${path}.${key}`,
+    );
   }
 }

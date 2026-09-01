@@ -10,12 +10,21 @@ test("SimulationCore exposes renderer-independent read-only engine health diagno
   const snapshot = core.diagnostics.snapshot();
 
   assert.equal(snapshot.simulation.tick, core.clock.tick);
-  assert.deepEqual(snapshot.simulation.registeredSystems, core.kernel.schedulerManifest());
+  assert.deepEqual(
+    snapshot.simulation.registeredSystems,
+    core.kernel.schedulerManifest(),
+  );
   assert.equal(snapshot.world.parcels, core.cadastre.listParcels().length);
   assert.equal(snapshot.world.blocks, core.cadastre.listBlocks().length);
   assert.equal(snapshot.buildings.canonical, core.buildings.listV2().length);
-  assert.equal(snapshot.transport.segments, core.transportationGraph.edges.length);
-  assert.equal(snapshot.transport.activeVehicles, core.traffic.activeVehicles.length);
+  assert.equal(
+    snapshot.transport.segments,
+    core.transportationGraph.edges.length,
+  );
+  assert.equal(
+    snapshot.transport.activeVehicles,
+    core.traffic.activeVehicles.length,
+  );
   assert.equal(snapshot.economy.firms, core.economyDomain.firms.list().length);
   assert.equal(
     snapshot.determinism.authorityHash,

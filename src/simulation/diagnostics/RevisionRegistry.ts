@@ -37,36 +37,49 @@ export class RevisionRegistry {
   }
 
   declareCache(cache: string, dependencies: readonly string[]): void {
-    if (!cache || cache.trim().length === 0) throw new Error("cache id must not be empty");
-    if (this.caches.has(cache)) throw new Error(`duplicate revision cache: ${cache}`);
-    const unique = [...new Set(dependencies)].sort((a, b) => a.localeCompare(b));
+    if (!cache || cache.trim().length === 0)
+      throw new Error("cache id must not be empty");
+    if (this.caches.has(cache))
+      throw new Error(`duplicate revision cache: ${cache}`);
+    const unique = [...new Set(dependencies)].sort((a, b) =>
+      a.localeCompare(b),
+    );
     for (const dependency of unique) this.ensure(dependency);
-    this.caches.set(cache, { dependencies: Object.freeze(unique), observed: {} });
+    this.caches.set(cache, {
+      dependencies: Object.freeze(unique),
+      observed: {},
+    });
   }
 
   markRebuilt(cache: string): void {
     const state = this.requireCache(cache);
     state.observed = Object.fromEntries(
-      state.dependencies.map((dependency) => [dependency, this.current(dependency)]),
+      state.dependencies.map((dependency) => [
+        dependency,
+        this.current(dependency),
+      ]),
     );
   }
 
   needsRebuild(cache: string): boolean {
     const state = this.requireCache(cache);
     return state.dependencies.some(
-      (dependency) => (state.observed[dependency] ?? -1) !== this.current(dependency),
+      (dependency) =>
+        (state.observed[dependency] ?? -1) !== this.current(dependency),
     );
   }
 
   cacheStatus(cache: string): CacheRevisionStatus {
     const state = this.requireCache(cache);
     const changed = state.dependencies.filter(
-      (dependency) => (state.observed[dependency] ?? -1) !== this.current(dependency),
+      (dependency) =>
+        (state.observed[dependency] ?? -1) !== this.current(dependency),
     );
     const reason =
       changed.length === 0
         ? null
-        : (this.mutationReasons.get(changed[0]!) ?? `${changed[0]}-revision-changed`);
+        : (this.mutationReasons.get(changed[0]!) ??
+          `${changed[0]}-revision-changed`);
     return Object.freeze({
       cache,
       needsRebuild: changed.length > 0,
@@ -85,7 +98,8 @@ export class RevisionRegistry {
 
   private requireCache(cache: string): CacheState {
     const state = this.caches.get(cache);
-    if (state === undefined) throw new Error(`unknown revision cache: ${cache}`);
+    if (state === undefined)
+      throw new Error(`unknown revision cache: ${cache}`);
     return state;
   }
 }

@@ -43,12 +43,14 @@ export type TickProfile = Readonly<{
   finalAuthorityHash: string;
 }>;
 
-export function profileTicks(options: Readonly<{
-  ticks: number;
-  step: (ticks: number) => void;
-  captureAuthority: () => unknown;
-  now?: () => number;
-}>): TickProfile {
+export function profileTicks(
+  options: Readonly<{
+    ticks: number;
+    step: (ticks: number) => void;
+    captureAuthority: () => unknown;
+    now?: () => number;
+  }>,
+): TickProfile {
   if (!Number.isInteger(options.ticks) || options.ticks < 0) {
     throw new Error("profile tick count must be a non-negative integer");
   }

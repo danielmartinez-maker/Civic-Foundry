@@ -74,7 +74,12 @@ export class ReferenceIntegrityValidator {
     );
   }
 
-  finite(entityType: string, entityId: string, field: string, value: number): void {
+  finite(
+    entityType: string,
+    entityId: string,
+    field: string,
+    value: number,
+  ): void {
     if (Number.isFinite(value)) return;
     this.issues.push(
       engineFailure(

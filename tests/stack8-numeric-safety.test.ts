@@ -5,7 +5,10 @@ import { TrafficSystem } from "../src/simulation/traffic/TrafficSystem.ts";
 import { TransportationGraph } from "../src/simulation/traffic/TransportationGraph.ts";
 import { IntersectionSystem } from "../src/simulation/traffic/IntersectionSystem.ts";
 import { RoadSystem } from "../src/world/roads/RoadSystem.ts";
-import { TerrainGrid, type TerrainCell } from "../src/world/terrain/TerrainGrid.ts";
+import {
+  TerrainGrid,
+  type TerrainCell,
+} from "../src/world/terrain/TerrainGrid.ts";
 import { TreasurySystem } from "../src/simulation/treasury/TreasurySystem.ts";
 import { EngineFailure } from "../src/simulation/diagnostics/EngineFailure.ts";
 

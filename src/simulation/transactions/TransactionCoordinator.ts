@@ -21,11 +21,16 @@ export class TransactionCoordinator {
     if (this.participants.has(participant.id)) {
       throw new Error(`duplicate transaction participant: ${participant.id}`);
     }
-    this.participants.set(participant.id, participant as TransactionParticipant);
+    this.participants.set(
+      participant.id,
+      participant as TransactionParticipant,
+    );
   }
 
   listParticipantIds(): readonly string[] {
-    return Object.freeze([...this.participants.keys()].sort((a, b) => a.localeCompare(b)));
+    return Object.freeze(
+      [...this.participants.keys()].sort((a, b) => a.localeCompare(b)),
+    );
   }
 
   capture(): TransactionCheckpoint {

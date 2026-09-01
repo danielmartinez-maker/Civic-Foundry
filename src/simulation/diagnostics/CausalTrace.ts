@@ -28,13 +28,17 @@ export class CausalTraceBuffer {
       ...input,
       sequence: this.nextSequence++,
       entityIds:
-        input.entityIds === undefined ? undefined : Object.freeze([...input.entityIds]),
+        input.entityIds === undefined
+          ? undefined
+          : Object.freeze([...input.entityIds]),
       details:
         input.details === undefined
           ? undefined
           : Object.freeze(
               Object.fromEntries(
-                Object.entries(input.details).sort(([a], [b]) => a.localeCompare(b)),
+                Object.entries(input.details).sort(([a], [b]) =>
+                  a.localeCompare(b),
+                ),
               ),
             ),
     });
