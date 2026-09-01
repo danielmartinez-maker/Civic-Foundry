@@ -233,7 +233,10 @@ fn rebuild_snapshot(
 
     let mut old_exact_edge_by_segment = BTreeMap::<String, ParcelEdge>::new();
     for edge in &before.edges {
-        let Some(from) = old_nodes_by_id.get(&edge.from_node_id).map(|node| node.point) else {
+        let Some(from) = old_nodes_by_id
+            .get(&edge.from_node_id)
+            .map(|node| node.point)
+        else {
             continue;
         };
         let Some(to) = old_nodes_by_id.get(&edge.to_node_id).map(|node| node.point) else {
@@ -329,7 +332,8 @@ fn rebuild_snapshot(
         let access_edge_ids = boundary_edges
             .iter()
             .filter(|edge| {
-                edge.kind == ParcelEdgeKind::StreetFrontage || edge.kind == ParcelEdgeKind::RightOfWay
+                edge.kind == ParcelEdgeKind::StreetFrontage
+                    || edge.kind == ParcelEdgeKind::RightOfWay
             })
             .map(|edge| edge.id.clone())
             .collect::<Vec<_>>();
@@ -501,9 +505,14 @@ fn segmentize_ring(ring: &[WorldPoint], vertices: &[WorldPoint]) -> Result<Polyg
             .filter(|point| !same_point(*point, from) && !same_point(*point, to))
             .filter(|point| point_on_segment(*point, from, to))
             .collect::<Vec<_>>();
-        interior.sort_by(|left, right| segment_parameter(*left, from, to).total_cmp(&segment_parameter(*right, from, to)));
+        interior.sort_by(|left, right| {
+            segment_parameter(*left, from, to).total_cmp(&segment_parameter(*right, from, to))
+        });
         for point in interior {
-            if expanded.last().is_none_or(|previous| !same_point(*previous, point)) {
+            if expanded
+                .last()
+                .is_none_or(|previous| !same_point(*previous, point))
+            {
                 expanded.push(point);
             }
         }
@@ -552,18 +561,15 @@ fn point_on_boundary(point: WorldPoint, ring: &[WorldPoint]) -> bool {
 }
 
 fn point_on_segment(point: WorldPoint, start: WorldPoint, end: WorldPoint) -> bool {
-    let cross = (point.y - start.y) * (end.x - start.x)
-        - (point.x - start.x) * (end.y - start.y);
+    let cross = (point.y - start.y) * (end.x - start.x) - (point.x - start.x) * (end.y - start.y);
     if cross.abs() > GEOMETRY_EPSILON {
         return false;
     }
-    let dot = (point.x - start.x) * (end.x - start.x)
-        + (point.y - start.y) * (end.y - start.y);
+    let dot = (point.x - start.x) * (end.x - start.x) + (point.y - start.y) * (end.y - start.y);
     if dot < -GEOMETRY_EPSILON {
         return false;
     }
-    let length_squared =
-        (end.x - start.x).mul_add(end.x - start.x, (end.y - start.y).powi(2));
+    let length_squared = (end.x - start.x).mul_add(end.x - start.x, (end.y - start.y).powi(2));
     dot <= length_squared + GEOMETRY_EPSILON
 }
 
@@ -691,8 +697,7 @@ fn segment_key(from: WorldPoint, to: WorldPoint) -> Result<String, String> {
 }
 
 fn same_point(left: WorldPoint, right: WorldPoint) -> bool {
-    (left.x - right.x).abs() <= GEOMETRY_EPSILON
-        && (left.y - right.y).abs() <= GEOMETRY_EPSILON
+    (left.x - right.x).abs() <= GEOMETRY_EPSILON && (left.y - right.y).abs() <= GEOMETRY_EPSILON
 }
 
 fn unique_id(base: &str, used: &BTreeSet<String>) -> String {
@@ -743,7 +748,8 @@ fn error_reason(error: P2AError) -> String {
             game_version,
         } => format!("unsupported-source-version:{save_version}:{game_version}"),
         P2AError::WorldValidation { code, field } => format!("{code}:{field}"),
-        P2AError::CadastreValidation { code, entity_id } | P2AError::Geometry { code, entity_id } => {
+        P2AError::CadastreValidation { code, entity_id }
+        | P2AError::Geometry { code, entity_id } => {
             entity_id.map_or_else(|| code.to_owned(), |id| format!("{code}:{id}"))
         }
         P2AError::MutationRejected { reasons } => reasons.join(";"),
