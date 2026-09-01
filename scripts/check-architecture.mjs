@@ -62,9 +62,7 @@ export function checkArchitectureImport(importer, imported) {
   const normalizedImported = normalize(imported);
 
   if (
-    presentationRoots.some((prefix) =>
-      normalizedImporter.startsWith(prefix),
-    ) &&
+    presentationRoots.some((prefix) => normalizedImporter.startsWith(prefix)) &&
     mutationInternals.some((prefix) => normalizedImported.startsWith(prefix))
   ) {
     return {
@@ -106,9 +104,7 @@ function parseSource(path, source) {
 
 export function checkArchitectureSource(path, source) {
   const normalizedPath = normalize(path);
-  if (
-    !authoritativeRoots.some((prefix) => normalizedPath.startsWith(prefix))
-  )
+  if (!authoritativeRoots.some((prefix) => normalizedPath.startsWith(prefix)))
     return [];
   const failures = [];
   const sourceFile = parseSource(normalizedPath, source);
@@ -145,7 +141,8 @@ async function collectTypeScriptFiles(directory) {
 
   for (const entry of entries) {
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...(await collectTypeScriptFiles(path)));
+    if (entry.isDirectory())
+      files.push(...(await collectTypeScriptFiles(path)));
     else if (extname(entry.name) === ".ts") files.push(path);
   }
 
