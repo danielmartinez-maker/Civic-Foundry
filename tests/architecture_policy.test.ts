@@ -17,6 +17,13 @@ test("world cannot depend on rendering", () => {
   );
 });
 
+test("save cannot depend on 3d rendering", () => {
+  assert.equal(
+    checkArchitectureImport("src/save/A.ts", "src/rendering/3d/B.ts")?.rule,
+    "save-no-rendering",
+  );
+});
+
 test("rendering cannot depend on UI", () => {
   assert.equal(
     checkArchitectureImport("src/rendering/A.ts", "src/ui/B.ts")?.rule,
