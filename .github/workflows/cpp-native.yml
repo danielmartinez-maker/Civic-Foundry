@@ -14,19 +14,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Install native toolchain
-        run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+        run: sudo apt-get update && sudo apt-get install -y ninja-build g++-14 clang-18 libc++-18-dev libc++abi-18-dev
       - name: Bootstrap vcpkg
         shell: bash
         run: |
           git clone --depth 1 https://github.com/microsoft/vcpkg "$RUNNER_TEMP/vcpkg"
           "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
-      - name: Configure Clang C++23
-        run: cmake -S cpp -B cpp/build -G Ninja -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCIVIC_BUILD_TESTS=ON
+      - name: Configure GCC 14 C++23 tests
+        run: cmake -S cpp -B cpp/build -G Ninja -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DCIVIC_BUILD_TESTS=ON
       - name: Build native engine tests
         run: cmake --build cpp/build --parallel 2
       - name: Run CTest
         run: ctest --test-dir cpp/build --output-on-failure
+      - name: Clang 18 + libc++ C++23 syntax gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          includes=(-Icpp/engine/include -Icpp/build/vcpkg_installed/x64-linux/include)
+          while IFS= read -r source; do
+            clang++-18 -std=c++23 -stdlib=libc++ -Wall -Wextra -Wpedantic -Wconversion -Wshadow "${includes[@]}" -fsyntax-only "$source"
+          done < <(find cpp/engine/src -name '*.cpp' -print | sort)
 
   native-windows:
     runs-on: windows-latest
