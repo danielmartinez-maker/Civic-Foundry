@@ -69,6 +69,17 @@ export class SimulationCore extends SimulationCoreBase {
       }),
       captureDomains: () => {
         const cadastre = this.cadastre.snapshot();
+        const liveParcelIds = new Set(cadastre.parcels.map((parcel) => parcel.id));
+        const invalidBuildingParcelReferences = this.buildings
+          .listV2()
+          .reduce(
+            (count, building) =>
+              count + building.parcelIds.filter((parcelId) => !liveParcelIds.has(parcelId)).length,
+            0,
+          );
+        const invalidPropertyParcelReferences = this.propertyMarket
+          .snapshot()
+          .holdings.filter((holding) => !liveParcelIds.has(holding.parcelId)).length;
         return Object.freeze({
           world: Object.freeze({
             nodes: cadastre.nodes.length,
@@ -102,6 +113,12 @@ export class SimulationCore extends SimulationCoreBase {
           services: Object.freeze({
             facilities: this.services.listFacilities().length,
             activeJobs: this.serviceDispatch.listJobs().length,
+          }),
+          integrity: Object.freeze({
+            invalidBuildingParcelReferences,
+            invalidPropertyParcelReferences,
+            totalInvalidReferences:
+              invalidBuildingParcelReferences + invalidPropertyParcelReferences,
           }),
         });
       },
