@@ -23,7 +23,9 @@ export type DynamicRoutingSnapshot = Readonly<{
   costEpoch: number;
   state: Readonly<{
     travelTimeTicksByCarriageway: Readonly<Record<CarriagewayId, number>>;
-    congestionPenaltyTicksByCarriageway: Readonly<Record<CarriagewayId, number>>;
+    congestionPenaltyTicksByCarriageway: Readonly<
+      Record<CarriagewayId, number>
+    >;
     incidentPenaltyTicksByCarriageway: Readonly<Record<CarriagewayId, number>>;
     blockedCarriagewayIds: readonly CarriagewayId[];
     blockedMovementIds: readonly TurnMovementId[];
@@ -54,13 +56,19 @@ function canonicalRecord(
   return Object.freeze(result);
 }
 
-function canonicalIds(input: readonly string[] | undefined, label: string): readonly string[] {
+function canonicalIds(
+  input: readonly string[] | undefined,
+  label: string,
+): readonly string[] {
   const ids = [...new Set(input ?? [])].sort();
-  if (ids.some((id) => id.length === 0)) throw new Error(`${label} contains an empty id`);
+  if (ids.some((id) => id.length === 0))
+    throw new Error(`${label} contains an empty id`);
   return Object.freeze(ids);
 }
 
-function canonicalState(input: DynamicRoutingStateInput): DynamicRoutingSnapshot["state"] {
+function canonicalState(
+  input: DynamicRoutingStateInput,
+): DynamicRoutingSnapshot["state"] {
   return Object.freeze({
     travelTimeTicksByCarriageway: canonicalRecord(
       input.travelTimeTicksByCarriageway,
@@ -74,8 +82,14 @@ function canonicalState(input: DynamicRoutingStateInput): DynamicRoutingSnapshot
       input.incidentPenaltyTicksByCarriageway,
       "incidentPenaltyTicksByCarriageway",
     ),
-    blockedCarriagewayIds: canonicalIds(input.blockedCarriagewayIds, "blockedCarriagewayIds"),
-    blockedMovementIds: canonicalIds(input.blockedMovementIds, "blockedMovementIds"),
+    blockedCarriagewayIds: canonicalIds(
+      input.blockedCarriagewayIds,
+      "blockedCarriagewayIds",
+    ),
+    blockedMovementIds: canonicalIds(
+      input.blockedMovementIds,
+      "blockedMovementIds",
+    ),
   });
 }
 
@@ -116,26 +130,40 @@ export class DynamicRoutingSystem {
   ): MovementRouteResult | null {
     if (!options.destinationAccessible) return null;
 
-    const blockedCarriageways = new Set(this.currentState.blockedCarriagewayIds);
+    const blockedCarriageways = new Set(
+      this.currentState.blockedCarriagewayIds,
+    );
     const blockedMovements = new Set(this.currentState.blockedMovementIds);
     const arcCost = (arc: RoutingArc): number => {
       if (blockedCarriageways.has(arc.carriagewayId)) return Number.NaN;
-      if (arc.movementId && blockedMovements.has(arc.movementId)) return Number.NaN;
+      if (arc.movementId && blockedMovements.has(arc.movementId))
+        return Number.NaN;
 
       const travelTime =
-        this.currentState.travelTimeTicksByCarriageway[arc.carriagewayId] ?? arc.traversalTicks;
+        this.currentState.travelTimeTicksByCarriageway[arc.carriagewayId] ??
+        arc.traversalTicks;
       const congestion =
-        this.currentState.congestionPenaltyTicksByCarriageway[arc.carriagewayId] ?? 0;
-      const incident = this.currentState.incidentPenaltyTicksByCarriageway[arc.carriagewayId] ?? 0;
+        this.currentState.congestionPenaltyTicksByCarriageway[
+          arc.carriagewayId
+        ] ?? 0;
+      const incident =
+        this.currentState.incidentPenaltyTicksByCarriageway[
+          arc.carriagewayId
+        ] ?? 0;
       return travelTime + congestion + incident + arc.movementPenaltyTicks;
     };
 
-    return this.pathfinding.findRoute(topology, startJunctionId, endJunctionId, {
-      permissions: options.permissions,
-      costEpoch: this.epoch,
-      costKey: `dynamic:${this.epoch}`,
-      arcCost,
-    });
+    return this.pathfinding.findRoute(
+      topology,
+      startJunctionId,
+      endJunctionId,
+      {
+        permissions: options.permissions,
+        costEpoch: this.epoch,
+        costKey: `dynamic:${this.epoch}`,
+        arcCost,
+      },
+    );
   }
 
   snapshot(): DynamicRoutingSnapshot {
@@ -144,7 +172,9 @@ export class DynamicRoutingSystem {
 
   restore(snapshot: DynamicRoutingSnapshot): void {
     if (!Number.isSafeInteger(snapshot.costEpoch) || snapshot.costEpoch < 0) {
-      throw new Error("dynamic routing costEpoch must be a non-negative safe integer");
+      throw new Error(
+        "dynamic routing costEpoch must be a non-negative safe integer",
+      );
     }
     const state = canonicalState(snapshot.state);
     this.currentState = state;
