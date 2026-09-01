@@ -1,5 +1,7 @@
-export type TransportationIncidentKind = "crash" | "breakdown" | "closure" | "hazard";
-export type TransportationResponseKind = "police" | "fire" | "medical" | "road-service" | "none";
+export type TransportationIncidentKind =
+  "crash" | "breakdown" | "closure" | "hazard";
+export type TransportationResponseKind =
+  "police" | "fire" | "medical" | "road-service" | "none";
 
 export type TransportationIncident = Readonly<{
   id: string;
@@ -36,20 +38,36 @@ function safeTick(value: number, label: string): number {
   return value;
 }
 
-function canonicalIncident(input: TransportationIncident): TransportationIncident {
+function canonicalIncident(
+  input: TransportationIncident,
+): TransportationIncident {
   if (input.id.length === 0) throw new Error("incident id must be non-empty");
-  if (input.segmentId.length === 0) throw new Error("incident segmentId must be non-empty");
+  if (input.segmentId.length === 0)
+    throw new Error("incident segmentId must be non-empty");
   const startTick = safeTick(input.startTick, "incident startTick");
   const endTick = safeTick(input.endTick, "incident endTick");
-  if (endTick <= startTick) throw new Error("incident endTick must be greater than startTick");
-  if (!Number.isFinite(input.capacityMultiplier) || input.capacityMultiplier < 0 || input.capacityMultiplier > 1) {
-    throw new Error("incident capacityMultiplier must be finite and between 0 and 1");
+  if (endTick <= startTick)
+    throw new Error("incident endTick must be greater than startTick");
+  if (
+    !Number.isFinite(input.capacityMultiplier) ||
+    input.capacityMultiplier < 0 ||
+    input.capacityMultiplier > 1
+  ) {
+    throw new Error(
+      "incident capacityMultiplier must be finite and between 0 and 1",
+    );
   }
-  if (!Number.isFinite(input.traversalPenaltyTicks) || input.traversalPenaltyTicks < 0) {
-    throw new Error("incident traversalPenaltyTicks must be finite and non-negative");
+  if (
+    !Number.isFinite(input.traversalPenaltyTicks) ||
+    input.traversalPenaltyTicks < 0
+  ) {
+    throw new Error(
+      "incident traversalPenaltyTicks must be finite and non-negative",
+    );
   }
   const laneIds = [...new Set(input.laneIds)].sort();
-  if (laneIds.some((id) => id.length === 0)) throw new Error("incident lane ids must be non-empty");
+  if (laneIds.some((id) => id.length === 0))
+    throw new Error("incident lane ids must be non-empty");
 
   return Object.freeze({
     ...input,
@@ -79,13 +97,19 @@ export class TransportationIncidentSystem {
   active(): readonly TransportationIncident[] {
     return Object.freeze(
       [...this.incidents.values()]
-        .filter((incident) => incident.startTick <= this.currentTick && this.currentTick < incident.endTick)
+        .filter(
+          (incident) =>
+            incident.startTick <= this.currentTick &&
+            this.currentTick < incident.endTick,
+        )
         .sort((a, b) => a.id.localeCompare(b.id)),
     );
   }
 
   effectsForSegment(segmentId: string): TransportationIncidentEffects {
-    const matching = this.active().filter((incident) => incident.segmentId === segmentId);
+    const matching = this.active().filter(
+      (incident) => incident.segmentId === segmentId,
+    );
     let capacityMultiplier = 1;
     let traversalPenaltyTicks = 0;
     const closedLaneIds = new Set<string>();
@@ -105,12 +129,17 @@ export class TransportationIncidentSystem {
     return Object.freeze(
       this.active()
         .filter(
-          (incident): incident is TransportationIncident & {
+          (
+            incident,
+          ): incident is TransportationIncident & {
             requiredResponse: Exclude<TransportationResponseKind, "none">;
           } => incident.requiredResponse !== "none",
         )
         .map((incident) =>
-          Object.freeze({ incidentId: incident.id, requiredResponse: incident.requiredResponse }),
+          Object.freeze({
+            incidentId: incident.id,
+            requiredResponse: incident.requiredResponse,
+          }),
         ),
     );
   }
@@ -118,16 +147,22 @@ export class TransportationIncidentSystem {
   snapshot(): TransportationIncidentSnapshot {
     return Object.freeze({
       currentTick: this.currentTick,
-      incidents: Object.freeze([...this.incidents.values()].sort((a, b) => a.id.localeCompare(b.id))),
+      incidents: Object.freeze(
+        [...this.incidents.values()].sort((a, b) => a.id.localeCompare(b.id)),
+      ),
     });
   }
 
   restore(snapshot: TransportationIncidentSnapshot): void {
-    const currentTick = safeTick(snapshot.currentTick, "incident snapshot currentTick");
+    const currentTick = safeTick(
+      snapshot.currentTick,
+      "incident snapshot currentTick",
+    );
     const next = new Map<string, TransportationIncident>();
     for (const incident of snapshot.incidents) {
       const canonical = canonicalIncident(incident);
-      if (next.has(canonical.id)) throw new Error(`duplicate incident id: ${canonical.id}`);
+      if (next.has(canonical.id))
+        throw new Error(`duplicate incident id: ${canonical.id}`);
       next.set(canonical.id, canonical);
     }
     this.incidents.clear();
