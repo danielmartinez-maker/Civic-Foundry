@@ -35,6 +35,8 @@ export type DynamicRoutingSnapshot = Readonly<{
 export type DynamicRouteOptions = Readonly<{
   permissions: VehiclePermissionMask;
   destinationAccessible: boolean;
+  costKey?: string;
+  carriagewayCost?: (carriagewayId: CarriagewayId) => number;
 }>;
 
 function finiteNonNegative(value: number, label: string): number {
@@ -139,20 +141,26 @@ export class DynamicRoutingSystem {
       if (arc.movementId && blockedMovements.has(arc.movementId))
         return Number.NaN;
 
-      const travelTime =
-        this.currentState.travelTimeTicksByCarriageway[arc.carriagewayId] ??
-        arc.traversalTicks;
-      const congestion =
-        this.currentState.congestionPenaltyTicksByCarriageway[
-          arc.carriagewayId
-        ] ?? 0;
+      const base = options.carriagewayCost
+        ? options.carriagewayCost(arc.carriagewayId)
+        : (this.currentState.travelTimeTicksByCarriageway[arc.carriagewayId] ??
+            arc.traversalTicks) +
+          (this.currentState.congestionPenaltyTicksByCarriageway[
+            arc.carriagewayId
+          ] ?? 0);
+      if (!Number.isFinite(base) || base < 0) return Number.NaN;
       const incident =
         this.currentState.incidentPenaltyTicksByCarriageway[
           arc.carriagewayId
         ] ?? 0;
-      return travelTime + congestion + incident + arc.movementPenaltyTicks;
+      return base + incident + arc.movementPenaltyTicks;
     };
 
+    const costKey = options.carriagewayCost
+      ? options.costKey === undefined
+        ? undefined
+        : `dynamic:${this.epoch}:${options.costKey}`
+      : `dynamic:${this.epoch}`;
     return this.pathfinding.findRoute(
       topology,
       startJunctionId,
@@ -160,7 +168,7 @@ export class DynamicRoutingSystem {
       {
         permissions: options.permissions,
         costEpoch: this.epoch,
-        costKey: `dynamic:${this.epoch}`,
+        ...(costKey === undefined ? {} : { costKey }),
         arcCost,
       },
     );
