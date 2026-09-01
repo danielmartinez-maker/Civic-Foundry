@@ -25,6 +25,8 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Fast verification
         run: npm run verify:fast
+      - name: Dependency security audit
+        run: npm run security:audit
       - name: Install atlas rasterizer and browser smoke runtime
         run: |
           python -m pip install playwright==1.55.0 Pillow==11.3.0
