@@ -12,6 +12,7 @@
     "architecture:check": "node scripts/check-architecture.mjs",
     "format": "node scripts/format-changed.mjs --write",
     "format:check": "node scripts/format-changed.mjs --check",
+    "security:audit": "npm audit --audit-level=high",
     "assets:policy": "node scripts/check-assets.mjs",
     "assets:check": "python tools/render_isometric_atlases.py --check",
     "assets:build": "python tools/render_isometric_atlases.py",
