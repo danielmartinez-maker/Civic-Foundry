@@ -42,6 +42,23 @@ export function normalizeMarkdown(source) {
   return `${normalizedLineEndings.replace(/\n*$/u, "")}\n`;
 }
 
+export function classifyFormattingState({
+  source,
+  formatted,
+  baseSource,
+  baseFormatted,
+}) {
+  if (source === formatted) return "clean";
+  if (
+    baseSource !== null &&
+    baseFormatted !== null &&
+    baseSource !== baseFormatted
+  ) {
+    return "grandfathered";
+  }
+  return "failure";
+}
+
 async function git(args) {
   const { stdout } = await execFileAsync("git", args, {
     cwd: root,
@@ -96,9 +113,27 @@ async function collectCandidatePaths() {
     git(["ls-files", "--others", "--exclude-standard"]),
   ]);
 
-  return [...new Set(outputs.flatMap(parsePathList))]
+  const candidates = [...new Set(outputs.flatMap(parsePathList))]
     .filter(isFormattingManagedPath)
     .sort((left, right) => left.localeCompare(right));
+
+  return { base, candidates };
+}
+
+async function readBaseSource(base, display) {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["show", `${base}:${display}`],
+      {
+        cwd: root,
+        encoding: "utf8",
+      },
+    );
+    return stdout;
+  } catch {
+    return null;
+  }
 }
 
 async function formatManagedSource(absolutePath, source) {
@@ -109,8 +144,9 @@ async function formatManagedSource(absolutePath, source) {
 }
 
 export async function runChangedFileFormatting({ write = false } = {}) {
-  const candidates = await collectCandidatePaths();
+  const { base, candidates } = await collectCandidatePaths();
   const failures = [];
+  const grandfathered = [];
   let checked = 0;
 
   for (const display of candidates) {
@@ -134,7 +170,22 @@ export async function runChangedFileFormatting({ write = false } = {}) {
       continue;
     }
 
-    if (formatted !== source) failures.push(display);
+    if (formatted === source) continue;
+
+    const baseSource = await readBaseSource(base, display);
+    const baseFormatted =
+      baseSource === null
+        ? null
+        : await formatManagedSource(absolutePath, baseSource);
+    const state = classifyFormattingState({
+      source,
+      formatted,
+      baseSource,
+      baseFormatted,
+    });
+
+    if (state === "grandfathered") grandfathered.push(display);
+    else if (state === "failure") failures.push(display);
   }
 
   if (write) {
@@ -155,6 +206,12 @@ export async function runChangedFileFormatting({ write = false } = {}) {
   console.log(
     `Formatting check passed for ${checked} changed managed file(s).`,
   );
+  if (grandfathered.length > 0) {
+    console.log(
+      `${grandfathered.length} changed file(s) remain grandfathered legacy formatting debt:`,
+    );
+    for (const display of grandfathered) console.log(`- ${display}`);
+  }
 }
 
 if (
