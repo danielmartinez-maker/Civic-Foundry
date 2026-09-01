@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
@@ -8,6 +8,7 @@ import * as prettier from "prettier";
 
 const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("..", import.meta.url));
+const formattingArtifactRoot = join(root, "test-artifacts", "format-expected");
 const managedExtensions = new Set([
   ".cjs",
   ".js",
@@ -143,6 +144,12 @@ async function formatManagedSource(absolutePath, source) {
   return prettier.format(source, { filepath: absolutePath });
 }
 
+async function preserveExpectedFormatting(display, formatted) {
+  const target = join(formattingArtifactRoot, display);
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, formatted, "utf8");
+}
+
 export async function runChangedFileFormatting({ write = false } = {}) {
   const { base, candidates } = await collectCandidatePaths();
   const failures = [];
@@ -185,7 +192,10 @@ export async function runChangedFileFormatting({ write = false } = {}) {
     });
 
     if (state === "grandfathered") grandfathered.push(display);
-    else if (state === "failure") failures.push(display);
+    else if (state === "failure") {
+      failures.push(display);
+      await preserveExpectedFormatting(display, formatted);
+    }
   }
 
   if (write) {
@@ -199,6 +209,9 @@ export async function runChangedFileFormatting({ write = false } = {}) {
     );
     for (const failure of failures) console.error(`- ${failure}`);
     console.error("Run `npm run format` and commit the resulting changes.");
+    console.error(
+      "Exact expected copies are available under test-artifacts/format-expected/.",
+    );
     process.exitCode = 1;
     return;
   }
