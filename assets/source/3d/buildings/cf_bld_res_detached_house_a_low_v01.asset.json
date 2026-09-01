@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "assetId": "cf_bld_res_detached_house_a_low_v01",
   "category": "building",
+  "semanticFamily": "residential-detached-low",
   "dimensions": {
     "widthM": 9,
     "depthM": 12,
@@ -162,7 +163,10 @@
   "runtime": {
     "instancing": "thin",
     "streamingClass": "normal",
-    "memoryClass": "small"
+    "memoryClass": "small",
+    "estimatedCpuGeometryBytes": 32768,
+    "estimatedGpuGeometryBytes": 49152,
+    "estimatedGpuMaterialBytes": 12288
   },
   "art": {
     "styleFamily": "civic-foundry-miniature",

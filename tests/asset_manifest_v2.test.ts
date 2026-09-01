@@ -11,6 +11,7 @@ const valid = {
     assetId: 'cf_bld_res_detached_house_a_low_v01',
     revision: 1,
     category: 'building',
+    semanticFamily: 'residential-detached-low',
     geometry: {
       lod0: 'assets/models/cf_bld_res_detached_house_a_low_v01_lod0.glb',
       lod1: 'assets/models/cf_bld_res_detached_house_a_low_v01_lod1.glb',
@@ -33,7 +34,14 @@ const valid = {
       construction: ['none', 'active'],
       night: ['day', 'night'],
     },
-    runtime: { instancing: 'thin', streamingClass: 'normal', memoryClass: 'small' },
+    runtime: {
+      instancing: 'thin',
+      streamingClass: 'normal',
+      memoryClass: 'small',
+      estimatedCpuGeometryBytes: 24000,
+      estimatedGpuGeometryBytes: 36000,
+      estimatedGpuMaterialBytes: 8192,
+    },
     art: { styleFamily: 'civic-foundry-miniature', qualityTier: 'standard' },
   }],
 } as const;

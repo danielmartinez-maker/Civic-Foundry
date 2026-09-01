@@ -183,6 +183,7 @@ function manifestForSource(source) {
     assetId,
     revision: revisionFromAssetId(assetId),
     category: source.category,
+    semanticFamily: source.semanticFamily,
     geometry: {
       lod0: `assets/models/${assetId}_lod0.glb`,
       lod1: `assets/models/${assetId}_lod1.glb`,

@@ -12,6 +12,7 @@ const source = {
   schemaVersion: 1,
   assetId: 'cf_test_building_box_low_a_v01',
   category: 'building',
+  semanticFamily: 'test-building',
   dimensions: { widthM: 4, depthM: 6, heightM: 3 },
   pivot: { convention: 'ground-center', forward: '-Z', up: '+Y' },
   materials: [
@@ -35,6 +36,9 @@ const source = {
     instancing: 'thin',
     streamingClass: 'normal',
     memoryClass: 'tiny',
+    estimatedCpuGeometryBytes: 4096,
+    estimatedGpuGeometryBytes: 8192,
+    estimatedGpuMaterialBytes: 2048,
   },
   art: {
     styleFamily: 'civic-foundry-miniature',
