@@ -250,6 +250,15 @@ function validateEntry(value: unknown, index: number, errors: string[]): string 
         errors.push(`${path}.runtime.${key} must be a positive integer`);
       }
     }
+    for (const key of [
+      'estimatedCpuGeometryBytes',
+      'estimatedGpuGeometryBytes',
+      'estimatedGpuMaterialBytes',
+    ] as const) {
+      if (!Number.isInteger(value.runtime[key]) || Number(value.runtime[key]) <= 0) {
+        errors.push(`${path}.runtime.${key} must be a positive integer`);
+      }
+    }
   }
 
   if (!isRecord(value.art)) {
