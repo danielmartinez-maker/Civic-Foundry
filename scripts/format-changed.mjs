@@ -8,11 +8,20 @@ import * as prettier from "prettier";
 
 const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("..", import.meta.url));
-const supportedExtensions = new Set([
+const managedExtensions = new Set([
   ".cjs",
   ".js",
   ".json",
   ".md",
+  ".mjs",
+  ".ts",
+  ".yaml",
+  ".yml",
+]);
+const prettierExtensions = new Set([
+  ".cjs",
+  ".js",
+  ".json",
   ".mjs",
   ".ts",
   ".yaml",
@@ -23,9 +32,17 @@ function normalizeRepositoryPath(path) {
   return path.replaceAll("\\", "/").replace(/^\.\//, "");
 }
 
-export function isPrettierManagedPath(path) {
+export function isFormattingManagedPath(path) {
   const normalized = normalizeRepositoryPath(path);
-  return supportedExtensions.has(extname(normalized).toLowerCase());
+  return managedExtensions.has(extname(normalized).toLowerCase());
+}
+
+export function normalizeMarkdown(source) {
+  const withoutTrailingWhitespace = source
+    .split(/\r?\n/)
+    .map((line) => line.replace(/[ \t]+$/u, ""))
+    .join("\n");
+  return `${withoutTrailingWhitespace.replace(/\n*$/u, "")}\n`;
 }
 
 async function git(args) {
@@ -77,8 +94,15 @@ async function collectCandidatePaths() {
   ]);
 
   return [...new Set(outputs.flatMap(parsePathList))]
-    .filter(isPrettierManagedPath)
+    .filter(isFormattingManagedPath)
     .sort((left, right) => left.localeCompare(right));
+}
+
+async function formatManagedSource(absolutePath, source) {
+  const extension = extname(absolutePath).toLowerCase();
+  if (extension === ".md") return normalizeMarkdown(source);
+  if (!prettierExtensions.has(extension)) return source;
+  return prettier.format(source, { filepath: absolutePath });
 }
 
 export async function runChangedFileFormatting({ write = false } = {}) {
@@ -88,22 +112,26 @@ export async function runChangedFileFormatting({ write = false } = {}) {
 
   for (const display of candidates) {
     const absolutePath = join(root, display);
-    const fileInfo = await prettier.getFileInfo(absolutePath, {
-      ignorePath: join(root, ".prettierignore"),
-    });
-    if (fileInfo.ignored || fileInfo.inferredParser === null) continue;
+    const extension = extname(display).toLowerCase();
+
+    if (prettierExtensions.has(extension)) {
+      const fileInfo = await prettier.getFileInfo(absolutePath, {
+        ignorePath: join(root, ".prettierignore"),
+      });
+      if (fileInfo.ignored || fileInfo.inferredParser === null) continue;
+    }
 
     const source = await readFile(absolutePath, "utf8");
-    const options = { filepath: absolutePath };
+    const formatted = await formatManagedSource(absolutePath, source);
     checked += 1;
 
     if (write) {
-      const formatted = await prettier.format(source, options);
-      if (formatted !== source) await writeFile(absolutePath, formatted, "utf8");
+      if (formatted !== source)
+        await writeFile(absolutePath, formatted, "utf8");
       continue;
     }
 
-    if (!(await prettier.check(source, options))) failures.push(display);
+    if (formatted !== source) failures.push(display);
   }
 
   if (write) {
@@ -121,7 +149,9 @@ export async function runChangedFileFormatting({ write = false } = {}) {
     return;
   }
 
-  console.log(`Formatting check passed for ${checked} changed managed file(s).`);
+  console.log(
+    `Formatting check passed for ${checked} changed managed file(s).`,
+  );
 }
 
 if (
