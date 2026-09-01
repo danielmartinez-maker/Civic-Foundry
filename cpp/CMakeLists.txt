@@ -42,6 +42,7 @@ if(CIVIC_BUILD_TESTS)
     tests/legal_history_tests.cpp
     tests/legal_history_row_tests.cpp
     tests/transactional_mutation_tests.cpp
+    tests/legacy_projection_tests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main)
   include(GoogleTest)
