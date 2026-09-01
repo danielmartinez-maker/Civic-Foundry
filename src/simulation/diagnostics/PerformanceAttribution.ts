@@ -1,6 +1,6 @@
 type PerformanceRecord = {
   readonly durations: number[];
-  budgetMs?: number;
+  budgetMs: number | undefined;
   cacheHits: number;
   cacheMisses: number;
 };
