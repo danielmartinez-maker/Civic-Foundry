@@ -12,6 +12,8 @@ on:
       - "cpp/engine/src/bridge/transport_c_api.cpp"
       - "cpp/tests/transport/**"
       - "cpp/transport/**"
+      - "tests/transport-cpp-shadow.test.ts"
+      - "tests/support/transportCppShadowHarness.ts"
       - ".github/workflows/cpp-transport.yml"
 
 permissions:
@@ -59,3 +61,34 @@ jobs:
         run: cmake --build build/cpp-transport-msvc --config Release --parallel 2
       - name: Test
         run: ctest --test-dir build/cpp-transport-msvc -C Release --output-on-failure
+
+  shadow-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Configure native shadow binding
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          NODE_INCLUDE_DIR="$(dirname "$(dirname "$(command -v node)")")/include/node"
+          test -f "$NODE_INCLUDE_DIR/node_api.h"
+          cmake -S cpp/transport -B build/cpp-transport-shadow \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCIVIC_TRANSPORT_BUILD_NAPI=ON \
+            -DCIVIC_NODE_INCLUDE_DIR="$NODE_INCLUDE_DIR"
+      - name: Build native shadow binding
+        run: cmake --build build/cpp-transport-shadow --parallel 2
+      - name: Node-API smoke
+        env:
+          CIVIC_TRANSPORT_NAPI: ${{ github.workspace }}/build/cpp-transport-shadow/civic_transport_napi.node
+        run: node cpp/tests/transport/transport_napi_smoke.mjs
+      - name: TypeScript/native shadow parity
+        env:
+          CIVIC_TRANSPORT_NAPI: ${{ github.workspace }}/build/cpp-transport-shadow/civic_transport_napi.node
+        run: node --experimental-strip-types --test tests/transport-cpp-shadow.test.ts

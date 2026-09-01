@@ -31,7 +31,7 @@ cmake --build build/cpp-transport --parallel 2
 ctest --test-dir build/cpp-transport --output-on-failure
 ```
 
-The dedicated workflow also verifies GCC, Clang, Clang ASan/UBSan, and Windows MSVC.
+The dedicated workflow also verifies GCC, Clang, Clang ASan/UBSan, and Windows MSVC. It additionally builds the Node-API bridge and runs deterministic TypeScript↔C++ shadow fixtures with first-divergence JSON-path diagnostics.
 
 ## Integration boundary
 
@@ -39,7 +39,7 @@ Stack 0 and Stack 1 currently diverge from the same TypeScript baseline and both
 
 1. register this transport library/domain with the common `NativeEngine` and generic C ABI;
 2. attach Save V9 transportation persistence to the shared save adapter;
-3. add TS-vs-C++ differential fixtures and shadow-run hashes;
+3. extend the landed TS-vs-C++ shadow fixtures from network/routing into congestion, trips, passenger conservation, transit completion, and save continuation;
 4. route production `SimulationCore` transportation mutations and snapshots through the native owner;
 5. demote legacy TypeScript transportation implementations to compatibility adapters;
 6. run the complete Stack 2 acceptance gate before removing legacy mutation paths.
