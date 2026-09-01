@@ -1,254 +1,186 @@
-# Civic Foundry Architecture — Urban Fabric 2.0
+# Civic Foundry Architecture — Urban Fabric + Production 3D Presentation
 
 ## Runtime boundary
 
-Civic Foundry uses progressive replacement rather than a clean-slate rewrite. Urban Fabric 2.0 makes legal parcel geometry authoritative while preserving the existing playable city behind explicit compatibility seams.
+Civic Foundry uses progressive replacement rather than a clean-slate rewrite. Authoritative gameplay/world/persistence systems remain independent of presentation, while rendering stacks consume deterministic projections of that state.
 
-Current high-level path:
+Current high-level authority path:
 
 ```text
 Electron desktop host (optional local shell)
-  → GameApp
-    → SimulationCore facade
-      → SimulationKernel
-      → WorldFoundation                  physical/geographic authority
-      → CadastralGraph                   legal-land authority
-      → CadastralRuntimeMutationService  cross-domain land transaction boundary
-      → parcel zoning / envelopes / massing / BuildingV2 / property systems
-      → legacy city compatibility domains
-    → GpuWorldRenderer
-      → PixiJS WebGL                     read-only presentation
+  -> GameApp
+    -> SimulationCore facade
+      -> SimulationKernel                deterministic tick authority
+      -> WorldFoundation                 physical/geographic authority
+      -> CadastralGraph                  legal-land authority
+      -> CadastralRuntimeMutationService cross-domain land transaction boundary
+      -> canonical BuildingV2/property/zoning systems
+      -> transportation/economy/services and legacy compatibility domains
+    -> presentation renderer
+       -> GpuWorldRenderer / PixiJS       default read-only presentation
+       -> Civic3DWorldRenderer / Babylon  opt-in read-only 3D presentation
 ```
 
-`SimulationCore` remains the public gameplay facade. `SimulationKernel` owns deterministic tick execution. `WorldFoundation` remains the sole physical/geographic authority. `CadastralGraph` owns legal parcels and their topology. `CadastralRuntimeMutationService` coordinates runtime geometry changes across the owners that reference parcel IDs. Legacy grid lots remain available only as a derived compatibility view.
+`SimulationCore` remains the public gameplay facade. `SimulationKernel` owns deterministic tick execution. `WorldFoundation` remains the sole physical/geographic authority. `CadastralGraph` owns legal parcel topology. Canonical building/property/zoning, transportation, economy, and service owners keep their existing authority. Save V9 remains the current persistence envelope.
 
-The current default presentation remains `GpuWorldRenderer` backed by PixiJS WebGL. Tranche 1’s 3D presentation is opt-in through `?renderer=civic-3d`, which constructs `Civic3DWorldRenderer` with Babylon.js WebGPU-first initialization and a WebGL fallback. This tranche does not retire the legacy renderer or move simulation, World Foundation, cadastre, or Save V9 authority into presentation code.
-
-The Electron process is a local application host only. It does not own simulation state, persistence state, or gameplay authority, and the current desktop tranche exposes no generic IPC bridge. The browser development target and Electron desktop target execute the same built application and authoritative TypeScript simulation.
+The 3D renderer does not retire the default GPU renderer and does not move any of those responsibilities into Babylon, GLB metadata, asset recipes, presentation fixtures, or camera state.
 
 ## Authority matrix
 
-### `WorldFoundation`
+### World Foundation
 
-Owns:
+`WorldFoundation` owns world seed/configuration, terrain/engineering properties, geography hierarchy, hydrology/drainage/flood susceptibility, spatial indexing, and the terrain compatibility projection consumed by inherited systems. It does not own parcels, zoning entitlements, buildings, property ownership, roads/transport operations, firms, households, or municipal finance.
 
-- generated/legacy world mode and world seed/configuration;
-- physical terrain and engineering properties;
-- geography hierarchy `Region → Municipality → District → Neighborhood → Block`;
-- hydrology, drainage, flood susceptibility, and latest design-storm result;
-- geography/channel spatial indexing;
-- the terrain compatibility projection consumed by older systems.
+### Cadastral authority
 
-It does **not** own parcels, zoning entitlements, buildings, property ownership, roads, transport operations, firms, households, or municipal finance.
+`CadastralGraph` owns canonical legal parcels, shared boundaries, block membership, parcel polygons/area/centroid/frontage/access/zoning/owner identity, easements, and split/assembly/right-of-way lineage.
 
-### `CadastralGraph`
+Legacy `LotSystem` records remain a derived compatibility projection. The cadastre decides what land exists; the lot facade decides how older cell-oriented systems address compatible frontage cells.
 
-Owns the canonical legal-land topology:
+`CadastralRuntimeMutationService` is the public cross-domain transaction boundary for split, assembly, right-of-way, and easement operations. It stages and validates dependent rewrites, commits participating owners in deterministic order, and restores authoritative snapshots if a live commit stage fails. Presentation code is not part of that transaction.
 
-- parcel nodes and shared boundary edges;
-- block-to-parcel membership;
-- parcel polygons, area, centroid, frontage, access, zoning-district identity, owner identity, and parent lineage;
-- easements;
-- lineage generated by parcel split, assembly, and right-of-way dedication.
+### Canonical buildings and property
 
-A legal parcel may span multiple legacy cells. Conversely, the compatibility layer may expose multiple legacy lot IDs over one canonical parcel. The two identity spaces are intentionally not conflated.
+`BuildingSystem` deliberately separates inherited legacy building storage from canonical `BuildingV2` records. `BuildingV2` retains canonical parcel identity, footprint/massing/floor allocation, entitlement, lifecycle, and project metadata. Canonical reads are deterministic and isolated.
 
-### Parcel zoning and development systems
+`PropertyMarketSystem` owns current parcel holdings and recorded transactions. Current references must point to live parcels; historical transaction rows can reference retired parcels only when persisted cadastral lineage recognizes them.
 
-Urban Fabric services owned by `SimulationCore` include:
+### Transportation/economy/services
 
-- `BuildableEnvelopeSystem`;
-- `ZoningComplianceSystem`;
-- `BuildingMassingSystem`;
-- `BuildingLifecycleSystem`;
-- `RenovationSystem`;
-- `HighestBestUseSystem`;
-- `PropertyMarketSystem`;
-- `SiteAssemblySystem`;
-- `CadastralRuntimeMutationService`.
-
-Parcel-level dimensional zoning is stored independently of legacy cell paint. The base district catalog supplies dimensional controls such as permitted uses, FAR, height, coverage, setbacks, and parcel-dimension requirements. Existing legacy R/C/I zoning remains a compatibility input and migration seam.
-
-### `BuildingSystem`
-
-`BuildingSystem` has two deliberately separate stores:
-
-1. legacy buildings used by inherited gameplay/save compatibility;
-2. canonical `BuildingV2` records used by Urban Fabric.
-
-`BuildingV2` retains parcel identity, physical footprint, massing, floor/use allocation, entitlement, lifecycle, and optional project metadata. Canonical reads return isolated copies and deterministic ordering. Spatial lookup can resolve a canonical building through a legacy cell without changing its canonical ID.
-
-## Canonical parcel generation and lot compatibility
-
-Legacy road/zoning edits rebuild cadastral state through `SimulationCore.rebuildCadastreFromLegacyState()`.
-
-The parcel generator can group compatible road-fronting legacy cells into one canonical parcel. After the cadastre is rebuilt, `LotSystem.rebuildFromCadastre()` projects parcel frontage back into stable `lot:x,y` compatibility records.
-
-This preserves historical V7/V8 lot/building identity where required while preventing `LotSystem` from becoming a second land authority.
-
-Key rule:
-
-> The cadastre decides what land exists; the lot facade decides how older cell-based systems address compatible frontage cells.
-
-## Cadastral mutation model
-
-`CadastralMutationSystem` remains the low-level geometry engine. It implements legal operations against a candidate `CadastralGraph` snapshot:
-
-- split parcel;
-- assemble adjacent compatible parcels;
-- create/remove easements;
-- dedicate right-of-way.
-
-Low-level mutation rules are transactional within cadastral authority:
-
-1. construct candidate geometry/topology;
-2. validate area conservation, ownership/district constraints, adjacency, geometry, access, and lineage;
-3. validate the entire candidate cadastral snapshot;
-4. replace graph state only when validation succeeds.
-
-Runtime safety requires more than graph validity because canonical buildings, parcel zoning assignments, property holdings, and the legacy lot facade also reference parcel identity. `SimulationCore.cadastralMutations` therefore exposes `CadastralRuntimeMutationService` as the only public cross-domain mutation boundary.
-
-For split, assembly, and right-of-way operations the coordinator:
-
-1. snapshots cadastre, parcel zoning, canonical `BuildingV2`, and property-market state;
-2. runs the requested low-level mutation on a cloned graph;
-3. deterministically stages all dependent parcel-reference rewrites;
-4. validates building containment, zoning/property consistency, historical transaction lineage, and a temporary `LotSystem` projection before touching live owners;
-5. commits cadastre → zoning → buildings → property → derived lots in fixed order;
-6. restores every original authoritative snapshot and rebuilds lots if any live commit stage throws.
-
-Easement create/remove follows the same boundary even though no parcel IDs retire. A failed runtime mutation returns `runtime-commit-rollback` when a live commit failure is recovered, and partial cross-domain state is not allowed to escape.
-
-`LotSystem` is never a transaction source of truth. Rollback restores authoritative owners first and derives the lot facade again from the restored cadastre.
-
-## Development pipeline
-
-The runtime development path is parcel-authoritative:
-
-```text
-Cadastral parcel
-  → effective parcel zoning
-  → buildable envelope
-  → physical massing candidates
-  → zoning compliance
-  → parcel economics / highest-and-best-use
-  → developer bidding and award
-  → canonical BuildingV2 materialization
-```
-
-Physical candidate identity is retained through bidding so two different legal massings on the same parcel cannot collapse into one indistinguishable opportunity.
-
-Legacy lot-based APIs remain available where inherited systems still require them, but new Urban Fabric development decisions originate from canonical parcel identity.
-
-## Building lifecycle, renovation, and redevelopment
-
-Urban Fabric adds physical lifecycle state without duplicating authority on `BuildingV2`. Condition, effective age, maintenance need/backlog, vacancy/distress inputs, and redevelopment economics feed deterministic decisions.
-
-Renovation/adaptive reuse and redevelopment are constrained by zoning, project economics, and relocation safeguards. Redevelopment cannot enter demolition while canonical displacement requirements remain unresolved.
-
-Site assembly is evaluated only when the geometric/economic uplift exceeds acquisition friction and remains bounded to deterministic parcel sets.
-
-## Property market
-
-`PropertyMarketSystem` owns canonical current parcel holdings and recorded property transactions for the Urban Fabric layer. Transactions validate ownership and commit atomically across multi-parcel transfers.
-
-Current holdings must always reference live parcels. Historical transaction rows are intentionally not rewritten when a parcel later splits, assembles, or loses right-of-way area. Save/runtime validation accepts those retired parcel IDs only when `CadastralGraph` lineage proves they are historical legal parcels.
-
-Property state is persisted in Save V9; live parcel references remain strict while historical transaction truth is validated through lineage.
-
-## World Foundation compatibility
-
-Urban Fabric does not supersede Phase 1R. `WorldFoundation` still resolves before inherited gameplay construction and supplies `core.terrain` through its compatibility adapter.
-
-Generated terrain preparation costs continue to affect road construction and development underwriting. Ordinary city ticks do not mutate terrain/hydrology/geography unless an explicit world operation such as a design storm is invoked.
-
-Legal parcels live **inside** the physical world coordinate system; they do not replace or duplicate world geography.
-
-## Transportation boundary
-
-Urban Fabric 2.0 does not transfer transportation authority. Existing road/traffic/transit systems and the later 3R transportation replacement remain separate. Cadastral frontage can reference road access, but the cadastre does not manufacture transportation outcomes.
-
-Right-of-way dedication in 2R changes legal land topology only. It does not create or mutate 3R lane, carriageway, intersection, routing, parking, signal, or crash authority.
+Transportation, economy, freight/firms, utilities, public services, and related systems retain their own simulation authority. Cadastral frontage and presentation assets may reference their canonical outputs, but neither legal-land code nor renderer assets manufacture transportation/economic/service outcomes.
 
 ## Save V9
 
-Current default persistence is:
+Current default persistence remains:
 
 ```ts
 saveVersion: 9
 gameVersion: '0.9.0-urban-fabric'
 ```
 
-Save V9 extends the complete V8 World Foundation envelope with:
+Save V9 extends the V8 world envelope with Urban Fabric cadastral/zoning/building/property state. Hydration restores the world candidate first, then canonical cadastre and dependent owners, rebuilding legacy lots as a derived projection.
 
-- `urbanFabric: CadastralSnapshot`;
-- `zoningV2.parcelAssignments`;
-- `buildingsV2`;
-- `propertyMarket`.
+Stack 3 changes **no Save V9 schema or semantics**. The following production-3D state is intentionally not serialized:
 
-V9 hydration restores the V8 candidate first, replaces the canonical cadastre, rebuilds legacy lots from that cadastre, validates all live Urban Fabric parcel references, then restores parcel zoning, `BuildingV2`, and property-market state. Historical property transactions may reference retired parcel IDs only when those IDs are recognized by persisted cadastral lineage.
+- asset semantic-family selection caches;
+- Babylon scenes/nodes/meshes/material instances;
+- GLB prototype leases and LOD residency;
+- presentation/canonical pick metadata;
+- reconstruction digests;
+- review camera state;
+- Stack 3 acceptance fixtures;
+- visual screenshots or browser evidence.
 
-The Task 13 runtime-mutation work does **not** change the schema: Save V9 remains `0.9.0-urban-fabric`, and Save V8 remains an explicit historical compatibility format.
+The Stack 3 Chromium smoke serializes Save V9 around camera, visual-time, reconstruction, and teardown/recreate operations and requires byte-identical persistence output with no Babylon/presentation fields.
 
 ## Presentation boundary
 
-Rendering and UI remain read-only consumers of simulation authority. The production world renderer is `GpuWorldRenderer`, backed by PixiJS 8/WebGL and the existing `IsometricCamera` projection/input contract.
+Rendering remains a read-only consumer of authoritative state.
 
-The renderer owns presentation-only GPU scene state for terrain, zoning, roads, structures, moving vehicles, overlays, parcel selection, and tool previews. It may derive visual geometry from authoritative snapshots, including `CadastralGraph.parcelPolygon()`, but it does not call simulation mutation APIs or create persistent state.
+The default production world renderer remains `GpuWorldRenderer` backed by PixiJS/WebGL. The accepted 3D path is opt-in through `?renderer=civic-3d`, which constructs `Civic3DWorldRenderer` with Babylon.js WebGPU-first initialization and deterministic WebGL fallback.
 
-Urban Fabric presentation includes:
+The accepted House A vertical slice remains supported by `Civic3DBuildingRuntime`. Stack 3 extends that foundation through the existing Asset Manifest V2/compiler/catalog/streaming seams rather than introducing another asset authority.
 
-- cadastral parcel/frontage overlay;
-- selected parcel zoning-envelope overlay;
-- parcel redevelopment diagnostics;
-- canonical parcel inspector;
-- parcel selection routed through the renderer/tool compatibility coordinate seam.
+### Stack 3 production path
 
-Analytical overlays are mutually exclusive so presentation state cannot ambiguously claim multiple active analytical modes. Selecting a parcel does not mutate cadastre, zoning, or property state.
+```text
+canonical simulation/world data
+  -> presentation-only state / stable entity identity
+  -> deterministic semantic-family asset candidate set
+  -> ProductionAssetSelector
+  -> AssetCatalogV2
+  -> AssetStreamingManager
+  -> BabylonGlbPrototypeLoader
+  -> ProductionSceneLayer
+  -> BabylonProductionSceneAdapter
+  -> Civic3DWorldRenderer / Babylon scene
+```
 
-Legacy Canvas2D renderer/pass files are transitional migration references and are not instantiated by the production `GameApp` path. Equivalent specialized GPU parity can replace and eventually remove them without changing simulation ownership.
+`AssetCatalogV2` stores entries in deterministic asset-ID order and indexes `semanticFamily`. `selectProductionAssetId(...)` sorts candidates and uses the existing deterministic visual hash; it never uses `Math.random()`.
 
-## Desktop and module-loading boundary
+`ProductionVisualState` is a presentation record containing stable `presentationId`, source `canonicalId`, selected `assetId`, transform, deterministic variation seed, structural fingerprint, and appearance fingerprint. It does not own the source gameplay fact.
 
-The Windows desktop runtime currently uses Electron as a hardened local host around the same `dist/` application used by browser development. Tauri 2 is an approved later target, not an implemented part of Tranche 1. The desktop window loads local packaged content only, disables Node integration, enables context isolation and sandboxing, and denies unexpected navigation/window creation.
+`ProductionSceneLayer` retains presentation entities by stable presentation ID. Identical reconciliation creates no new handles. Asset, canonical identity, structural fingerprint, or selected LOD change causes structural replacement; appearance-only changes update in place. A deterministic `reconstructionDigest()` proves equivalent teardown/rebuild state.
 
-Electron owns application-window lifecycle only. No simulation state crosses into the Electron main process and no generic IPC surface exists in the current tranche.
+`BabylonProductionSceneAdapter` creates retained roots and GLB instances, applies transforms, and binds frozen presentation/canonical pick identity through descendants. Pick resolution maps a rendered node back to the presentation identity; Babylon metadata is never used to write simulation state.
 
-The renderer build remains browser-native ESM. The static build copies pinned PixiJS browser ESM into `dist/vendor/pixi.mjs`; `index.html` resolves the bare `pixi.js` specifier through a local import map. This approved exception is recorded in ADR 0002. No CDN module loading or compiler-only TypeScript path alias participates in production startup.
+`Civic3DProductionRuntime` reuses the existing catalog/streaming/GLB-loader classes. It computes required `asset@lod` prototype keys deterministically, acquires missing leases, applies the retained layer, then releases and evicts obsolete zero-reference LOD prototypes after scene replacement. This keeps LOD cycling structurally bounded. The runtime waits for Babylon scene/material readiness before an accepted apply returns to the browser capture path.
 
-## Determinism and validation invariants
+The production runtime currently owns its own instance of the existing streaming manager rather than sharing the House A runtime's manager. This does not create a new format or authority, but if both runtimes actively load the same prototype in future gameplay integration they can duplicate presentation cache residency. The Stack 3 acceptance fixture keeps the legacy building runtime idle; shared-cache consolidation is a later optimization, not an authority change.
 
-Urban Fabric 2.0 locks these invariants:
+## Stack 3 controlled asset wave
 
-- identical authoritative input and mutation order produce identical runtime mutation results and canonical snapshots;
-- cadastral topology contains no duplicate IDs, orphan nodes, invalid shared boundaries, overlapping private parcels, invalid frontage/access references, or lineage cycles;
-- split/assembly/right-of-way operations conserve controlled land area within tolerance;
-- failed low-level and cross-domain runtime mutations are atomic;
-- forced commit failure restores cadastre, zoning, canonical buildings, property state, and the derived lot facade byte-for-byte;
-- canonical parcel IDs are distinct from legacy lot IDs;
-- legacy lots are derived from cadastre rather than independently authoritative;
-- canonical buildings reference existing parcels and preserve surviving identity through parcel rewrites and continued simulation;
-- current parcel zoning/property references cannot dangle after mutation or hydration;
-- historical property transactions preserve retired parcel identity through cadastral lineage;
-- V8 migration to V9 is deterministic and does not fabricate legal history;
-- Save V9 round-trip and continuation preserve canonical identity;
-- `WorldFoundation` remains the only physical/geographic authority;
-- presentation reads state but does not manufacture simulation outcomes.
+Stack 3 scales House A into a controlled 14-family first production wave covering detached residential, rowhouse, corner commercial, mixed-use main street, light industrial, fire facility, street furniture, compact car, transit stop, deciduous tree, pocket park, construction kit, condition kit, and water-tower landmark.
+
+Every source recipe retains the common meter-scale ground-center/-Z-forward/+Y-up contract, three LODs, deterministic compilation, materials/state channels as applicable, collision representation, and explicit CPU/GPU runtime estimates. Generated GLBs remain build outputs under `dist/`.
+
+Semantic-family/category metadata exists solely to select/organize presentation assets. It does not create new zoning, building, vehicle, transit, vegetation, construction, or landmark gameplay authority.
+
+## Representative presentation fixtures
+
+`Stack3AcceptanceDistrict` creates deterministic presentation-only fixtures for structural acceptance:
+
+- `block`: 112 retained presentation entities, all 14 assets;
+- `neighborhood`: 1008 entities, all 14 assets.
+
+Stable IDs, transforms, rotations, seeds, and fingerprints derive from fixture inputs. These fixtures are not gameplay entities and never enter Save V9.
+
+Memory diagnostics are based on unique active prototypes rather than multiplying prototype geometry/material cost by instance count. This is a structural budget contract, not a replacement for platform-specific GPU profilers.
+
+## Camera, visual style, and picking
+
+`MiniatureCameraController` remains the camera-state seam for target/radius/orbit/zoom. Stack 3 preserves the miniature/tilt-shift visual identity and the accepted House A renderer path.
+
+Camera orbit/zoom/review-state changes are presentation-only. The Stack 3 browser acceptance verifies that camera movement and day/night presentation do not mutate Save V9.
+
+Stable picking is keyed to presentation identity with canonical identity retained as metadata for the caller. Identity changes are treated as structural so a retained handle cannot silently expose stale canonical metadata.
+
+## Architecture firewall
+
+`scripts/check-architecture.mjs` enforces import direction. Authoritative roots are:
+
+```text
+src/simulation/
+src/world/
+src/save/
+```
+
+The enforced rules include:
+
+- simulation -> rendering: forbidden;
+- world -> rendering: forbidden;
+- save -> rendering: forbidden;
+- authoritative roots -> `@babylonjs/*`: forbidden;
+- authoritative roots -> `@gltf-transform/*`: forbidden;
+- rendering -> app/ui: forbidden under the existing renderer boundary rules.
+
+The Save-to-rendering rule was made explicit in Stack 3 so all three authoritative directories are protected from `src/rendering/3d` and the broader rendering tree. Tests may tighten this firewall but may not weaken it to make a visual feature pass.
+
+## Desktop/module boundary
+
+Electron remains an optional hardened local host for the same built application. It owns window lifecycle only and exposes no generic simulation-state IPC authority. Browser and desktop targets execute the same authoritative TypeScript simulation.
+
+The renderer build remains browser-native ESM. First-party generated 3D files and vendor/runtime dependencies are served from built local paths; presentation startup does not require a CDN authority.
+
+## Determinism invariants
+
+Civic Foundry keeps these cross-stack invariants:
+
+- identical authoritative input and mutation order produce identical simulation/world results;
+- world/cadastre/building/property/transport/economy/service owners remain authoritative in their domains;
+- failed authoritative transactions cannot escape partial state;
+- Save V9 round-trip/continuation preserve canonical identity;
+- presentation does not manufacture simulation outcomes;
+- production asset selection is input-order independent and deterministic;
+- identical production presentation state/camera/catalog selects identical LOD/identity state;
+- unchanged retained reconciliation does not recreate the world;
+- teardown/rebuild returns the same production reconstruction digest;
+- picking remains stable across retained reconstruction/LOD replacement;
+- obsolete LOD prototype residency is released/evicted after replacement;
+- browser camera/time/reconstruction operations leave Save V9 byte-identical.
 
 ## Verification boundary
 
-Urban Fabric acceptance now includes:
+Repository acceptance combines authoritative simulation/world/save suites with rendering-specific gates. Stack 3 adds focused asset-contract/wave/selection/retained-scene/picking/budget tests and a compiled Chromium production-district smoke while retaining all inherited browser gates and the House A 3D smoke.
 
-- cadastral geometry/topology and mutation suites;
-- dimensional zoning, buildable envelope, compliance, massing, mixed-use metrics, lifecycle, renovation, HBU, property, assembly, and redevelopment tests;
-- runtime proof that developer awards and canonical buildings originate from cadastral parcel identity;
-- runtime split/assembly/right-of-way/easement coordination across cadastre, zoning, buildings, property, and derived lots;
-- twin-core deterministic mutation-sequence equivalence;
-- injected live-commit failure with byte-for-byte cross-domain rollback;
-- Save V9 round-trip/migration/reference validation, including historical transaction lineage;
-- deterministic fixed-seed mutation fuzzing with per-step graph validation and controlled-area conservation;
-- compiled browser coverage for Urban Fabric overlays, parcel inspection, `BuildingV2` materialization, Save V9, and post-load canonical ID preservation;
-- production-path contract coverage proving `GameApp` uses the WebGL renderer and the Electron host is local/sandboxed;
-- all inherited Phase 1R, Phase 6/7, Urban Fabric, and isometric functional/visual gates.
-
-GitHub remains the durable canonical source of truth. The desktop GPU runtime was verified on PR #98 head `725c9cec`, merged into `main` as `c2e7befd`, and is now the production presentation path. Deferred Canvas2D parity work remains non-authoritative presentation migration work and does not alter simulation or persistence ownership.
+A Stack 3 feature head is accepted only when its exact GitHub Actions head passes repository-wide verification, inherited browser/visual smokes, House A smoke, and the Stack 3 smoke. Visual artifacts are evidence, not authority. PR #114 remains draft/unmerged until that exact-head evidence is green and merge is separately authorized.
