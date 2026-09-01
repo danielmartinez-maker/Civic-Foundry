@@ -10,7 +10,7 @@
     "policy:check": "node scripts/repository-policy.mjs",
     "architecture:check": "node scripts/check-architecture.mjs",
     "format": "prettier --write package.json tsconfig.json eslint.config.mjs scripts/**/*.mjs tests/repository_policy.test.ts tests/architecture_policy.test.ts tests/build_script.test.ts tests/asset_policy.test.ts README.md CONTRIBUTING.md docs/ENGINEERING_STANDARDS.md docs/adr/**/*.md",
-    "format:check": "prettier --check package.json tsconfig.json eslint.config.mjs scripts/**/*.mjs tests/repository_policy.test.ts tests/architecture_policy.test.ts tests/build_script.test.ts tests/asset_policy.test.ts README.md CONTRIBUTING.md docs/ENGINEERING_STANDARDS.md docs/adr/**/*.md",
+    "format:check": "prettier --check package.json tsconfig.json eslint.config.mjs scripts/**/*.mjs tests/repository_policy.test.ts tests/architecture_policy.test.ts tests/build_script.test.ts tests/asset_policy.test.ts README.md CONTRIBUTING.md docs/ENGINEERING_STANDARDS.md docs/adr/**/*.md || (prettier scripts/check-architecture.mjs && false)",
     "assets:policy": "node scripts/check-assets.mjs",
     "assets:check": "python tools/render_isometric_atlases.py --check",
     "assets:build": "python tools/render_isometric_atlases.py",
