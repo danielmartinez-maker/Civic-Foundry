@@ -37,7 +37,11 @@ const rules = [
     forbidden: "src/app/",
     rule: "rendering-no-app",
   },
-  { importer: "src/rendering/", forbidden: "src/ui/", rule: "rendering-no-ui" },
+  {
+    importer: "src/rendering/",
+    forbidden: "src/ui/",
+    rule: "rendering-no-ui",
+  },
 ];
 
 const mutationInternals = [
@@ -58,7 +62,9 @@ export function checkArchitectureImport(importer, imported) {
   const normalizedImported = normalize(imported);
 
   if (
-    presentationRoots.some((prefix) => normalizedImporter.startsWith(prefix)) &&
+    presentationRoots.some((prefix) =>
+      normalizedImporter.startsWith(prefix),
+    ) &&
     mutationInternals.some((prefix) => normalizedImported.startsWith(prefix))
   ) {
     return {
@@ -79,7 +85,8 @@ export function checkArchitectureImport(importer, imported) {
         rule: boundary.rule,
         importer: normalizedImporter,
         imported: normalizedImported,
-        alternative: "Depend on the lower-level domain contract or a read-only projection.",
+        alternative:
+          "Depend on the lower-level domain contract or a read-only projection.",
       };
     }
   }
@@ -88,12 +95,21 @@ export function checkArchitectureImport(importer, imported) {
 }
 
 function parseSource(path, source) {
-  return ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  return ts.createSourceFile(
+    path,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
 }
 
 export function checkArchitectureSource(path, source) {
   const normalizedPath = normalize(path);
-  if (!authoritativeRoots.some((prefix) => normalizedPath.startsWith(prefix))) return [];
+  if (
+    !authoritativeRoots.some((prefix) => normalizedPath.startsWith(prefix))
+  )
+    return [];
   const failures = [];
   const sourceFile = parseSource(normalizedPath, source);
 
@@ -105,7 +121,9 @@ export function checkArchitectureSource(path, source) {
       node.expression.expression.text === "Math" &&
       node.expression.name.text === "random"
     ) {
-      const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+      const position = sourceFile.getLineAndCharacterOfPosition(
+        node.getStart(sourceFile),
+      );
       failures.push({
         rule: "authoritative-no-math-random",
         importer: normalizedPath,
@@ -182,7 +200,9 @@ export async function runArchitectureCheck() {
   }
 
   if (failures.length > 0) {
-    console.error(`Architecture check failed with ${failures.length} violation(s):`);
+    console.error(
+      `Architecture check failed with ${failures.length} violation(s):`,
+    );
     for (const failure of failures) {
       const location = failure.line === undefined ? "" : `:${failure.line}`;
       console.error(
@@ -196,6 +216,9 @@ export async function runArchitectureCheck() {
   console.log("Architecture boundaries passed.");
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   await runArchitectureCheck();
 }
