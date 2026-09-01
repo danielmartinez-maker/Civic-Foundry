@@ -104,6 +104,23 @@ test("formatting contract covers supported repository text types", async () => {
   }
 });
 
+test("formatting ignore rules apply to managed Markdown paths", async () => {
+  const formatter = (await import("../scripts/format-changed.mjs")) as Record<
+    string,
+    unknown
+  >;
+  const ignored = formatter.isFormattingIgnoredPath;
+
+  assert.equal(typeof ignored, "function");
+  if (typeof ignored !== "function") return;
+
+  assert.equal(
+    await ignored("docs/superpowers/specs/2026-08-29-prism-p2a-design.md"),
+    true,
+  );
+  assert.equal(await ignored("docs/TESTING.md"), false);
+});
+
 test("markdown formatting normalizes line endings without table reflow", async () => {
   const formatter = (await import("../scripts/format-changed.mjs")) as Record<
     string,

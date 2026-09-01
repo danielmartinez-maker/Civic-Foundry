@@ -12,6 +12,7 @@ __pycache__/
 *.py[cod]
 .vscode/
 .idea/
+engine/prism/target/
 *.tsbuildinfo
 *.log
 .DS_Store

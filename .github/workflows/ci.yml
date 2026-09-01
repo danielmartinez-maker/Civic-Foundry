@@ -21,6 +21,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+      - name: Rust 1.98.0
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.98.0
       - name: Install project dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Fast verification
@@ -45,3 +49,75 @@ jobs:
           path: test-artifacts/
           if-no-files-found: ignore
           retention-days: 7
+
+  prism-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Node 22
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Rust 1.98.0
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.98.0
+      - name: Install project dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Generate Prism P2A fixture capture
+        run: npm run prism:p2a:fixtures
+      - name: Upload Prism P2A fixture capture
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: prism-p2a-parity-corpus-${{ github.sha }}
+          path: tests/fixtures/prism-p2a/parity-cases.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Prism P2A fixture preflight
+        run: npm run prism:p2a:fixtures:check
+      - name: Prism format
+        working-directory: engine/prism
+        run: cargo fmt --all -- --check
+      - name: Prism Clippy
+        working-directory: engine/prism
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Prism P2A mutation tests
+        working-directory: engine/prism
+        run: cargo test -p prism-domain --test cadastre_mutation --locked
+      - name: Prism workspace tests
+        working-directory: engine/prism
+        run: cargo test --workspace --locked
+      - name: Prism P0 release invariants
+        working-directory: engine/prism
+        run: cargo test -p prism-core --release --test p0_invariants --locked
+      - name: Prism P1 release invariants
+        working-directory: engine/prism
+        run: cargo test -p prism-core --release --test p1_invariants --locked
+      - name: Prism P2A release invariants
+        working-directory: engine/prism
+        run: cargo test -p prism-domain --release --test p2a_invariants --locked
+      - name: Prism workspace check
+        working-directory: engine/prism
+        run: cargo check --workspace --all-targets --locked
+
+  prism-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+      - name: Rust 1.98.0
+        run: |
+          rustup toolchain install 1.98.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.98.0
+      - name: Verify native Prism host
+        shell: pwsh
+        run: |
+          cargo test --manifest-path engine/prism/Cargo.toml -p prism-host --test bootstrap_smoke --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $output = cargo run --manifest-path engine/prism/Cargo.toml -p prism-host --release --locked --quiet
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output -ne "PRISM_BOOTSTRAP version=0.1.0 entity_generation=1 alignment=64 compiled_jobs=2") {
+            throw "Unexpected Prism bootstrap output: $output"
+          }

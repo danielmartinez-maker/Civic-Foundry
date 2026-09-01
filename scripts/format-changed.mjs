@@ -38,6 +38,15 @@ export function isFormattingManagedPath(path) {
   return managedExtensions.has(extname(normalized).toLowerCase());
 }
 
+export async function isFormattingIgnoredPath(path) {
+  const normalized = normalizeRepositoryPath(path);
+  const absolutePath = join(root, normalized);
+  const fileInfo = await prettier.getFileInfo(absolutePath, {
+    ignorePath: join(root, ".prettierignore"),
+  });
+  return fileInfo.ignored;
+}
+
 export function normalizeMarkdown(source) {
   const normalizedLineEndings = source.replace(/\r\n?/gu, "\n");
   return `${normalizedLineEndings.replace(/\n*$/u, "")}\n`;
@@ -160,11 +169,13 @@ export async function runChangedFileFormatting({ write = false } = {}) {
     const absolutePath = join(root, display);
     const extension = extname(display).toLowerCase();
 
+    if (await isFormattingIgnoredPath(display)) continue;
+
     if (prettierExtensions.has(extension)) {
       const fileInfo = await prettier.getFileInfo(absolutePath, {
         ignorePath: join(root, ".prettierignore"),
       });
-      if (fileInfo.ignored || fileInfo.inferredParser === null) continue;
+      if (fileInfo.inferredParser === null) continue;
     }
 
     const source = await readFile(absolutePath, "utf8");
