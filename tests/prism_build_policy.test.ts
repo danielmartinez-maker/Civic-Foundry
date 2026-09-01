@@ -2,9 +2,20 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { prismVerificationCommands } from "../scripts/prism-verify.mjs";
+import {
+  prismPreflightCommands,
+  prismVerificationCommands,
+} from "../scripts/prism-verify.mjs";
 
 test("Prism verification keeps the native gate deterministic and explicit", () => {
+  assert.deepEqual(prismPreflightCommands, [
+    [
+      "node",
+      "--experimental-strip-types",
+      "scripts/prism-p2a-fixtures.ts",
+      "--check",
+    ],
+  ]);
   assert.deepEqual(prismVerificationCommands, [
     ["fmt", "--all", "--", "--check"],
     [
@@ -54,4 +65,16 @@ test("Prism workspace includes the P2A domain crate", () => {
     "utf8",
   );
   assert.match(cargoToml, /members\s*=\s*\[[^\]]*"domain"[^\]]*\]/s);
+});
+
+test("Linux CI keeps the P2A release invariant gate explicit", () => {
+  const ci = readFileSync(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(ci, /name: Prism P2A release invariants/);
+  assert.match(
+    ci,
+    /cargo test -p prism-domain --release --test p2a_invariants --locked/,
+  );
 });
