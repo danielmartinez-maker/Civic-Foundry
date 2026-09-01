@@ -5,53 +5,52 @@ import * as buildingCatalog from "../src/data/buildings.ts";
 import type { BuildingDefinition } from "../src/data/buildings.ts";
 import type { Lot } from "../src/world/lots/LotSystem.ts";
 
+type DevelopmentVariant = Readonly<{
+  id: string;
+  zone: string;
+  baseConstructionCost: number;
+  baseRent: number;
+  softCostRatio: number;
+  operatingExpenseRatio: number;
+  baseVacancy: number;
+}>;
+
 const catalog = buildingCatalog as unknown as {
   BUILDING_DEFINITIONS: Record<string, { id: string; zone: string }>;
-  BUILDING_VARIANTS?: Record<
-    string,
-    ReadonlyArray<{
-      id: string;
-      zone: string;
-      baseConstructionCost: number;
-      baseRent: number;
-      softCostRatio: number;
-      operatingExpenseRatio: number;
-      baseVacancy: number;
-    }>
-  >;
+  BUILDING_VARIANTS?: Record<string, ReadonlyArray<DevelopmentVariant>>;
   getBuildingDefinition?: (id: string) => unknown;
 };
 
 test("building catalog exposes multiple deterministic development variants per zone", () => {
-  assert.ok(catalog.BUILDING_VARIANTS, "expected BUILDING_VARIANTS export");
+  const buildingVariants = catalog.BUILDING_VARIANTS;
+  assert.ok(buildingVariants, "expected BUILDING_VARIANTS export");
   assert.equal(
     typeof catalog.getBuildingDefinition,
     "function",
     "expected getBuildingDefinition export",
   );
-  assert.deepEqual(Object.keys(catalog.BUILDING_VARIANTS), [
+  assert.deepEqual(Object.keys(buildingVariants), [
     "residential",
     "commercial",
     "industrial",
   ]);
 
   for (const zone of ["residential", "commercial", "industrial"] as const) {
-    const variants = catalog.BUILDING_VARIANTS[zone]!;
+    const variants: readonly DevelopmentVariant[] = buildingVariants[zone] ?? [];
     assert.ok(
       variants.length >= 3,
       `${zone} should expose at least three project variants`,
     );
     assert.equal(catalog.BUILDING_DEFINITIONS[zone]!.zone, zone);
-    for (const definition of variants) {
-      assert.equal(catalog.getBuildingDefinition!(definition.id), definition);
-      assert.ok(definition.baseConstructionCost > 0);
-      assert.ok(definition.baseRent > 0);
-      assert.ok(definition.softCostRatio >= 0 && definition.softCostRatio < 1);
+    for (const variant of variants) {
+      assert.equal(catalog.getBuildingDefinition!(variant.id), variant);
+      assert.ok(variant.baseConstructionCost > 0);
+      assert.ok(variant.baseRent > 0);
+      assert.ok(variant.softCostRatio >= 0 && variant.softCostRatio < 1);
       assert.ok(
-        definition.operatingExpenseRatio >= 0 &&
-          definition.operatingExpenseRatio < 1,
+        variant.operatingExpenseRatio >= 0 && variant.operatingExpenseRatio < 1,
       );
-      assert.ok(definition.baseVacancy >= 0 && definition.baseVacancy < 1);
+      assert.ok(variant.baseVacancy >= 0 && variant.baseVacancy < 1);
     }
   }
 });
