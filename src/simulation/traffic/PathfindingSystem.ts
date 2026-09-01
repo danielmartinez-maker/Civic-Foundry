@@ -1,6 +1,14 @@
-import type { TransportationEdge, TransportationGraph } from './TransportationGraph.ts';
+import type { PerformanceAttribution } from "../diagnostics/PerformanceAttribution.ts";
+import type {
+  TransportationEdge,
+  TransportationGraph,
+} from "./TransportationGraph.ts";
 
-export type RouteResult = Readonly<{ nodeIds: readonly string[]; edgeIds: readonly string[]; totalCost: number }>;
+export type RouteResult = Readonly<{
+  nodeIds: readonly string[];
+  edgeIds: readonly string[];
+  totalCost: number;
+}>;
 export type PathfindingOptions = Readonly<{
   edgeCost?: (edge: TransportationEdge) => number;
   costKey?: string;
@@ -15,11 +23,65 @@ export type PathfindingDiagnostics = {
 type QueueEntry = { nodeId: string; g: number; f: number };
 
 export class PathfindingSystem {
-  readonly diagnostics: PathfindingDiagnostics = { requests: 0, cacheHits: 0, cacheMisses: 0 };
+  readonly diagnostics: PathfindingDiagnostics = {
+    requests: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+  };
   private readonly cache = new Map<string, RouteResult | null>();
   private cachedRevision = -1;
+  private performanceAttribution: PerformanceAttribution | null = null;
 
-  findRoute(graph: TransportationGraph, startNodeId: string, endNodeId: string, options: PathfindingOptions = {}): RouteResult | null {
+  attachPerformanceAttribution(performance: PerformanceAttribution): void {
+    this.performanceAttribution = performance;
+  }
+
+  findRoute(
+    graph: TransportationGraph,
+    startNodeId: string,
+    endNodeId: string,
+    options: PathfindingOptions = {},
+  ): RouteResult | null {
+    const execute = (): RouteResult | null =>
+      this.findRouteUnmeasured(graph, startNodeId, endNodeId, options);
+    const performance = this.performanceAttribution;
+    if (!performance) return execute();
+
+    const operation = options.costKey?.startsWith("freight")
+      ? "pathfinding.freight"
+      : "pathfinding.transportation";
+    return performance.measure(operation, execute, {
+      cache: this.willHitCache(graph, startNodeId, endNodeId, options)
+        ? "hit"
+        : "miss",
+    });
+  }
+
+  clearCache(): void {
+    this.cache.clear();
+    this.cachedRevision = -1;
+  }
+
+  private willHitCache(
+    graph: TransportationGraph,
+    startNodeId: string,
+    endNodeId: string,
+    options: PathfindingOptions,
+  ): boolean {
+    if (this.cachedRevision !== graph.revision) return false;
+    if (!graph.getNode(startNodeId) || !graph.getNode(endNodeId)) return false;
+    const canCache = options.edgeCost === undefined || options.costKey !== undefined;
+    if (!canCache) return false;
+    const cacheKey = `${graph.revision}|${options.costKey ?? "free-flow"}|${startNodeId}|${endNodeId}`;
+    return this.cache.has(cacheKey);
+  }
+
+  private findRouteUnmeasured(
+    graph: TransportationGraph,
+    startNodeId: string,
+    endNodeId: string,
+    options: PathfindingOptions,
+  ): RouteResult | null {
     this.diagnostics.requests++;
     if (this.cachedRevision !== graph.revision) {
       this.cache.clear();
@@ -31,7 +93,7 @@ export class PathfindingSystem {
     }
 
     const canCache = options.edgeCost === undefined || options.costKey !== undefined;
-    const cacheKey = `${graph.revision}|${options.costKey ?? 'free-flow'}|${startNodeId}|${endNodeId}`;
+    const cacheKey = `${graph.revision}|${options.costKey ?? "free-flow"}|${startNodeId}|${endNodeId}`;
     if (canCache && this.cache.has(cacheKey)) {
       this.diagnostics.cacheHits++;
       return this.cache.get(cacheKey) ?? null;
@@ -50,21 +112,30 @@ export class PathfindingSystem {
 
     const startNode = graph.getNode(startNodeId)!;
     const endNode = graph.getNode(endNodeId)!;
-    const edgeCost = options.edgeCost ?? ((edge: TransportationEdge) => edge.freeFlowTicks);
+    const edgeCost =
+      options.edgeCost ??
+      ((edge: TransportationEdge) => edge.freeFlowTicks);
     const heuristicScale = options.edgeCost ? 0 : 1;
     const heuristic = (nodeId: string): number => {
       const node = graph.getNode(nodeId);
       if (!node) return 0;
-      return (Math.abs(node.x - endNode.x) + Math.abs(node.y - endNode.y)) * heuristicScale;
+      return (
+        (Math.abs(node.x - endNode.x) + Math.abs(node.y - endNode.y)) *
+        heuristicScale
+      );
     };
 
-    const open: QueueEntry[] = [{ nodeId: startNode.id, g: 0, f: heuristic(startNode.id) }];
+    const open: QueueEntry[] = [
+      { nodeId: startNode.id, g: 0, f: heuristic(startNode.id) },
+    ];
     const best = new Map<string, number>([[startNode.id, 0]]);
     const previousNode = new Map<string, string>();
     const previousEdge = new Map<string, string>();
 
     while (open.length > 0) {
-      open.sort((a, b) => a.f - b.f || a.g - b.g || a.nodeId.localeCompare(b.nodeId));
+      open.sort(
+        (a, b) => a.f - b.f || a.g - b.g || a.nodeId.localeCompare(b.nodeId),
+      );
       const current = open.shift();
       if (!current) break;
       const known = best.get(current.nodeId);
@@ -78,12 +149,19 @@ export class PathfindingSystem {
         const priorG = best.get(edge.to);
         const priorEdgeId = previousEdge.get(edge.to);
         const improves = priorG === undefined || nextG < priorG - 1e-9;
-        const tiesDeterministically = priorG !== undefined && Math.abs(nextG - priorG) <= 1e-9 && edge.id.localeCompare(priorEdgeId ?? '\uffff') < 0;
+        const tiesDeterministically =
+          priorG !== undefined &&
+          Math.abs(nextG - priorG) <= 1e-9 &&
+          edge.id.localeCompare(priorEdgeId ?? "\uffff") < 0;
         if (!improves && !tiesDeterministically) continue;
         best.set(edge.to, nextG);
         previousNode.set(edge.to, current.nodeId);
         previousEdge.set(edge.to, edge.id);
-        open.push({ nodeId: edge.to, g: nextG, f: nextG + heuristic(edge.to) });
+        open.push({
+          nodeId: edge.to,
+          g: nextG,
+          f: nextG + heuristic(edge.to),
+        });
       }
     }
 
@@ -115,10 +193,5 @@ export class PathfindingSystem {
     });
     if (canCache) this.cache.set(cacheKey, route);
     return route;
-  }
-
-  clearCache(): void {
-    this.cache.clear();
-    this.cachedRevision = -1;
   }
 }
