@@ -6,10 +6,8 @@ import {
   type AssetLease,
   type AssetPrototypeLoadRequest,
 } from '../assets/AssetStreamingManager.ts';
-import {
-  BabylonGlbPrototype,
-  BabylonGlbPrototypeLoader,
-} from '../assets/BabylonGlbPrototypeLoader.ts';
+import { BabylonGlbPrototypeLoader } from '../assets/BabylonGlbPrototypeLoader.ts';
+import type { BabylonGlbPrototype } from '../assets/BabylonGlbPrototypeLoader.ts';
 import type { ProductionVisualState } from '../presentation/PresentationTypes.ts';
 import {
   BabylonProductionSceneAdapter,
