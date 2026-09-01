@@ -196,3 +196,23 @@ The current Urban Fabric tranche requires:
 - redevelopment cannot bypass relocation safeguards;
 - Save V9 continuation preserves canonical parcel and building identity;
 - ordinary rendering/UI activity cannot mutate simulation authority.
+
+## Stack 8 runtime diagnostics and deterministic replay
+
+Stack 8 does not alter the simulation model above. It adds deterministic engineering state around the existing owners so cross-domain failures can be detected, reproduced, and localized without becoming gameplay authority.
+
+`SimulationKernel` keeps deterministic execution ownership and now exposes a stable scheduler manifest describing each registered system's cadence, declared reads/writes, named RNG streams, emitted events, invariant expectations, and optional performance budget. These declarations are diagnostic/architectural contracts; performance measurements cannot reorder systems or change results.
+
+`SimulationCore.diagnostics` is a read-only service. Its snapshot includes kernel fault/queue/event/rollback state, selected world/building/transport/transit/economy/service counts, revisions, per-system performance attribution, a deterministic hash of the accepted authoritative checkpoint, and selected BuildingV2/property reference-integrity counts. The integrity counts report invalid references only; they never mutate or silently repair authoritative state.
+
+A bounded causal trace records stable engineering codes with deterministic local sequence and optional parent sequence. Trace retention is finite, does not consume RNG, and is excluded from the authoritative checkpoint hash.
+
+Structured architectural failures carry stable machine-readable categories and contextual metadata where useful. Deterministic repro bundles canonically serialize game/save version, starting tick/hash, ordered commands, caller-supplied named RNG states, scheduler manifest, revisions, and optional expected failure/invariant/performance information. Replay verifies the same failure code and authoritative pre-failure hash.
+
+`TransactionCoordinator` generalizes rollback orchestration without centralizing domain semantics. Registered domain participants own snapshot/restore behavior; capture order is stable and rollback order is the exact reverse. A rollback failure is fail-stop. Existing domain-specific transaction services continue to own their validation and commit semantics.
+
+`ReplayDiagnostics` provides deterministic snapshot comparison and N-tick profiling. Profiling uses an injectable monotonic clock in tests and reads authority before/after; timing data is observational and is not serialized as gameplay state.
+
+Numeric hardening rejects reproduced non-finite traffic inputs at the authority boundary before state mutation. The architecture firewall also rejects direct `Math.random()` in authoritative TypeScript and presentation imports of designated transaction/mutation internals.
+
+Save V9 remains unchanged. Diagnostics, causal trace, performance samples, and repro tooling are not new persistence authority, and Prism remains non-authoritative.
