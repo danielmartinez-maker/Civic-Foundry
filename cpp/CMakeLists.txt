@@ -11,10 +11,12 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Clipper2 CONFIG REQUIRED)
 add_library(civic_engine STATIC
   engine/src/geometry/Geometry.cpp
+  engine/src/geometry/BooleanOps.cpp
   engine/src/world/Terrain.cpp
   engine/src/world/Hydrology.cpp
   engine/src/world/WorldFoundation.cpp
   engine/src/cadastre/Cadastre.cpp
+  engine/src/cadastre/CadastreMutation.cpp
   engine/src/urban/UrbanFabric.cpp
 )
 target_include_directories(civic_engine PUBLIC engine/include)

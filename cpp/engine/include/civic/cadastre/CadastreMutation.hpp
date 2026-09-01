@@ -4,6 +4,7 @@
 #include <span>
 
 namespace civic::cadastre {
+
 struct ParcelSplitCommand final { civic::core::ParcelId parcel_id{}; civic::geometry::Segment cut{}; };
 struct ParcelAssemblyCommand final { std::vector<civic::core::ParcelId> parcel_ids{}; };
 struct EasementCreateCommand final { std::string id{}; std::vector<civic::core::ParcelId> parcel_ids{}; std::string kind{}; std::vector<civic::geometry::Point> geometry{}; };
@@ -27,4 +28,5 @@ private:
   CadastralGraph& graph_;
   std::vector<CommitValidator> validators_{};
 };
-}
+
+}  // namespace civic::cadastre
