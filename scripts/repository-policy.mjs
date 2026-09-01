@@ -1,9 +1,79 @@
-import { readdir, readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 
+const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sourceRoots = ["src", "tests"];
+const maxTrackedBinaryBytes = 5 * 1024 * 1024;
+
+const forbiddenTrackedPrefixes = [
+  "dist/",
+  "target/",
+  "node_modules/",
+  "coverage/",
+  "test-artifacts/",
+  ".tmp/",
+  ".cache/",
+  "playwright-report/",
+];
+
+const forbiddenTrackedSegments = ["/__pycache__/", "/.pytest_cache/"];
+const binaryExtensions = new Set([
+  ".bin",
+  ".blend",
+  ".fbx",
+  ".gif",
+  ".glb",
+  ".gltf",
+  ".jpeg",
+  ".jpg",
+  ".mov",
+  ".mp3",
+  ".mp4",
+  ".obj",
+  ".ogg",
+  ".png",
+  ".wav",
+  ".webp",
+  ".zip",
+]);
+
+function normalizeRepositoryPath(path) {
+  return path.replaceAll("\\", "/").replace(/^\.\//, "");
+}
+
+export function inspectRepositoryPathPolicy(path) {
+  const display = normalizeRepositoryPath(path);
+  const normalized = display.toLowerCase();
+  const wrapped = `/${normalized}`;
+
+  if (
+    forbiddenTrackedPrefixes.some((prefix) => normalized.startsWith(prefix)) ||
+    forbiddenTrackedSegments.some((segment) => wrapped.includes(segment))
+  ) {
+    return [`${display}: generated/build output must not be tracked`];
+  }
+
+  return [];
+}
+
+export function inspectRepositoryFilePolicy(path, sizeBytes) {
+  const display = normalizeRepositoryPath(path);
+  const extension = extname(display).toLowerCase();
+
+  if (
+    binaryExtensions.has(extension) &&
+    Number.isFinite(sizeBytes) &&
+    sizeBytes > maxTrackedBinaryBytes
+  ) {
+    return [`${display}: binary file exceeds 5 MiB repository limit`];
+  }
+
+  return [];
+}
 
 export function inspectSourcePolicy(display, source) {
   const failures = [];
@@ -48,6 +118,19 @@ async function collectTypeScriptFiles(directory) {
   return files;
 }
 
+async function collectTrackedFiles() {
+  const { stdout } = await execFileAsync("git", ["ls-files", "-z"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+
+  return stdout
+    .split("\0")
+    .map((path) => normalizeRepositoryPath(path.trim()))
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right));
+}
+
 export async function runRepositoryPolicy() {
   const failures = [];
 
@@ -56,6 +139,15 @@ export async function runRepositoryPolicy() {
       const source = await readFile(path, "utf8");
       const display = relative(root, path).replaceAll("\\", "/");
       failures.push(...inspectSourcePolicy(display, source));
+    }
+  }
+
+  for (const display of await collectTrackedFiles()) {
+    failures.push(...inspectRepositoryPathPolicy(display));
+
+    const metadata = await stat(join(root, display));
+    if (metadata.isFile()) {
+      failures.push(...inspectRepositoryFilePolicy(display, metadata.size));
     }
   }
 

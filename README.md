@@ -1,141 +1,97 @@
 # Civic Foundry
 
-Civic Foundry is an original city-management, urban-development, transportation, economic-simulation, and municipal-management game built around deterministic simulation and inspectable causal systems. The production presentation path now targets GPU-rendered Windows desktop play while retaining the browser build as a development and smoke-test target.
+Civic Foundry is a systems-heavy city, metropolitan, and regional simulation built around deterministic authoritative state and inspectable causal systems. The production presentation target is GPU-rendered Windows desktop play; the browser build remains a development and smoke-test target.
 
-## Wiki
+Start with the [Civic Foundry Wiki](docs/wiki/Home.md) for product orientation. Canonical technical authority remains current code plus fresh verification evidence, this README, `docs/ARCHITECTURE.md`, `docs/SAVE_FORMAT.md`, accepted ADRs, and the current-state/domain documentation linked from `docs/README.md`.
 
-Start with the **[Civic Foundry Wiki](docs/wiki/Home.md)** for a structured guide to the product vision, current roadmap, runtime architecture, simulation domains, rendering, persistence, contribution workflow, known technical debt, and project glossary. The wiki is an orientation layer; canonical technical authority remains current code, fresh verification evidence, this README, `docs/ARCHITECTURE.md`, `docs/SAVE_FORMAT.md`, and accepted ADRs.
+## Current runtime
 
-## Canonical runtime
-
-**Civic Foundry 2.0 Phase 2R — Urban Fabric 2.0 is the current land/development/persistence layer.** The default save envelope is **Save V9** with `saveVersion: 9` and `gameVersion: '0.9.0-urban-fabric'`.
-
-Phase 2R extends the accepted Phase 1R world foundation instead of replacing it. `WorldFoundation` remains the sole physical/geographic authority; `CadastralGraph` is the canonical legal-land authority. Existing V7/V8 gameplay systems remain behind explicit compatibility seams until later replacement phases assume ownership.
-
-Current runtime path:
+The current accepted runtime is progressive rather than a clean-slate rewrite:
 
 ```text
-Electron desktop host (optional)
+Electron desktop host
   → GameApp
     → SimulationCore facade
-      → SimulationKernel + WorldFoundation + CadastralGraph
-      → parcel zoning/building/property systems
-      → legacy gameplay compatibility domains
-    → GpuWorldRenderer → PixiJS/WebGL
+      → SimulationKernel
+      → WorldFoundation
+      → CadastralGraph
+      → Urban Fabric systems
+      → transitional gameplay domains
+    → GpuWorldRenderer
+      → PixiJS / WebGL
 ```
 
-`SimulationCore.world` remains authoritative for terrain, geography, hydrology, and physical-world state. `SimulationCore.cadastre` owns legal parcels/topology. `LotSystem` is rebuilt from cadastral state and survives only as a derived compatibility facade for inherited cell-based consumers. `GpuWorldRenderer` reads those systems for presentation and does not own simulation or save state.
+Current milestone status:
 
-## Desktop GPU runtime
+- Phase 0A — deterministic kernel foundation: **Implemented**
+- 1R — World Foundation 2.0: **Implemented**
+- 2R — Urban Fabric 2.0: **Implemented**
+- Desktop GPU runtime: **Implemented**
+- 3R — Transportation Engine 2.0: **Target / next major authority replacement**
 
-The production `GameApp` world-rendering path uses PixiJS 8 with WebGL explicitly selected for broad Windows GPU compatibility. The existing `IsometricCamera` remains the projection and interaction contract for panning, anchored zoom, rotation, cell picking, and world/canvas conversion.
+The default persistence envelope remains:
 
-Electron provides the native desktop window around the same local `dist/` build used by browser development. The desktop host loads only local application content with Node integration disabled, context isolation enabled, sandboxing enabled, and unexpected navigation/window creation denied. The current desktop tranche exposes no generic IPC bridge.
+```text
+saveVersion: 9
+gameVersion: 0.9.0-urban-fabric
+```
 
-The static TypeScript build remains in place. PixiJS's pinned browser ESM module is copied to `dist/vendor/pixi.mjs` and resolved through the local import map in `index.html`; no CDN runtime dependency or TypeScript `paths` alias is required. This boundary is recorded in `docs/adr/0002-desktop-gpu-runtime.md`.
+Stack-specific designs, plans, and feature branches do not become current authority until their acceptance and migration gates pass.
 
-Legacy Canvas2D renderer/pass sources remain temporarily as migration references for specialized visual parity, but the production `GameApp` path no longer instantiates them.
+## Authority map
 
-## Phase 1R — World Foundation 2.0
+Civic Foundry uses one authoritative owner per fact.
 
-Implemented and verified:
+- `WorldFoundation` is the sole physical/geographic authority for terrain, geography, hydrology, and related physical-world state.
+- `CadastralGraph` is the canonical legal-land authority for parcels, topology, frontage/access, easements, ownership identity, and lineage.
+- `LotSystem` is a derived compatibility facade for inherited cell-based consumers; it is not a second land authority.
+- Canonical Urban Fabric building state is represented by `BuildingV2`; inherited building records remain only where compatibility still requires them.
+- Save V9 is the current accepted Urban Fabric persistence envelope.
+- Current transportation, transit, economy, housing, services, utilities, tax, and treasury systems remain playable through compatibility seams where their deeper 2.0 replacements have not yet earned authority.
+- `GpuWorldRenderer` is presentation-only. It reads authoritative state and cannot manufacture simulation outcomes or save facts.
+- Electron owns window/application hosting, not simulation state.
+- Prism is an architectural target/mirror program until a reviewed migration explicitly transfers authority; there is no current repository-level authoritative `PrismEngine` object on `main`.
 
-- deterministic geometry primitives, polygon/segment math, canonical tolerances, and spatial indexing;
-- stable geography hierarchy: `Region → Municipality → District → Neighborhood → Block`;
-- irregular deterministic administrative boundaries with validated parent/containment relationships;
-- physical `TerrainField` with elevation, slope, aspect, soils, soil depth, bearing capacity, bedrock depth, groundwater depth, vegetation, contamination, and surface water;
-- eight locked engineering soil classes: `rock`, `gravel`, `sand`, `loam`, `clay`, `alluvium`, `peat`, and `fill_disturbed`;
-- six deterministic world presets: `plain`, `river_valley`, `basin`, `rolling_uplands`, `ridge_edge`, and `coastal_lowland`;
-- namespaced deterministic RNG streams so topography, soils, groundwater, and vegetation do not perturb one another accidentally;
-- priority-flood terrain conditioning plus deterministic D8 drainage with fixed clockwise tie breaking;
-- watershed assignment, flow accumulation, generated drainage channels, flood susceptibility, and spatial channel queries;
-- deterministic design-storm flooding with infiltration, storage, outlet export, nonnegative flood depth, and explicit water-balance accounting;
-- scenario-authored generation and physical overrides without hidden generated contamination;
-- terrain preparation multipliers that feed existing road construction and development underwriting for generated 1R worlds;
-- exact neutral terrain economics (`1.0`) for direct/legacy worlds;
-- `LegacyTerrainAdapter` preserving existing `TerrainGrid` behavior for inherited gameplay systems;
-- typed diagnostic events: `WorldGenerated`, `WorldMigratedTo1R`, `FloodEventStarted`, and `FloodEventResolved`;
-- `SimulationCore.runDesignStorm()` as the authoritative storm entry point;
-- Save V8 persistence for the complete authoritative `WorldFoundation`, including the latest flood result;
-- deterministic V3–V7 migration into a neutral `legacy-flat` world without fabricating gameplay history;
-- corruption rejection for invalid world terrain, compatibility divergence, and geography hierarchy references;
-- static-world protection: ordinary simulation ticking does not mutate authoritative terrain, hydrology, geography, or prior flood state.
+See `docs/ARCHITECTURE.md`, `docs/SAVE_FORMAT.md`, and the current roadmap/contributor documentation for the complete ownership model.
 
-## Phase 2R — Urban Fabric 2.0
+## Implemented foundations
 
-Implemented and integrated on the current baseline:
+### World Foundation 2.0
 
-- deterministic centimeter-normalized cadastral geometry and topology validation;
-- canonical blocks, parcels, frontage/access edges, easements, ownership, and lineage in `CadastralGraph`;
-- deterministic parcel generation from inherited roads/zoning with stable legacy-lot compatibility projection;
-- dimensional parcel zoning with allowed uses, FAR, height, coverage, setbacks, frontage constraints, mixed-use permissions, and overlays;
-- buildable-envelope calculation and realized-massing compliance checks;
-- physical mixed-use `BuildingV2` records with footprints, floors, use components, area-derived capacity, lifecycle, condition, quality, and project state;
-- finite deterministic building massing candidates tied to parcel identity;
-- physical development underwriting, highest-and-best-use analysis, property-market state, site assembly, and redevelopment execution;
-- deterministic maintenance, deterioration, renovation, adaptive reuse, distress, demolition, and grandfathered/nonconforming-building behavior;
-- deterministic low-level parcel split/assembly/right-of-way/easement mutation with whole-graph validation before commit;
-- simulation-layer cadastral transaction coordination across zoning, canonical buildings, property references, and derived legacy lots;
-- cadastral and zoning-envelope overlays, canonical parcel picking, parcel inspection, and Urban Fabric tool controls;
-- fixed-seed cadastral mutation fuzz coverage and a compiled Urban Fabric browser smoke gate;
-- Save V9 persistence for cadastral topology, parcel zoning assignments, canonical buildings, and property-market state.
+The accepted 1R foundation includes deterministic physical geography, irregular administrative geometry, engineering terrain/soils, namespaced RNG streams, hydrology/drainage, flood simulation, spatial indexing, terrain-aware costs, compatibility projection, and Save V8 migration support.
 
-## Existing gameplay compatibility baseline
+### Urban Fabric 2.0
 
-The preserved gameplay layer still includes:
+The accepted 2R foundation includes canonical cadastral parcels/topology, dimensional parcel zoning, buildable envelopes, mixed-use `BuildingV2`, lifecycle/condition, development economics and property state, parcel split/assembly/right-of-way/easement mutation, cross-domain cadastral transactions, diagnostics, and Save V9.
 
-- treasury, road construction, inherited R/C/I zoning entrypoints, population, employment, taxation, utilities, and recurring municipal finance;
-- deterministic road graphs, pathfinding, weighted trips, moving vehicles, intersections, queues, congestion, and accessibility;
-- fire, police, healthcare, education, waste collection, routed service vehicles, incidents, budgets, and neighborhood quality;
-- bus, BRT, tram, and metro topology, multimodal journey planning, passenger queues, transit vehicles, operations, fares, crowding, reliability, and accessibility;
-- establishment-based firms, labor allocation, inventories, production, imports/exports, freight orders, explicit freight trucks, formation, distress, recovery, and closure;
-- housing affordability, renter/owner tenure economics, persistent relocation, development policy, developer capital allocation, and inherited redevelopment safeguards;
-- deterministic isometric GPU presentation with terrain, zoning, roads, structures, active vehicle markers, analytical overlays, selection, and tool previews.
+### Desktop GPU runtime
 
-These domains continue through the deterministic kernel compatibility architecture while later Civic Foundry 2.0 tranches progressively replace ownership behind parity gates.
+The production `GameApp` world path uses PixiJS 8 with WebGL and the existing isometric camera contract. Electron hosts the same local `dist/` application used by browser development. Node integration is disabled in the renderer context, context isolation and sandboxing are enabled, and unexpected navigation/window creation is denied.
 
-## Compatibility boundaries
+Legacy Canvas2D presentation sources can remain as migration references where active stacks still depend on their semantics, but they are not the production world-rendering authority.
 
-Phase 2R establishes land/building authority without claiming later systems:
+## Transitional gameplay baseline
 
-- `WorldFoundation` remains the sole physical/geographic authority;
-- `CadastralGraph` owns legal parcels and topology;
-- `LotSystem` is a derived legacy addressing facade, never a competing land source of truth;
-- legacy building records remain available to inherited systems while canonical `BuildingV2` state is stored separately;
-- existing V7/V8 identifiers and historical behavior are preserved through explicit compatibility projections;
-- lane-level road authority, turn movements, signals, explicit parking, crashes, and the final transportation replacement belong to **3R — Transportation Engine 2.0**;
-- presentation code reads snapshots and emits presentation commands; it cannot manufacture simulation outcomes or canonical save state.
+The preserved playable layer currently includes treasury/taxation, roads and pathfinding, traffic, transit, firms/freight, housing/relocation, utilities, public services, incidents, municipal budgets, and related compatibility systems.
 
-## Persistence
-
-Current default save envelope:
-
-- `saveVersion: 9`
-- `gameVersion: '0.9.0-urban-fabric'`
-- the complete inherited V8 World Foundation envelope;
-- `urbanFabric: CadastralSnapshot`;
-- `zoningV2.parcelAssignments`;
-- `buildingsV2`;
-- `propertyMarket`.
-
-V9 hydration restores the inherited V8 candidate first so `WorldFoundation` exists before terrain-dependent legacy systems are created. It then replaces the runtime cadastral snapshot, rebuilds the legacy lot facade from the cadastre, validates every Urban Fabric parcel reference, and restores parcel zoning, canonical buildings, and property-market state.
-
-Save V8 remains the explicit Phase 1R format with `saveVersion: 8` and `gameVersion: '0.8.0-world-foundation'`. Loading V8 through the current API deterministically constructs the V9 Urban Fabric state without rewriting or repurposing the V8 schema. Older migration continues through the progressive compatibility chain.
+These systems must remain playable until their replacements pass parity, determinism, persistence, performance, and player-facing acceptance gates. Repository cleanup must not remove a compatibility seam merely because a future replacement exists.
 
 ## Toolchain
 
-Civic Foundry uses the Engineering Baseline v1 pinned local toolchain with the ADR 0002 desktop/GPU extension:
+The repository baseline uses:
 
 - Node.js 22;
-- TypeScript 5.8.3 ES modules with strict compiler settings;
-- Node 22 built-in test runner with TypeScript strip-types;
-- ESLint 10 plus TypeScript ESLint for static analysis;
-- Prettier 3 for deterministic repository/tooling/test/document formatting;
-- `clipper2-ts` for deterministic polygon clipping/offsetting behind the cadastral geometry wrapper;
-- PixiJS 8.20.1 with WebGL for production world rendering;
-- Electron 44 for the local Windows desktop host;
-- Python Playwright + Chromium for compiled browser smoke tests;
-- deterministic procedural isometric atlas generation/validation.
+- TypeScript 5.8.3 with strict production settings;
+- a separate no-emit test TypeScript project;
+- Node's built-in test runner with TypeScript strip-types;
+- ESLint 10 plus TypeScript ESLint;
+- Prettier 3 for changed TypeScript/JavaScript/JSON/YAML files;
+- deterministic Markdown whitespace/final-newline formatting without audit-table reflow;
+- `clipper2-ts` behind controlled cadastral geometry boundaries;
+- PixiJS 8.20.1;
+- Electron 44;
+- Python Playwright 1.55.0 + Chromium for browser smoke testing;
+- Pillow 11.3.0 for deterministic visual/asset tooling.
 
 Install JavaScript dependencies from the committed lockfile:
 
@@ -143,12 +99,55 @@ Install JavaScript dependencies from the committed lockfile:
 npm ci
 ```
 
-## Commands
+## Canonical verification
+
+### Tier 1 — fast inner loop
+
+```bash
+npm run verify:fast
+```
+
+Covers changed-file formatting, lint, repository policy, architecture policy, production TypeScript, test TypeScript, Node tests, and asset repository policy.
+
+### Compatibility core gate
 
 ```bash
 npm run verify
+```
+
+Retained for existing branches/plans. It runs the fast tier plus deterministic asset-source validation and the production build.
+
+### Tier 2 — full portable acceptance
+
+Install the browser runtime when needed:
+
+```bash
+python -m pip install playwright==1.55.0 Pillow==11.3.0
+python -m playwright install chromium
+```
+
+Then run:
+
+```bash
+npm run verify:full
+```
+
+This adds the complete portable browser/visual acceptance stack. CI runs the same constituent commands and installs Linux browser dependencies with Playwright's `--with-deps` option.
+
+### Supply-chain audit
+
+```bash
+npm run security:audit
+```
+
+This network-backed npm audit is separate from the fast offline-capable tier and runs in canonical CI before expensive browser setup.
+
+### Common focused commands
+
+```bash
 npm test
 npm run typecheck
+npm run typecheck:tests
 npm run lint
 npm run policy:check
 npm run architecture:check
@@ -160,31 +159,55 @@ npm run test:smoke
 npm run test:smoke:phase7
 npm run test:smoke:urban-fabric
 npm run test:smoke:isometric
+npm run test:smoke:portable
 npm run dev
 npm run desktop
 ```
 
-`npm run verify` is the canonical core gate used by contributors and CI: formatting, static analysis, repository/architecture policy, strict typechecking, tests, asset policy/validation, and the production build. CI then runs the browser and visual smoke suites.
+The permanent suite/command/platform ownership map is `docs/TEST_MATRIX.md`.
 
-`npm run build` compiles the application into `dist/`, copies the pinned local browser runtime dependencies, and generates the deterministic atlases. `npm run dev` serves the compiled browser build on port 5173. `npm run desktop` performs a production build and launches that local build inside the hardened Electron desktop host.
+## Build and run
 
-Engineering and contribution policy is documented in [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ENGINEERING_STANDARDS.md](docs/ENGINEERING_STANDARDS.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TESTING.md](docs/TESTING.md), and [docs/adr/](docs/adr/).
+`npm run build` compiles the application into `dist/`, copies pinned local browser runtime dependencies, and generates deterministic atlases. `npm run dev` serves the compiled browser build on port 5173. `npm run desktop` performs a production build and launches the local build inside the hardened Electron desktop host.
 
-## Acceptance evidence
+Generated output belongs outside version control. Repository policy and `.gitignore` cover `dist/`, Rust `target/`, coverage, Playwright reports, test artifacts, common caches, and temporary outputs. The existing asset policy remains stricter for source/runtime asset binaries.
 
-Phase 1R acceptance established deterministic world generation, hydrology, spatial queries, World Foundation Save V8 round-trips, and compatibility continuation.
+## Repository engineering policy
 
-Urban Fabric 2.0 adds repository-wide verification for cadastral geometry/topology, parcel mutation, dimensional zoning, envelopes/compliance, mixed-use massing, lifecycle/renovation, HBU/property/site assembly, runtime cadastral authority, Save V9 migration/round-trip/reference validation, deterministic mutation fuzzing, and compiled Urban Fabric browser behavior.
+- `main` is the canonical integration branch.
+- New work uses purpose-first branch names such as `feature/...`, `fix/...`, `design/...`, `docs/...`, `chore/...`, or `archive/...`.
+- Do not reuse a historical phase number when it conflicts with the canonical roadmap.
+- Draft PRs are never merged without explicit authorization.
+- Branches and compatibility paths are not deleted merely because they look old; dependency/integration/history evidence is required first.
+- Generated output and oversized tracked binaries are rejected by repository policy.
+- Dependency upgrades are isolated when they could alter runtime behavior.
+- Formatting is incremental to avoid whitespace-only conflict storms across active stacked branches.
+- Tests and repository/tooling contracts use observed RED → minimal GREEN → broader verification.
 
-The desktop GPU runtime adds contract coverage for the production WebGL renderer, local PixiJS module resolution, and hardened Electron host while retaining the inherited browser and visual smoke gates. PR #98 head `725c9cec` passed GitHub Actions run `33137152536` and was merged into `main` as merge commit `c2e7befd` on 2026-08-27 (America/Monterrey). The production `GameApp` path on `main` therefore uses `GpuWorldRenderer`; legacy Canvas2D sources remain only as migration references until specialized parity work retires them.
+The target `main` protection settings are documented in `docs/repository/MAIN_BRANCH_PROTECTION.md`. GitHub administrative protection is separate from repository source and must be verified live before it is described as enabled.
+
+## Documentation map
+
+- `CONTRIBUTING.md` — contributor workflow and merge safety
+- `docs/ENGINEERING_STANDARDS.md` — repository-wide engineering rules
+- `docs/TEST_MATRIX.md` — canonical suite/command/platform matrix
+- `docs/TESTING.md` — test architecture and current acceptance details
+- `docs/ARCHITECTURE.md` — runtime ownership and dependency architecture
+- `docs/SAVE_FORMAT.md` — persistence authority and migrations
+- `docs/repository/STACK_7_HEALTH_BASELINE.md` — repository-health baseline
+- `docs/repository/BRANCH_PR_CLASSIFICATION.md` — branch/PR classification and cleanup boundary
+- `docs/repository/MAIN_BRANCH_PROTECTION.md` — required GitHub protection settings
+- `docs/adr/` — accepted architecture decisions
 
 ## Roadmap
 
-0. Civic Foundry 2.0 Phase 0A — Kernel Skeleton & Deterministic Scheduling ✅
-1. **1R — World Foundation 2.0 ✅** — geography hierarchy, irregular geometry, terrain/soils, hydrology/flooding, deterministic world generation, spatial index, world-aware costs, Save V8, compatibility facade
-2. **2R — Urban Fabric 2.0 ✅** — true cadastral parcels, dimensional zoning, mixed-use `BuildingV2`, deterioration/renovation, HBU/redevelopment, parcel splitting/assembly, Save V9, cadastral diagnostics
-3. **Desktop GPU Runtime ✅ — PR #98** — PixiJS/WebGL production renderer and hardened Windows Electron host while preserving simulation/save authority
-4. **3R — Transportation Engine 2.0** — lane/turn/signal/parking/crash authority and dynamic routing replacement
-5. Later Civic Foundry 2.0 systems continue under the progressive replacement architecture in `docs/superpowers/specs/2026-08-24-civic-foundry-2.0-master-design.md`.
+The near-term sequence remains:
 
-See `docs/ARCHITECTURE.md`, `docs/SAVE_FORMAT.md`, and `docs/superpowers/` for architecture, persistence, design specifications, and implementation plans.
+1. Phase 0A — Kernel Skeleton & Deterministic Scheduling — **Implemented**
+2. 1R — World Foundation 2.0 — **Implemented**
+3. 2R — Urban Fabric 2.0 — **Implemented**
+4. Desktop GPU Runtime — **Implemented**
+5. 3R — Transportation Engine 2.0 — **Target**
+6. Later Civic Foundry 2.0 systems proceed through progressive replacement rather than automatic roadmap-to-runtime promotion.
+
+A detailed future specification is design evidence, not implementation evidence. Use **Implemented**, **Transitional**, and **Target** precisely.
