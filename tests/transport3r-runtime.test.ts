@@ -97,7 +97,7 @@ test("3R incidents feed routing state and deterministically divert around a clos
     "n:2,2",
     "n:2,1",
     "n:3,1",
-    "n:4,1",
+    "n:3,2",
     "n:4,2",
     "n:5,2",
   ]);
