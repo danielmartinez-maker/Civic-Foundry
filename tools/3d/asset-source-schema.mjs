@@ -374,6 +374,15 @@ export function validateAssetSource(source) {
         errors.push(`runtime.${key} must be a positive integer`);
       }
     }
+    for (const key of [
+      'estimatedCpuGeometryBytes',
+      'estimatedGpuGeometryBytes',
+      'estimatedGpuMaterialBytes',
+    ]) {
+      if (!Number.isInteger(source.runtime[key]) || source.runtime[key] <= 0) {
+        errors.push(`runtime.${key} must be a positive integer`);
+      }
+    }
   }
 
   if (!isRecord(source.art)) {
