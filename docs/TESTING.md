@@ -237,3 +237,21 @@ A tranche may be called green only after:
 5. platform-specific checks pass where they genuinely apply;
 6. documentation reflects current authority and commands;
 7. fresh exact-head CI evidence is read before claiming completion.
+
+## Stack 8 architecture-hardening acceptance
+
+Stack 8 adds permanent tests for engineering behavior rather than gameplay behavior. The focused suite is intentionally split by failure class:
+
+- `tests/stack8-debugging-architecture.test.ts` — structured failures, deterministic serialization/hashing, transaction ordering and fail-stop rollback, causal trace, semantic revisions, reference-integrity primitives, performance attribution, repro bundles, scheduler contracts, and kernel failure diagnostics;
+- `tests/stack8-core-diagnostics.test.ts` — renderer-independent `SimulationCore` health snapshot, selected BuildingV2/property reference-integrity summary, deterministic authority hashing, and proof that trace observations do not change authority;
+- `tests/stack8-replay-diagnostics.test.ts` — deterministic snapshot comparison/assertion and N-tick profiling with an injected monotonic clock;
+- `tests/stack8-numeric-safety.test.ts` — NaN/Infinity rejection at confirmed traffic authority boundaries before mutation;
+- `tests/stack8-fuzz-soak.test.ts` — Save V9 continuation equivalence, fixed-seed transaction/revision fuzzing, bounded diagnostics, and deterministic checkpoint equivalence;
+- `tests/stack8-presentation-lifecycle.test.ts` — explicit RAF/listener/timer/UI/GPU teardown ownership;
+- `tests/architecture_policy.test.ts` — presentation-to-mutation firewall and direct-`Math.random()` ban in authoritative TypeScript.
+
+The Stack 8 CI soak is deliberately bounded to 500 deterministic ticks with 100-tick checkpoints. The same test file records larger manual synthetic horizons of 10,000, 100,000, and 1,000,000 ticks. These are engine stress horizons rather than calendar claims because the current runtime does not define a canonical tick-to-day conversion. Each horizon carries explicit budgets for event retention, diagnostic trace retention, command-queue depth, topology revision churn in the no-mutation fixture, and cross-domain invalid references.
+
+Performance attribution is diagnostic, not a gameplay feedback loop. Kernel/system measurements use an injectable monotonic clock in deterministic tests; production timing is observational. Stack 8 establishes calls/average/P95/max/over-budget/cache-hit instrumentation and leaves hotspot-specific optimization to measured follow-up work rather than changing simulation semantics speculatively.
+
+Exact-head Stack 8 completion uses the repository's canonical `npm run verify:full` semantics plus fresh PR CI evidence. The CI workflow separately runs `verify:fast`, dependency audit, asset validation, production build, and `test:smoke:portable`, which is semantically equivalent to the portable completion gate. No Rust workspace exists in this repository, so Prism-native `cargo` gates are not applicable; Prism remains non-authoritative.
