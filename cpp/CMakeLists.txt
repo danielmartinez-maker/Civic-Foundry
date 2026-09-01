@@ -37,6 +37,7 @@ if(CIVIC_BUILD_TESTS)
     tests/contract_red_tests.cpp
     tests/world_foundation_tests.cpp
     tests/cadastre_mutation_tests.cpp
+    tests/parcel_generation_tests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main)
   include(GoogleTest)
