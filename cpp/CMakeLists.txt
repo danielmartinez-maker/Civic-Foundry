@@ -19,6 +19,7 @@ add_library(civic_engine STATIC
   engine/src/cadastre/CadastreMutation.cpp
   engine/src/cadastre/ParcelGeneration.cpp
   engine/src/urban/UrbanFabric.cpp
+  engine/src/urban/Zoning.cpp
 )
 target_include_directories(civic_engine PUBLIC engine/include)
 target_link_libraries(civic_engine PUBLIC nlohmann_json::nlohmann_json Clipper2::Clipper2)
