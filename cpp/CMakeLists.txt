@@ -30,7 +30,10 @@ endif()
 if(CIVIC_BUILD_TESTS)
   enable_testing()
   find_package(GTest CONFIG REQUIRED)
-  add_executable(civic_engine_tests tests/contract_red_tests.cpp)
+  add_executable(civic_engine_tests
+    tests/contract_red_tests.cpp
+    tests/world_foundation_tests.cpp
+  )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main)
   include(GoogleTest)
   gtest_discover_tests(civic_engine_tests)
