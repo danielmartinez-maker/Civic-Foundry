@@ -24,23 +24,23 @@ export class CausalTraceBuffer {
   }
 
   append(input: CausalTraceInput): CausalTraceEntry {
-    const entry = Object.freeze({
+    const entry: CausalTraceEntry = Object.freeze({
       ...input,
       sequence: this.nextSequence++,
-      entityIds:
-        input.entityIds === undefined
-          ? undefined
-          : Object.freeze([...input.entityIds]),
-      details:
-        input.details === undefined
-          ? undefined
-          : Object.freeze(
+      ...(input.entityIds === undefined
+        ? {}
+        : { entityIds: Object.freeze([...input.entityIds]) }),
+      ...(input.details === undefined
+        ? {}
+        : {
+            details: Object.freeze(
               Object.fromEntries(
                 Object.entries(input.details).sort(([a], [b]) =>
                   a.localeCompare(b),
                 ),
               ),
             ),
+          }),
     });
     this.entries.push(entry);
     if (this.entries.length > this.capacity) this.entries.shift();
