@@ -61,7 +61,8 @@ function normalizeJsonValue(
         throw new Error(`${path} must contain only JSON-compatible values`);
       return Object.is(value, -0) ? 0 : value;
     case "object": {
-      if (ancestors.has(value)) throw new Error(`${path} must not contain JSON cycles`);
+      if (ancestors.has(value))
+        throw new Error(`${path} must not contain JSON cycles`);
       ancestors.add(value);
       try {
         if (Array.isArray(value)) {
@@ -238,7 +239,10 @@ export class NativeEngineBridge implements NativeWorldBridge {
   }
 
   rebuildUrbanLegacy(request: NativeUrbanLegacyRequest): NativeUrbanSnapshot {
-    const normalized = normalizeJsonValue(request, "native urban legacy rebuild request");
+    const normalized = normalizeJsonValue(
+      request,
+      "native urban legacy rebuild request",
+    );
     return parseNativeJson<NativeUrbanSnapshot>(
       this.addon.rebuildUrbanLegacy(
         this.requireHandle(),
@@ -267,7 +271,10 @@ export class NativeEngineBridge implements NativeWorldBridge {
   }
 
   createWorld(request: NativeWorldCreateRequest): WorldFoundationSnapshot {
-    const normalized = normalizeJsonValue(request, "native world create request");
+    const normalized = normalizeJsonValue(
+      request,
+      "native world create request",
+    );
     const snapshot = parseNativeJson<WorldFoundationSnapshot>(
       this.addon.createWorld(this.requireHandle(), JSON.stringify(normalized)),
       "native world create",
@@ -286,8 +293,13 @@ export class NativeEngineBridge implements NativeWorldBridge {
     return restored;
   }
 
-  createLegacyWorld(request: NativeLegacyWorldRequest): WorldFoundationSnapshot {
-    const normalized = normalizeJsonValue(request, "native legacy world request");
+  createLegacyWorld(
+    request: NativeLegacyWorldRequest,
+  ): WorldFoundationSnapshot {
+    const normalized = normalizeJsonValue(
+      request,
+      "native legacy world request",
+    );
     const snapshot = parseNativeJson<WorldFoundationSnapshot>(
       this.addon.createLegacyWorld(
         this.requireHandle(),
@@ -305,7 +317,9 @@ export class NativeEngineBridge implements NativeWorldBridge {
   ): Readonly<{ result: FloodResult; snapshot: WorldFoundationSnapshot }> {
     const snapshot = this.currentWorldSnapshot;
     if (!snapshot)
-      throw new Error("native world must be created or restored before design storm");
+      throw new Error(
+        "native world must be created or restored before design storm",
+      );
 
     let payload: unknown = event;
     if (externalSurface) {
@@ -323,7 +337,10 @@ export class NativeEngineBridge implements NativeWorldBridge {
       payload = { event, imperviousFraction };
     }
 
-    const normalized = normalizeJsonValue(payload, "native design storm request");
+    const normalized = normalizeJsonValue(
+      payload,
+      "native design storm request",
+    );
     const response = parseNativeJson<
       Readonly<{ result: FloodResult; snapshot: WorldFoundationSnapshot }>
     >(
@@ -347,7 +364,9 @@ export function isNativeShadowEnabled(value: unknown): boolean {
   return value === true || value === "1" || value === "true" || value === "on";
 }
 
-export function nativeShadowEnabledFromGlobal(scope: unknown = globalThis): boolean {
+export function nativeShadowEnabledFromGlobal(
+  scope: unknown = globalThis,
+): boolean {
   if (!scope || typeof scope !== "object") return false;
   return isNativeShadowEnabled(
     (scope as Readonly<Record<string, unknown>>).__CIVIC_NATIVE_SHADOW__,
