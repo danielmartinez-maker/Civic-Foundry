@@ -2,9 +2,11 @@
 
 #include <json-c/json.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <system_error>
 
 #ifdef _WIN32
@@ -76,9 +78,16 @@ std::expected<void, std::string> durableWrite(const std::filesystem::path& path,
 #endif
 }
 
+std::expected<std::string, std::string> readFile(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return std::unexpected("failed to open save file: " + path.string());
+    return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+}
+
 bool readNumber(json_object* root, const char* key, float& output) {
     json_object* value = nullptr;
-    if (!json_object_object_get_ex(root, key, &value) || !json_object_is_type(value, json_type_double)) return false;
+    if (!json_object_object_get_ex(root, key, &value) ||
+        !(json_object_is_type(value, json_type_double) || json_object_is_type(value, json_type_int))) return false;
     output = static_cast<float>(json_object_get_double(value));
     return true;
 }
@@ -98,19 +107,76 @@ bool readOptionalBool(json_object* root, const char* key, bool& output) {
     return true;
 }
 
+bool readOptionalInt(json_object* root, const char* key, int& output) {
+    json_object* value = nullptr;
+    if (!json_object_object_get_ex(root, key, &value)) return true;
+    if (!json_object_is_type(value, json_type_int)) return false;
+    output = json_object_get_int(value);
+    return true;
+}
+
+bool readOptionalSeverity(json_object* root, AlertSeverity& output) {
+    int value = static_cast<int>(output);
+    if (!readOptionalInt(root, "minimumAlertSeverity", value)) return false;
+    if (value < static_cast<int>(AlertSeverity::Info) || value > static_cast<int>(AlertSeverity::Error)) return false;
+    output = static_cast<AlertSeverity>(value);
+    return true;
+}
+
+bool readOptionalKeyBindings(json_object* root, KeyBindings& bindings) {
+    json_object* keybindings = nullptr;
+    if (!json_object_object_get_ex(root, "keybindings", &keybindings)) return true;
+    if (!json_object_is_type(keybindings, json_type_object)) return false;
+    return
+        readOptionalInt(keybindings, "inspect", bindings.inspect) &&
+        readOptionalInt(keybindings, "road", bindings.road) &&
+        readOptionalInt(keybindings, "zone", bindings.zone) &&
+        readOptionalInt(keybindings, "facility", bindings.facility) &&
+        readOptionalInt(keybindings, "transit", bindings.transit) &&
+        readOptionalInt(keybindings, "cancel", bindings.cancel) &&
+        readOptionalInt(keybindings, "speedPause", bindings.speed_pause) &&
+        readOptionalInt(keybindings, "speedNormal", bindings.speed_normal) &&
+        readOptionalInt(keybindings, "speedFast", bindings.speed_fast) &&
+        readOptionalInt(keybindings, "speedVeryFast", bindings.speed_very_fast);
+}
+
+void writeKeyBindings(json_object* root, const KeyBindings& bindings) {
+    json_object* keybindings = json_object_new_object();
+    if (!keybindings) return;
+    json_object_object_add(keybindings, "inspect", json_object_new_int(bindings.inspect));
+    json_object_object_add(keybindings, "road", json_object_new_int(bindings.road));
+    json_object_object_add(keybindings, "zone", json_object_new_int(bindings.zone));
+    json_object_object_add(keybindings, "facility", json_object_new_int(bindings.facility));
+    json_object_object_add(keybindings, "transit", json_object_new_int(bindings.transit));
+    json_object_object_add(keybindings, "cancel", json_object_new_int(bindings.cancel));
+    json_object_object_add(keybindings, "speedPause", json_object_new_int(bindings.speed_pause));
+    json_object_object_add(keybindings, "speedNormal", json_object_new_int(bindings.speed_normal));
+    json_object_object_add(keybindings, "speedFast", json_object_new_int(bindings.speed_fast));
+    json_object_object_add(keybindings, "speedVeryFast", json_object_new_int(bindings.speed_very_fast));
+    json_object_object_add(root, "keybindings", keybindings);
+}
+
 } // namespace
 
-std::expected<void, std::string> SaveFileWorkflow::writeAtomic(const std::filesystem::path& target, std::string_view payload) const {
+std::expected<void, std::string> SaveFileWorkflow::writeAtomic(
+    const std::filesystem::path& target,
+    std::string_view payload) const {
     if (target.empty()) return std::unexpected("save target path is empty");
     std::error_code ec;
     if (!target.parent_path().empty()) std::filesystem::create_directories(target.parent_path(), ec);
     if (ec) return std::unexpected("failed to create save directory: " + ec.message());
+
     auto temporary = target;
     temporary += ".tmp";
+    auto backup = target;
+    backup += ".bak";
     if (auto written = durableWrite(temporary, payload); !written) return written;
+
 #ifdef _WIN32
-    if (std::filesystem::exists(target, ec) && !ec) {
-        if (!ReplaceFileW(target.c_str(), temporary.c_str(), nullptr, REPLACEFILE_IGNORE_MERGE_ERRORS, nullptr, nullptr)) {
+    const bool target_exists = std::filesystem::exists(target, ec) && !ec;
+    if (target_exists) {
+        DeleteFileW(backup.c_str());
+        if (!ReplaceFileW(target.c_str(), temporary.c_str(), backup.c_str(), REPLACEFILE_IGNORE_MERGE_ERRORS, nullptr, nullptr)) {
             DeleteFileW(temporary.c_str());
             return std::unexpected(systemMessage("failed to atomically replace save"));
         }
@@ -119,9 +185,20 @@ std::expected<void, std::string> SaveFileWorkflow::writeAtomic(const std::filesy
         return std::unexpected(systemMessage("failed to atomically install save"));
     }
 #else
+    const bool target_exists = std::filesystem::exists(target, ec) && !ec;
+    if (target_exists) {
+        std::error_code remove_error;
+        std::filesystem::remove(backup, remove_error);
+        if (::rename(target.c_str(), backup.c_str()) != 0) {
+            ::unlink(temporary.c_str());
+            return std::unexpected(systemMessage("failed to preserve previous save backup"));
+        }
+    }
     if (::rename(temporary.c_str(), target.c_str()) != 0) {
+        const auto install_error = systemMessage("failed to atomically replace save");
         ::unlink(temporary.c_str());
-        return std::unexpected(systemMessage("failed to atomically replace save"));
+        if (target_exists) (void)::rename(backup.c_str(), target.c_str());
+        return std::unexpected(install_error);
     }
     if (!target.parent_path().empty()) {
         const int dir = ::open(target.parent_path().c_str(), O_RDONLY | O_DIRECTORY);
@@ -129,6 +206,29 @@ std::expected<void, std::string> SaveFileWorkflow::writeAtomic(const std::filesy
     }
 #endif
     return {};
+}
+
+std::expected<LoadedSavePayload, std::string> SaveFileWorkflow::readValidated(
+    const std::filesystem::path& target,
+    const std::function<bool(std::string_view)>& validator) const {
+    if (target.empty()) return std::unexpected("save target path is empty");
+    if (!validator) return std::unexpected("save validator is required");
+
+    auto backup = target;
+    backup += ".bak";
+    std::string primary_error = "primary save is unavailable";
+    if (auto primary = readFile(target); primary) {
+        if (validator(*primary)) return LoadedSavePayload{.payload = std::move(*primary), .used_backup = false};
+        primary_error = "primary save failed validation";
+    } else {
+        primary_error = primary.error();
+    }
+
+    if (auto fallback = readFile(backup); fallback) {
+        if (validator(*fallback)) return LoadedSavePayload{.payload = std::move(*fallback), .used_backup = true};
+        return std::unexpected(primary_error + "; backup save also failed validation");
+    }
+    return std::unexpected(primary_error + "; no valid backup is available");
 }
 
 std::expected<PresentationSettings, std::string> SettingsStore::load() const {
@@ -157,7 +257,10 @@ std::expected<PresentationSettings, std::string> SettingsStore::load() const {
         readNumber(root, "inputSensitivity", settings.input_sensitivity) &&
         readBool(root, "reducedMotion", settings.reduced_motion) &&
         readBool(root, "colorIndependentCues", settings.color_independent_cues) &&
-        readOptionalBool(root, "visualEffects", settings.visual_effects);
+        readOptionalBool(root, "visualEffects", settings.visual_effects) &&
+        readOptionalBool(root, "highContrast", settings.high_contrast) &&
+        readOptionalSeverity(root, settings.minimum_alert_severity) &&
+        readOptionalKeyBindings(root, settings.keybindings);
     json_object_put(root);
     if (!valid) return std::unexpected("presentation settings schema is invalid");
     return normalizeSettings(settings);
@@ -177,6 +280,9 @@ std::expected<void, std::string> SettingsStore::save(const PresentationSettings&
     json_object_object_add(root, "reducedMotion", json_object_new_boolean(settings.reduced_motion));
     json_object_object_add(root, "colorIndependentCues", json_object_new_boolean(settings.color_independent_cues));
     json_object_object_add(root, "visualEffects", json_object_new_boolean(settings.visual_effects));
+    json_object_object_add(root, "highContrast", json_object_new_boolean(settings.high_contrast));
+    json_object_object_add(root, "minimumAlertSeverity", json_object_new_int(static_cast<int>(settings.minimum_alert_severity)));
+    writeKeyBindings(root, settings.keybindings);
     const char* serialized = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
     const std::string text = serialized ? serialized : "";
     json_object_put(root);
