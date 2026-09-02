@@ -36,6 +36,16 @@ Result<SaveV9Dto> urbanDtoFromSnapshot(std::string_view snapshot_json) {
             std::string("urban snapshot is invalid JSON: ") + error.what()));
     }
 }
+
+json rejectedMutation(std::string reason) {
+    return json{
+        {"committed", false},
+        {"resultingParcelIds", json::array()},
+        {"retiredParcelIds", json::array()},
+        {"rejectionReasons", json::array({std::move(reason)})},
+        {"parcelReferenceRewrites", json::object()},
+    };
+}
 }  // namespace
 
 Result<void> NativeEngine::loadV9Authoritative(std::string_view json_text) {
@@ -76,6 +86,7 @@ Result<SnapshotBlob> NativeEngine::rebuildUrbanLegacy(std::string_view request_j
     if (!authority) return std::unexpected(authority.error());
     auto snapshot = (*authority)->snapshotJson();
     if (!snapshot) return std::unexpected(snapshot.error());
+    urban_ = std::move(*authority);
     return SnapshotBlob{std::move(*snapshot)};
 }
 
@@ -88,6 +99,46 @@ Result<SnapshotBlob> NativeEngine::restoreUrbanState(std::string_view snapshot_j
     if (!snapshot) return std::unexpected(snapshot.error());
     urban_ = std::move(*authority);
     return SnapshotBlob{std::move(*snapshot)};
+}
+
+Result<SnapshotBlob> NativeEngine::applyUrbanCommand(std::string_view request_json) {
+    if (!urban_) {
+        return std::unexpected(make_error(
+            ErrorCode::invalid_state,
+            "native urban authority is not initialized"));
+    }
+
+    auto current_snapshot = urban_->snapshotJson();
+    if (!current_snapshot) return std::unexpected(current_snapshot.error());
+    auto dto = urbanDtoFromSnapshot(*current_snapshot);
+    if (!dto) return std::unexpected(dto.error());
+    auto staged = NativeUrbanAuthority::restoreAuthoritativeV9(*dto);
+    if (!staged) return std::unexpected(staged.error());
+
+    auto mutation = (*staged)->applyCommand(request_json);
+    if (!mutation) {
+        try {
+            return SnapshotBlob{json{
+                {"result", rejectedMutation(mutation.error().message)},
+                {"snapshot", json::parse(*current_snapshot)},
+            }.dump()};
+        } catch (const json::exception& error) {
+            return std::unexpected(make_error(ErrorCode::serialization_failure, error.what()));
+        }
+    }
+
+    auto staged_snapshot = (*staged)->snapshotJson();
+    if (!staged_snapshot) return std::unexpected(staged_snapshot.error());
+    try {
+        auto response = json{
+            {"result", json::parse(*mutation)},
+            {"snapshot", json::parse(*staged_snapshot)},
+        }.dump();
+        urban_ = std::move(*staged);
+        return SnapshotBlob{std::move(response)};
+    } catch (const json::exception& error) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, error.what()));
+    }
 }
 
 Result<SnapshotBlob> NativeEngine::urbanSnapshot() const {
