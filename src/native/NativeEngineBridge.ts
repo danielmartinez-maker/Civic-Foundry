@@ -19,6 +19,8 @@ import {
   type NativeEngineHandle,
   type NativeEvent,
   type NativeSnapshot,
+  type NativeUrbanCommand,
+  type NativeUrbanCommandResponse,
   type NativeUrbanLegacyRequest,
   type NativeUrbanSnapshot,
   type NativeUrbanState,
@@ -260,6 +262,17 @@ export class NativeEngineBridge implements NativeWorldBridge {
     return parseNativeJson<NativeUrbanSnapshot>(
       operation(this.requireHandle(), JSON.stringify(normalized)),
       "native urban restore",
+    );
+  }
+
+  applyUrbanCommand(command: NativeUrbanCommand): NativeUrbanCommandResponse {
+    const operation = this.addon.applyUrbanCommand;
+    if (!operation)
+      throw new Error("native addon does not expose urban commands");
+    const normalized = normalizeJsonValue(command, "native urban command");
+    return parseNativeJson<NativeUrbanCommandResponse>(
+      operation(this.requireHandle(), JSON.stringify(normalized)),
+      "native urban command",
     );
   }
 
