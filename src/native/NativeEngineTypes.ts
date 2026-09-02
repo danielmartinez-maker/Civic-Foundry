@@ -61,4 +61,8 @@ export interface NativeEngineAddon {
     handle: NativeEngineHandle,
     domain: string,
   ): Readonly<{ ownership: number; version: number; value: bigint }>;
+  createWorld(handle: NativeEngineHandle, requestJson: string): string;
+  restoreWorld(handle: NativeEngineHandle, snapshotJson: string): string;
+  createLegacyWorld(handle: NativeEngineHandle, requestJson: string): string;
+  runDesignStorm(handle: NativeEngineHandle, requestJson: string): string;
 }
