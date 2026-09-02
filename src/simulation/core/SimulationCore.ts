@@ -210,6 +210,37 @@ function projectNativeUrbanState(
   });
 }
 
+function bootstrapNativeBuildingProjection(
+  core: SimulationCoreBase,
+  bridge: NativeUrbanBridge,
+): void {
+  const nativeBuildingIds = new Set(
+    bridge.urbanSnapshot().buildingsV2.map((building) => building.id),
+  );
+  const buildingsV2 = core.buildings.listV2();
+  if (!buildingsV2.some((building) => !nativeBuildingIds.has(building.id))) return;
+
+  const lifecycleInputs = buildingsV2.flatMap((building) => {
+    const input = nativeBuildingLifecycleInput(building);
+    return input ? [input] : [];
+  });
+  const response = bridge.applyUrbanCommand(
+    Object.freeze({
+      type: 'buildings.reconcile',
+      buildingsV2,
+      typologies: nativeBuildingRuntimeTypologies,
+      lifecycleInputs: Object.freeze(lifecycleInputs),
+      requireHbuForNewBuildings: false,
+      hbuApprovals: Object.freeze([]),
+    }),
+  );
+  if (!response.result.committed) {
+    throw new Error(
+      `native building bootstrap rejected: ${response.result.rejectionReasons.join(', ')}`,
+    );
+  }
+}
+
 function reconcileNativeBuildingProposal(
   core: SimulationCoreBase,
   bridge: NativeUrbanBridge,
@@ -416,6 +447,7 @@ export class SimulationCore extends SimulationCoreBase {
       return;
     }
     for (let index = 0; index < ticks; index += 1) {
+      bootstrapNativeBuildingProjection(this, urbanBridge);
       const checkpoint = captureAuthoritativeTransactionCheckpoint(this);
       try {
         super.step(1);
