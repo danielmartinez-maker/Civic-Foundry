@@ -101,6 +101,8 @@ jobs:
         run: cmake --build cpp/build-msvc --config Debug --parallel
       - name: MSVC Debug tests
         run: ctest --test-dir cpp/build-msvc -C Debug --output-on-failure
+      - name: Node-API integration smoke
+        run: node cpp/bindings/napi/test.mjs cpp/build-msvc/Debug/civic_native.node
       - name: TypeScript shadow bridge tests
         run: node --experimental-strip-types --test tests/native-engine-bridge.test.ts
       - name: Shared migration fixture parity
