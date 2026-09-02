@@ -76,11 +76,9 @@ export function createShadowSimulationSessionIfEnabled(
   scope: unknown = globalThis,
 ): ShadowSimulationSession | null {
   if (!nativeShadowEnabledFromGlobal(scope)) return null;
-
-  const bridge = new NativeEngineBridge(addon, config);
-  const runner = new ShadowSimulationRunner(reference, bridge);
+  const native = new NativeEngineBridge(addon, config);
   return Object.freeze({
-    runner,
-    dispose: () => bridge.dispose(),
+    runner: new ShadowSimulationRunner(reference, native),
+    dispose: () => native.dispose(),
   });
 }

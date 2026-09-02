@@ -130,20 +130,45 @@ std::uint64_t NativeEngine::fnv1a64(std::string_view bytes) noexcept {
     return hash;
 }
 
+std::uint64_t NativeEngine::transportationDomainHash() const {
+    const auto nativeHash = transportation_.domain_hash();
+    if (transportation_continuation_.canonical.empty()) return nativeHash;
+    std::ostringstream canonical;
+    canonical << nativeHash << ':' << transportation_continuation_.canonical;
+    return fnv1a64(canonical.str());
+}
+
 Result<DomainHash> NativeEngine::domainHash(std::string_view domain) const {
     if (domain == "kernel") return DomainHash{DomainOwnership::owned, 1, fnv1a64(kernelCanonicalState())};
-    static constexpr std::string_view unowned[] = {"world", "cadastre", "buildings", "transportation", "population", "economy", "services"};
+    if (domain == "transportation") return DomainHash{DomainOwnership::owned, 1, transportationDomainHash()};
+    static constexpr std::string_view unowned[] = {"world", "cadastre", "buildings", "population", "economy", "services"};
     if (std::ranges::find(unowned, domain) != std::end(unowned)) return DomainHash{DomainOwnership::unowned, 1, 0};
     return std::unexpected(make_error(ErrorCode::invalid_argument, "unknown domain hash: " + std::string{domain}));
 }
 
 Result<void> NativeEngine::loadV9(std::string_view json) {
     auto parsed = parseSaveV9(json); if (!parsed) return std::unexpected(parsed.error());
+    auto transportation = parseTransportationV9(parsed->canonicalJson); if (!transportation) return std::unexpected(transportation.error());
+    auto continuation = parseTransportationContinuationV9(parsed->canonicalJson); if (!continuation) return std::unexpected(continuation.error());
+    auto roadTraffic = parseLegacyRoadTrafficV9(parsed->canonicalJson, transportation->network); if (!roadTraffic) return std::unexpected(roadTraffic.error());
+    auto traffic = deriveTrafficFlowV9(transportation->network, *roadTraffic); if (!traffic) return std::unexpected(traffic.error());
+    transportation->road_traffic = std::move(*roadTraffic);
+    transportation->traffic = std::move(*traffic);
+    transport::TransportationAuthority nextTransportation;
+    try {
+        nextTransportation.restore(*transportation);
+    } catch (const std::exception& error) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, error.what()));
+    } catch (...) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, "unknown transportation restore failure"));
+    }
     seed_ = parsed->seed;
     clock_.restore(parsed->tick, parsed->speed);
     random_ = RandomStreamRegistry(seed_);
     commands_ = CommandQueue{};
     events_ = DomainEventJournal{};
+    transportation_ = std::move(nextTransportation);
+    transportation_continuation_ = std::move(*continuation);
     loaded_save_ = std::move(*parsed);
     return {};
 }

@@ -24,6 +24,11 @@ add_library(civic_engine STATIC
   engine/src/core/NativeEngine.cpp
   engine/src/core/RandomStreamRegistry.cpp
   engine/src/persistence/SaveV9.cpp
+  engine/src/persistence/TransportationLegacyEdgeV9.cpp
+  engine/src/persistence/TransportationSaveV9.cpp
+  engine/src/persistence/TransportationSaveV9Continuation.cpp
+  engine/src/persistence/TransportationTrafficV9.cpp
+  engine/src/transport/transport_engine.cpp
   engine/src/bridge/civic_engine.cpp
 )
 target_include_directories(civic_engine PUBLIC engine/include)
@@ -37,6 +42,8 @@ if(CIVIC_BUILD_TESTS)
   find_package(GTest CONFIG REQUIRED)
   add_executable(civic_engine_tests
     tests/core/CoreTests.cpp
+    tests/core/TransportationContinuationTests.cpp
+    tests/core/TransportationTrafficMigrationTests.cpp
     tests/persistence/SaveV9Tests.cpp
     tests/parity/ParityTests.cpp
     tests/transport/TransportationTests.cpp
