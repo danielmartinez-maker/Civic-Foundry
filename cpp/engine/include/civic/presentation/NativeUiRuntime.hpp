@@ -28,6 +28,7 @@ struct UiFrameState {
 class NativeUiRuntimeModel final {
 public:
     [[nodiscard]] std::expected<void, std::string> initialize(float dpi_scale);
+    [[nodiscard]] std::expected<void, std::string> updateDpiScale(float dpi_scale);
     void shutdown() noexcept;
 
     [[nodiscard]] std::expected<UiFrameState, std::string> beginFrame(
