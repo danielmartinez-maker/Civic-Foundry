@@ -32,6 +32,13 @@ target_compile_definitions(civic_engine PUBLIC CIVIC_ENGINE_STATIC)
 civic_enable_warnings(civic_engine)
 civic_enable_sanitizers(civic_engine)
 
+add_library(civic_presentation STATIC
+  presentation/src/Presentation.cpp
+)
+target_include_directories(civic_presentation PUBLIC engine/include)
+civic_enable_warnings(civic_presentation)
+civic_enable_sanitizers(civic_presentation)
+
 if(CIVIC_BUILD_TESTS)
   enable_testing()
   find_package(GTest CONFIG REQUIRED)
@@ -41,7 +48,7 @@ if(CIVIC_BUILD_TESTS)
     tests/parity/ParityTests.cpp
     tests/presentation/PresentationTests.cpp
   )
-  target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main ${CIVIC_JSON_TARGET})
+  target_link_libraries(civic_engine_tests PRIVATE civic_engine civic_presentation GTest::gtest_main ${CIVIC_JSON_TARGET})
   civic_enable_warnings(civic_engine_tests)
   civic_enable_sanitizers(civic_engine_tests)
   add_executable(civic_c_abi_smoke tests/parity/c_abi_smoke.c)
