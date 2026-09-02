@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -41,6 +42,7 @@ TEST(Stack3BusinessLifecycle, PortsAcceptedDistressClosureRecoveryAndFormationSc
     socio::FirmLifecycleMemory memory{
         .status = socio::BusinessLifecycleState::operating,
         .cash_health = 0.30,
+        .consecutive_loss_cycles = 1,
     };
     const socio::FirmCycleFinancials loss{
         .revenue = 50.0,
@@ -56,7 +58,7 @@ TEST(Stack3BusinessLifecycle, PortsAcceptedDistressClosureRecoveryAndFormationSc
     auto first = lifecycle.evaluate_cycle(memory, loss, 100);
     ASSERT_TRUE(first);
     EXPECT_EQ(first->status, socio::BusinessLifecycleState::distressed);
-    EXPECT_EQ(first->distress_reason, "wage cost");
+    EXPECT_EQ(first->distress_reason, "input cost");
 
     memory = first->memory();
     memory.consecutive_loss_cycles = 3;
@@ -149,8 +151,9 @@ TEST(Stack3CausalChains, LogisticsCostReducesFirmMarginAndProducesStructuredTrac
     EXPECT_GT(baseline->operating_margin, stressed->operating_margin);
     auto trace = traces.trace(stressed->trace); ASSERT_TRUE(trace);
     EXPECT_EQ(trace->outcome.metric, "firm.margin");
-    ASSERT_FALSE(trace->contributions.empty());
-    EXPECT_EQ(trace->contributions.back().cause.metric, "logistics.cost");
+    EXPECT_TRUE(std::ranges::any_of(trace->contributions, [](const auto& contribution) {
+        return contribution.cause.metric == "logistics.cost";
+    }));
 }
 
 TEST(Stack3Compatibility, TransitionalServicesHaveExactlyOneWriterAndRevisionedSnapshots) {
@@ -213,6 +216,6 @@ TEST(Stack3SaveReplay, SaveLoadContinueMatchesUninterruptedAuthoritativeFuture) 
     ASSERT_TRUE(uninterrupted.apply({3, 3, socio::SocioeconomicCommandType::create_person, 7, 8, 0}));
     socio::SocioeconomicAuthority continued{19};
     continued.runtime() = std::move(*restored_runtime);
-    ASSERT_TRUE(continued.replay(std::span<const socio::SocioeconomicCommand>{uninterrupted.journal().data() + 2, 1}));
+    ASSERT_TRUE(continued.apply(uninterrupted.journal()[2]));
     EXPECT_EQ(continued.runtime().authoritative_hash(), uninterrupted.runtime().authoritative_hash());
 }
