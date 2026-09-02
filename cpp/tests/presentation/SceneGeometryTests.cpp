@@ -112,3 +112,21 @@ TEST(SceneGeometry, GeometryOutsideThePixelViewportIsCulledBeforeGpuUpload) {
     EXPECT_EQ(scene.stats.transit_triangles, 0U);
     EXPECT_EQ(scene.stats.overlay_triangles, 0U);
 }
+
+TEST(SceneGeometry, ValidToolPreviewProducesVisiblePresentationOnlyOverlayGeometry) {
+    SceneGeometryBuilder builder{};
+    IsometricCamera camera{};
+    RenderPacket packet{};
+    packet.tool_preview = ToolPreviewState{
+        .tool_id = "road",
+        .valid = true,
+        .geometry = {{2.0, 7.0}, {8.0, 7.0}},
+        .invalid_reason = {},
+    };
+
+    const auto scene = builder.build(packet, camera, WorldSize{20,20}, PixelViewport{1280,720});
+
+    EXPECT_FALSE(scene.overlay.empty());
+    EXPECT_GT(scene.stats.preview_triangles, 0U);
+    EXPECT_TRUE(scene.opaque.empty());
+}
