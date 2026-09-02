@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -74,12 +73,20 @@ Result<double> finiteNonNegativeNumber(json_object* object, const char* name) {
     return number;
 }
 
-Result<RoadTrafficVehicleStatusV9> vehicleStatus(json_object* vehicle) {
+Result<transport::RoadVehicleStatus> vehicleStatus(json_object* vehicle) {
     auto raw = stringField(vehicle, "status");
     if (!raw) return std::unexpected(raw.error());
-    if (*raw == "moving") return RoadTrafficVehicleStatusV9::moving;
-    if (*raw == "queued") return RoadTrafficVehicleStatusV9::queued;
+    if (*raw == "moving") return transport::RoadVehicleStatus::moving;
+    if (*raw == "queued") return transport::RoadVehicleStatus::queued;
     return std::unexpected(make_error(ErrorCode::serialization_failure, "legacy traffic vehicle status is invalid"));
+}
+
+Result<transport::TripCause> tripCause(json_object* vehicle) {
+    auto raw = stringField(vehicle, "purpose");
+    if (!raw) return std::unexpected(raw.error());
+    if (*raw == "commute") return transport::TripCause::home_to_work;
+    if (*raw == "shopping") return transport::TripCause::home_to_shopping;
+    return std::unexpected(make_error(ErrorCode::serialization_failure, "legacy traffic vehicle purpose is invalid"));
 }
 
 Result<std::optional<transport::JunctionId>> queuedJunction(
@@ -110,7 +117,7 @@ bool isStaleRoadEdit(const Error& error) {
 
 } // namespace
 
-Result<RoadTrafficStateV9> parseLegacyRoadTrafficV9(
+Result<transport::RoadTrafficSnapshot> parseLegacyRoadTrafficV9(
     std::string_view canonicalSaveJson,
     const transport::NetworkSnapshot& network) {
     if (canonicalSaveJson.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
@@ -128,12 +135,12 @@ Result<RoadTrafficStateV9> parseLegacyRoadTrafficV9(
     }
 
     json_object* traffic = nullptr;
-    if (!json_object_object_get_ex(root.get(), "traffic", &traffic)) return RoadTrafficStateV9{};
+    if (!json_object_object_get_ex(root.get(), "traffic", &traffic)) return transport::RoadTrafficSnapshot{};
     if (!traffic || json_object_get_type(traffic) != json_type_object) {
         return std::unexpected(make_error(ErrorCode::serialization_failure, "legacy traffic must be an object"));
     }
 
-    RoadTrafficStateV9 state;
+    transport::RoadTrafficSnapshot snapshot;
     auto nextVehicleId = nonNegativeUint(traffic, "nextVehicleId");
     if (!nextVehicleId) return std::unexpected(nextVehicleId.error());
     auto completedTrips = nonNegativeUint(traffic, "completedTrips");
@@ -142,10 +149,10 @@ Result<RoadTrafficStateV9> parseLegacyRoadTrafficV9(
     if (!failedTrips) return std::unexpected(failedTrips.error());
     auto congestionEpoch = nonNegativeUint(traffic, "congestionEpoch");
     if (!congestionEpoch) return std::unexpected(congestionEpoch.error());
-    state.nextVehicleId = std::max<std::uint64_t>(1U, *nextVehicleId);
-    state.completedTrips = *completedTrips;
-    state.failedTrips = *failedTrips;
-    state.congestionEpoch = *congestionEpoch;
+    snapshot.next_vehicle_id = std::max<std::uint64_t>(1U, *nextVehicleId);
+    snapshot.completed_trips = *completedTrips;
+    snapshot.failed_trips = *failedTrips;
+    snapshot.congestion_epoch = *congestionEpoch;
 
     auto vehiclesResult = requiredObjectField(traffic, "vehicles", json_type_array);
     if (!vehiclesResult) return std::unexpected(vehiclesResult.error());
@@ -153,7 +160,7 @@ Result<RoadTrafficStateV9> parseLegacyRoadTrafficV9(
     std::set<std::string> vehicleIds;
 
     const auto count = json_object_array_length(vehicles);
-    state.vehicles.reserve(count);
+    snapshot.vehicles.reserve(count);
     for (std::size_t index = 0; index < count; ++index) {
         auto* vehicle = json_object_array_get_idx(vehicles, index);
         if (!vehicle || json_object_get_type(vehicle) != json_type_object) {
@@ -167,11 +174,8 @@ Result<RoadTrafficStateV9> parseLegacyRoadTrafficV9(
         }
         auto tripId = stringField(vehicle, "tripId");
         if (!tripId) return std::unexpected(tripId.error());
-        auto purpose = stringField(vehicle, "purpose");
-        if (!purpose) return std::unexpected(purpose.error());
-        if (*purpose != "commute" && *purpose != "shopping") {
-            return std::unexpected(make_error(ErrorCode::serialization_failure, "legacy traffic vehicle purpose is invalid"));
-        }
+        auto cause = tripCause(vehicle);
+        if (!cause) return std::unexpected(cause.error());
         auto origin = stringField(vehicle, "originBuildingId");
         if (!origin) return std::unexpected(origin.error());
         auto destination = stringField(vehicle, "destinationBuildingId");
@@ -226,10 +230,10 @@ Result<RoadTrafficStateV9> parseLegacyRoadTrafficV9(
         auto queued = queuedJunction(vehicle, network);
         if (!queued) return std::unexpected(queued.error());
 
-        state.vehicles.push_back(RoadTrafficVehicleV9{
+        snapshot.vehicles.push_back(transport::ActiveRoadVehicle{
             std::move(*id),
-            std::move(*tripId),
-            std::move(*purpose),
+            transport::TripId{std::move(*tripId)},
+            *cause,
             *weight,
             std::move(*origin),
             std::move(*destination),
@@ -244,30 +248,33 @@ Result<RoadTrafficStateV9> parseLegacyRoadTrafficV9(
         });
     }
 
-    std::sort(state.vehicles.begin(), state.vehicles.end(), [](const auto& left, const auto& right) {
+    std::sort(snapshot.vehicles.begin(), snapshot.vehicles.end(), [](const auto& left, const auto& right) {
         return left.id < right.id;
     });
-    return state;
+
+    try {
+        transport::RoadTrafficState validated;
+        validated.restore(network, snapshot);
+        return validated.snapshot();
+    } catch (const std::exception& exception) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, exception.what()));
+    } catch (...) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, "unknown native road traffic restore failure"));
+    }
 }
 
-Result<transport::TrafficFlowSnapshot> deriveTrafficFlowV9(const RoadTrafficStateV9& roadTraffic) {
-    std::map<transport::CarriagewayId, double> weights;
-    for (const auto& vehicle : roadTraffic.vehicles) {
-        if (!std::isfinite(vehicle.travelerWeight) || vehicle.travelerWeight < 0.0) {
-            return std::unexpected(make_error(ErrorCode::serialization_failure, "native road traffic travelerWeight must be finite and non-negative"));
-        }
-        if (vehicle.carriagewayIds.empty() || vehicle.currentCarriagewayIndex >= vehicle.carriagewayIds.size()) {
-            return std::unexpected(make_error(ErrorCode::serialization_failure, "native road traffic route index is out of range"));
-        }
-        weights[vehicle.carriagewayIds[vehicle.currentCarriagewayIndex]] += vehicle.travelerWeight;
+Result<transport::TrafficFlowSnapshot> deriveTrafficFlowV9(
+    const transport::NetworkSnapshot& network,
+    const transport::RoadTrafficSnapshot& roadTraffic) {
+    try {
+        transport::RoadTrafficState state;
+        state.restore(network, roadTraffic);
+        return state.flow_snapshot();
+    } catch (const std::exception& exception) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, exception.what()));
+    } catch (...) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, "unknown native road traffic flow derivation failure"));
     }
-
-    transport::TrafficFlowSnapshot snapshot;
-    snapshot.loads.reserve(weights.size());
-    for (const auto& [carriageway, weight] : weights) {
-        snapshot.loads.push_back(transport::TrafficLoadRecord{carriageway, weight});
-    }
-    return snapshot;
 }
 
 Result<transport::TrafficFlowSnapshot> parseLegacyTrafficFlowV9(
@@ -275,7 +282,7 @@ Result<transport::TrafficFlowSnapshot> parseLegacyTrafficFlowV9(
     const transport::NetworkSnapshot& network) {
     auto roadTraffic = parseLegacyRoadTrafficV9(canonicalSaveJson, network);
     if (!roadTraffic) return std::unexpected(roadTraffic.error());
-    return deriveTrafficFlowV9(*roadTraffic);
+    return deriveTrafficFlowV9(network, *roadTraffic);
 }
 
 } // namespace civic
