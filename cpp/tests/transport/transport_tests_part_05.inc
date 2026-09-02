@@ -23,6 +23,7 @@ int main() {
     test_mode_choice();
     test_transit_network_and_passenger_conservation_restore();
     test_transit_operations_dwell_board_transfer_complete();
+    test_surface_stops_support_bus_brt_and_tram();
     test_transit_vehicle_failure_preserves_passengers();
     test_multimodal_transfer_and_crowding_capacity();
     test_snapshot_roundtrip_and_hash();
