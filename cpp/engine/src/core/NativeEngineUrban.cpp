@@ -56,7 +56,7 @@ Result<void> NativeEngine::ensureUrbanScheduler() {
         .cadence = {1, 0},
         .after = {},
         .before = {"urban.building-lifecycle"},
-        .reads = {"urban.buildings"},
+        .reads = {},
         .writes = {"urban.buildings"},
         .order = 100,
         .execute = [this](std::uint64_t tick) -> Result<void> {
@@ -71,7 +71,7 @@ Result<void> NativeEngine::ensureUrbanScheduler() {
         .cadence = {urban::BuildingLifecycleDriver::lifecycle_cadence_ticks, 0},
         .after = {"urban.building-renovation"},
         .before = {},
-        .reads = {"urban.buildings"},
+        .reads = {},
         .writes = {"urban.buildings"},
         .order = 110,
         .execute = [this](std::uint64_t tick) -> Result<void> {
