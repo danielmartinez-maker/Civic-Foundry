@@ -1,3 +1,20 @@
+void test_surface_stops_support_bus_brt_and_tram() {
+    constexpr auto brt = static_cast<TransitMode>(5);
+    TransitNetwork network;
+    network.upsert_stop(TransitStop{TransitStopId{"stop:a"}, 0, 0, TransitMode::bus});
+    network.upsert_stop(TransitStop{TransitStopId{"stop:b"}, 1, 0, TransitMode::bus});
+    bool accepted = true;
+    try {
+        network.upsert_line(TransitLine{TransitLineId{"line:bus"}, TransitMode::bus, {TransitStopId{"stop:a"}, TransitStopId{"stop:b"}}, 2.0, 80, true});
+        network.upsert_line(TransitLine{TransitLineId{"line:brt"}, brt, {TransitStopId{"stop:a"}, TransitStopId{"stop:b"}}, 2.5, 60, true});
+        network.upsert_line(TransitLine{TransitLineId{"line:tram"}, TransitMode::tram, {TransitStopId{"stop:a"}, TransitStopId{"stop:b"}}, 2.5, 90, true});
+    } catch (const std::exception&) {
+        accepted = false;
+    }
+    CHECK(accepted);
+    CHECK(network.snapshot().lines.size() == 3);
+}
+
 void test_transit_vehicle_failure_preserves_passengers() {
     TransitOperations ops;
     TransitVehicle vehicle{TransitRunId{"run:1"}, TransitLineId{"line:1"}, 10.0, TransitVehicleState::in_service, 0};
