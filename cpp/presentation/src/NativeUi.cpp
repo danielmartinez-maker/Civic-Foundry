@@ -22,6 +22,22 @@ std::expected<void, std::string> NativeUiController::placeFacility(Point2 positi
     if (!validPoint(position) || facility_type.empty()) return std::unexpected("facility placement is invalid");
     return sink_.submit(PlaceFacilityCommand{position, std::move(facility_type)});
 }
+std::expected<void, std::string> NativeUiController::placeUtility(Point2 position, std::string utility_type) {
+    if (!validPoint(position) || utility_type.empty()) return std::unexpected("utility placement is invalid");
+    return sink_.submit(PlaceUtilityCommand{position, std::move(utility_type)});
+}
+std::expected<void, std::string> NativeUiController::placeServiceFacility(Point2 position, std::string service_type) {
+    if (!validPoint(position) || service_type.empty()) return std::unexpected("service facility placement is invalid");
+    return sink_.submit(PlaceServiceFacilityCommand{position, std::move(service_type)});
+}
+std::expected<void, std::string> NativeUiController::placeTransitStop(Point2 position, TransitStopKind kind) {
+    if (!validPoint(position)) return std::unexpected("transit stop placement is invalid");
+    return sink_.submit(PlaceTransitStopCommand{position, kind});
+}
+std::expected<void, std::string> NativeUiController::bulldoze(Point2 position) {
+    if (!validPoint(position)) return std::unexpected("bulldoze position is invalid");
+    return sink_.submit(BulldozeCommand{position});
+}
 std::expected<void, std::string> NativeUiController::createTransitLine(std::vector<std::string> stop_ids, VehicleKind mode) {
     if (stop_ids.size() < 2) return std::unexpected("transit line requires at least two stops");
     for (const auto& id : stop_ids) if (id.empty()) return std::unexpected("transit stop id is empty");
