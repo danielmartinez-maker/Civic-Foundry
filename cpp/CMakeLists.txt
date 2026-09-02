@@ -41,10 +41,10 @@ if(WIN32 AND CIVIC_BUILD_NATIVE_CLIENT)
   civic_enable_warnings(civic_d3d12_blank_smoke)
 
   install(TARGETS civic_foundry_native_client
-    RUNTIME DESTINATION .
     RUNTIME_DEPENDENCIES
       PRE_EXCLUDE_REGEXES "api-ms-.*" "ext-ms-.*"
       POST_EXCLUDE_REGEXES ".*[Ww]indows[/\\\\][Ss]ystem32[/\\\\].*"
+    RUNTIME DESTINATION .
   )
   install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../assets/runtime/" DESTINATION assets/runtime)
   if(MSVC)
