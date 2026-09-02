@@ -41,6 +41,7 @@ public:
         std::uintptr_t wparam,
         std::intptr_t lparam) noexcept;
     [[nodiscard]] bool wantsKeyboardCapture() const noexcept;
+    [[nodiscard]] bool wantsTextInput() const noexcept;
     [[nodiscard]] bool wantsMouseCapture() const noexcept;
     [[nodiscard]] NativeUiRuntimeModel& model() noexcept;
     [[nodiscard]] const NativeUiRuntimeModel& model() const noexcept;
