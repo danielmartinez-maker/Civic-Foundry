@@ -12,7 +12,9 @@ Start with **[Civic Foundry Wiki Home](wiki/Home.md)** for a structured overview
 - [Save Format](SAVE_FORMAT.md) — persistence and migration authority.
 - [Simulation](SIMULATION.md) — simulation-system behavior and contracts.
 - [Testing](TESTING.md) — verification strategy and test gates.
+- [Test Matrix](TEST_MATRIX.md) — local commands and CI ownership.
 - [Engineering Standards](ENGINEERING_STANDARDS.md) — repository engineering rules.
+- [Native Engine — Stack 0](cpp/NATIVE_ENGINE.md) — transitional/shadow C++ migration substrate; TypeScript remains gameplay-authoritative.
 - [Balancing](BALANCING.md) — balancing/calibration guidance.
 - [ADRs](adr/) — accepted architecture decisions.
 - [Art documentation](art/) — presentation and asset guidance.

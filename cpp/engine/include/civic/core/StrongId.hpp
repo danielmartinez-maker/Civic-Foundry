@@ -1,24 +1,37 @@
 #pragma once
+
+#include <cmath>
 #include <compare>
 #include <cstdint>
 #include <functional>
-#include <string>
 #include <type_traits>
-#include <utility>
 
-namespace civic::core {
+#include <civic/core/Error.hpp>
+
+namespace civic {
+
 template<class Tag, class Storage = std::uint64_t>
 class StrongId final {
+    static_assert(std::is_integral_v<Storage> && std::is_unsigned_v<Storage>);
 public:
-  using storage_type = Storage;
-  constexpr StrongId() = default;
-  constexpr explicit StrongId(Storage value) noexcept : value_(std::move(value)) {}
-  [[nodiscard]] constexpr const Storage& value() const noexcept { return value_; }
-  auto operator<=>(const StrongId&) const = default;
+    using storage_type = Storage;
+    constexpr StrongId() = default;
+    constexpr explicit StrongId(Storage value) noexcept : value_(value) {}
+    [[nodiscard]] constexpr Storage value() const noexcept { return value_; }
+    auto operator<=>(const StrongId&) const = default;
 private:
-  Storage value_{};
+    Storage value_{};
 };
-struct EntityTag; struct ParcelTag; struct BuildingTag; struct FirmTag; struct HouseholdTag; struct VehicleTag; struct NetworkNodeTag; struct NetworkEdgeTag;
+
+struct EntityTag;
+struct ParcelTag;
+struct BuildingTag;
+struct FirmTag;
+struct HouseholdTag;
+struct VehicleTag;
+struct NetworkNodeTag;
+struct NetworkEdgeTag;
+
 using EntityId = StrongId<EntityTag>;
 using ParcelId = StrongId<ParcelTag>;
 using BuildingId = StrongId<BuildingTag>;
@@ -27,11 +40,55 @@ using HouseholdId = StrongId<HouseholdTag>;
 using VehicleId = StrongId<VehicleTag>;
 using NetworkNodeId = StrongId<NetworkNodeTag>;
 using NetworkEdgeId = StrongId<NetworkEdgeTag>;
+
+class Money final {
+public:
+    constexpr explicit Money(std::int64_t minor_units = 0) noexcept : minor_units_(minor_units) {}
+    [[nodiscard]] constexpr std::int64_t minor_units() const noexcept { return minor_units_; }
+    auto operator<=>(const Money&) const = default;
+private:
+    std::int64_t minor_units_{};
+};
+
+class WeightedCount final {
+public:
+    [[nodiscard]] static Result<WeightedCount> create(double value) {
+        if (!std::isfinite(value) || value < 0.0) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "weighted count must be finite and non-negative"));
+        }
+        return WeightedCount(value);
+    }
+    [[nodiscard]] double value() const noexcept { return value_; }
+    auto operator<=>(const WeightedCount&) const = default;
+private:
+    explicit WeightedCount(double value) noexcept : value_(value) {}
+    double value_{};
+};
+
+using GeometryCentimeter = std::int64_t;
+
+namespace core {
+template<class Tag, class Storage = std::uint64_t>
+using StrongId = ::civic::StrongId<Tag, Storage>;
+using EntityId = ::civic::EntityId;
+using ParcelId = ::civic::ParcelId;
+using BuildingId = ::civic::BuildingId;
+using FirmId = ::civic::FirmId;
+using HouseholdId = ::civic::HouseholdId;
+using VehicleId = ::civic::VehicleId;
+using NetworkNodeId = ::civic::NetworkNodeId;
+using NetworkEdgeId = ::civic::NetworkEdgeId;
 using MoneyMinor = std::int64_t;
 using LegalCoordinateCm = std::int64_t;
-}
+} // namespace core
+
+} // namespace civic
+
 namespace std {
-template<class Tag, class Storage> struct hash<civic::core::StrongId<Tag,Storage>> {
-  size_t operator()(const civic::core::StrongId<Tag,Storage>& id) const noexcept { return hash<Storage>{}(id.value()); }
+template<class Tag, class Storage>
+struct hash<civic::StrongId<Tag, Storage>> {
+    size_t operator()(const civic::StrongId<Tag, Storage>& id) const noexcept {
+        return hash<Storage>{}(id.value());
+    }
 };
-}
+} // namespace std

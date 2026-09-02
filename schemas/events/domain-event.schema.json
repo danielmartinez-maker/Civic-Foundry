@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civic-foundry.local/schemas/events/domain-event.schema.json",
+  "title": "Civic Foundry Native Domain Event",
+  "type": "object",
+  "required": ["sequence", "tick", "type", "source", "payload"],
+  "properties": {
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "tick": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

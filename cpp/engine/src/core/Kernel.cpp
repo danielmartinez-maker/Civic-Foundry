@@ -45,6 +45,9 @@ Result<void> CommandQueue::submit(std::span<const CommandEnvelope> commands, std
     (void)current_tick;
     std::set<std::uint64_t> batch;
     for (const auto& command : commands) {
+        if (command.version != command_protocol_version) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "unsupported command envelope version"));
+        }
         if (command.sequence == 0 || !batch.insert(command.sequence).second || sequences_.contains(command.sequence)) {
             return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate command sequence"));
         }
@@ -63,7 +66,6 @@ std::vector<CommandEnvelope> CommandQueue::takeReady(std::uint64_t tick) {
     std::vector<CommandEnvelope> pending;
     for (auto& command : queue_) {
         if (command.tick <= tick) {
-            sequences_.erase(command.sequence);
             ready.push_back(std::move(command));
         } else {
             pending.push_back(std::move(command));

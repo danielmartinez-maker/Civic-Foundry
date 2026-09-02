@@ -32,11 +32,14 @@ private:
     SpeedMode speed_{SpeedMode::normal};
 };
 
+inline constexpr std::uint32_t command_protocol_version = 1U;
+
 struct CommandEnvelope final {
     std::uint64_t sequence{};
     std::uint64_t tick{};
     std::string type;
     std::vector<std::byte> payload;
+    std::uint32_t version{command_protocol_version};
 };
 
 struct DomainEvent final {

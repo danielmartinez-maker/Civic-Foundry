@@ -30,6 +30,7 @@ inline bool nextCodePoint(std::string_view input, std::size_t& offset, std::uint
     return code_point >= minimum && code_point <= 0x10ffffU && !(code_point >= 0xd800U && code_point <= 0xdfffU);
 }
 
+
 inline bool isEcmaTrimCodePoint(std::uint32_t code_point) noexcept {
     if (code_point == 0x0009U || code_point == 0x000aU || code_point == 0x000bU ||
         code_point == 0x000cU || code_point == 0x000dU || code_point == 0x0020U ||
@@ -60,6 +61,8 @@ inline std::u16string toUnits(std::string_view input) {
     while (offset < input.size()) {
         std::uint32_t code_point = 0;
         if (!nextCodePoint(input, offset, code_point)) {
+            // Native public string inputs are validated before storage. This fallback
+            // keeps the comparator deterministic for defensive internal use.
             output.clear();
             for (const unsigned char byte : input) output.push_back(static_cast<char16_t>(byte));
             return output;

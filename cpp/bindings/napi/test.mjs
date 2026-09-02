@@ -1,0 +1,103 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
+
+const require = createRequire(import.meta.url);
+const addon = require(resolve(process.argv[2]));
+const handle = addon.createEngine({ seed: 7, startTick: 2, speed: 1 });
+assert.equal(JSON.parse(addon.getSnapshot(handle)).tick, 2);
+assert.throws(() => addon.step(handle, 0.5), /safe integer/);
+assert.throws(
+  () =>
+    addon.submitCommands(
+      handle,
+      JSON.stringify([
+        { sequence: 1, tick: 1, type: "missing-version", payload: null },
+      ]),
+    ),
+  (error) => error?.code === 3,
+);
+assert.throws(
+  () =>
+    addon.submitCommands(
+      handle,
+      JSON.stringify([
+        {
+          version: 2,
+          sequence: 1,
+          tick: 1,
+          type: "unsupported-version",
+          payload: null,
+        },
+      ]),
+    ),
+  (error) => error?.code === 3,
+);
+assert.throws(
+  () =>
+    addon.submitCommands(
+      handle,
+      JSON.stringify([
+        { version: 1, sequence: 1, tick: 1, type: "missing-payload" },
+      ]),
+    ),
+  (error) => error?.code === 3,
+);
+addon.submitCommands(
+  handle,
+  JSON.stringify([
+    {
+      version: 1,
+      sequence: 1,
+      tick: 1,
+      type: "past-but-valid",
+      payload: { x: 1 },
+    },
+  ]),
+);
+addon.step(handle, 1);
+const events = JSON.parse(addon.getEvents(handle));
+assert.equal(events[0].type, "past-but-valid");
+const kernel = addon.getDomainHash(handle, "kernel");
+assert.equal(kernel.ownership, 1);
+assert.equal(typeof kernel.value, "bigint");
+const world = addon.getDomainHash(handle, "world");
+assert.equal(world.ownership, 2);
+const left = addon.createEngine({ seed: 7 });
+const right = addon.createEngine({ seed: 7 });
+addon.submitCommands(
+  left,
+  JSON.stringify([
+    {
+      version: 1,
+      sequence: 1,
+      tick: 1,
+      type: "semantic",
+      payload: { a: 1, b: 2 },
+    },
+  ]),
+);
+addon.submitCommands(
+  right,
+  JSON.stringify([
+    {
+      version: 1,
+      sequence: 1,
+      tick: 1,
+      type: "semantic",
+      payload: { b: 2, a: 1 },
+    },
+  ]),
+);
+assert.equal(
+  addon.getDomainHash(left, "kernel").value,
+  addon.getDomainHash(right, "kernel").value,
+);
+addon.destroyEngine(left);
+addon.destroyEngine(right);
+assert.throws(
+  () => addon.saveV9(handle),
+  (error) => error?.code === 2,
+);
+addon.destroyEngine(handle);
+assert.throws(() => addon.step(handle, 1), /destroyed/);

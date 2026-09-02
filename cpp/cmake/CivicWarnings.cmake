@@ -1,0 +1,7 @@
+function(civic_enable_warnings target)
+  if(MSVC)
+    target_compile_options(${target} PRIVATE /W4 /permissive- /EHsc /fp:strict)
+  else()
+    target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow -fno-fast-math)
+  endif()
+endfunction()
