@@ -53,6 +53,15 @@ TEST(CommandContracts, StableOrderingDuplicateRejectionAndPastTickParity) {
     EXPECT_FALSE(queue.submit(duplicate, 6));
 }
 
+TEST(CommandContracts, RejectsSequenceReuseAfterDispatch) {
+    civic::CommandQueue queue;
+    const std::vector<civic::CommandEnvelope> first{{1, 0, "first", {}}};
+    ASSERT_TRUE(queue.submit(first, 0));
+    ASSERT_EQ(queue.takeReady(0).size(), 1U);
+    const std::vector<civic::CommandEnvelope> reused{{1, 1, "reused", {}}};
+    EXPECT_FALSE(queue.submit(reused, 0));
+}
+
 TEST(ClockContracts, PreservesAcceptedSpeedModes) {
     civic::SimulationClock clock{3, civic::SpeedMode::fast};
     EXPECT_EQ(clock.tick(), 3U);
