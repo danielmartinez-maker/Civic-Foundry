@@ -65,7 +65,9 @@ function cloneFlood(result: FloodResult | null): FloodResult | null {
   });
 }
 
-function cloneSnapshot(snapshot: WorldFoundationSnapshot): WorldFoundationSnapshot {
+function cloneSnapshot(
+  snapshot: WorldFoundationSnapshot,
+): WorldFoundationSnapshot {
   return Object.freeze({
     mode: snapshot.mode,
     seed: snapshot.seed,
@@ -92,7 +94,9 @@ function cloneSnapshot(snapshot: WorldFoundationSnapshot): WorldFoundationSnapsh
       channels: Object.freeze(
         snapshot.hydrology.channels.map((item) => Object.freeze({ ...item })),
       ),
-      flowAccumulation: Object.freeze(snapshot.hydrology.flowAccumulation.slice()),
+      flowAccumulation: Object.freeze(
+        snapshot.hydrology.flowAccumulation.slice(),
+      ),
       watershedIds: Object.freeze(snapshot.hydrology.watershedIds.slice()),
       floodSusceptibility: Object.freeze(
         snapshot.hydrology.floodSusceptibility.slice(),
@@ -105,7 +109,9 @@ function cloneSnapshot(snapshot: WorldFoundationSnapshot): WorldFoundationSnapsh
             ...entity,
             boundary: Object.freeze({
               points: Object.freeze(
-                entity.boundary.points.map((point) => Object.freeze({ ...point })),
+                entity.boundary.points.map((point) =>
+                  Object.freeze({ ...point }),
+                ),
               ),
             }),
           }),
@@ -296,8 +302,9 @@ export class NativeWorldAuthority {
       throw new Error(`flood coordinate out of bounds: ${x},${y}`);
     }
     return (
-      this.snapshotValue.lastFloodResult?.depthMeters[y * this.terrain.width + x] ??
-      0
+      this.snapshotValue.lastFloodResult?.depthMeters[
+        y * this.terrain.width + x
+      ] ?? 0
     );
   }
 
@@ -320,8 +327,9 @@ export class NativeWorldAuthority {
       watersheds: this.hydrology.watersheds().length,
       channels: this.hydrology.channels().length,
       lastFloodedCells:
-        this.snapshotValue.lastFloodResult?.depthMeters.filter((depth) => depth > 0)
-          .length ?? 0,
+        this.snapshotValue.lastFloodResult?.depthMeters.filter(
+          (depth) => depth > 0,
+        ).length ?? 0,
     });
   }
 
