@@ -132,7 +132,11 @@ std::uint64_t NativeEngine::fnv1a64(std::string_view bytes) noexcept {
 
 Result<DomainHash> NativeEngine::domainHash(std::string_view domain) const {
     if (domain == "kernel") return DomainHash{DomainOwnership::owned, 1, fnv1a64(kernelCanonicalState())};
-    static constexpr std::string_view unowned[] = {"world", "cadastre", "buildings", "transportation", "population", "economy", "services"};
+    if (domain == "world") {
+        if (!world_) return DomainHash{DomainOwnership::unowned, 1, 0};
+        return DomainHash{DomainOwnership::owned, 1, world_->deterministic_hash()};
+    }
+    static constexpr std::string_view unowned[] = {"cadastre", "buildings", "transportation", "population", "economy", "services"};
     if (std::ranges::find(unowned, domain) != std::end(unowned)) return DomainHash{DomainOwnership::unowned, 1, 0};
     return std::unexpected(make_error(ErrorCode::invalid_argument, "unknown domain hash: " + std::string{domain}));
 }
@@ -145,6 +149,9 @@ Result<void> NativeEngine::loadV9(std::string_view json) {
     commands_ = CommandQueue{};
     events_ = DomainEventJournal{};
     loaded_save_ = std::move(*parsed);
+    world_.reset();
+    world_mode_ = "generated-1r";
+    legacy_compatibility_json_.reset();
     return {};
 }
 
