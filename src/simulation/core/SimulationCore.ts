@@ -247,7 +247,7 @@ export class SimulationCore extends SimulationCoreBase {
     });
     const urbanBridge = nativeUrbanBridgeFor(this);
     if (urbanBridge) {
-      commitNativeUrbanState(this, urbanBridge);
+      projectNativeUrbanState(this, urbanBridge.urbanSnapshot());
       installNativeMutationBridge(this, urbanBridge);
     }
   }
@@ -313,12 +313,29 @@ export class SimulationCore extends SimulationCoreBase {
 
   override rebuildCadastreFromLegacyState(): void {
     const urbanBridge = nativeUrbanBridgeFor(this);
-    const candidate = urbanBridge
-      ? urbanBridge.rebuildUrbanLegacy(nativeLegacyRebuildRequest(this)).urbanFabric
-      : this.parcelGeneration.rebuild(this.terrain, this.roads, this.zoning);
+    if (urbanBridge) {
+      try {
+        const authoritative = urbanBridge.rebuildUrbanLegacy(
+          nativeLegacyRebuildRequest(this),
+        );
+        projectNativeUrbanState(this, authoritative);
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('protected-parcel-topology-change')) {
+          throw new ProtectedCanonicalParcelMutationError();
+        }
+        throw error;
+      }
+    }
+
+    const candidate = this.parcelGeneration.rebuild(
+      this.terrain,
+      this.roads,
+      this.zoning,
+    );
     const result = rebuildServiceFor(this).rebuild(candidate, this.clock.tick);
     if (!result.committed) throw new ProtectedCanonicalParcelMutationError();
     reconcileCanonicalBuildingProjection(this);
-    if (urbanBridge) commitNativeUrbanState(this, urbanBridge);
   }
 }
