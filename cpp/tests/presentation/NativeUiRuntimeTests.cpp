@@ -42,6 +42,29 @@ TEST(NativeUiRuntimeModel, CombinesDpiAndUserScaleWithoutChangingSnapshot) {
     EXPECT_EQ(snapshot.revision, 9U);
 }
 
+TEST(NativeUiRuntimeModel, AppliesPerMonitorDpiChangesBetweenFrames) {
+    NativeUiRuntimeModel runtime{};
+    ASSERT_TRUE(runtime.initialize(1.0F).has_value());
+    FrameSnapshot snapshot{};
+    PresentationSettings settings{};
+    settings.ui_scale = 1.2F;
+
+    auto first = runtime.beginFrame(snapshot, settings);
+    ASSERT_TRUE(first.has_value());
+    EXPECT_FLOAT_EQ(first->effective_scale, 1.2F);
+    ASSERT_TRUE(runtime.endFrame().has_value());
+
+    ASSERT_TRUE(runtime.updateDpiScale(1.5F).has_value());
+    auto second = runtime.beginFrame(snapshot, settings);
+    ASSERT_TRUE(second.has_value());
+    EXPECT_FLOAT_EQ(second->dpi_scale, 1.5F);
+    EXPECT_FLOAT_EQ(second->effective_scale, 1.8F);
+    ASSERT_TRUE(runtime.endFrame().has_value());
+
+    EXPECT_FALSE(runtime.updateDpiScale(0.0F).has_value());
+    EXPECT_FLOAT_EQ(runtime.dpiScale(), 1.5F);
+}
+
 TEST(NativeUiRuntimeModel, OwnsPanelLifecycleByStablePresentationId) {
     NativeUiRuntimeModel runtime{};
     ASSERT_TRUE(runtime.initialize(1.0F).has_value());
