@@ -122,7 +122,11 @@ function runNativeScenario(scenario) {
 for (const scenario of manifest.scenarios) {
   const expected = runTypeScriptMigrationScenario(scenario);
   const actual = runNativeScenario(scenario);
-  assertSame(actual, expected, `${scenario.id} TypeScript/native shadow parity`);
+  assertSame(
+    actual,
+    expected,
+    `${scenario.id} TypeScript/native shadow parity`,
+  );
   assert.equal(
     canonicalStringify(runNativeScenario(scenario)),
     canonicalStringify(actual),

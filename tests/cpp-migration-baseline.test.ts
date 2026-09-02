@@ -38,9 +38,7 @@ test("C++ migration baseline names the exact accepted TypeScript commit and requ
   );
   assert.ok(
     manifest.scenarios.every((scenario) =>
-      ["PARITY", "CORRECTION", "DEFERRED"].includes(
-        scenario.classification,
-      ),
+      ["PARITY", "CORRECTION", "DEFERRED"].includes(scenario.classification),
     ),
   );
   assert.ok(
@@ -60,7 +58,10 @@ test("every C++ migration scenario records executable save input and an ordered 
       Array.isArray(scenario.commandJournal),
       `${scenario.id} must record commandJournal`,
     );
-    assert.ok(scenario.targetTicks.length > 0, `${scenario.id} needs target ticks`);
+    assert.ok(
+      scenario.targetTicks.length > 0,
+      `${scenario.id} needs target ticks`,
+    );
     let previousSequence = 0;
     for (const command of scenario.commandJournal) {
       assert.ok(
