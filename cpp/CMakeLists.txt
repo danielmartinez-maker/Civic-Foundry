@@ -60,6 +60,7 @@ if(CIVIC_BUILD_TESTS)
     tests/building_lifecycle_renovation_tests.cpp
     tests/development_authority_tests.cpp
     tests/native_urban_snapshot_tests.cpp
+    tests/world_urban_shadow_parity_tests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main)
   include(GoogleTest)
