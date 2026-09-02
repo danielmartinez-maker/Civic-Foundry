@@ -416,18 +416,24 @@ Result<std::string> NativeEngine::saveV9() const {
     json_object_object_add(clock, "tick", json_object_new_int64(static_cast<std::int64_t>(clock_.tick())));
     json_object_object_add(clock, "speed", json_object_new_int64(static_cast<std::int64_t>(static_cast<std::uint32_t>(clock_.speed()))));
 
-    auto runtimeCopy = socioeconomic_.runtime();
-    auto extensionJson = socioeconomic::SocioeconomicPersistence::serialize_v9_extension(runtimeCopy, clock_.tick());
-    if (!extensionJson) return std::unexpected(extensionJson.error());
-    auto extensionRoot = parseJsonObject(*extensionJson);
-    if (!extensionRoot) return std::unexpected(extensionRoot.error());
-    json_object* extension = nullptr;
-    if (!json_object_object_get_ex(extensionRoot->get(), "nativeSocioeconomic", &extension) || !extension || json_object_get_type(extension) != json_type_object) {
-        return std::unexpected(make_error(ErrorCode::serialization_failure, "socioeconomic serializer omitted nativeSocioeconomic object"));
+    json_object* existingSocioeconomic = nullptr;
+    const bool loadedWithSocioeconomic =
+        json_object_object_get_ex(root->get(), "nativeSocioeconomic", &existingSocioeconomic);
+    const bool socioeconomicNative = socioeconomic_.transfers().transferred_count() > 0;
+    if (loadedWithSocioeconomic || socioeconomicNative) {
+        auto runtimeCopy = socioeconomic_.runtime();
+        auto extensionJson = socioeconomic::SocioeconomicPersistence::serialize_v9_extension(runtimeCopy, clock_.tick());
+        if (!extensionJson) return std::unexpected(extensionJson.error());
+        auto extensionRoot = parseJsonObject(*extensionJson);
+        if (!extensionRoot) return std::unexpected(extensionRoot.error());
+        json_object* extension = nullptr;
+        if (!json_object_object_get_ex(extensionRoot->get(), "nativeSocioeconomic", &extension) || !extension || json_object_get_type(extension) != json_type_object) {
+            return std::unexpected(make_error(ErrorCode::serialization_failure, "socioeconomic serializer omitted nativeSocioeconomic object"));
+        }
+        auto authorityPersisted = persistSocioeconomicAuthority(extension, socioeconomic_);
+        if (!authorityPersisted) return std::unexpected(authorityPersisted.error());
+        json_object_object_add(root->get(), "nativeSocioeconomic", json_object_get(extension));
     }
-    auto authorityPersisted = persistSocioeconomicAuthority(extension, socioeconomic_);
-    if (!authorityPersisted) return std::unexpected(authorityPersisted.error());
-    json_object_object_add(root->get(), "nativeSocioeconomic", json_object_get(extension));
 
     const char* encoded = json_object_to_json_string_ext(root->get(), JSON_C_TO_STRING_PLAIN);
     if (!encoded) return std::unexpected(make_error(ErrorCode::serialization_failure, "failed to encode merged Save V9"));
