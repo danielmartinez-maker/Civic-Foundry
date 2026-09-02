@@ -35,8 +35,13 @@ civic_enable_sanitizers(civic_engine)
 add_library(civic_presentation STATIC
   presentation/src/Presentation.cpp
   presentation/src/RenderPipeline.cpp
+  presentation/src/PresentationIO.cpp
+  presentation/src/AssetRuntime.cpp
+  presentation/src/NativeUi.cpp
+  presentation/src/Audio.cpp
 )
 target_include_directories(civic_presentation PUBLIC engine/include)
+target_link_libraries(civic_presentation PUBLIC ${CIVIC_JSON_TARGET})
 civic_enable_warnings(civic_presentation)
 civic_enable_sanitizers(civic_presentation)
 
