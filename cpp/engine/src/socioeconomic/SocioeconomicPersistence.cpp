@@ -81,6 +81,13 @@ void add_bool(json_object* object, const char* key, bool value) {
     json_object_object_add(object, key, json_object_new_boolean(value ? 1 : 0));
 }
 
+[[nodiscard]] PersonLifeStage legacy_life_stage_for_age(std::uint16_t age) noexcept {
+    if (age < 13) return PersonLifeStage::child;
+    if (age < 18) return PersonLifeStage::teen;
+    if (age < 65) return PersonLifeStage::adult;
+    return PersonLifeStage::senior;
+}
+
 [[nodiscard]] std::uint64_t next_person_id_from_snapshot(std::span<const PersonView> people) noexcept {
     std::uint64_t max_id = 0;
     for (const auto& person : people) max_id = std::max(max_id, person.id.value());
@@ -190,6 +197,11 @@ Result<void> restore_person_registry(
             const auto& person = sorted[live_index];
             if (!person.alive) return std::unexpected(make_error(ErrorCode::serialization_failure, "person snapshot contains non-live record"));
             input = {person.household, person.age, person.education, person.occupation, person.employed, person.income};
+            input.resident = person.resident;
+            input.life_stage = person.life_stage;
+            input.provenance = person.provenance;
+            input.home_entity = person.home_entity;
+            input.location = person.location;
         } else {
             input = {HouseholdId{1}, 0, 0, 0, false, Money{0}};
         }
@@ -218,7 +230,7 @@ Result<std::string> SocioeconomicPersistence::serialize_v9_extension(
     auto save_version = add_u64(root.value, "saveVersion", 9); if (!save_version) return std::unexpected(save_version.error());
     json_object* extension = json_object_new_object();
     json_object_object_add(root.value, "nativeSocioeconomic", extension);
-    auto schema = add_u64(extension, "schemaVersion", 2); if (!schema) return std::unexpected(schema.error());
+    auto schema = add_u64(extension, "schemaVersion", 3); if (!schema) return std::unexpected(schema.error());
     auto seed = add_u64(extension, "seed", runtime.seed()); if (!seed) return std::unexpected(seed.error());
     auto saved_tick = add_u64(extension, "tick", tick); if (!saved_tick) return std::unexpected(saved_tick.error());
 
@@ -300,6 +312,23 @@ Result<std::string> SocioeconomicPersistence::serialize_v9_extension(
         add_u64(item, "occupation", person.occupation);
         add_bool(item, "employed", person.employed);
         add_i64(item, "income", person.income.minor_units());
+        add_bool(item, "resident", person.resident);
+        add_u64(item, "lifeStage", static_cast<std::uint64_t>(person.life_stage));
+        add_u64(item, "provenance", static_cast<std::uint64_t>(person.provenance));
+        if (person.home_entity) {
+            auto added = add_u64(item, "homeEntity", person.home_entity->value());
+            if (!added) return std::unexpected(added.error());
+        } else {
+            json_object_object_add(item, "homeEntity", json_object_new_null());
+        }
+        if (person.location) {
+            add_u64(item, "locationKind", static_cast<std::uint64_t>(person.location->kind));
+            auto added = add_u64(item, "locationEntity", person.location->entity.value());
+            if (!added) return std::unexpected(added.error());
+        } else {
+            json_object_object_add(item, "locationKind", json_object_new_null());
+            json_object_object_add(item, "locationEntity", json_object_new_null());
+        }
         json_object_array_add(people, item);
     }
     json_object_object_add(extension, "people", people);
@@ -340,7 +369,7 @@ Result<SocioeconomicRuntime> SocioeconomicPersistence::restore_v9_extension(std:
     if (!save_version || *save_version != 9) return std::unexpected(make_error(ErrorCode::unsupported_save_version, "socioeconomic persistence requires Save V9"));
     auto extension = required_member(root.value, "nativeSocioeconomic", json_type_object); if (!extension) return std::unexpected(extension.error());
     auto schema = required_u64(*extension, "schemaVersion");
-    if (!schema || *schema != 2) return std::unexpected(make_error(ErrorCode::serialization_failure, "unsupported native socioeconomic schema"));
+    if (!schema || (*schema != 2 && *schema != 3)) return std::unexpected(make_error(ErrorCode::serialization_failure, "unsupported native socioeconomic schema"));
     auto seed = required_u64(*extension, "seed");
     if (!seed || *seed > std::numeric_limits<std::uint32_t>::max()) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid socioeconomic seed"));
 
@@ -416,7 +445,53 @@ Result<SocioeconomicRuntime> SocioeconomicPersistence::restore_v9_extension(std:
         if (!id || !household || !age || !education || !occupation || !employed || !income || *age > 130 || *education > std::numeric_limits<std::uint16_t>::max() || *occupation > std::numeric_limits<std::uint16_t>::max() || !runtime.households().get(HouseholdId{*household})) {
             return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person fields or household reference"));
         }
-        people.push_back({PersonId{*id}, HouseholdId{*household}, static_cast<std::uint16_t>(*age), static_cast<std::uint16_t>(*education), static_cast<std::uint16_t>(*occupation), *employed, Money{*income}, true});
+        PersonView person{PersonId{*id}, HouseholdId{*household}, static_cast<std::uint16_t>(*age), static_cast<std::uint16_t>(*education), static_cast<std::uint16_t>(*occupation), *employed, Money{*income}, true};
+        if (*schema >= 3) {
+            auto resident = required_bool(item, "resident");
+            auto life_stage = required_u64(item, "lifeStage");
+            auto provenance = required_u64(item, "provenance");
+            if (!resident || !life_stage || !provenance || *life_stage > static_cast<std::uint64_t>(PersonLifeStage::senior) || *provenance > static_cast<std::uint64_t>(PersonHistoryProvenance::imported_fact)) {
+                return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person lifecycle state"));
+            }
+            person.resident = *resident;
+            person.life_stage = static_cast<PersonLifeStage>(*life_stage);
+            person.provenance = static_cast<PersonHistoryProvenance>(*provenance);
+
+            json_object* home_entity = nullptr;
+            if (!json_object_object_get_ex(item, "homeEntity", &home_entity) || !home_entity) {
+                return std::unexpected(make_error(ErrorCode::serialization_failure, "person homeEntity field missing"));
+            }
+            if (json_object_get_type(home_entity) == json_type_int) {
+                const auto raw = json_object_get_int64(home_entity);
+                if (raw <= 0) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person homeEntity"));
+                person.home_entity = EntityId{static_cast<std::uint64_t>(raw)};
+            } else if (json_object_get_type(home_entity) != json_type_null) {
+                return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person homeEntity"));
+            }
+
+            json_object* location_kind = nullptr;
+            json_object* location_entity = nullptr;
+            if (!json_object_object_get_ex(item, "locationKind", &location_kind) || !location_kind ||
+                !json_object_object_get_ex(item, "locationEntity", &location_entity) || !location_entity) {
+                return std::unexpected(make_error(ErrorCode::serialization_failure, "person location fields missing"));
+            }
+            if (json_object_get_type(location_kind) == json_type_int) {
+                if (json_object_get_type(location_entity) != json_type_int) return std::unexpected(make_error(ErrorCode::serialization_failure, "person location entity missing"));
+                const auto kind = json_object_get_int64(location_kind);
+                const auto entity = json_object_get_int64(location_entity);
+                if (kind < 0 || kind > static_cast<std::int64_t>(PersonLocationKind::network) || entity <= 0) {
+                    return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location"));
+                }
+                person.location = PersonLocation{static_cast<PersonLocationKind>(kind), EntityId{static_cast<std::uint64_t>(entity)}};
+            } else if (json_object_get_type(location_kind) != json_type_null || json_object_get_type(location_entity) != json_type_null) {
+                return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location nullability"));
+            }
+        } else {
+            person.resident = true;
+            person.life_stage = legacy_life_stage_for_age(person.age);
+            person.provenance = PersonHistoryProvenance::bootstrap_background;
+        }
+        people.push_back(std::move(person));
     }
     auto next_person = required_u64(*extension, "nextPersonId"); if (!next_person) return std::unexpected(next_person.error());
     auto restored_people = restore_person_registry(runtime.people(), people, PersonId{*next_person}); if (!restored_people) return std::unexpected(restored_people.error());
