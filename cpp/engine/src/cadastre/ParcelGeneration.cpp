@@ -8,7 +8,7 @@
 
 namespace civic::cadastre {
 namespace {
-constexpr civic::geometry::Coordinate kCellCm = 3000;
+constexpr civic::geometry::Coordinate kCellCm = 2000;
 struct Cell { std::int32_t x{}; std::int32_t y{}; std::string zone{}; };
 using Key = std::pair<std::int32_t,std::int32_t>;
 constexpr std::array<Key,4> kDirections{{{0,-1},{1,0},{0,1},{-1,0}}};
