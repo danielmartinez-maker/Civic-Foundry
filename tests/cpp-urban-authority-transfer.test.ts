@@ -130,7 +130,8 @@ test("Task 20 keeps BuildingV2 native-first after construction override scope en
   assert.deepEqual(bridge.stepCalls, [1]);
   assert.equal(bridge.commandCalls.length, commandsAfterConstruction + 1);
   assert.equal(
-    (bridge.commandCalls.at(-1) as Readonly<{ type: string }> | undefined)?.type,
+    (bridge.commandCalls.at(-1) as Readonly<{ type: string }> | undefined)
+      ?.type,
     "buildings.reconcile",
   );
 
