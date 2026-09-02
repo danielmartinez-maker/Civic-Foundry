@@ -30,6 +30,7 @@ add_library(civic_engine STATIC
   engine/src/persistence/TransportationTrafficV9.cpp
   engine/src/transport/transport_engine.cpp
   engine/src/socioeconomic/SocioeconomicRuntime.cpp
+  engine/src/socioeconomic/HousingEconomics.cpp
   engine/src/socioeconomic/SocioeconomicAuthority.cpp
   engine/src/socioeconomic/SocioeconomicPersistence.cpp
   engine/src/prism/PrismRuntime.cpp
