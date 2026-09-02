@@ -50,6 +50,7 @@ if(CIVIC_BUILD_TESTS)
     tests/core/CoreTests.cpp
     tests/core/TransportationAuthorityTransferTests.cpp
     tests/core/TransportationContinuationTests.cpp
+    tests/core/TransportationRoadTrafficRuntimeTests.cpp
     tests/core/TransportationTrafficMigrationTests.cpp
     tests/persistence/SaveV9Tests.cpp
     tests/parity/ParityTests.cpp
