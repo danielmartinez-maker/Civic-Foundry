@@ -76,7 +76,6 @@ Result<SnapshotBlob> NativeEngine::rebuildUrbanLegacy(std::string_view request_j
     if (!authority) return std::unexpected(authority.error());
     auto snapshot = (*authority)->snapshotJson();
     if (!snapshot) return std::unexpected(snapshot.error());
-    urban_ = std::move(*authority);
     return SnapshotBlob{std::move(*snapshot)};
 }
 
