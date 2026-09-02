@@ -33,6 +33,16 @@ assert.throws(
     ),
   (error) => error?.code === 3,
 );
+assert.throws(
+  () =>
+    addon.submitCommands(
+      handle,
+      JSON.stringify([
+        { version: 1, sequence: 1, tick: 1, type: "missing-payload" },
+      ]),
+    ),
+  (error) => error?.code === 3,
+);
 addon.submitCommands(
   handle,
   JSON.stringify([
