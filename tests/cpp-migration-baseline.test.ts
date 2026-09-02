@@ -1,21 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+
 import {
   canonicalStringify,
   runKernelParityScenarios,
 } from "./support/kernelParity.ts";
+import {
+  loadMigrationManifest,
+  runTypeScriptMigrationCorpus,
+} from "./support/cppMigrationFixtures.ts";
 
-const manifest = JSON.parse(
-  readFileSync("tests/fixtures/cpp-migration/manifest.json", "utf8"),
-) as {
-  baselineCommit: string;
-  scenarios: Array<{
-    id: string;
-    classification: string;
-    expectedDomainHashes: Record<string, string>;
-  }>;
-};
+const manifest = loadMigrationManifest();
 const frozen = JSON.parse(
   readFileSync("tests/fixtures/kernel-v7-parity/baseline.json", "utf8"),
 ) as {
@@ -27,6 +23,8 @@ test("C++ migration baseline names the exact accepted TypeScript commit and requ
     manifest.baselineCommit,
     "9ed741834e49d211555d2ee3131f1bb6797b4b0a",
   );
+  assert.equal(manifest.version, 2);
+  assert.equal(manifest.saveVersion, 9);
   assert.deepEqual(
     manifest.scenarios.map((scenario) => scenario.id),
     [
@@ -40,7 +38,9 @@ test("C++ migration baseline names the exact accepted TypeScript commit and requ
   );
   assert.ok(
     manifest.scenarios.every((scenario) =>
-      ["PARITY", "CORRECTION", "DEFERRED"].includes(scenario.classification),
+      ["PARITY", "CORRECTION", "DEFERRED"].includes(
+        scenario.classification,
+      ),
     ),
   );
   assert.ok(
@@ -50,9 +50,41 @@ test("C++ migration baseline names the exact accepted TypeScript commit and requ
   );
 });
 
+test("every C++ migration scenario records executable save input and an ordered command journal", () => {
+  for (const scenario of manifest.scenarios) {
+    assert.ok(
+      scenario.saveInput.kind === "fresh" || scenario.saveInput.kind === "v9",
+      `${scenario.id} must record an executable saveInput`,
+    );
+    assert.ok(
+      Array.isArray(scenario.commandJournal),
+      `${scenario.id} must record commandJournal`,
+    );
+    assert.ok(scenario.targetTicks.length > 0, `${scenario.id} needs target ticks`);
+    let previousSequence = 0;
+    for (const command of scenario.commandJournal) {
+      assert.ok(
+        Number.isInteger(command.sequence) &&
+          command.sequence > previousSequence,
+      );
+      assert.ok(Number.isInteger(command.tick) && command.tick >= 0);
+      assert.equal(typeof command.type, "string");
+      assert.ok(command.type.trim().length > 0);
+      assert.ok(Object.prototype.hasOwnProperty.call(command, "payload"));
+      previousSequence = command.sequence;
+    }
+  }
+});
+
 test("frozen TypeScript migration oracle is byte-identical across repeated normalized runs", () => {
   const first = canonicalStringify(runKernelParityScenarios());
   const second = canonicalStringify(runKernelParityScenarios());
+  assert.equal(first, second);
+});
+
+test("executable migration corpus is byte-identical across repeated TypeScript shadow runs", () => {
+  const first = canonicalStringify(runTypeScriptMigrationCorpus(manifest));
+  const second = canonicalStringify(runTypeScriptMigrationCorpus(manifest));
   assert.equal(first, second);
 });
 
