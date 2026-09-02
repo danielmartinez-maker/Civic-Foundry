@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type {
+  NativeUrbanCommand,
+  NativeUrbanCommandResponse,
   NativeUrbanLegacyRequest,
   NativeUrbanSnapshot,
   NativeUrbanState,
@@ -36,6 +38,7 @@ const EMPTY_URBAN_SNAPSHOT: NativeUrbanSnapshot = Object.freeze({
 class FakeNativeUrbanBridge implements NativeUrbanBridge {
   rebuildCalls: NativeUrbanLegacyRequest[] = [];
   restoreCalls: NativeUrbanState[] = [];
+  commandCalls: NativeUrbanCommand[] = [];
   private snapshotValue = EMPTY_URBAN_SNAPSHOT;
 
   rebuildUrbanLegacy(request: NativeUrbanLegacyRequest): NativeUrbanSnapshot {
@@ -51,6 +54,20 @@ class FakeNativeUrbanBridge implements NativeUrbanBridge {
       compatibilityDiagnostics: Object.freeze([]),
     });
     return this.snapshotValue;
+  }
+
+  applyUrbanCommand(command: NativeUrbanCommand): NativeUrbanCommandResponse {
+    this.commandCalls.push(structuredClone(command));
+    return Object.freeze({
+      result: Object.freeze({
+        committed: false,
+        resultingParcelIds: Object.freeze([]),
+        retiredParcelIds: Object.freeze([]),
+        rejectionReasons: Object.freeze(["fake-command-not-configured"]),
+        parcelReferenceRewrites: Object.freeze({}),
+      }),
+      snapshot: this.snapshotValue,
+    });
   }
 
   urbanSnapshot(): NativeUrbanSnapshot {
