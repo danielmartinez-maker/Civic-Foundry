@@ -37,6 +37,8 @@ public:
     [[nodiscard]] Result<std::string> propertyJson() const;
     [[nodiscard]] Result<std::string> patchSaveV9(std::string_view canonical_save_json) const;
     [[nodiscard]] Result<std::string> applyCommand(std::string_view request_json);
+    [[nodiscard]] Result<std::string> rebuildLegacyPreservingAuthority(
+        std::string_view request_json);
 
     [[nodiscard]] std::uint64_t cadastreHash() const noexcept;
     [[nodiscard]] std::uint64_t urbanHash() const noexcept;
