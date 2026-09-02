@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include <civic/core/Error.hpp>
+#include <civic/core/Utf16Ordinal.hpp>
 
 namespace civic {
 
@@ -20,7 +21,7 @@ private:
     std::uint32_t state_{};
 };
 
-using RandomStreamSnapshot = std::map<std::string, std::uint32_t, std::less<>>;
+using RandomStreamSnapshot = std::map<std::string, std::uint32_t, Utf16OrdinalLess>;
 
 class RandomStreamRegistry final {
 public:
@@ -33,7 +34,7 @@ private:
     [[nodiscard]] static std::uint32_t mix32(std::uint32_t value) noexcept;
 
     std::uint32_t root_seed_{};
-    std::map<std::string, SeededRandom, std::less<>> streams_;
+    std::map<std::string, SeededRandom, Utf16OrdinalLess> streams_;
 };
 
 } // namespace civic

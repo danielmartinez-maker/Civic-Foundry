@@ -46,3 +46,11 @@ TEST(SaveV9, RejectsTrailingNonWhitespaceAfterValidObject) {
     EXPECT_FALSE(civic::parseSaveV9(minimalSave() + " {}"));
     EXPECT_TRUE(civic::parseSaveV9(minimalSave() + "\n\t "));
 }
+
+TEST(SaveV9Parity, RejectsEcmaWhitespaceOnlyEntityIds) {
+    auto save = minimalSave();
+    const auto parcels = save.find("\"parcels\":[]");
+    ASSERT_NE(parcels, std::string::npos);
+    save.replace(parcels, 12, "\"parcels\":[{\"id\":\"\xC2\xA0\"}]");
+    EXPECT_FALSE(civic::parseSaveV9(save));
+}

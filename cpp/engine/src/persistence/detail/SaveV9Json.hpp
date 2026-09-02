@@ -13,13 +13,14 @@
 #include <vector>
 
 #include <civic/core/Error.hpp>
+#include <civic/core/Utf16Ordinal.hpp>
 
 namespace civic::save_v9_detail {
 using JsonPtr = std::unique_ptr<json_object, decltype(&json_object_put)>;
 
 inline bool isObject(json_object* value) { return value && json_object_get_type(value) == json_type_object; }
 inline bool isArray(json_object* value) { return value && json_object_get_type(value) == json_type_array; }
-inline bool nonBlank(std::string_view value) { return value.find_first_not_of(" \t\r\n") != std::string_view::npos; }
+inline bool nonBlank(std::string_view value) { return civic::utf16_detail::validUtf8AndHasNonEcmaTrimCodePoint(value); }
 
 inline Result<json_object*> requireField(json_object* object, const char* key, json_type type) {
     json_object* value = nullptr;
@@ -91,7 +92,7 @@ inline Result<void> appendCanonical(json_object* value, std::string& output) {
         case json_type_object: {
             std::vector<std::string> keys;
             json_object_object_foreach(value, object_key, object_child) { (void)object_child; keys.emplace_back(object_key); }
-            std::ranges::sort(keys);
+            std::ranges::sort(keys, civic::Utf16OrdinalLess{});
             output.push_back('{');
             bool first = true;
             for (const auto& sorted_key : keys) {

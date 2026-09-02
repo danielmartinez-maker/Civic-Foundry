@@ -1,6 +1,7 @@
 #include <civic/bridge/civic_engine.h>
 
 #include <civic/core/NativeEngine.hpp>
+#include <civic/core/Utf16Ordinal.hpp>
 
 #include <json-c/json.h>
 
@@ -75,7 +76,7 @@ civic::Result<void> appendCanonical(json_object* value, std::string& output) {
         case json_type_object: {
             std::vector<std::string> keys;
             json_object_object_foreach(value, object_key, object_child) { (void)object_child; keys.emplace_back(object_key); }
-            std::ranges::sort(keys);
+            std::ranges::sort(keys, civic::Utf16OrdinalLess{});
             output.push_back('{');
             bool first = true;
             for (const auto& key : keys) {

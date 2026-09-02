@@ -38,6 +38,13 @@ void fnvUnit(std::uint32_t unit, std::uint32_t& hash) noexcept {
     hash ^= unit;
     hash *= 0x01000193U;
 }
+
+bool isEcmaTrimCodePoint(std::uint32_t cp) noexcept {
+    if (cp == 0x0009U || cp == 0x000aU || cp == 0x000bU || cp == 0x000cU || cp == 0x000dU || cp == 0x0020U || cp == 0x00a0U || cp == 0x1680U || cp == 0x2028U || cp == 0x2029U || cp == 0x202fU || cp == 0x205fU || cp == 0x3000U || cp == 0xfeffU) {
+        return true;
+    }
+    return cp >= 0x2000U && cp <= 0x200aU;
+}
 } // namespace
 
 SeededRandom::SeededRandom(std::uint32_t seed) noexcept : state_(seed == 0U ? fallback_seed : seed) {}
@@ -59,15 +66,15 @@ Result<std::uint32_t> SeededRandom::nextInt(std::uint32_t max_exclusive) noexcep
 void SeededRandom::restore(std::uint32_t state) noexcept { state_ = state == 0U ? fallback_seed : state; }
 
 Result<std::uint32_t> RandomStreamRegistry::hashName(std::string_view name) {
-    if (name.empty() || std::ranges::all_of(name, [](char value) { return value == ' ' || value == '\t' || value == '\r' || value == '\n' || value == '\f' || value == '\v'; })) {
-        return std::unexpected(make_error(ErrorCode::invalid_argument, "random stream name must not be empty"));
-    }
+    if (name.empty()) return std::unexpected(make_error(ErrorCode::invalid_argument, "random stream name must not be empty"));
     std::uint32_t hash = 0x811c9dc5U;
+    bool has_non_trim_code_point = false;
     std::size_t offset = 0;
     while (offset < name.size()) {
         auto decoded = nextCodePoint(name, offset);
         if (!decoded) return std::unexpected(decoded.error());
         const auto cp = *decoded;
+        has_non_trim_code_point = has_non_trim_code_point || !isEcmaTrimCodePoint(cp);
         if (cp <= 0xffffU) {
             fnvUnit(cp, hash);
         } else {
@@ -76,6 +83,7 @@ Result<std::uint32_t> RandomStreamRegistry::hashName(std::string_view name) {
             fnvUnit(0xdc00U + (shifted & 0x3ffU), hash);
         }
     }
+    if (!has_non_trim_code_point) return std::unexpected(make_error(ErrorCode::invalid_argument, "random stream name must not be empty"));
     return hash;
 }
 
@@ -108,7 +116,7 @@ RandomStreamSnapshot RandomStreamRegistry::snapshot() const {
 }
 
 Result<void> RandomStreamRegistry::restore(const RandomStreamSnapshot& snapshot) {
-    std::map<std::string, SeededRandom, std::less<>> restored;
+    std::map<std::string, SeededRandom, Utf16OrdinalLess> restored;
     for (const auto& [name, state] : snapshot) {
         auto hash = hashName(name);
         if (!hash) return std::unexpected(hash.error());
