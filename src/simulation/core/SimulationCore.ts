@@ -5,7 +5,7 @@ import type {
   NativeBuildingRuntimeTypology,
   NativeUrbanCommand,
   NativeUrbanLegacyRequest,
-  NativeUrbanState,
+  NativeUrbanSnapshot,
 } from '../../native/NativeEngineTypes.ts';
 import {
   activeNativeUrbanAuthorityOverride,
@@ -170,12 +170,17 @@ function reconcileCanonicalBuildingProjection(core: SimulationCoreBase): void {
 
 function projectNativeUrbanState(
   core: SimulationCoreBase,
-  snapshot: NativeUrbanState,
+  snapshot: NativeUrbanSnapshot,
 ): void {
   core.cadastre.replaceSnapshot(snapshot.urbanFabric);
   core.lots.rebuildFromCadastre(core.cadastre, legacyZoneForParcel);
   core.zoning.restoreParcelAssignments(snapshot.zoningV2.parcelAssignments);
   core.buildings.restoreV2(snapshot.buildingsV2);
+  core.buildings.restoreLegacyProjectionFromV2(
+    snapshot.buildingsV2,
+    core.lots.list(),
+    snapshot.legacyLots,
+  );
   const historicalParcelIds = new Set(
     core.cadastre.listLineage().flatMap((event) => event.sourceParcelIds),
   );
