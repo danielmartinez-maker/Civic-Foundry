@@ -19,6 +19,13 @@ struct NativeWindowConfig {
     bool visible{true};
 };
 
+using NativeMessageHandler = bool (*)(
+    void* user_data,
+    void* native_window,
+    std::uint32_t message,
+    std::uintptr_t wparam,
+    std::intptr_t lparam) noexcept;
+
 class NativeWindow {
 public:
     ~NativeWindow();
@@ -27,6 +34,7 @@ public:
     [[nodiscard]] static std::expected<std::unique_ptr<NativeWindow>, std::string> create(const NativeWindowConfig& config = {});
     [[nodiscard]] bool pumpMessages();
     [[nodiscard]] std::vector<PlatformEvent> drainEvents();
+    void setMessageHandler(NativeMessageHandler handler, void* user_data) noexcept;
     [[nodiscard]] void* nativeHandle() const noexcept;
     [[nodiscard]] std::uint32_t clientWidth() const noexcept;
     [[nodiscard]] std::uint32_t clientHeight() const noexcept;
