@@ -118,8 +118,17 @@ Result<void> NativeEngine::loadV9Authoritative(std::string_view json_text) {
 Result<std::string> NativeEngine::saveV9Authoritative() const {
     auto base = saveV9();
     if (!base) return std::unexpected(base.error());
-    if (!urban_) return base;
-    return urban_->patchSaveV9(*base);
+    try {
+        auto current = json::parse(*base);
+        current["seed"] = seed_;
+        current["clock"]["tick"] = clock_.tick();
+        current["clock"]["speed"] = static_cast<std::uint32_t>(clock_.speed());
+        const auto current_json = current.dump();
+        if (!urban_) return current_json;
+        return urban_->patchSaveV9(current_json);
+    } catch (const json::exception& error) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, error.what()));
+    }
 }
 
 Result<DomainHash> NativeEngine::authoritativeDomainHash(std::string_view domain) const {
