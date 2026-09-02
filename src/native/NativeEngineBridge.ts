@@ -1,3 +1,14 @@
+import type {
+  NativeLegacyWorldRequest,
+  NativeWorldBridge,
+  NativeWorldCreateRequest,
+} from "./world/NativeWorldAuthority.ts";
+import type { WorldFoundationSnapshot } from "../world/foundation/WorldFoundationTypes.ts";
+import type {
+  DesignStormEvent,
+  FloodExternalSurface,
+  FloodResult,
+} from "../world/hydrology/HydrologyTypes.ts";
 import {
   NATIVE_COMMAND_PROTOCOL_VERSION,
   NATIVE_DOMAIN_OWNERSHIP,
@@ -47,8 +58,7 @@ function normalizeJsonValue(
         throw new Error(`${path} must contain only JSON-compatible values`);
       return Object.is(value, -0) ? 0 : value;
     case "object": {
-      if (ancestors.has(value))
-        throw new Error(`${path} must not contain JSON cycles`);
+      if (ancestors.has(value)) throw new Error(`${path} must not contain JSON cycles`);
       ancestors.add(value);
       try {
         if (Array.isArray(value)) {
@@ -133,9 +143,19 @@ function toWireEnvelopes(
   );
 }
 
-export class NativeEngineBridge {
+function parseNativeJson<T>(text: string, label: string): T {
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`${label} returned invalid JSON: ${detail}`);
+  }
+}
+
+export class NativeEngineBridge implements NativeWorldBridge {
   private readonly addon: NativeEngineAddon;
   private handle: NativeEngineHandle | null;
+  private currentWorldSnapshot: WorldFoundationSnapshot | null = null;
 
   constructor(
     addon: NativeEngineAddon,
@@ -159,6 +179,7 @@ export class NativeEngineBridge {
     if (!this.handle) return;
     this.addon.destroyEngine(this.handle);
     this.handle = null;
+    this.currentWorldSnapshot = null;
   }
 
   submit(commands: readonly NativeCommand[]): readonly NativeCommand[] {
@@ -179,19 +200,24 @@ export class NativeEngineBridge {
   }
 
   saveV9<T = unknown>(): T {
-    return JSON.parse(this.addon.saveV9(this.requireHandle())) as T;
+    return parseNativeJson<T>(
+      this.addon.saveV9(this.requireHandle()),
+      "native Save V9",
+    );
   }
 
   snapshot(): NativeSnapshot {
-    return JSON.parse(
+    return parseNativeJson<NativeSnapshot>(
       this.addon.getSnapshot(this.requireHandle()),
-    ) as NativeSnapshot;
+      "native kernel snapshot",
+    );
   }
 
   drainEvents(): readonly NativeEvent[] {
-    return JSON.parse(
+    return parseNativeJson<readonly NativeEvent[]>(
       this.addon.getEvents(this.requireHandle()),
-    ) as readonly NativeEvent[];
+      "native events",
+    );
   }
 
   domainHash(domain: string): NativeDomainHash {
@@ -208,6 +234,77 @@ export class NativeEngineBridge {
     return Object.freeze({ ownership, version: raw.version, value: raw.value });
   }
 
+  createWorld(request: NativeWorldCreateRequest): WorldFoundationSnapshot {
+    const normalized = normalizeJsonValue(request, "native world create request");
+    const snapshot = parseNativeJson<WorldFoundationSnapshot>(
+      this.addon.createWorld(this.requireHandle(), JSON.stringify(normalized)),
+      "native world create",
+    );
+    this.currentWorldSnapshot = snapshot;
+    return snapshot;
+  }
+
+  restoreWorld(snapshot: WorldFoundationSnapshot): WorldFoundationSnapshot {
+    const normalized = normalizeJsonValue(snapshot, "native world snapshot");
+    const restored = parseNativeJson<WorldFoundationSnapshot>(
+      this.addon.restoreWorld(this.requireHandle(), JSON.stringify(normalized)),
+      "native world restore",
+    );
+    this.currentWorldSnapshot = restored;
+    return restored;
+  }
+
+  createLegacyWorld(request: NativeLegacyWorldRequest): WorldFoundationSnapshot {
+    const normalized = normalizeJsonValue(request, "native legacy world request");
+    const snapshot = parseNativeJson<WorldFoundationSnapshot>(
+      this.addon.createLegacyWorld(
+        this.requireHandle(),
+        JSON.stringify(normalized),
+      ),
+      "native legacy world create",
+    );
+    this.currentWorldSnapshot = snapshot;
+    return snapshot;
+  }
+
+  runDesignStorm(
+    event: DesignStormEvent,
+    externalSurface?: FloodExternalSurface,
+  ): Readonly<{ result: FloodResult; snapshot: WorldFoundationSnapshot }> {
+    const snapshot = this.currentWorldSnapshot;
+    if (!snapshot)
+      throw new Error("native world must be created or restored before design storm");
+
+    let payload: unknown = event;
+    if (externalSurface) {
+      const imperviousFraction: number[] = [];
+      for (let y = 0; y < snapshot.terrain.height; y += 1) {
+        for (let x = 0; x < snapshot.terrain.width; x += 1) {
+          const fraction = externalSurface.imperviousFractionAt(x, y);
+          if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1)
+            throw new Error(
+              `impervious fraction at ${x},${y} must be finite and in [0,1]`,
+            );
+          imperviousFraction.push(fraction);
+        }
+      }
+      payload = { event, imperviousFraction };
+    }
+
+    const normalized = normalizeJsonValue(payload, "native design storm request");
+    const response = parseNativeJson<
+      Readonly<{ result: FloodResult; snapshot: WorldFoundationSnapshot }>
+    >(
+      this.addon.runDesignStorm(
+        this.requireHandle(),
+        JSON.stringify(normalized),
+      ),
+      "native design storm",
+    );
+    this.currentWorldSnapshot = response.snapshot;
+    return response;
+  }
+
   private requireHandle(): NativeEngineHandle {
     if (!this.handle) throw new Error("native engine bridge is disposed");
     return this.handle;
@@ -218,9 +315,7 @@ export function isNativeShadowEnabled(value: unknown): boolean {
   return value === true || value === "1" || value === "true" || value === "on";
 }
 
-export function nativeShadowEnabledFromGlobal(
-  scope: unknown = globalThis,
-): boolean {
+export function nativeShadowEnabledFromGlobal(scope: unknown = globalThis): boolean {
   if (!scope || typeof scope !== "object") return false;
   return isNativeShadowEnabled(
     (scope as Readonly<Record<string, unknown>>).__CIVIC_NATIVE_SHADOW__,
