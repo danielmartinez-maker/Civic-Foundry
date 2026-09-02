@@ -98,13 +98,7 @@ export interface NativeEngineAddon {
   restoreWorld(handle: NativeEngineHandle, snapshotJson: string): string;
   createLegacyWorld(handle: NativeEngineHandle, requestJson: string): string;
   runDesignStorm(handle: NativeEngineHandle, requestJson: string): string;
-  rebuildUrbanLegacy?(
-    handle: NativeEngineHandle,
-    requestJson: string,
-  ): string;
-  restoreUrbanState?(
-    handle: NativeEngineHandle,
-    snapshotJson: string,
-  ): string;
+  rebuildUrbanLegacy?(handle: NativeEngineHandle, requestJson: string): string;
+  restoreUrbanState?(handle: NativeEngineHandle, snapshotJson: string): string;
   getUrbanSnapshot?(handle: NativeEngineHandle): string;
 }
