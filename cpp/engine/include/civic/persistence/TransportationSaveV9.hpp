@@ -37,7 +37,18 @@ struct TransportationContinuationV9 final {
     auto operator<=>(const TransportationContinuationV9&) const = default;
 };
 
+struct LegacyRoadAuthorityV9 final {
+    std::uint64_t revision{};
+    std::vector<transport::LegacyRoadCell> cells;
+};
+
 [[nodiscard]] Result<transport::TransportationSnapshot> parseTransportationV9(std::string_view canonicalSaveJson);
+[[nodiscard]] Result<LegacyRoadAuthorityV9> parseLegacyRoadAuthorityV9(std::string_view canonicalSaveJson);
+[[nodiscard]] Result<std::string> writeTransportationV9(
+    std::string_view canonicalSaveJson,
+    const LegacyRoadAuthorityV9& roads,
+    const transport::TransportationSnapshot& transportation);
+[[nodiscard]] Result<std::string> transportationSnapshotJson(const transport::TransportationSnapshot& transportation);
 [[nodiscard]] Result<TransportationContinuationV9> parseTransportationContinuationV9(std::string_view canonicalSaveJson);
 [[nodiscard]] Result<transport::CarriagewayId> resolveLegacyEdgeV9(
     const transport::NetworkSnapshot& network,
