@@ -63,7 +63,6 @@ std::vector<CommandEnvelope> CommandQueue::takeReady(std::uint64_t tick) {
     std::vector<CommandEnvelope> pending;
     for (auto& command : queue_) {
         if (command.tick <= tick) {
-            sequences_.erase(command.sequence);
             ready.push_back(std::move(command));
         } else {
             pending.push_back(std::move(command));
