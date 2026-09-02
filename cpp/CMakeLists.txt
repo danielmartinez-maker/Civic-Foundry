@@ -39,11 +39,32 @@ add_library(civic_presentation STATIC
   presentation/src/AssetRuntime.cpp
   presentation/src/NativeUi.cpp
   presentation/src/Audio.cpp
+  presentation/src/Platform.cpp
 )
 target_include_directories(civic_presentation PUBLIC engine/include)
 target_link_libraries(civic_presentation PUBLIC ${CIVIC_JSON_TARGET})
 civic_enable_warnings(civic_presentation)
 civic_enable_sanitizers(civic_presentation)
+
+if(WIN32 AND CIVIC_BUILD_NATIVE_CLIENT)
+  add_library(civic_platform_win32 STATIC
+    platform/win32/NativeWindow.cpp
+    presentation/d3d12/D3D12Backend.cpp
+  )
+  target_include_directories(civic_platform_win32 PUBLIC engine/include)
+  target_link_libraries(civic_platform_win32 PUBLIC civic_presentation d3d12 dxgi dxguid user32 gdi32)
+  civic_enable_warnings(civic_platform_win32)
+
+  add_executable(civic_foundry_native_client WIN32 client/main.cpp)
+  target_link_libraries(civic_foundry_native_client PRIVATE civic_engine civic_presentation civic_platform_win32)
+  civic_enable_warnings(civic_foundry_native_client)
+
+  add_executable(civic_d3d12_blank_smoke tests/presentation/d3d12_blank_smoke.cpp)
+  target_link_libraries(civic_d3d12_blank_smoke PRIVATE civic_platform_win32)
+  civic_enable_warnings(civic_d3d12_blank_smoke)
+
+  install(TARGETS civic_foundry_native_client RUNTIME DESTINATION .)
+endif()
 
 if(CIVIC_BUILD_TESTS)
   enable_testing()
@@ -58,6 +79,9 @@ if(CIVIC_BUILD_TESTS)
     tests/presentation/PlatformTests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine civic_presentation GTest::gtest_main ${CIVIC_JSON_TARGET})
+  if(WIN32 AND CIVIC_BUILD_NATIVE_CLIENT)
+    target_link_libraries(civic_engine_tests PRIVATE civic_platform_win32)
+  endif()
   civic_enable_warnings(civic_engine_tests)
   civic_enable_sanitizers(civic_engine_tests)
   add_executable(civic_c_abi_smoke tests/parity/c_abi_smoke.c)
