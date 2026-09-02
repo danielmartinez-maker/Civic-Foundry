@@ -77,20 +77,14 @@ std::size_t updateRevisionMap(const Range& range, std::map<std::string, RenderRe
         }
     }
     for (auto it = revisions.begin(); it != revisions.end();) {
-        if (!alive.contains(it->first)) {
-            it = revisions.erase(it);
-            ++changed;
-        } else {
-            ++it;
-        }
+        if (!alive.contains(it->first)) { it = revisions.erase(it); ++changed; }
+        else ++it;
     }
     return changed;
 }
 bool validAssetId(std::string_view id) {
     if (id.empty()) return false;
-    for (const unsigned char ch : id) {
-        if (!(std::isalnum(ch) || ch == '.' || ch == '_' || ch == '-')) return false;
-    }
+    for (const unsigned char ch : id) if (!(std::isalnum(ch) || ch == '.' || ch == '_' || ch == '-')) return false;
     return true;
 }
 float lerpFloat(float a, float b, double alpha) noexcept {
@@ -127,21 +121,14 @@ PresentationSettings normalizeSettings(PresentationSettings settings) noexcept {
     settings.camera_smoothing = std::clamp(settings.camera_smoothing, 0.0F, 1.0F);
     settings.tilt_shift_strength = std::clamp(settings.tilt_shift_strength, 0.0F, 1.0F);
     settings.input_sensitivity = std::clamp(settings.input_sensitivity, 0.1F, 3.0F);
-    if (settings.reduced_motion) {
-        settings.camera_smoothing = 0.0F;
-        settings.tilt_shift_strength = 0.0F;
-    }
+    if (settings.reduced_motion) { settings.camera_smoothing = 0.0F; settings.tilt_shift_strength = 0.0F; }
     return settings;
 }
 
-FrameSnapshot interpolatePresentationSnapshots(
-    const FrameSnapshot& previous,
-    const FrameSnapshot& current,
-    double alpha) {
+FrameSnapshot interpolatePresentationSnapshots(const FrameSnapshot& previous, const FrameSnapshot& current, double alpha) {
     FrameSnapshot blended = current;
     alpha = std::clamp(std::isfinite(alpha) ? alpha : 1.0, 0.0, 1.0);
     if (alpha >= 1.0 || previous.vehicles.empty() || current.vehicles.empty()) return blended;
-
     std::map<std::string_view, const VehicleSnapshot*, std::less<>> previous_by_id;
     for (const auto& vehicle : previous.vehicles) previous_by_id.emplace(vehicle.id, &vehicle);
     for (auto& vehicle : blended.vehicles) {
@@ -156,15 +143,9 @@ FrameSnapshot interpolatePresentationSnapshots(
 }
 
 IsometricCamera::IsometricCamera(IsoMetrics metrics) : metrics_(metrics) {
-    if (!(metrics.tile_width > 0.0) || !(metrics.tile_height > 0.0)) {
-        throw std::invalid_argument("isometric tile metrics must be positive");
-    }
+    if (!(metrics.tile_width > 0.0) || !(metrics.tile_height > 0.0)) throw std::invalid_argument("isometric tile metrics must be positive");
 }
-void IsometricCamera::pan(double dx, double dy) noexcept {
-    if (!std::isfinite(dx) || !std::isfinite(dy)) return;
-    pan_x_ += dx;
-    pan_y_ += dy;
-}
+void IsometricCamera::pan(double dx, double dy) noexcept { if (std::isfinite(dx) && std::isfinite(dy)) { pan_x_ += dx; pan_y_ += dy; } }
 void IsometricCamera::zoomBy(double factor, double anchor_x, double anchor_y) noexcept {
     if (!(factor > 0.0) || !std::isfinite(factor) || !std::isfinite(anchor_x) || !std::isfinite(anchor_y)) return;
     const double before = zoom_;
@@ -175,15 +156,9 @@ void IsometricCamera::zoomBy(double factor, double anchor_x, double anchor_y) no
     pan_x_ = anchor_x - (anchor_x - pan_x_) * ratio;
     pan_y_ = anchor_y - (anchor_y - pan_y_) * ratio;
 }
-void IsometricCamera::rotate(int direction) noexcept {
-    if (direction == 0) return;
-    quarter_turns_ = normalizedTurn(quarter_turns_ + (direction > 0 ? 1 : -1));
-}
+void IsometricCamera::rotate(int direction) noexcept { if (direction != 0) quarter_turns_ = normalizedTurn(quarter_turns_ + (direction > 0 ? 1 : -1)); }
 void IsometricCamera::rotateAroundCanvasPoint(int direction, WorldSize size, Point2 anchor) noexcept {
-    if (!std::isfinite(anchor.x) || !std::isfinite(anchor.y)) {
-        rotate(direction);
-        return;
-    }
+    if (!std::isfinite(anchor.x) || !std::isfinite(anchor.y)) { rotate(direction); return; }
     const auto world_anchor = canvasToWorldPoint(anchor.x, anchor.y, size);
     rotate(direction);
     const auto after = worldToCanvas(world_anchor.x, world_anchor.y, size);
@@ -191,14 +166,17 @@ void IsometricCamera::rotateAroundCanvasPoint(int direction, WorldSize size, Poi
     pan_y_ += anchor.y - after.y;
 }
 Point2 IsometricCamera::worldToCanvas(double x, double y, WorldSize size) const noexcept {
-    if (!std::isfinite(x) || !std::isfinite(y)) {
-        const auto nan = std::numeric_limits<double>::quiet_NaN();
-        return {nan, nan};
-    }
+    if (!std::isfinite(x) || !std::isfinite(y)) { const auto nan = std::numeric_limits<double>::quiet_NaN(); return {nan, nan}; }
     const auto rotated = rotateWorldPoint(x, y, size, quarter_turns_);
     const auto projected = project(rotated.x, rotated.y, metrics_);
     const auto offset = logicalMapOffset(size);
     return {pan_x_ + (offset.x + projected.x) * zoom_, pan_y_ + (offset.y + projected.y) * zoom_};
+}
+std::optional<Point2> IsometricCamera::canvasToWorld(double canvas_x, double canvas_y, WorldSize size) const noexcept {
+    if (!std::isfinite(canvas_x) || !std::isfinite(canvas_y) || size.width == 0U || size.height == 0U) return std::nullopt;
+    const auto point = canvasToWorldPoint(canvas_x, canvas_y, size);
+    if (!std::isfinite(point.x) || !std::isfinite(point.y)) return std::nullopt;
+    return point;
 }
 std::optional<std::pair<std::uint32_t, std::uint32_t>> IsometricCamera::canvasToCell(double canvas_x, double canvas_y, WorldSize size) const noexcept {
     if (!std::isfinite(canvas_x) || !std::isfinite(canvas_y)) return std::nullopt;
@@ -238,9 +216,7 @@ Point2 IsometricCamera::logicalMapOffset(WorldSize size) const noexcept {
 
 void InputState::pointerDown(int pointer_id, Point2 position) noexcept {
     if (pointer_id < 0 || !std::isfinite(position.x) || !std::isfinite(position.y)) return;
-    active_pointer_id_ = pointer_id;
-    pointer_position_ = position;
-    dragging_ = true;
+    active_pointer_id_ = pointer_id; pointer_position_ = position; dragging_ = true;
 }
 void InputState::pointerMove(int pointer_id, Point2 position) noexcept {
     if (!dragging_ || pointer_id != active_pointer_id_ || !std::isfinite(position.x) || !std::isfinite(position.y)) return;
@@ -253,6 +229,7 @@ void InputState::lostFocus() noexcept { active_pointer_id_ = -1; dragging_ = fal
 SceneUpdateStats RetainedScene::apply(const FrameSnapshot& snapshot) {
     SceneUpdateStats stats{};
     stats.terrain_rebuilt = updateRevisionMap(snapshot.terrain, terrain_);
+    stats.parcels_rebuilt = updateRevisionMap(snapshot.parcels, parcels_);
     stats.roads_rebuilt = updateRevisionMap(snapshot.roads, roads_);
     stats.buildings_rebuilt = updateRevisionMap(snapshot.buildings, buildings_);
     stats.vehicles_updated = updateRevisionMap(snapshot.vehicles, vehicles_);
@@ -265,20 +242,14 @@ SceneUpdateStats RetainedScene::apply(const FrameSnapshot& snapshot) {
         const auto it = overlays_.find(key);
         if (it == overlays_.end() || it->second != record.revision) ++stats.overlays_rebuilt;
     }
-    for (const auto& [key, revision] : overlays_) {
-        (void)revision;
-        if (!next_overlay.contains(key)) ++stats.overlays_rebuilt;
-    }
+    for (const auto& [key, revision] : overlays_) { (void)revision; if (!next_overlay.contains(key)) ++stats.overlays_rebuilt; }
     overlays_ = std::move(next_overlay);
     applied_revision_ = snapshot.revision;
     return stats;
 }
 
 void PickingIndex::rebuild(const FrameSnapshot& snapshot) {
-    roads_ = snapshot.roads;
-    buildings_ = snapshot.buildings;
-    vehicles_ = snapshot.vehicles;
-    transit_ = snapshot.transit_stops;
+    parcels_ = snapshot.parcels; roads_ = snapshot.roads; buildings_ = snapshot.buildings; vehicles_ = snapshot.vehicles; transit_ = snapshot.transit_stops;
 }
 std::optional<EntityRef> PickingIndex::pickWorld(Point2 point, double tolerance) const noexcept {
     if (!std::isfinite(point.x) || !std::isfinite(point.y) || !(tolerance >= 0.0)) return std::nullopt;
@@ -287,6 +258,7 @@ std::optional<EntityRef> PickingIndex::pickWorld(Point2 point, double tolerance)
     for (const auto& road : roads_) if (distanceToSegmentSquared(point, road.from, road.to) <= limit) return EntityRef{EntityKind::Road, road.id};
     for (const auto& vehicle : vehicles_) if (distanceSquared(point, vehicle.position) <= limit) return EntityRef{EntityKind::Vehicle, vehicle.id};
     for (const auto& building : buildings_) if (pointInPolygon(point, building.footprint)) return EntityRef{EntityKind::Building, building.id};
+    for (const auto& parcel : parcels_) if (pointInPolygon(point, parcel.polygon)) return EntityRef{EntityKind::Parcel, parcel.id};
     return std::nullopt;
 }
 
@@ -298,14 +270,10 @@ std::expected<void, std::string> AssetRegistry::registerAsset(AssetDefinition de
     return {};
 }
 std::optional<AssetDefinition> AssetRegistry::resolve(std::string_view id) const {
-    const auto it = assets_.find(id);
-    if (it == assets_.end()) return std::nullopt;
-    return it->second;
+    const auto it = assets_.find(id); if (it == assets_.end()) return std::nullopt; return it->second;
 }
 std::expected<void, std::string> AssetRegistry::validateReferences(const std::vector<std::string>& ids) const {
-    for (const auto& id : ids) {
-        if (!assets_.contains(id)) return std::unexpected("missing asset reference: " + id);
-    }
+    for (const auto& id : ids) if (!assets_.contains(id)) return std::unexpected("missing asset reference: " + id);
     return {};
 }
 
