@@ -24,11 +24,10 @@ void throwNative(napi_env env, Holder* holder, cf_error_code fallback) {
         ? std::string(reinterpret_cast<const char*>(native.message.data), native.message.size)
         : std::string("native engine error");
     cf_buffer_free(native.message);
-    const auto code = native.code;
     napi_value msg{}, error{}, codeValue{};
     napi_create_string_utf8(env, text.c_str(), text.size(), &msg);
     napi_create_error(env, nullptr, msg, &error);
-    napi_create_uint32(env, static_cast<std::uint32_t>(code), &codeValue);
+    napi_create_uint32(env, static_cast<std::uint32_t>(native.code), &codeValue);
     napi_set_named_property(env, error, "code", codeValue);
     napi_throw(env, error);
 }
@@ -247,6 +246,9 @@ napi_value rebuildUrbanLegacy(napi_env env, napi_callback_info info) {
 napi_value restoreUrbanState(napi_env env, napi_callback_info info) {
     return textOutputOperation(env, info, cf_engine_restore_urban_state);
 }
+napi_value applyUrbanCommand(napi_env env, napi_callback_info info) {
+    return textOutputOperation(env, info, cf_engine_apply_urban_command);
+}
 
 napi_value outputOperation(
     napi_env env,
@@ -324,6 +326,7 @@ napi_value init(napi_env env, napi_value exports) {
         {"runDesignStorm", nullptr, runDesignStorm, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"rebuildUrbanLegacy", nullptr, rebuildUrbanLegacy, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"restoreUrbanState", nullptr, restoreUrbanState, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"applyUrbanCommand", nullptr, applyUrbanCommand, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getUrbanSnapshot", nullptr, getUrbanSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);
