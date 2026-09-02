@@ -217,7 +217,6 @@ Result<void> restore_person_registry(
     if (live_index != sorted.size()) return std::unexpected(make_error(ErrorCode::serialization_failure, "person restore left unreachable ids"));
     return {};
 }
-
 Result<std::string> SocioeconomicPersistence::serialize_v9_extension(
     SocioeconomicRuntime& runtime,
     std::uint64_t tick) {
@@ -458,33 +457,38 @@ Result<SocioeconomicRuntime> SocioeconomicPersistence::restore_v9_extension(std:
             person.provenance = static_cast<PersonHistoryProvenance>(*provenance);
 
             json_object* home_entity = nullptr;
-            if (!json_object_object_get_ex(item, "homeEntity", &home_entity) || !home_entity) {
+            if (!json_object_object_get_ex(item, "homeEntity", &home_entity)) {
                 return std::unexpected(make_error(ErrorCode::serialization_failure, "person homeEntity field missing"));
             }
-            if (json_object_get_type(home_entity) == json_type_int) {
+            if (home_entity != nullptr) {
+                if (json_object_get_type(home_entity) != json_type_int) {
+                    return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person homeEntity"));
+                }
                 const auto raw = json_object_get_int64(home_entity);
                 if (raw <= 0) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person homeEntity"));
                 person.home_entity = EntityId{static_cast<std::uint64_t>(raw)};
-            } else if (json_object_get_type(home_entity) != json_type_null) {
-                return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person homeEntity"));
             }
 
             json_object* location_kind = nullptr;
             json_object* location_entity = nullptr;
-            if (!json_object_object_get_ex(item, "locationKind", &location_kind) || !location_kind ||
-                !json_object_object_get_ex(item, "locationEntity", &location_entity) || !location_entity) {
+            const bool has_location_kind = json_object_object_get_ex(item, "locationKind", &location_kind);
+            const bool has_location_entity = json_object_object_get_ex(item, "locationEntity", &location_entity);
+            if (!has_location_kind || !has_location_entity) {
                 return std::unexpected(make_error(ErrorCode::serialization_failure, "person location fields missing"));
             }
-            if (json_object_get_type(location_kind) == json_type_int) {
-                if (json_object_get_type(location_entity) != json_type_int) return std::unexpected(make_error(ErrorCode::serialization_failure, "person location entity missing"));
+            if ((location_kind == nullptr) != (location_entity == nullptr)) {
+                return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location nullability"));
+            }
+            if (location_kind != nullptr) {
+                if (json_object_get_type(location_kind) != json_type_int || json_object_get_type(location_entity) != json_type_int) {
+                    return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location"));
+                }
                 const auto kind = json_object_get_int64(location_kind);
                 const auto entity = json_object_get_int64(location_entity);
                 if (kind < 0 || kind > static_cast<std::int64_t>(PersonLocationKind::network) || entity <= 0) {
                     return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location"));
                 }
                 person.location = PersonLocation{static_cast<PersonLocationKind>(kind), EntityId{static_cast<std::uint64_t>(entity)}};
-            } else if (json_object_get_type(location_kind) != json_type_null || json_object_get_type(location_entity) != json_type_null) {
-                return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location nullability"));
             }
         } else {
             person.resident = true;
