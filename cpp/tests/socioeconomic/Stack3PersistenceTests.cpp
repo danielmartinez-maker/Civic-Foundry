@@ -27,7 +27,13 @@ TEST(Stack3Persistence, RoundTripsAllAuthoritativeSocioeconomicStores) {
     EXPECT_EQ(delivery->still_active, 2);
 
     ASSERT_TRUE(runtime.households().insert({civic::HouseholdId{7}, 2.0, civic::Money{1400}, civic::Money{9000}, 1, {}, 1, civic::Money{400}}));
-    auto person = runtime.people().create({civic::HouseholdId{7}, 42, 5, 3, true, civic::Money{1400}}); ASSERT_TRUE(person);
+    socio::PersonInput person_input{civic::HouseholdId{7}, 42, 5, 3, true, civic::Money{1400}};
+    person_input.resident = true;
+    person_input.life_stage = socio::PersonLifeStage::adult;
+    person_input.provenance = socio::PersonHistoryProvenance::imported_fact;
+    person_input.home_entity = civic::EntityId{80};
+    person_input.location = socio::PersonLocation{socio::PersonLocationKind::building, civic::EntityId{81}};
+    auto person = runtime.people().create(person_input); ASSERT_TRUE(person);
     ASSERT_TRUE(runtime.ledger().transfer(socio::AccountId{1}, socio::AccountId{2}, civic::Money{1400}, 18, socio::LedgerReason::payroll, civic::EntityId{5}));
 
     const auto expected_hash = runtime.authoritative_hash();
@@ -41,6 +47,14 @@ TEST(Stack3Persistence, RoundTripsAllAuthoritativeSocioeconomicStores) {
     auto restored_order = restored->freight().get(*order); ASSERT_TRUE(restored_order);
     EXPECT_EQ(restored_order->delivered, 6);
     EXPECT_EQ(restored_order->active, 2);
+    auto restored_person = restored->people().get(*person); ASSERT_TRUE(restored_person);
+    EXPECT_TRUE(restored_person->resident);
+    EXPECT_EQ(restored_person->life_stage, socio::PersonLifeStage::adult);
+    EXPECT_EQ(restored_person->provenance, socio::PersonHistoryProvenance::imported_fact);
+    EXPECT_EQ(restored_person->home_entity, civic::EntityId{80});
+    ASSERT_TRUE(restored_person->location);
+    EXPECT_EQ(restored_person->location->kind, socio::PersonLocationKind::building);
+    EXPECT_EQ(restored_person->location->entity, civic::EntityId{81});
     auto reconciliation = restored->ledger().reconcile(); ASSERT_TRUE(reconciliation);
     EXPECT_EQ(reconciliation->entry_count, 1U);
 }
@@ -77,9 +91,15 @@ TEST(Stack3FreightReservation, MovingCargoOutOfSourceAndBackIsConserved) {
     EXPECT_TRUE(invariant->balanced);
 }
 
-TEST(Stack3PersonRestore, PreservesStableIdsAndAllocatorAcrossTombstones) {
+TEST(Stack3PersonRestore, PreservesStableIdsAllocatorAndSparseStateAcrossTombstones) {
     socio::PersonRegistry people;
-    auto first = people.create({civic::HouseholdId{1}, 20, 1, 1, false, civic::Money{0}}); ASSERT_TRUE(first);
+    socio::PersonInput first_input{civic::HouseholdId{1}, 20, 1, 1, false, civic::Money{0}};
+    first_input.resident = true;
+    first_input.life_stage = socio::PersonLifeStage::teen;
+    first_input.provenance = socio::PersonHistoryProvenance::bootstrap_background;
+    first_input.home_entity = civic::EntityId{40};
+    first_input.location = socio::PersonLocation{socio::PersonLocationKind::network, civic::EntityId{41}};
+    auto first = people.create(first_input); ASSERT_TRUE(first);
     auto second = people.create({civic::HouseholdId{1}, 30, 2, 2, true, civic::Money{100}}); ASSERT_TRUE(second);
     ASSERT_TRUE(people.erase(*first));
     const auto snapshot = people.snapshot();
@@ -91,4 +111,7 @@ TEST(Stack3PersonRestore, PreservesStableIdsAndAllocatorAcrossTombstones) {
     EXPECT_TRUE(restored.get(*second));
     auto third = restored.create({civic::HouseholdId{1}, 40, 3, 3, true, civic::Money{200}}); ASSERT_TRUE(third);
     EXPECT_EQ(*third, socio::PersonId{3});
+    auto third_view = restored.get(*third); ASSERT_TRUE(third_view);
+    EXPECT_FALSE(third_view->home_entity);
+    EXPECT_FALSE(third_view->location);
 }
