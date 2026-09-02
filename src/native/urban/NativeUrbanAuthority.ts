@@ -10,6 +10,7 @@ export interface NativeUrbanBridge {
   rebuildUrbanLegacy(request: NativeUrbanLegacyRequest): NativeUrbanSnapshot;
   restoreUrbanState(snapshot: NativeUrbanState): NativeUrbanSnapshot;
   applyUrbanCommand(command: NativeUrbanCommand): NativeUrbanCommandResponse;
+  step(ticks?: number): void;
   urbanSnapshot(): NativeUrbanSnapshot;
   loadV9(save: unknown): void;
   saveV9<T = unknown>(): T;
@@ -30,6 +31,7 @@ function isBridge(value: unknown): value is NativeUrbanBridge {
     typeof candidate.rebuildUrbanLegacy === "function" &&
     typeof candidate.restoreUrbanState === "function" &&
     typeof candidate.applyUrbanCommand === "function" &&
+    typeof candidate.step === "function" &&
     typeof candidate.urbanSnapshot === "function" &&
     typeof candidate.loadV9 === "function" &&
     typeof candidate.saveV9 === "function"
