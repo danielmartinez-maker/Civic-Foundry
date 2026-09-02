@@ -42,6 +42,7 @@ public:
     [[nodiscard]] Result<void> loadV9(std::string_view json);
     [[nodiscard]] Result<std::string> saveV9() const;
     [[nodiscard]] const transport::TransportationAuthority& transportation() const noexcept { return transportation_; }
+    [[nodiscard]] const RoadTrafficStateV9& roadTraffic() const noexcept { return road_traffic_; }
     [[nodiscard]] std::uint64_t tick() const noexcept { return clock_.tick(); }
 private:
     explicit NativeEngine(const EngineConfig&);
@@ -57,6 +58,7 @@ private:
     SystemScheduler scheduler_;
     InvariantRunner invariants_;
     transport::TransportationAuthority transportation_;
+    RoadTrafficStateV9 road_traffic_;
     TransportationContinuationV9 transportation_continuation_;
     std::optional<SaveV9Dto> loaded_save_;
 };
