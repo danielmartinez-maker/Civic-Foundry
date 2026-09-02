@@ -1,6 +1,7 @@
 #pragma once
 
 #include <civic/presentation/GpuBackend.hpp>
+#include <civic/presentation/MiniaturePresentation.hpp>
 #include <civic/presentation/SceneGeometry.hpp>
 
 #include <cstddef>
@@ -25,10 +26,13 @@ public:
     NativeRenderer& operator=(const NativeRenderer&) = delete;
     [[nodiscard]] std::expected<void, std::string> initialize();
     [[nodiscard]] std::expected<void, std::string> render(const SceneGeometry& geometry, const FrameToken& frame);
+    [[nodiscard]] std::expected<void, std::string> render(const SceneGeometry& geometry, const FrameToken& frame, const MiniatureTreatment& treatment);
     [[nodiscard]] const NativeRendererStats& stats() const noexcept { return stats_; }
 private:
     [[nodiscard]] std::expected<void, std::string> uploadIfChanged(const SceneGeometry& geometry);
     [[nodiscard]] std::expected<void, std::string> ensureBuffer(BufferHandle& handle, std::size_t& capacity, std::size_t required, const char* name);
+    [[nodiscard]] std::expected<void, std::string> drawOpaque(const SceneGeometry& geometry, const FrameToken& frame);
+    [[nodiscard]] std::expected<void, std::string> drawOverlay(const SceneGeometry& geometry, const FrameToken& frame);
     IGpuBackend& backend_;
     ShaderHandle vertex_shader_{};
     ShaderHandle pixel_shader_{};
