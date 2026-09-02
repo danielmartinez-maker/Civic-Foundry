@@ -55,7 +55,9 @@ function normalizeJsonValue(
           const normalized: unknown[] = [];
           for (let index = 0; index < value.length; index += 1) {
             if (!(index in value))
-              throw new Error(`${path} must not contain sparse arrays`);
+              throw new Error(
+                `${path} must contain only JSON-compatible values; sparse arrays are not supported`,
+              );
             normalized.push(
               normalizeJsonValue(value[index], `${path}[${index}]`, ancestors),
             );
