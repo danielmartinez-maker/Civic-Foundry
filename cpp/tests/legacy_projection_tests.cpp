@@ -34,9 +34,9 @@ bool has_diagnostic(const std::vector<std::string>& diagnostics, std::string_vie
   });
 }
 
-TEST(NativeLegacyProjectionRed, ExactAlignedThirtyMeterParcelIsFaithful) {
+TEST(NativeLegacyProjectionRed, ExactAlignedTwentyMeterParcelIsFaithful) {
   CadastralGraph graph;
-  ASSERT_TRUE(graph.insert(parcel("parcel:faithful", 3000, 6000, 6000, 9000)).has_value());
+  ASSERT_TRUE(graph.insert(parcel("parcel:faithful", 2000, 4000, 4000, 6000)).has_value());
   const auto projection = graph.legacy_lot_projection();
   ASSERT_EQ(projection.lots.size(), 1U);
   EXPECT_EQ(projection.lots.front().x, 1);
@@ -53,7 +53,7 @@ TEST(NativeLegacyProjectionRed, IrregularCanonicalParcelIsExplicitlyUnfaithful) 
   irregular.block_id = "block:projection";
   irregular.zoning_district_id = "MU4";
   irregular.owner_id = "owner:projection";
-  irregular.boundary = {{{0,0},{4500,0},{4500,1500},{3000,3000},{0,3000}}};
+  irregular.boundary = {{{0,0},{3000,0},{3000,1000},{2000,2000},{0,2000}}};
   ASSERT_TRUE(graph.insert(std::move(irregular)).has_value());
 
   const auto projection = graph.legacy_lot_projection();
@@ -64,8 +64,8 @@ TEST(NativeLegacyProjectionRed, IrregularCanonicalParcelIsExplicitlyUnfaithful) 
 
 TEST(NativeLegacyProjectionRed, CollidingCanonicalIdentitiesRemainSeparateAndAreDiagnosed) {
   CadastralGraph graph;
-  ASSERT_TRUE(graph.insert(parcel("parcel:cell-left", 0, 0, 1500, 3000)).has_value());
-  ASSERT_TRUE(graph.insert(parcel("parcel:cell-right", 1500, 0, 3000, 3000)).has_value());
+  ASSERT_TRUE(graph.insert(parcel("parcel:cell-left", 0, 0, 1000, 2000)).has_value());
+  ASSERT_TRUE(graph.insert(parcel("parcel:cell-right", 1000, 0, 2000, 2000)).has_value());
 
   const auto projection = graph.legacy_lot_projection();
   ASSERT_EQ(projection.lots.size(), 2U);
@@ -83,9 +83,9 @@ TEST(NativeLegacyProjectionRed, ProjectionOrderIsSpatialAndIndependentOfInsertio
   auto build = [](bool reverse) {
     CadastralGraph graph;
     std::vector<Parcel> parcels{
-      parcel("parcel:south-east", 6000, 0, 9000, 3000),
-      parcel("parcel:north-west", 0, 3000, 3000, 6000),
-      parcel("parcel:south-west", 0, 0, 3000, 3000),
+      parcel("parcel:south-east", 4000, 0, 6000, 2000),
+      parcel("parcel:north-west", 0, 2000, 2000, 4000),
+      parcel("parcel:south-west", 0, 0, 2000, 2000),
     };
     if (reverse) std::reverse(parcels.begin(), parcels.end());
     for (auto& candidate : parcels) EXPECT_TRUE(graph.insert(std::move(candidate)).has_value());
@@ -101,10 +101,10 @@ TEST(NativeLegacyProjectionRed, ProjectionOrderIsSpatialAndIndependentOfInsertio
 
 TEST(NativeLegacyProjectionRed, RetiredCanonicalParcelsAreNotProjected) {
   CadastralGraph graph;
-  auto retired = parcel("parcel:retired", 0, 0, 3000, 3000);
+  auto retired = parcel("parcel:retired", 0, 0, 2000, 2000);
   const auto retired_id = retired.id;
   ASSERT_TRUE(graph.insert(std::move(retired)).has_value());
-  ASSERT_TRUE(graph.insert(parcel("parcel:live", 3000, 0, 6000, 3000)).has_value());
+  ASSERT_TRUE(graph.insert(parcel("parcel:live", 2000, 0, 4000, 2000)).has_value());
   ASSERT_TRUE(graph.retire(retired_id).has_value());
 
   const auto projection = graph.legacy_lot_projection();
