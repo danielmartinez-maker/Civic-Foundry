@@ -42,12 +42,14 @@ add_library(civic_engine STATIC
   engine/src/cadastre/ParcelGeneration.cpp
   engine/src/urban/UrbanFabric.cpp
   engine/src/urban/NativeUrbanAuthority.cpp
+  engine/src/urban/NativeUrbanHistory.cpp
   engine/src/urban/Zoning.cpp
   engine/src/urban/BuildableEnvelope.cpp
   engine/src/urban/BuildingMassing.cpp
   engine/src/urban/BuildingLifecycle.cpp
   engine/src/urban/HighestBestUse.cpp
   engine/src/urban/PropertyMarket.cpp
+  engine/src/urban/PropertyMarketHistory.cpp
   engine/src/urban/SiteAssembly.cpp
   engine/src/urban/DevelopmentAuthority.cpp
   engine/src/snapshot/UrbanFabricSnapshot.cpp
