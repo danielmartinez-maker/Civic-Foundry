@@ -119,3 +119,58 @@ TEST(NativeToolWorkflow, AlphaPlacementAndBulldozeToolsStayTypedAndPreviewOnlyUn
     ASSERT_TRUE(std::holds_alternative<BulldozeCommand>(sink.submitted.back()));
     EXPECT_EQ(std::get<BulldozeCommand>(sink.submitted.back()).position, (Point2{8.0, 9.0}));
 }
+
+TEST(NativeUiController, AlphaManagementMutationsRemainTypedCommands) {
+    RecordingCommandSink sink{};
+    NativeUiController controller(sink);
+
+    ASSERT_TRUE(controller.setTaxRate("residential", 0.125).has_value());
+    ASSERT_TRUE(std::holds_alternative<SetTaxRateCommand>(sink.submitted.back()));
+    EXPECT_EQ(std::get<SetTaxRateCommand>(sink.submitted.back()).tax_category, "residential");
+    EXPECT_DOUBLE_EQ(std::get<SetTaxRateCommand>(sink.submitted.back()).rate, 0.125);
+
+    ASSERT_TRUE(controller.setServiceFunding("fire", 110.0).has_value());
+    ASSERT_TRUE(std::holds_alternative<SetServiceFundingCommand>(sink.submitted.back()));
+    EXPECT_EQ(std::get<SetServiceFundingCommand>(sink.submitted.back()).department, "fire");
+    EXPECT_DOUBLE_EQ(std::get<SetServiceFundingCommand>(sink.submitted.back()).percent, 110.0);
+
+    ASSERT_TRUE(controller.createTransitService(VehicleKind::Tram, "Crosstown").has_value());
+    ASSERT_TRUE(std::holds_alternative<CreateTransitServiceCommand>(sink.submitted.back()));
+    EXPECT_EQ(std::get<CreateTransitServiceCommand>(sink.submitted.back()).name, "Crosstown");
+
+    ASSERT_TRUE(controller.setTransitLineStops("line:1", {"stop:a", "stop:b"}).has_value());
+    ASSERT_TRUE(std::holds_alternative<SetTransitLineStopsCommand>(sink.submitted.back()));
+    EXPECT_EQ(std::get<SetTransitLineStopsCommand>(sink.submitted.back()).stop_ids.size(), 2U);
+
+    ASSERT_TRUE(controller.appendTransitLineStop("line:1", "stop:c").has_value());
+    ASSERT_TRUE(std::holds_alternative<AppendTransitLineStopCommand>(sink.submitted.back()));
+
+    ASSERT_TRUE(controller.removeTransitLineStop("line:1", "stop:b").has_value());
+    ASSERT_TRUE(std::holds_alternative<RemoveTransitLineStopCommand>(sink.submitted.back()));
+
+    ASSERT_TRUE(controller.configureTransitLine("line:1", 80U, 2.25, 4U, true).has_value());
+    ASSERT_TRUE(std::holds_alternative<ConfigureTransitLineCommand>(sink.submitted.back()));
+    const auto& config = std::get<ConfigureTransitLineCommand>(sink.submitted.back());
+    EXPECT_EQ(config.headway_ticks, 80U);
+    EXPECT_DOUBLE_EQ(config.fare, 2.25);
+    EXPECT_EQ(config.fleet_limit, 4U);
+    EXPECT_TRUE(config.enabled);
+}
+
+TEST(NativeUiController, RejectsOutOfRangeAlphaManagementValuesBeforeCommandSubmission) {
+    RecordingCommandSink sink{};
+    NativeUiController controller(sink);
+
+    EXPECT_FALSE(controller.setTaxRate("residential", -0.01).has_value());
+    EXPECT_FALSE(controller.setTaxRate("residential", 0.26).has_value());
+    EXPECT_FALSE(controller.setServiceFunding("fire", 49.0).has_value());
+    EXPECT_FALSE(controller.setServiceFunding("fire", 151.0).has_value());
+    EXPECT_FALSE(controller.createTransitService(VehicleKind::Tram, "").has_value());
+    EXPECT_FALSE(controller.setTransitLineStops("line:1", {"stop:a"}).has_value());
+    EXPECT_FALSE(controller.appendTransitLineStop("", "stop:a").has_value());
+    EXPECT_FALSE(controller.removeTransitLineStop("line:1", "").has_value());
+    EXPECT_FALSE(controller.configureTransitLine("line:1", 19U, 2.0, 2U, true).has_value());
+    EXPECT_FALSE(controller.configureTransitLine("line:1", 80U, 21.0, 2U, true).has_value());
+    EXPECT_FALSE(controller.configureTransitLine("line:1", 80U, 2.0, 51U, true).has_value());
+    EXPECT_TRUE(sink.submitted.empty());
+}
