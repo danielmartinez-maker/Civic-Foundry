@@ -69,7 +69,10 @@ test("every C++ migration scenario records executable save input and an ordered 
     );
     let previousSequence = 0;
     for (const command of scenario.commandJournal) {
-      assert.ok(Number.isInteger(command.sequence) && command.sequence > previousSequence);
+      assert.ok(
+        Number.isInteger(command.sequence) &&
+          command.sequence > previousSequence,
+      );
       assert.ok(Number.isInteger(command.tick) && command.tick >= 0);
       assert.equal(typeof command.type, "string");
       assert.ok(command.type.trim().length > 0);
