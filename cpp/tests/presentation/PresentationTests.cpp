@@ -2,12 +2,111 @@
 
 #include <civic/presentation/Presentation.hpp>
 
+#include <json-c/json.h>
+
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 using namespace civic::presentation;
 
 namespace {
+
+struct JsonObjectDeleter {
+    void operator()(json_object* value) const noexcept {
+        if (value) (void)json_object_put(value);
+    }
+};
+using JsonObjectPtr = std::unique_ptr<json_object, JsonObjectDeleter>;
+
+json_object* requiredField(json_object* object, const char* key) {
+    json_object* value = nullptr;
+    if (!json_object_object_get_ex(object, key, &value) || !value) {
+        throw std::runtime_error(std::string("shared camera fixture is missing field: ") + key);
+    }
+    return value;
+}
+
+double requiredNumber(json_object* object, const char* key) {
+    auto* value = requiredField(object, key);
+    if (!json_object_is_type(value, json_type_double) && !json_object_is_type(value, json_type_int)) {
+        throw std::runtime_error(std::string("shared camera fixture field is not numeric: ") + key);
+    }
+    return json_object_get_double(value);
+}
+
+std::uint32_t requiredUInt(json_object* object, const char* key) {
+    auto* value = requiredField(object, key);
+    if (!json_object_is_type(value, json_type_int)) {
+        throw std::runtime_error(std::string("shared camera fixture field is not integral: ") + key);
+    }
+    const auto number = json_object_get_int64(value);
+    if (number < 0) throw std::runtime_error(std::string("shared camera fixture field is negative: ") + key);
+    return static_cast<std::uint32_t>(number);
+}
+
+Point2 requiredPoint(json_object* object, const char* key) {
+    auto* point = requiredField(object, key);
+    if (!json_object_is_type(point, json_type_object)) {
+        throw std::runtime_error(std::string("shared camera fixture field is not a point: ") + key);
+    }
+    return {requiredNumber(point, "x"), requiredNumber(point, "y")};
+}
+
+struct SharedCameraFixture {
+    IsoMetrics metrics{};
+    WorldSize world{};
+    Point2 fractional_point{};
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> cells;
+    Point2 focus_world{};
+    Point2 zoom_cell{};
+    double zoom_factor{};
+    double zoom_max_probe{};
+    double zoom_min_probe{};
+    double zoom_max{};
+    double zoom_min{};
+    Point2 outside_canvas{};
+};
+
+SharedCameraFixture loadSharedCameraFixture() {
+    const auto path = std::filesystem::path(CIVIC_REPOSITORY_ROOT) / "tests" / "fixtures" / "isometric-camera-parity.json";
+    JsonObjectPtr root{json_object_from_file(path.string().c_str())};
+    if (!root || !json_object_is_type(root.get(), json_type_object)) {
+        throw std::runtime_error("failed to load shared TypeScript/native camera fixture: " + path.string());
+    }
+
+    SharedCameraFixture fixture{};
+    auto* metrics = requiredField(root.get(), "metrics");
+    fixture.metrics = {requiredNumber(metrics, "tileWidth"), requiredNumber(metrics, "tileHeight")};
+    auto* world = requiredField(root.get(), "world");
+    fixture.world = {requiredUInt(world, "width"), requiredUInt(world, "height")};
+    fixture.fractional_point = requiredPoint(root.get(), "fractionalPoint");
+    fixture.focus_world = requiredPoint(root.get(), "focusWorld");
+    fixture.zoom_cell = requiredPoint(root.get(), "zoomCell");
+    fixture.zoom_factor = requiredNumber(root.get(), "zoomFactor");
+    fixture.zoom_max_probe = requiredNumber(root.get(), "zoomMaxProbe");
+    fixture.zoom_min_probe = requiredNumber(root.get(), "zoomMinProbe");
+    fixture.zoom_max = requiredNumber(root.get(), "zoomMax");
+    fixture.zoom_min = requiredNumber(root.get(), "zoomMin");
+    fixture.outside_canvas = requiredPoint(root.get(), "outsideCanvas");
+
+    auto* cells = requiredField(root.get(), "cells");
+    if (!json_object_is_type(cells, json_type_array)) throw std::runtime_error("shared camera fixture cells must be an array");
+    const auto cell_count = json_object_array_length(cells);
+    fixture.cells.reserve(cell_count);
+    for (std::size_t index = 0; index < cell_count; ++index) {
+        auto* cell = json_object_array_get_idx(cells, index);
+        if (!cell || !json_object_is_type(cell, json_type_object)) throw std::runtime_error("shared camera fixture contains an invalid cell");
+        fixture.cells.emplace_back(requiredUInt(cell, "x"), requiredUInt(cell, "y"));
+    }
+    return fixture;
+}
+
 FrameSnapshot makeSnapshot() {
     FrameSnapshot snapshot{};
     snapshot.revision = 7;
@@ -126,6 +225,48 @@ TEST(IsometricCameraParity, CanvasToWorldRoundTripsContinuousPickingCoordinates)
     ASSERT_TRUE(world_point.has_value());
     EXPECT_NEAR(world_point->x, 4.25, 1e-9);
     EXPECT_NEAR(world_point->y, 7.5, 1e-9);
+}
+
+TEST(IsometricCameraParity, SharedTypeScriptFixturePreservesPickingRotationAndZoom) {
+    const auto fixture = loadSharedCameraFixture();
+    EXPECT_DOUBLE_EQ(fixture.metrics.tile_width, 64.0);
+    EXPECT_DOUBLE_EQ(fixture.metrics.tile_height, 32.0);
+
+    IsometricCamera camera{fixture.metrics};
+    for (int turn = 0; turn < 4; ++turn) {
+        for (const auto& [x, y] : fixture.cells) {
+            const auto center = camera.worldToCanvas(static_cast<double>(x), static_cast<double>(y), fixture.world);
+            const auto picked = camera.canvasToCell(center.x, center.y, fixture.world);
+            ASSERT_TRUE(picked.has_value());
+            EXPECT_EQ(picked->first, x);
+            EXPECT_EQ(picked->second, y);
+        }
+        camera.rotate(1);
+    }
+
+    const auto fractional_canvas = camera.worldToCanvas(fixture.fractional_point.x, fixture.fractional_point.y, fixture.world);
+    const auto fractional_world = camera.canvasToWorld(fractional_canvas.x, fractional_canvas.y, fixture.world);
+    ASSERT_TRUE(fractional_world.has_value());
+    EXPECT_NEAR(fractional_world->x, fixture.fractional_point.x, 1e-9);
+    EXPECT_NEAR(fractional_world->y, fixture.fractional_point.y, 1e-9);
+
+    const auto focus_canvas = camera.worldToCanvas(fixture.focus_world.x, fixture.focus_world.y, fixture.world);
+    camera.rotateAroundCanvasPoint(1, fixture.world, focus_canvas);
+    const auto focus_after = camera.worldToCanvas(fixture.focus_world.x, fixture.focus_world.y, fixture.world);
+    EXPECT_NEAR(focus_after.x, focus_canvas.x, 1e-9);
+    EXPECT_NEAR(focus_after.y, focus_canvas.y, 1e-9);
+
+    const auto zoom_anchor = camera.worldToCanvas(fixture.zoom_cell.x, fixture.zoom_cell.y, fixture.world);
+    camera.zoomBy(fixture.zoom_factor, zoom_anchor.x, zoom_anchor.y);
+    const auto zoom_after = camera.worldToCanvas(fixture.zoom_cell.x, fixture.zoom_cell.y, fixture.world);
+    EXPECT_NEAR(zoom_after.x, zoom_anchor.x, 1e-9);
+    EXPECT_NEAR(zoom_after.y, zoom_anchor.y, 1e-9);
+    camera.zoomBy(fixture.zoom_max_probe, zoom_anchor.x, zoom_anchor.y);
+    EXPECT_DOUBLE_EQ(camera.zoom(), fixture.zoom_max);
+    camera.zoomBy(fixture.zoom_min_probe, zoom_anchor.x, zoom_anchor.y);
+    EXPECT_DOUBLE_EQ(camera.zoom(), fixture.zoom_min);
+
+    EXPECT_FALSE(camera.canvasToCell(fixture.outside_canvas.x, fixture.outside_canvas.y, fixture.world).has_value());
 }
 
 TEST(RetainedScene, RebuildsOnlyRecordsWhoseRevisionChanged) {
