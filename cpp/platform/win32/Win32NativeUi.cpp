@@ -233,6 +233,12 @@ bool Win32NativeUi::wantsKeyboardCapture() const noexcept {
     return ImGui::GetIO().WantCaptureKeyboard;
 }
 
+bool Win32NativeUi::wantsTextInput() const noexcept {
+    if (!impl_ || !impl_->initialized) return false;
+    impl_->makeCurrent();
+    return ImGui::GetIO().WantTextInput;
+}
+
 bool Win32NativeUi::wantsMouseCapture() const noexcept {
     if (!impl_ || !impl_->initialized) return false;
     impl_->makeCurrent();
