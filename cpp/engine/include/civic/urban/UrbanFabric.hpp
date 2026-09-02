@@ -55,7 +55,7 @@ struct BuildingLifecycle final {
   std::uint64_t deferred_maintenance_ticks{};
   std::optional<std::uint64_t> last_major_renovation_tick{};
   double effective_age{};
-  std::uint64_t vacancy_duration_ticks{};
+  double vacancy_duration_ticks{};
   double distress_score{};
 };
 

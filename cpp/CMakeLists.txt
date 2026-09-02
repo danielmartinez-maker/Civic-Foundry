@@ -24,6 +24,7 @@ add_library(civic_engine STATIC
   engine/src/urban/Zoning.cpp
   engine/src/urban/BuildableEnvelope.cpp
   engine/src/urban/BuildingMassing.cpp
+  engine/src/urban/BuildingLifecycle.cpp
 )
 target_include_directories(civic_engine PUBLIC engine/include)
 target_link_libraries(civic_engine PUBLIC nlohmann_json::nlohmann_json Clipper2::Clipper2)
