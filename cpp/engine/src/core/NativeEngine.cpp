@@ -14,6 +14,8 @@
 namespace civic {
 namespace {
 constexpr std::string_view socioeconomic_transfer_prefix = "native.socioeconomic.transfer.";
+constexpr std::size_t socioeconomic_gate_count = 5;
+constexpr std::int64_t socioeconomic_authority_schema_version = 1;
 
 std::string escapeJson(std::string_view value) {
     std::string output{"\""};
@@ -68,6 +70,99 @@ std::string bytesToString(const std::vector<std::byte>& bytes) {
         return std::unexpected(make_error(ErrorCode::serialization_failure, "expected JSON object"));
     }
     return root;
+}
+
+[[nodiscard]] Result<std::uint64_t> readNonNegativeJsonInteger(
+    json_object* object,
+    const char* member,
+    std::string_view context) {
+    json_object* value = nullptr;
+    if (!object || !json_object_object_get_ex(object, member, &value) ||
+        !value || json_object_get_type(value) != json_type_int) {
+        return std::unexpected(make_error(
+            ErrorCode::serialization_failure,
+            std::string{context} + " is missing integer member " + member));
+    }
+    const auto raw = json_object_get_int64(value);
+    if (raw < 0) {
+        return std::unexpected(make_error(
+            ErrorCode::serialization_failure,
+            std::string{context} + " member " + member + " must be non-negative"));
+    }
+    return static_cast<std::uint64_t>(raw);
+}
+
+[[nodiscard]] Result<void> restoreSocioeconomicAuthority(
+    json_object* extension,
+    socioeconomic::SocioeconomicAuthority& authority) {
+    json_object* persisted = nullptr;
+    if (!json_object_object_get_ex(extension, "authority", &persisted)) return {};
+    if (!persisted || json_object_get_type(persisted) != json_type_object) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, "nativeSocioeconomic authority must be an object"));
+    }
+
+    auto schema = readNonNegativeJsonInteger(persisted, "schemaVersion", "nativeSocioeconomic authority");
+    if (!schema) return std::unexpected(schema.error());
+    if (*schema != static_cast<std::uint64_t>(socioeconomic_authority_schema_version)) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, "unsupported nativeSocioeconomic authority schema"));
+    }
+    auto transferred = readNonNegativeJsonInteger(persisted, "transferredCount", "nativeSocioeconomic authority");
+    if (!transferred) return std::unexpected(transferred.error());
+    if (*transferred > socioeconomic_gate_count) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, "nativeSocioeconomic authority transferredCount exceeds known gates"));
+    }
+
+    json_object* revisions = nullptr;
+    if (!json_object_object_get_ex(persisted, "revisions", &revisions) ||
+        !revisions || json_object_get_type(revisions) != json_type_array ||
+        json_object_array_length(revisions) != socioeconomic_gate_count) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, "nativeSocioeconomic authority revisions must contain exactly five entries"));
+    }
+
+    auto restored = authority.transfers().restore_transferred_count(static_cast<std::size_t>(*transferred));
+    if (!restored) return std::unexpected(restored.error());
+    for (std::size_t position = 0; position < socioeconomic_gate_count; ++position) {
+        json_object* value = json_object_array_get_idx(revisions, position);
+        if (!value || json_object_get_type(value) != json_type_int) {
+            return std::unexpected(make_error(ErrorCode::serialization_failure, "nativeSocioeconomic authority revision must be an integer"));
+        }
+        const auto raw = json_object_get_int64(value);
+        if (raw < 0) {
+            return std::unexpected(make_error(ErrorCode::serialization_failure, "nativeSocioeconomic authority revision must be non-negative"));
+        }
+        authority.restore_revision(
+            static_cast<socioeconomic::SocioeconomicDomainGate>(position),
+            static_cast<std::uint64_t>(raw));
+    }
+    return {};
+}
+
+[[nodiscard]] Result<void> persistSocioeconomicAuthority(
+    json_object* extension,
+    const socioeconomic::SocioeconomicAuthority& authority) {
+    std::unique_ptr<json_object, decltype(&json_object_put)> persisted{json_object_new_object(), json_object_put};
+    std::unique_ptr<json_object, decltype(&json_object_put)> revisions{json_object_new_array_ext(static_cast<int>(socioeconomic_gate_count)), json_object_put};
+    if (!persisted || !revisions) {
+        return std::unexpected(make_error(ErrorCode::internal_error, "failed to allocate native socioeconomic authority JSON"));
+    }
+
+    json_object_object_add(persisted.get(), "schemaVersion", json_object_new_int64(socioeconomic_authority_schema_version));
+    json_object_object_add(
+        persisted.get(),
+        "transferredCount",
+        json_object_new_int64(static_cast<std::int64_t>(authority.transfers().transferred_count())));
+    for (std::size_t position = 0; position < socioeconomic_gate_count; ++position) {
+        const auto revision = authority.revision(static_cast<socioeconomic::SocioeconomicDomainGate>(position));
+        if (revision > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+            return std::unexpected(make_error(ErrorCode::serialization_failure, "native socioeconomic authority revision exceeds Save V9 integer range"));
+        }
+        if (json_object_array_add(revisions.get(), json_object_new_int64(static_cast<std::int64_t>(revision))) != 0) {
+            return std::unexpected(make_error(ErrorCode::internal_error, "failed to append native socioeconomic authority revision"));
+        }
+    }
+    json_object_object_add(persisted.get(), "revisions", revisions.release());
+    json_object_object_add(extension, "authority", persisted.release());
+    return {};
 }
 } // namespace
 
@@ -280,12 +375,17 @@ Result<void> NativeEngine::loadV9(std::string_view json) {
     if (!parsedRoot) return std::unexpected(parsedRoot.error());
     json_object* socioeconomicExtension = nullptr;
     if (json_object_object_get_ex(parsedRoot->get(), "nativeSocioeconomic", &socioeconomicExtension)) {
+        if (!socioeconomicExtension || json_object_get_type(socioeconomicExtension) != json_type_object) {
+            return std::unexpected(make_error(ErrorCode::serialization_failure, "nativeSocioeconomic must be an object"));
+        }
         auto restored = socioeconomic::SocioeconomicPersistence::restore_v9_extension(parsed->canonicalJson);
         if (!restored) return std::unexpected(restored.error());
         if (restored->seed() != parsed->seed) {
             return std::unexpected(make_error(ErrorCode::serialization_failure, "native socioeconomic seed does not match Save V9 root seed"));
         }
         nextSocioeconomic.runtime() = std::move(*restored);
+        auto authorityRestored = restoreSocioeconomicAuthority(socioeconomicExtension, nextSocioeconomic);
+        if (!authorityRestored) return std::unexpected(authorityRestored.error());
     }
 
     seed_ = parsed->seed;
@@ -325,6 +425,8 @@ Result<std::string> NativeEngine::saveV9() const {
     if (!json_object_object_get_ex(extensionRoot->get(), "nativeSocioeconomic", &extension) || !extension || json_object_get_type(extension) != json_type_object) {
         return std::unexpected(make_error(ErrorCode::serialization_failure, "socioeconomic serializer omitted nativeSocioeconomic object"));
     }
+    auto authorityPersisted = persistSocioeconomicAuthority(extension, socioeconomic_);
+    if (!authorityPersisted) return std::unexpected(authorityPersisted.error());
     json_object_object_add(root->get(), "nativeSocioeconomic", json_object_get(extension));
 
     const char* encoded = json_object_to_json_string_ext(root->get(), JSON_C_TO_STRING_PLAIN);
