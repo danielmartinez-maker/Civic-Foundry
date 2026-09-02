@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civic-foundry.local/schemas/commands/command-envelope.schema.json",
+  "title": "Civic Foundry Native Command Envelope",
+  "type": "object",
+  "required": ["version", "sequence", "tick", "type", "payload"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "tick": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload": true
+  },
+  "additionalProperties": false
+}
