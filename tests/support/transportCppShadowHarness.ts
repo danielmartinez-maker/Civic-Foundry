@@ -248,7 +248,6 @@ export function compareRoute(
     assert.throws(
       () =>
         native.findRouteJson(handle, start, end, VEHICLE_PERMISSION.privateCar),
-      undefined,
       `${label}: native should also reject disconnected route`,
     );
     return;
