@@ -24,6 +24,8 @@ add_library(civic_engine STATIC
   engine/src/core/NativeEngine.cpp
   engine/src/core/RandomStreamRegistry.cpp
   engine/src/persistence/SaveV9.cpp
+  engine/src/persistence/TransportationSaveV9.cpp
+  engine/src/transport/transport_engine.cpp
   engine/src/bridge/civic_engine.cpp
 )
 target_include_directories(civic_engine PUBLIC engine/include)
