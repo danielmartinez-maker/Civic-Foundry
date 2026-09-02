@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://civic-foundry.local/schemas/snapshots/kernel.schema.json",
+  "title": "Civic Foundry Native Kernel Snapshot",
+  "type": "object",
+  "required": [
+    "hashVersion",
+    "pendingCommands",
+    "randomStreams",
+    "seed",
+    "speed",
+    "tick"
+  ],
+  "properties": {
+    "hashVersion": {
+      "const": 1
+    },
+    "pendingCommands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["payload", "sequence", "tick", "type"],
+        "properties": {
+          "payload": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "tick": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "randomStreams": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4294967295
+      }
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "speed": {
+      "enum": [0, 1, 2, 4]
+    },
+    "tick": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false
+}

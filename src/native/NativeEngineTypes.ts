@@ -1,3 +1,5 @@
+export const NATIVE_COMMAND_PROTOCOL_VERSION = 1 as const;
+
 export const NATIVE_DOMAIN_OWNERSHIP = Object.freeze({
   owned: 1,
   unowned: 2,
@@ -11,6 +13,11 @@ export type NativeCommand = Readonly<{
   type: string;
   payload: unknown;
 }>;
+
+export type NativeCommandEnvelope = NativeCommand &
+  Readonly<{
+    version: typeof NATIVE_COMMAND_PROTOCOL_VERSION;
+  }>;
 
 export type NativeSnapshot = Readonly<{
   hashVersion: number;

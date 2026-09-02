@@ -58,6 +58,16 @@ test("native bridge owns lifecycle and normalizes command order before shadow su
     normalized.map((item) => item.sequence),
     [1, 2],
   );
+  const submitted = addon.calls.find((call) => call.startsWith("submit:"));
+  assert.ok(submitted);
+  assert.deepEqual(JSON.parse(submitted.slice("submit:".length)), [
+    { version: 1, sequence: 1, tick: 3, type: "a", payload: { a: 1 } },
+    { version: 1, sequence: 2, tick: 3, type: "b", payload: { b: 2 } },
+  ]);
+  assert.deepEqual(normalized, [
+    { sequence: 1, tick: 3, type: "a", payload: { a: 1 } },
+    { sequence: 2, tick: 3, type: "b", payload: { b: 2 } },
+  ]);
   bridge.dispose();
   bridge.dispose();
   assert.equal(addon.calls.filter((call) => call === "destroy").length, 1);
@@ -141,5 +151,8 @@ test("shadow feature flag constructs a dev/test session only when explicitly ena
   enabled.runner.step(1);
   enabled.dispose();
   enabled.dispose();
-  assert.equal(enabledAddon.calls.filter((call) => call === "destroy").length, 1);
+  assert.equal(
+    enabledAddon.calls.filter((call) => call === "destroy").length,
+    1,
+  );
 });

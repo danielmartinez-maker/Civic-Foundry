@@ -1,6 +1,8 @@
 import {
+  NATIVE_COMMAND_PROTOCOL_VERSION,
   NATIVE_DOMAIN_OWNERSHIP,
   type NativeCommand,
+  type NativeCommandEnvelope,
   type NativeDomainHash,
   type NativeEngineAddon,
   type NativeEngineHandle,
@@ -40,6 +42,19 @@ function normalizeCommands(
   );
 }
 
+function toWireEnvelopes(
+  commands: readonly NativeCommand[],
+): readonly NativeCommandEnvelope[] {
+  return Object.freeze(
+    commands.map((command) =>
+      Object.freeze({
+        version: NATIVE_COMMAND_PROTOCOL_VERSION,
+        ...command,
+      }),
+    ),
+  );
+}
+
 export class NativeEngineBridge {
   private readonly addon: NativeEngineAddon;
   private handle: NativeEngineHandle | null;
@@ -70,7 +85,8 @@ export class NativeEngineBridge {
 
   submit(commands: readonly NativeCommand[]): readonly NativeCommand[] {
     const normalized = normalizeCommands(commands);
-    this.addon.submitCommands(this.requireHandle(), JSON.stringify(normalized));
+    const envelopes = toWireEnvelopes(normalized);
+    this.addon.submitCommands(this.requireHandle(), JSON.stringify(envelopes));
     return normalized;
   }
 

@@ -149,7 +149,8 @@ civic::Result<std::vector<civic::CommandEnvelope>> parseCommands(const uint8_t* 
     for (std::size_t i = 0; i < json_object_array_length(root.get()); ++i) {
         auto* item = json_object_array_get_idx(root.get(), i);
         if (!item || json_object_get_type(item) != json_type_object) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure, "command must be an object"));
-        json_object *sequence=nullptr,*tick=nullptr,*type=nullptr,*payload=nullptr;
+        json_object *version=nullptr,*sequence=nullptr,*tick=nullptr,*type=nullptr,*payload=nullptr;
+        if (!json_object_object_get_ex(item,"version",&version)||json_object_get_type(version)!=json_type_int||json_object_get_int64(version)!=static_cast<std::int64_t>(civic::command_protocol_version)) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"command.version must be 1"));
         if (!json_object_object_get_ex(item,"sequence",&sequence)||json_object_get_type(sequence)!=json_type_int||json_object_get_int64(sequence)<=0) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"command.sequence must be positive"));
         if (!json_object_object_get_ex(item,"tick",&tick)||json_object_get_type(tick)!=json_type_int||json_object_get_int64(tick)<0) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"command.tick must be non-negative"));
         if (!json_object_object_get_ex(item,"type",&type)||json_object_get_type(type)!=json_type_string) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"command.type must be a string"));
@@ -160,7 +161,7 @@ civic::Result<std::vector<civic::CommandEnvelope>> parseCommands(const uint8_t* 
             payloadText = std::move(*canonical);
         }
         std::vector<std::byte> bytes(payloadText.size()); std::memcpy(bytes.data(),payloadText.data(),payloadText.size());
-        commands.push_back({static_cast<uint64_t>(json_object_get_int64(sequence)),static_cast<uint64_t>(json_object_get_int64(tick)),json_object_get_string(type),std::move(bytes)});
+        commands.push_back({static_cast<uint64_t>(json_object_get_int64(sequence)),static_cast<uint64_t>(json_object_get_int64(tick)),json_object_get_string(type),std::move(bytes),static_cast<std::uint32_t>(json_object_get_int64(version))});
     }
     return commands;
 }
