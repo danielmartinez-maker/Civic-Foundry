@@ -63,6 +63,27 @@ namespace {
     return {};
 }
 
+[[nodiscard]] PersonLifeStage life_stage_for_age(std::uint16_t age) noexcept {
+    if (age < 13) return PersonLifeStage::child;
+    if (age < 18) return PersonLifeStage::teen;
+    if (age < 65) return PersonLifeStage::adult;
+    return PersonLifeStage::senior;
+}
+
+[[nodiscard]] Result<void> validate_person_input(const PersonInput& input) {
+    if (input.household.value() == 0 || input.age > 130 ||
+        input.income.minor_units() == std::numeric_limits<std::int64_t>::min()) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid person state"));
+    }
+    if (input.home_entity && input.home_entity->value() == 0) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "person home entity must be non-zero when present"));
+    }
+    if (input.location && input.location->entity.value() == 0) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "person location entity must be non-zero when present"));
+    }
+    return {};
+}
+
 [[nodiscard]] std::string json_escape(std::string_view value) {
     std::ostringstream out;
     out << '"';
@@ -446,17 +467,70 @@ std::vector<Household> HouseholdStore::snapshot() const { std::vector<Household>
 void HouseholdStore::clear() noexcept { households_.clear(); }
 
 Result<PersonId> PersonRegistry::create(const PersonInput& input) {
-    if (input.household.value() == 0 || input.age > 130 || input.income.minor_units() == std::numeric_limits<std::int64_t>::min()) return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid person state"));
+    if (auto valid = validate_person_input(input); !valid) return std::unexpected(valid.error());
+    const auto life_stage = input.life_stage.value_or(life_stage_for_age(input.age));
     const PersonId id{next_id_++};
     std::size_t slot{};
-    if (!free_slots_.empty()) { slot = free_slots_.back(); free_slots_.pop_back(); ids_[slot] = id; households_[slot] = input.household; ages_[slot] = input.age; educations_[slot] = input.education; occupations_[slot] = input.occupation; employed_[slot] = input.employed; incomes_[slot] = input.income; alive_[slot] = true; }
-    else { slot = ids_.size(); ids_.push_back(id); households_.push_back(input.household); ages_.push_back(input.age); educations_.push_back(input.education); occupations_.push_back(input.occupation); employed_.push_back(input.employed); incomes_.push_back(input.income); alive_.push_back(true); }
-    index_.emplace(id, slot); return id;
+    if (!free_slots_.empty()) {
+        slot = free_slots_.back();
+        free_slots_.pop_back();
+        ids_[slot] = id;
+        households_[slot] = input.household;
+        ages_[slot] = input.age;
+        educations_[slot] = input.education;
+        occupations_[slot] = input.occupation;
+        employed_[slot] = input.employed;
+        incomes_[slot] = input.income;
+        alive_[slot] = true;
+        residents_[slot] = input.resident;
+        life_stages_[slot] = life_stage;
+        provenances_[slot] = input.provenance;
+    } else {
+        slot = ids_.size();
+        ids_.push_back(id);
+        households_.push_back(input.household);
+        ages_.push_back(input.age);
+        educations_.push_back(input.education);
+        occupations_.push_back(input.occupation);
+        employed_.push_back(input.employed);
+        incomes_.push_back(input.income);
+        alive_.push_back(true);
+        residents_.push_back(input.resident);
+        life_stages_.push_back(life_stage);
+        provenances_.push_back(input.provenance);
+    }
+    index_.emplace(id, slot);
+    if (input.home_entity || input.location) sparse_.emplace(id, SparseState{input.home_entity, input.location});
+    return id;
 }
-Result<void> PersonRegistry::erase(PersonId id) { const auto it = index_.find(id); if (it == index_.end()) return std::unexpected(make_error(ErrorCode::invalid_argument, "unknown person")); const auto slot = it->second; alive_[slot] = false; index_.erase(it); free_slots_.push_back(slot); return {}; }
-std::optional<PersonView> PersonRegistry::get(PersonId id) const { const auto it = index_.find(id); if (it == index_.end()) return std::nullopt; const auto slot = it->second; if (!alive_[slot]) return std::nullopt; return PersonView{ids_[slot], households_[slot], ages_[slot], educations_[slot], occupations_[slot], employed_[slot], incomes_[slot], true}; }
+Result<void> PersonRegistry::erase(PersonId id) {
+    const auto it = index_.find(id);
+    if (it == index_.end()) return std::unexpected(make_error(ErrorCode::invalid_argument, "unknown person"));
+    const auto slot = it->second;
+    alive_[slot] = false;
+    index_.erase(it);
+    sparse_.erase(id);
+    free_slots_.push_back(slot);
+    return {};
+}
+std::optional<PersonView> PersonRegistry::get(PersonId id) const {
+    const auto it = index_.find(id);
+    if (it == index_.end()) return std::nullopt;
+    const auto slot = it->second;
+    if (!alive_[slot]) return std::nullopt;
+    std::optional<EntityId> home;
+    std::optional<PersonLocation> location;
+    if (const auto sparse = sparse_.find(id); sparse != sparse_.end()) {
+        home = sparse->second.home_entity;
+        location = sparse->second.location;
+    }
+    return PersonView{
+        ids_[slot], households_[slot], ages_[slot], educations_[slot], occupations_[slot],
+        employed_[slot], incomes_[slot], true, residents_[slot], life_stages_[slot],
+        provenances_[slot], home, location};
+}
 std::vector<PersonView> PersonRegistry::snapshot() const { std::vector<PersonView> out; out.reserve(index_.size()); for (const auto& [id, _] : index_) if (auto person = get(id)) out.push_back(*person); return out; }
-void PersonRegistry::clear() noexcept { next_id_ = 1; ids_.clear(); households_.clear(); ages_.clear(); educations_.clear(); occupations_.clear(); employed_.clear(); incomes_.clear(); alive_.clear(); free_slots_.clear(); index_.clear(); }
+void PersonRegistry::clear() noexcept { next_id_ = 1; ids_.clear(); households_.clear(); ages_.clear(); educations_.clear(); occupations_.clear(); employed_.clear(); incomes_.clear(); alive_.clear(); residents_.clear(); life_stages_.clear(); provenances_.clear(); free_slots_.clear(); index_.clear(); sparse_.clear(); }
 
 Result<void> PopulationFidelityStore::add_cohort(const PopulationCohort& cohort) { if (cohort.id.value() == 0 || !std::isfinite(cohort.population_weight) || cohort.population_weight < 0.0 || cohort.cash.minor_units() < 0 || !cohorts_.emplace(cohort.id, cohort).second) return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid or duplicate population cohort")); return {}; }
 Result<void> PopulationFidelityStore::promote(CohortId id, double weight) {
@@ -541,7 +615,13 @@ std::string SocioeconomicRuntime::canonical_state() const {
     for (const auto& inventory : inventories_.snapshot()) out << "I" << inventory.id.value() << ',' << inventory.product.value() << ',' << inventory.quantity << ',' << inventory.capacity << ';';
     for (const auto& order : freight_.snapshot()) out << "R" << order.id.value() << ',' << order.source.value() << ',' << order.destination.value() << ',' << order.product.value() << ',' << order.created << ',' << order.delivered << ',' << order.returned << ',' << order.active << ',' << order.lost << ',' << static_cast<std::uint32_t>(order.state) << ',' << order.delivery_attempted << ';';
     for (const auto& household : households_.snapshot()) out << "H" << household.id.value() << ',' << household.member_weight << ',' << household.income.minor_units() << ',' << household.cash.minor_units() << ',' << household.debt.minor_units() << ',' << household.vehicle_count << ',' << household.dependents << ';';
-    for (const auto& person : people_.snapshot()) out << "P" << person.id.value() << ',' << person.household.value() << ',' << person.age << ',' << person.education << ',' << person.occupation << ',' << person.employed << ',' << person.income.minor_units() << ';';
+    for (const auto& person : people_.snapshot()) {
+        out << "P" << person.id.value() << ',' << person.household.value() << ',' << person.age << ',' << person.education << ',' << person.occupation << ',' << person.employed << ',' << person.income.minor_units() << ',' << person.resident << ',' << static_cast<std::uint32_t>(person.life_stage) << ',' << static_cast<std::uint32_t>(person.provenance) << ',';
+        if (person.home_entity) out << person.home_entity->value(); else out << 0;
+        out << ',';
+        if (person.location) out << static_cast<std::uint32_t>(person.location->kind) << ':' << person.location->entity.value(); else out << "none";
+        out << ';';
+    }
     for (const auto& entry : ledger_.entries()) out << "L" << entry.sequence << ',' << entry.debit.value() << ',' << entry.credit.value() << ',' << entry.amount.minor_units() << ',' << entry.tick << ',' << static_cast<std::uint32_t>(entry.reason) << ',' << entry.source.value() << ';';
     return out.str();
 }
@@ -550,7 +630,7 @@ std::uint64_t SocioeconomicRuntime::authoritative_hash() const noexcept { return
 
 Result<std::string> SocioeconomicRuntime::serialize_v9_extension(std::uint64_t tick) const {
     std::ostringstream out;
-    out << "{\"saveVersion\":9,\"nativeSocioeconomic\":{\"schemaVersion\":1,\"seed\":" << seed_ << ",\"tick\":" << tick << ",\"households\":[";
+    out << "{\"saveVersion\":9,\"nativeSocioeconomic\":{\"schemaVersion\":2,\"seed\":" << seed_ << ",\"tick\":" << tick << ",\"households\":[";
     const auto households = households_.snapshot();
     for (std::size_t i = 0; i < households.size(); ++i) {
         if (i) out << ',';
@@ -562,7 +642,13 @@ Result<std::string> SocioeconomicRuntime::serialize_v9_extension(std::uint64_t t
     for (std::size_t i = 0; i < people.size(); ++i) {
         if (i) out << ',';
         const auto& p = people[i];
-        out << "{\"id\":" << p.id.value() << ",\"household\":" << p.household.value() << ",\"age\":" << p.age << ",\"education\":" << p.education << ",\"occupation\":" << p.occupation << ",\"employed\":" << (p.employed ? "true" : "false") << ",\"income\":" << p.income.minor_units() << '}';
+        out << "{\"id\":" << p.id.value() << ",\"household\":" << p.household.value() << ",\"age\":" << p.age << ",\"education\":" << p.education << ",\"occupation\":" << p.occupation << ",\"employed\":" << (p.employed ? "true" : "false") << ",\"income\":" << p.income.minor_units() << ",\"resident\":" << (p.resident ? "true" : "false") << ",\"lifeStage\":" << static_cast<std::uint32_t>(p.life_stage) << ",\"provenance\":" << static_cast<std::uint32_t>(p.provenance) << ",\"homeEntity\":";
+        if (p.home_entity) out << p.home_entity->value(); else out << "null";
+        out << ",\"locationKind\":";
+        if (p.location) out << static_cast<std::uint32_t>(p.location->kind); else out << "null";
+        out << ",\"locationEntity\":";
+        if (p.location) out << p.location->entity.value(); else out << "null";
+        out << '}';
     }
     out << "]}}";
     return out.str();
@@ -578,7 +664,7 @@ Result<void> SocioeconomicRuntime::restore_v9_extension(std::string_view json) {
     struct RootGuard { json_object* value; ~RootGuard() { if (value) json_object_put(value); } } guard{root};
     auto save_version = json_u64(root, "saveVersion"); if (!save_version || *save_version != 9) return std::unexpected(make_error(ErrorCode::unsupported_save_version, "native socioeconomic extension requires Save V9"));
     auto extension = object_member(root, "nativeSocioeconomic", json_type_object); if (!extension) return std::unexpected(make_error(ErrorCode::serialization_failure, "nativeSocioeconomic object missing"));
-    auto schema = json_u64(*extension, "schemaVersion"); if (!schema || *schema != 1) return std::unexpected(make_error(ErrorCode::serialization_failure, "unsupported socioeconomic schema"));
+    auto schema = json_u64(*extension, "schemaVersion"); if (!schema || (*schema != 1 && *schema != 2)) return std::unexpected(make_error(ErrorCode::serialization_failure, "unsupported socioeconomic schema"));
     auto seed = json_u64(*extension, "seed"); if (!seed || *seed > std::numeric_limits<std::uint32_t>::max()) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid socioeconomic seed"));
     auto households_json = object_member(*extension, "households", json_type_array); if (!households_json) return std::unexpected(make_error(ErrorCode::serialization_failure, "households array missing"));
     auto people_json = object_member(*extension, "people", json_type_array); if (!people_json) return std::unexpected(make_error(ErrorCode::serialization_failure, "people array missing"));
@@ -599,8 +685,39 @@ Result<void> SocioeconomicRuntime::restore_v9_extension(std::string_view json) {
         auto stored_id = json_u64(item, "id"); auto household = json_u64(item, "household"); auto age = json_u64(item, "age"); auto education = json_u64(item, "education"); auto occupation = json_u64(item, "occupation"); auto income = json_i64(item, "income");
         json_object* employed_value = nullptr;
         if (!stored_id || !household || !age || !education || !occupation || !income || !json_object_object_get_ex(item, "employed", &employed_value) || json_object_get_type(employed_value) != json_type_boolean || *age > 130 || *education > std::numeric_limits<std::uint16_t>::max() || *occupation > std::numeric_limits<std::uint16_t>::max()) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person fields"));
-        auto created = next_people.create({HouseholdId{*household}, static_cast<std::uint16_t>(*age), static_cast<std::uint16_t>(*education), static_cast<std::uint16_t>(*occupation), json_object_get_boolean(employed_value) != 0, Money{*income}}); if (!created) return std::unexpected(created.error());
-        if (created->value() != *stored_id) return std::unexpected(make_error(ErrorCode::serialization_failure, "person ids must be dense monotonic in schema v1"));
+        PersonInput input{HouseholdId{*household}, static_cast<std::uint16_t>(*age), static_cast<std::uint16_t>(*education), static_cast<std::uint16_t>(*occupation), json_object_get_boolean(employed_value) != 0, Money{*income}};
+        if (*schema >= 2) {
+            json_object* resident_value = nullptr;
+            if (!json_object_object_get_ex(item, "resident", &resident_value) || !resident_value || json_object_get_type(resident_value) != json_type_boolean) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person resident field"));
+            input.resident = json_object_get_boolean(resident_value) != 0;
+            auto life_stage = json_u64(item, "lifeStage"); auto provenance = json_u64(item, "provenance");
+            if (!life_stage || !provenance || *life_stage > static_cast<std::uint64_t>(PersonLifeStage::senior) || *provenance > static_cast<std::uint64_t>(PersonHistoryProvenance::imported_fact)) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person lifecycle fields"));
+            input.life_stage = static_cast<PersonLifeStage>(*life_stage);
+            input.provenance = static_cast<PersonHistoryProvenance>(*provenance);
+            json_object* home = nullptr;
+            if (!json_object_object_get_ex(item, "homeEntity", &home)) return std::unexpected(make_error(ErrorCode::serialization_failure, "person homeEntity field missing"));
+            if (home && json_object_get_type(home) == json_type_int) {
+                const auto raw = json_object_get_int64(home);
+                if (raw <= 0) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person homeEntity"));
+                input.home_entity = EntityId{static_cast<std::uint64_t>(raw)};
+            } else if (home && json_object_get_type(home) != json_type_null) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person homeEntity"));
+            json_object* location_kind = nullptr; json_object* location_entity = nullptr;
+            if (!json_object_object_get_ex(item, "locationKind", &location_kind) || !json_object_object_get_ex(item, "locationEntity", &location_entity)) return std::unexpected(make_error(ErrorCode::serialization_failure, "person location fields missing"));
+            if (location_kind && json_object_get_type(location_kind) == json_type_int) {
+                if (!location_entity || json_object_get_type(location_entity) != json_type_int) return std::unexpected(make_error(ErrorCode::serialization_failure, "person location entity missing"));
+                const auto kind = json_object_get_int64(location_kind); const auto entity = json_object_get_int64(location_entity);
+                if (kind < 0 || kind > static_cast<std::int64_t>(PersonLocationKind::network) || entity <= 0) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location"));
+                input.location = PersonLocation{static_cast<PersonLocationKind>(kind), EntityId{static_cast<std::uint64_t>(entity)}};
+            } else if (!location_kind || json_object_get_type(location_kind) != json_type_null || !location_entity || json_object_get_type(location_entity) != json_type_null) {
+                return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location nullability"));
+            }
+        } else {
+            input.resident = true;
+            input.life_stage = life_stage_for_age(input.age);
+            input.provenance = PersonHistoryProvenance::bootstrap_background;
+        }
+        auto created = next_people.create(input); if (!created) return std::unexpected(created.error());
+        if (created->value() != *stored_id) return std::unexpected(make_error(ErrorCode::serialization_failure, "person ids must be dense monotonic in socioeconomic snapshot schema"));
     }
 
     seed_ = static_cast<std::uint32_t>(*seed);
