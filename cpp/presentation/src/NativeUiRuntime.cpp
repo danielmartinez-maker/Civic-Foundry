@@ -54,10 +54,13 @@ std::expected<UiFrameState, std::string> NativeUiRuntimeModel::beginFrame(
     settings = normalizeSettings(settings);
     frame_active_ = true;
     return UiFrameState{
-        snapshot.revision,
-        dpi_scale_,
-        settings.ui_scale,
-        dpi_scale_ * settings.ui_scale,
+        .snapshot_revision = snapshot.revision,
+        .dpi_scale = dpi_scale_,
+        .ui_scale = settings.ui_scale,
+        .effective_scale = dpi_scale_ * settings.ui_scale,
+        .high_contrast = settings.high_contrast,
+        .reduced_motion = settings.reduced_motion,
+        .color_independent_cues = settings.color_independent_cues,
     };
 }
 
