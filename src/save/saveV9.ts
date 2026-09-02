@@ -1,3 +1,7 @@
+import {
+  activeNativeUrbanAuthorityOverride,
+  withNativeUrbanAuthoritySuspended,
+} from '../native/urban/NativeUrbanAuthority.ts';
 import type { BuildingV2 } from '../simulation/buildings/BuildingTypes.ts';
 import type { SimulationCore } from '../simulation/core/SimulationCore.ts';
 import type { PropertyMarketSnapshot } from '../simulation/development/PropertyMarketSystem.ts';
@@ -15,7 +19,7 @@ export type SaveV9 = Omit<SaveV8, 'saveVersion' | 'gameVersion'> & Readonly<{
 }>;
 
 export function serializeCoreV9(core: SimulationCore, baseV8: SaveV8 = serializeCoreV8(core)): SaveV9 {
-  return {
+  const compatibilitySave: SaveV9 = {
     ...baseV8,
     saveVersion: 9,
     gameVersion: '0.9.0-urban-fabric',
@@ -24,6 +28,10 @@ export function serializeCoreV9(core: SimulationCore, baseV8: SaveV8 = serialize
     buildingsV2: core.buildings.listV2(),
     propertyMarket: core.propertyMarket.snapshot(),
   };
+  const native = activeNativeUrbanAuthorityOverride();
+  if (!native?.enabled) return compatibilitySave;
+  native.bridge.loadV9(compatibilitySave);
+  return native.bridge.saveV9<SaveV9>();
 }
 
 export function hydrateCoreV9(input: unknown): SimulationCore {
@@ -37,20 +45,43 @@ export function hydrateCoreV9(input: unknown): SimulationCore {
 
   const save = input as unknown as SaveV9;
   validateRawUrbanFabricReferences(save);
+  const native = activeNativeUrbanAuthorityOverride();
+  const authoritativeUrban = native?.enabled
+    ? (() => {
+        native.bridge.loadV9(save);
+        return native.bridge.urbanSnapshot();
+      })()
+    : Object.freeze({
+        urbanFabric: save.urbanFabric,
+        zoningV2: save.zoningV2,
+        buildingsV2: save.buildingsV2,
+        propertyMarket: save.propertyMarket,
+      });
+
   const { urbanFabric: _urbanFabric, zoningV2: _zoningV2, buildingsV2: _buildingsV2, propertyMarket: _propertyMarket, ...withoutUrbanFabric } = save;
   const v8: SaveV8 = { ...withoutUrbanFabric, saveVersion: 8, gameVersion: '0.8.0-world-foundation' };
-  const core = hydrateCoreV8(v8);
+  const core = native?.enabled
+    ? withNativeUrbanAuthoritySuspended(() => hydrateCoreV8(v8))
+    : hydrateCoreV8(v8);
 
-  core.cadastre.replaceSnapshot(save.urbanFabric);
+  core.cadastre.replaceSnapshot(authoritativeUrban.urbanFabric);
   core.lots.rebuildFromCadastre(core.cadastre, (parcel) => {
     const zone = parcel.zoningDistrictId;
     return zone === 'residential' || zone === 'commercial' || zone === 'industrial' ? zone : undefined;
   });
   const historicalParcelIds = new Set(core.cadastre.listLineage().flatMap((event) => event.sourceParcelIds));
-  validateUrbanFabricReferences(core, save.zoningV2.parcelAssignments, save.buildingsV2, save.propertyMarket, historicalParcelIds);
-  core.zoning.restoreParcelAssignments(save.zoningV2.parcelAssignments);
-  core.buildings.restoreV2(save.buildingsV2);
-  core.propertyMarket.restore(save.propertyMarket, { isHistoricalParcelId: (parcelId) => historicalParcelIds.has(parcelId) });
+  validateUrbanFabricReferences(
+    core,
+    authoritativeUrban.zoningV2.parcelAssignments,
+    authoritativeUrban.buildingsV2,
+    authoritativeUrban.propertyMarket,
+    historicalParcelIds,
+  );
+  core.zoning.restoreParcelAssignments(authoritativeUrban.zoningV2.parcelAssignments);
+  core.buildings.restoreV2(authoritativeUrban.buildingsV2);
+  core.propertyMarket.restore(authoritativeUrban.propertyMarket, {
+    isHistoricalParcelId: (parcelId) => historicalParcelIds.has(parcelId),
+  });
   return core;
 }
 
