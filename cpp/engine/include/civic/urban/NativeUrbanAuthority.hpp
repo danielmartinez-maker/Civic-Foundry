@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -9,6 +10,7 @@
 #include "civic/cadastre/ParcelGeneration.hpp"
 #include "civic/core/Error.hpp"
 #include "civic/persistence/SaveV9.hpp"
+#include "civic/urban/BuildingLifecycle.hpp"
 #include "civic/urban/DevelopmentAuthority.hpp"
 #include "civic/urban/UrbanFabric.hpp"
 #include "civic/urban/Zoning.hpp"
@@ -37,8 +39,11 @@ public:
     [[nodiscard]] Result<std::string> propertyJson() const;
     [[nodiscard]] Result<std::string> patchSaveV9(std::string_view canonical_save_json) const;
     [[nodiscard]] Result<std::string> applyCommand(std::string_view request_json);
+    [[nodiscard]] Result<std::string> reconcileBuildings(std::string_view request_json);
     [[nodiscard]] Result<std::string> rebuildLegacyPreservingAuthority(
         std::string_view request_json);
+    [[nodiscard]] Result<void> tickBuildingRenovations(std::uint64_t tick);
+    [[nodiscard]] Result<void> tickBuildingLifecycle(std::uint64_t tick);
 
     [[nodiscard]] std::uint64_t cadastreHash() const noexcept;
     [[nodiscard]] std::uint64_t urbanHash() const noexcept;
@@ -59,6 +64,8 @@ private:
     urban::ZoningStore zoning_{};
     urban::UrbanFabricStore buildings_;
     urban::PropertyMarketSystem property_;
+    std::map<std::string, urban::BuildingTypology> lifecycle_typologies_{};
+    std::map<std::string, urban::BuildingLifecycleInput> lifecycle_inputs_{};
 };
 
 }  // namespace civic
