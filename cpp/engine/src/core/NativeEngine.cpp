@@ -212,7 +212,12 @@ Result<void> NativeEngine::loadV9(std::string_view json) {
 
 Result<std::string> NativeEngine::saveV9() const {
     if (!loaded_save_) return std::unexpected(make_error(ErrorCode::invalid_state, "no Save V9 is loaded"));
-    return writeTransportationV9(loaded_save_->canonicalJson, legacy_roads_, transportation_.snapshot());
+    return writeNativeEngineV9(
+        loaded_save_->canonicalJson,
+        legacy_roads_,
+        transportation_.snapshot(),
+        clock_.tick(),
+        static_cast<std::uint32_t>(clock_.speed()));
 }
 
 } // namespace civic
