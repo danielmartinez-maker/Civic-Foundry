@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <limits>
+#include <string>
 #include <vector>
 #include <civic/core/Kernel.hpp>
 #include <civic/core/NativeEngine.hpp>
@@ -94,4 +95,21 @@ TEST(NativeEngineContracts, StepZeroIsSideEffectFreeAndDomainsAreExplicitlyUnown
     EXPECT_NE(after->json.find("\"speed\":2"), std::string::npos);
     auto world = (*created)->domainHash("world"); ASSERT_TRUE(world);
     EXPECT_EQ(world->ownership, civic::DomainOwnership::unowned);
+}
+
+TEST(NativeEngineTransportation, HydratesOwnedTransportationFromSaveV9AndPreservesHash) {
+    const std::string save = R"({"saveVersion":9,"gameVersion":"0.9.0-urban-fabric","seed":7,"clock":{"tick":11,"speed":1},"terrain":{},"world":{},"roads":{"revision":7,"cells":[{"x":0,"y":0,"type":"local"},{"x":1,"y":0,"type":"collector"},{"x":2,"y":0,"type":"arterial"}]},"transit":{"network":{"revision":4,"nextStopId":3,"nextLineId":2,"stops":[{"id":"s1","type":"surface_stop","x":0,"y":1},{"id":"s2","type":"surface_stop","x":2,"y":1}],"lines":[{"id":"l1","name":"BRT 1","mode":"brt","stopIds":["s1","s2"],"headwayTicks":60,"fare":2.5,"enabled":true}]},"mobility":{"decisions":[],"crowdingPenaltyTicks":0,"fiscalOperatingCursor":0,"fiscalFareCursor":0,"passengers":{"nextSplitId":1,"queues":[{"stopId":"s1","lineId":"l1","directionKey":"forward","cohorts":[{"id":"c1","personTripId":"trip:1","travelerWeight":3,"lineId":"l1","directionKey":"forward","boardingStopId":"s1","alightingStopId":"s2","destinationRoadNodeId":"j:legacy:2,0","enqueuedTick":11,"transferLegs":[]}] }]},"vehicles":{"nextVehicleId":1,"vehicles":[]},"operations":{"lines":[]}}},"urbanFabric":{"parcels":[],"lineage":[]},"zoningV2":{"parcelAssignments":[]},"buildingsV2":[],"propertyMarket":{"holdings":[],"transactions":[],"nextTransactionId":1}})";
+
+    auto first = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal}); ASSERT_TRUE(first);
+    ASSERT_TRUE((*first)->loadV9(save));
+    auto firstHash = (*first)->domainHash("transportation"); ASSERT_TRUE(firstHash);
+    EXPECT_EQ(firstHash->ownership, civic::DomainOwnership::owned);
+    EXPECT_NE(firstHash->value, 0U);
+
+    auto saved = (*first)->saveV9(); ASSERT_TRUE(saved);
+    auto second = civic::NativeEngine::create({1, 0, civic::SpeedMode::normal}); ASSERT_TRUE(second);
+    ASSERT_TRUE((*second)->loadV9(*saved));
+    auto secondHash = (*second)->domainHash("transportation"); ASSERT_TRUE(secondHash);
+    EXPECT_EQ(secondHash->ownership, civic::DomainOwnership::owned);
+    EXPECT_EQ(secondHash->value, firstHash->value);
 }
