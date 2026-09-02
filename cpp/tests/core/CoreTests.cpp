@@ -75,6 +75,23 @@ TEST(CommandContracts, RejectsSequenceReuseAfterDispatch) {
     EXPECT_FALSE(queue.submit(reused, 0));
 }
 
+TEST(EventContracts, PreservesAppendSequenceAndDrainOrder) {
+    civic::DomainEventJournal journal;
+    const auto first = journal.append(5, "first", "source-a");
+    const auto second = journal.append(3, "second", "source-b");
+    EXPECT_EQ(first.sequence, 1U);
+    EXPECT_EQ(second.sequence, 2U);
+    ASSERT_EQ(journal.list().size(), 2U);
+    EXPECT_EQ(journal.list()[0].type, "first");
+    EXPECT_EQ(journal.list()[1].type, "second");
+    const auto drained = journal.drain();
+    ASSERT_EQ(drained.size(), 2U);
+    EXPECT_EQ(drained[0].sequence, 1U);
+    EXPECT_EQ(drained[1].sequence, 2U);
+    EXPECT_TRUE(journal.list().empty());
+    EXPECT_EQ(journal.nextSequence(), 3U);
+}
+
 TEST(ClockContracts, PreservesAcceptedSpeedModes) {
     civic::SimulationClock clock{3, civic::SpeedMode::fast};
     EXPECT_EQ(clock.tick(), 3U);
@@ -96,6 +113,42 @@ TEST(SchedulerContracts, DetectsCyclesConflictsAndInvalidCadence) {
     EXPECT_FALSE(conflict.compile());
     civic::SystemScheduler invalid;
     EXPECT_FALSE(invalid.registerSystem({"bad", {2,2}, {}, {}, {}, {}, 0, {}}));
+}
+
+TEST(SchedulerContracts, HonorsPrerequisitesTieBreaksAndCadence) {
+    civic::SystemScheduler scheduler;
+    ASSERT_TRUE(scheduler.registerSystem({"later", {2,0}, {"first"}, {}, {}, {}, -10, {}}));
+    ASSERT_TRUE(scheduler.registerSystem({"first", {1,0}, {}, {}, {}, {}, 10, {}}));
+    ASSERT_TRUE(scheduler.compile());
+    EXPECT_EQ(scheduler.orderedIds(), (std::vector<std::string>{"first", "later"}));
+    auto tickZero = scheduler.dueSystems(0); ASSERT_TRUE(tickZero);
+    ASSERT_EQ(tickZero->size(), 2U);
+    EXPECT_EQ((*tickZero)[0]->id, "first");
+    EXPECT_EQ((*tickZero)[1]->id, "later");
+    auto tickOne = scheduler.dueSystems(1); ASSERT_TRUE(tickOne);
+    ASSERT_EQ(tickOne->size(), 1U);
+    EXPECT_EQ((*tickOne)[0]->id, "first");
+}
+
+TEST(InvariantContracts, HonorsCadenceAndMapsFailures) {
+    civic::InvariantRunner runner;
+    int calls = 0;
+    ASSERT_TRUE(runner.registerInvariant({"periodic", {2,1}, [&](std::uint64_t tick) -> civic::Result<void> {
+        ++calls;
+        if (tick == 3) return std::unexpected(civic::make_error(civic::ErrorCode::invalid_state, "fixture failure"));
+        return {};
+    }}));
+    ASSERT_TRUE(runner.runDue(0));
+    EXPECT_EQ(calls, 0);
+    ASSERT_TRUE(runner.runDue(1));
+    EXPECT_EQ(calls, 1);
+    ASSERT_TRUE(runner.runDue(2));
+    EXPECT_EQ(calls, 1);
+    const auto failed = runner.runDue(3);
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, civic::ErrorCode::invariant_failure);
+    EXPECT_NE(failed.error().message.find("periodic"), std::string::npos);
+    EXPECT_EQ(calls, 2);
 }
 
 TEST(NativeEngineContracts, StepZeroIsSideEffectFreeAndDomainsAreExplicitlyUnowned) {
