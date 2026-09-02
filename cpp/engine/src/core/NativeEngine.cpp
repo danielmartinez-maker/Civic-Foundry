@@ -150,7 +150,8 @@ Result<void> NativeEngine::loadV9(std::string_view json) {
     auto parsed = parseSaveV9(json); if (!parsed) return std::unexpected(parsed.error());
     auto transportation = parseTransportationV9(parsed->canonicalJson); if (!transportation) return std::unexpected(transportation.error());
     auto continuation = parseTransportationContinuationV9(parsed->canonicalJson); if (!continuation) return std::unexpected(continuation.error());
-    auto traffic = parseLegacyTrafficFlowV9(parsed->canonicalJson, transportation->network); if (!traffic) return std::unexpected(traffic.error());
+    auto roadTraffic = parseLegacyRoadTrafficV9(parsed->canonicalJson, transportation->network); if (!roadTraffic) return std::unexpected(roadTraffic.error());
+    auto traffic = deriveTrafficFlowV9(*roadTraffic); if (!traffic) return std::unexpected(traffic.error());
     transportation->traffic = std::move(*traffic);
     transport::TransportationAuthority nextTransportation;
     try {
@@ -166,6 +167,7 @@ Result<void> NativeEngine::loadV9(std::string_view json) {
     commands_ = CommandQueue{};
     events_ = DomainEventJournal{};
     transportation_ = std::move(nextTransportation);
+    road_traffic_ = std::move(*roadTraffic);
     transportation_continuation_ = std::move(*continuation);
     loaded_save_ = std::move(*parsed);
     return {};
