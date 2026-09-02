@@ -98,7 +98,10 @@ const splitResponse = JSON.parse(
 assert.equal(splitResponse.result.committed, true);
 assert.equal(splitResponse.result.resultingParcelIds.length, 2);
 assert.equal(splitResponse.snapshot.urbanFabric.parcels.length, 2);
-assert.deepEqual(JSON.parse(addon.getUrbanSnapshot(handle)), splitResponse.snapshot);
+assert.deepEqual(
+  JSON.parse(addon.getUrbanSnapshot(handle)),
+  splitResponse.snapshot,
+);
 
 const committedUrban = JSON.parse(
   addon.restoreUrbanState(
