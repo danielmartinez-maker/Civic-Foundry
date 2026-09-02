@@ -9,12 +9,12 @@
 - C++23
 - CMake 3.30+
 - vcpkg manifest mode
-- MSVC `/W4 /permissive- /EHsc`
-- Clang/GCC `-Wall -Wextra -Wpedantic -Wconversion -Wshadow`
+- MSVC `/W4 /permissive- /EHsc /fp:strict`
+- Clang/GCC `-Wall -Wextra -Wpedantic -Wconversion -Wshadow -fno-fast-math`
 - GoogleTest + CTest
 - Node-API binding for desktop/Node integration
 
-Authoritative simulation builds must not enable fast-math.
+Fast-math is explicitly disabled for native simulation targets.
 
 ## Configure and test
 
@@ -36,9 +36,9 @@ The Node-API module mirrors only batch operations: create/destroy, command batch
 
 ## Command protocol
 
-The native command wire protocol is explicitly versioned. Stack 0 accepts only command envelope version `1`, represented as `{ version, sequence, tick, type, payload }`. Missing or unsupported versions are rejected at the C ABI JSON boundary before a command enters the native engine.
+The native command wire protocol is explicitly versioned. Stack 0 accepts only command envelope version `1`, represented as `{ version, sequence, tick, type, payload }`. Missing or unsupported versions and missing payloads are rejected at the C ABI JSON boundary before a command enters the native engine. The native command queue independently rejects unsupported envelope versions so future native callers cannot bypass the protocol contract.
 
-TypeScript gameplay commands remain the semantic `{ sequence, tick, type, payload }` shape. `NativeEngineBridge` adds `version: 1` only when serializing the native transport copy, while `ShadowSimulationRunner` feeds the unversioned normalized semantic command to the authoritative TypeScript reference runtime. Protocol metadata is intentionally excluded from the semantic kernel snapshot and domain hash so a transport-version field cannot change gameplay-state identity.
+TypeScript gameplay commands remain the semantic `{ sequence, tick, type, payload }` shape. `NativeEngineBridge` adds `version: 1` only when serializing the native transport copy, while `ShadowSimulationRunner` feeds the unversioned normalized semantic command to the authoritative TypeScript reference runtime. Sequence/tick values must be non-negative safe integers. Payloads are normalized to lossless JSON values before either runtime receives them: non-finite numbers, unsupported JavaScript values, accessors, sparse arrays, cycles, and invalid Unicode surrogate sequences are rejected, while negative zero is normalized to JSON `0`. Protocol metadata is intentionally excluded from the semantic kernel snapshot and domain hash so a transport-version field cannot change gameplay-state identity.
 
 The executable JSON contracts are recorded in:
 
