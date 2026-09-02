@@ -46,9 +46,16 @@ struct ToolEditorState {
     char zoning_code[32]{"R-1"};
     float facility_position[2]{2.0F, 2.0F};
     char facility_type[64]{"clinic"};
+    float utility_position[2]{3.0F, 3.0F};
+    char utility_type[64]{"power"};
+    float service_position[2]{4.0F, 4.0F};
+    char service_type[64]{"fire"};
+    float transit_stop_position[2]{5.0F, 5.0F};
+    int transit_stop_kind_index{0};
     char transit_stop_a[64]{"stop:a"};
     char transit_stop_b[64]{"stop:b"};
     int transit_mode_index{0};
+    float bulldoze_position[2]{6.0F, 6.0F};
 };
 
 struct PointerGestureState {
@@ -264,6 +271,10 @@ VehicleKind selectedTransitMode(int index) noexcept {
     }
 }
 
+TransitStopKind selectedTransitStopKind(int index) noexcept {
+    return index == 1 ? TransitStopKind::MetroStation : TransitStopKind::BusStop;
+}
+
 void previewActiveTool(NativeToolWorkflow& tools, ToolEditorState& editor, NotificationCenter& notifications, double now_seconds) {
     std::expected<void, std::string> result{};
     switch (tools.activeTool()) {
@@ -279,10 +290,29 @@ void previewActiveTool(NativeToolWorkflow& tools, ToolEditorState& editor, Notif
                 {static_cast<double>(editor.facility_position[0]), static_cast<double>(editor.facility_position[1])},
                 editor.facility_type);
             break;
+        case NativeTool::Utility:
+            result = tools.previewUtility(
+                {static_cast<double>(editor.utility_position[0]), static_cast<double>(editor.utility_position[1])},
+                editor.utility_type);
+            break;
+        case NativeTool::Service:
+            result = tools.previewService(
+                {static_cast<double>(editor.service_position[0]), static_cast<double>(editor.service_position[1])},
+                editor.service_type);
+            break;
+        case NativeTool::TransitStop:
+            result = tools.previewTransitStop(
+                {static_cast<double>(editor.transit_stop_position[0]), static_cast<double>(editor.transit_stop_position[1])},
+                selectedTransitStopKind(editor.transit_stop_kind_index));
+            break;
         case NativeTool::Transit:
             result = tools.previewTransit(
                 {std::string(editor.transit_stop_a), std::string(editor.transit_stop_b)},
                 selectedTransitMode(editor.transit_mode_index));
+            break;
+        case NativeTool::Bulldoze:
+            result = tools.previewBulldoze(
+                {static_cast<double>(editor.bulldoze_position[0]), static_cast<double>(editor.bulldoze_position[1])});
             break;
         case NativeTool::Inspect:
         default: result = std::unexpected("Inspect has no mutating preview to confirm."); break;
@@ -293,6 +323,7 @@ void previewActiveTool(NativeToolWorkflow& tools, ToolEditorState& editor, Notif
 void drawToolEditor(NativeToolWorkflow& tools, ToolEditorState& editor) {
     static const char* road_classes[] = {"Local", "Collector", "Arterial", "Avenue", "Expressway", "Highway"};
     static const char* transit_modes[] = {"Bus", "BRT", "Tram", "Metro", "Rail"};
+    static const char* transit_stop_kinds[] = {"Transit Stop", "Metro Station"};
     switch (tools.activeTool()) {
         case NativeTool::Road:
             ImGui::InputFloat2("Start", editor.road_start);
@@ -307,10 +338,28 @@ void drawToolEditor(NativeToolWorkflow& tools, ToolEditorState& editor) {
             ImGui::InputFloat2("Position", editor.facility_position);
             ImGui::InputText("Facility type", editor.facility_type, sizeof(editor.facility_type));
             break;
+        case NativeTool::Utility:
+            ImGui::InputFloat2("Position##utility", editor.utility_position);
+            ImGui::InputText("Utility type", editor.utility_type, sizeof(editor.utility_type));
+            ImGui::TextDisabled("Current Alpha utility types include power and water.");
+            break;
+        case NativeTool::Service:
+            ImGui::InputFloat2("Position##service", editor.service_position);
+            ImGui::InputText("Service type", editor.service_type, sizeof(editor.service_type));
+            ImGui::TextDisabled("Examples: fire, police, clinic, school, landfill, recycling.");
+            break;
+        case NativeTool::TransitStop:
+            ImGui::InputFloat2("Position##transit-stop", editor.transit_stop_position);
+            ImGui::Combo("Stop type", &editor.transit_stop_kind_index, transit_stop_kinds, 2);
+            break;
         case NativeTool::Transit:
             ImGui::InputText("First stop", editor.transit_stop_a, sizeof(editor.transit_stop_a));
             ImGui::InputText("Second stop", editor.transit_stop_b, sizeof(editor.transit_stop_b));
             ImGui::Combo("Mode", &editor.transit_mode_index, transit_modes, 5);
+            break;
+        case NativeTool::Bulldoze:
+            ImGui::InputFloat2("Position##bulldoze", editor.bulldoze_position);
+            ImGui::TextDisabled("Bulldoze preview remains presentation-only until confirmation.");
             break;
         case NativeTool::Inspect:
         default: ImGui::TextUnformatted("Inspect reads presentation selections and submits no simulation command."); break;
@@ -332,7 +381,11 @@ void drawToolPalette(
         ImGui::SameLine(); if (ImGui::Button("Road##tool")) tools.activate(NativeTool::Road);
         ImGui::SameLine(); if (ImGui::Button("Zone##tool")) tools.activate(NativeTool::Zone);
         ImGui::SameLine(); if (ImGui::Button("Facility##tool")) tools.activate(NativeTool::Facility);
+        if (ImGui::Button("Utility##tool")) tools.activate(NativeTool::Utility);
+        ImGui::SameLine(); if (ImGui::Button("Service##tool")) tools.activate(NativeTool::Service);
+        ImGui::SameLine(); if (ImGui::Button("Transit Stop##tool")) tools.activate(NativeTool::TransitStop);
         ImGui::SameLine(); if (ImGui::Button("Transit##tool")) tools.activate(NativeTool::Transit);
+        ImGui::SameLine(); if (ImGui::Button("Bulldoze##tool")) tools.activate(NativeTool::Bulldoze);
         ImGui::Separator();
         ImGui::Text("Active tool: %s", nativeToolLabel(tools.activeTool()).data());
         drawToolEditor(tools, editor);
