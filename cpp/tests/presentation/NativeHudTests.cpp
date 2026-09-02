@@ -89,3 +89,33 @@ TEST(NativeToolWorkflow, PreviewIsPresentationOnlyUntilExplicitTypedCommit) {
     EXPECT_EQ(command.path, (std::vector<Point2>{{1.0, 2.0}, {6.0, 2.0}}));
     EXPECT_FALSE(tools.preview().valid);
 }
+
+TEST(NativeToolWorkflow, AlphaPlacementAndBulldozeToolsStayTypedAndPreviewOnlyUntilCommit) {
+    RecordingCommandSink sink{};
+    NativeUiController controller(sink);
+    NativeToolWorkflow tools{};
+
+    ASSERT_TRUE(tools.previewUtility({2.0, 3.0}, "power").has_value());
+    EXPECT_TRUE(sink.submitted.empty());
+    ASSERT_TRUE(tools.commit(controller).has_value());
+    ASSERT_TRUE(std::holds_alternative<PlaceUtilityCommand>(sink.submitted.back()));
+    EXPECT_EQ(std::get<PlaceUtilityCommand>(sink.submitted.back()).utility_type, "power");
+
+    ASSERT_TRUE(tools.previewService({4.0, 5.0}, "fire_station").has_value());
+    EXPECT_EQ(sink.submitted.size(), 1U);
+    ASSERT_TRUE(tools.commit(controller).has_value());
+    ASSERT_TRUE(std::holds_alternative<PlaceServiceFacilityCommand>(sink.submitted.back()));
+    EXPECT_EQ(std::get<PlaceServiceFacilityCommand>(sink.submitted.back()).service_type, "fire_station");
+
+    ASSERT_TRUE(tools.previewTransitStop({6.0, 7.0}, TransitStopKind::MetroStation).has_value());
+    EXPECT_EQ(sink.submitted.size(), 2U);
+    ASSERT_TRUE(tools.commit(controller).has_value());
+    ASSERT_TRUE(std::holds_alternative<PlaceTransitStopCommand>(sink.submitted.back()));
+    EXPECT_EQ(std::get<PlaceTransitStopCommand>(sink.submitted.back()).kind, TransitStopKind::MetroStation);
+
+    ASSERT_TRUE(tools.previewBulldoze({8.0, 9.0}).has_value());
+    EXPECT_EQ(sink.submitted.size(), 3U);
+    ASSERT_TRUE(tools.commit(controller).has_value());
+    ASSERT_TRUE(std::holds_alternative<BulldozeCommand>(sink.submitted.back()));
+    EXPECT_EQ(std::get<BulldozeCommand>(sink.submitted.back()).position, (Point2{8.0, 9.0}));
+}
