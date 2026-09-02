@@ -25,6 +25,8 @@ public:
 
     [[nodiscard]] static Result<std::unique_ptr<NativeUrbanAuthority>> restoreV9(
         const SaveV9Dto& save);
+    [[nodiscard]] static Result<std::unique_ptr<NativeUrbanAuthority>> restoreAuthoritativeV9(
+        const SaveV9Dto& save);
     [[nodiscard]] static Result<std::unique_ptr<NativeUrbanAuthority>> rebuildLegacy(
         std::string_view request_json);
 
