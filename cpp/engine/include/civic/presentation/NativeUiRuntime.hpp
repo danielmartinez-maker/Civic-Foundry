@@ -23,6 +23,9 @@ struct UiFrameState {
     float dpi_scale{1.0F};
     float ui_scale{1.0F};
     float effective_scale{1.0F};
+    bool high_contrast{false};
+    bool reduced_motion{false};
+    bool color_independent_cues{true};
 };
 
 class NativeUiRuntimeModel final {
