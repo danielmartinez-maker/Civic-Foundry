@@ -113,3 +113,44 @@ TEST(NativeEngineTransportation, HydratesOwnedTransportationFromSaveV9AndPreserv
     EXPECT_EQ(secondHash->ownership, civic::DomainOwnership::owned);
     EXPECT_EQ(secondHash->value, firstHash->value);
 }
+
+TEST(NativeEngineTransportation, PreservesMidRunTransitContinuationInMigrationHash) {
+    const std::string save = R"({"saveVersion":9,"gameVersion":"0.9.0-urban-fabric","seed":7,"clock":{"tick":11,"speed":1},"terrain":{},"world":{},"roads":{"revision":7,"cells":[{"x":0,"y":0,"type":"local"},{"x":1,"y":0,"type":"collector"},{"x":2,"y":0,"type":"arterial"}]},"transit":{"network":{"revision":4,"nextStopId":3,"nextLineId":2,"stops":[{"id":"s1","type":"surface_stop","x":0,"y":1},{"id":"s2","type":"surface_stop","x":2,"y":1}],"lines":[{"id":"l1","name":"BRT 1","mode":"brt","stopIds":["s1","s2"],"headwayTicks":60,"fare":2.5,"enabled":true}]},"mobility":{"decisions":[],"crowdingPenaltyTicks":0,"fiscalOperatingCursor":0,"fiscalFareCursor":0,"passengers":{"nextSplitId":1,"queues":[]},"vehicles":{"nextVehicleId":2,"vehicles":[{"id":"transit-vehicle:1","lineId":"l1","mode":"brt","directionKey":"reverse","stopIndex":1,"state":"moving","capacity":60,"onboard":[],"dwellRemainingTicks":0,"stopServiced":false,"roadEdgeIds":["legacy-edge:a","legacy-edge:b"],"currentRoadEdgeIndex":1,"edgeProgressTicks":3.25,"dedicatedRemainingTicks":0,"delayTicks":4.5,"inServiceTicks":19,"runStartedTick":2,"hasDepartedOrigin":true}]},"operations":{"lines":[]}}},"urbanFabric":{"parcels":[],"lineage":[]},"zoningV2":{"parcelAssignments":[]},"buildingsV2":[],"propertyMarket":{"holdings":[],"transactions":[],"nextTransactionId":1}})";
+
+    auto continuation = civic::parseTransportationContinuationV9(save); ASSERT_TRUE(continuation);
+    ASSERT_EQ(continuation->vehicles.size(), 1U);
+    const auto& vehicle = continuation->vehicles.front();
+    EXPECT_EQ(vehicle.id, "transit-vehicle:1");
+    EXPECT_EQ(vehicle.lineId, "l1");
+    EXPECT_EQ(vehicle.mode, "brt");
+    EXPECT_EQ(vehicle.directionKey, "reverse");
+    EXPECT_EQ(vehicle.state, "moving");
+    EXPECT_EQ(vehicle.roadEdgeIds, (std::vector<std::string>{"legacy-edge:a", "legacy-edge:b"}));
+    EXPECT_EQ(vehicle.currentRoadEdgeIndex, 1U);
+    EXPECT_DOUBLE_EQ(vehicle.edgeProgressTicks, 3.25);
+    EXPECT_EQ(vehicle.dedicatedRemainingTicks, 0U);
+    EXPECT_DOUBLE_EQ(vehicle.delayTicks, 4.5);
+    EXPECT_EQ(vehicle.inServiceTicks, 19U);
+    EXPECT_EQ(vehicle.runStartedTick, 2U);
+    EXPECT_TRUE(vehicle.hasDepartedOrigin);
+
+    auto first = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal}); ASSERT_TRUE(first);
+    ASSERT_TRUE((*first)->loadV9(save));
+    auto firstHash = (*first)->domainHash("transportation"); ASSERT_TRUE(firstHash);
+
+    std::string changed = save;
+    const std::string original = "\"edgeProgressTicks\":3.25";
+    const auto offset = changed.find(original);
+    ASSERT_NE(offset, std::string::npos);
+    changed.replace(offset, original.size(), "\"edgeProgressTicks\":4.25");
+    auto second = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal}); ASSERT_TRUE(second);
+    ASSERT_TRUE((*second)->loadV9(changed));
+    auto secondHash = (*second)->domainHash("transportation"); ASSERT_TRUE(secondHash);
+    EXPECT_NE(secondHash->value, firstHash->value);
+
+    auto saved = (*first)->saveV9(); ASSERT_TRUE(saved);
+    auto reloaded = civic::NativeEngine::create({1, 0, civic::SpeedMode::normal}); ASSERT_TRUE(reloaded);
+    ASSERT_TRUE((*reloaded)->loadV9(*saved));
+    auto reloadedHash = (*reloaded)->domainHash("transportation"); ASSERT_TRUE(reloadedHash);
+    EXPECT_EQ(reloadedHash->value, firstHash->value);
+}
