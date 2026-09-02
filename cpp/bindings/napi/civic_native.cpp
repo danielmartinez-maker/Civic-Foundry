@@ -228,6 +228,9 @@ napi_value submitCommands(napi_env env, napi_callback_info info) {
 napi_value loadV9(napi_env env, napi_callback_info info) {
     return textOperation(env, info, cf_engine_load_v9);
 }
+napi_value stageSaveV9(napi_env env, napi_callback_info info) {
+    return textOperation(env, info, cf_engine_stage_save_v9);
+}
 napi_value createWorld(napi_env env, napi_callback_info info) {
     return textOutputOperation(env, info, cf_engine_create_world);
 }
@@ -316,6 +319,7 @@ napi_value init(napi_env env, napi_value exports) {
         {"submitCommands", nullptr, submitCommands, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"step", nullptr, step, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"loadV9", nullptr, loadV9, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"stageSaveV9", nullptr, stageSaveV9, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"saveV9", nullptr, saveV9, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getSnapshot", nullptr, getSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"getEvents", nullptr, getEvents, nullptr, nullptr, nullptr, napi_default, nullptr},
