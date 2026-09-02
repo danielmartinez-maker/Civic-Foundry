@@ -93,6 +93,10 @@ bool validAssetId(std::string_view id) {
     }
     return true;
 }
+float lerpFloat(float a, float b, double alpha) noexcept {
+    return static_cast<float>(static_cast<double>(a) + (static_cast<double>(b) - static_cast<double>(a)) * alpha);
+}
+double lerpDouble(double a, double b, double alpha) noexcept { return a + (b - a) * alpha; }
 } // namespace
 
 OverlayLegend overlayLegend(OverlayMetric metric) {
@@ -128,6 +132,27 @@ PresentationSettings normalizeSettings(PresentationSettings settings) noexcept {
         settings.tilt_shift_strength = 0.0F;
     }
     return settings;
+}
+
+FrameSnapshot interpolatePresentationSnapshots(
+    const FrameSnapshot& previous,
+    const FrameSnapshot& current,
+    double alpha) {
+    FrameSnapshot blended = current;
+    alpha = std::clamp(std::isfinite(alpha) ? alpha : 1.0, 0.0, 1.0);
+    if (alpha >= 1.0 || previous.vehicles.empty() || current.vehicles.empty()) return blended;
+
+    std::map<std::string_view, const VehicleSnapshot*, std::less<>> previous_by_id;
+    for (const auto& vehicle : previous.vehicles) previous_by_id.emplace(vehicle.id, &vehicle);
+    for (auto& vehicle : blended.vehicles) {
+        const auto it = previous_by_id.find(vehicle.id);
+        if (it == previous_by_id.end()) continue;
+        const auto& before = *it->second;
+        vehicle.position.x = lerpDouble(before.position.x, vehicle.position.x, alpha);
+        vehicle.position.y = lerpDouble(before.position.y, vehicle.position.y, alpha);
+        vehicle.heading_radians = lerpFloat(before.heading_radians, vehicle.heading_radians, alpha);
+    }
+    return blended;
 }
 
 IsometricCamera::IsometricCamera(IsoMetrics metrics) : metrics_(metrics) {
