@@ -36,6 +36,7 @@ enum class SocioeconomicDomainGate : std::uint8_t {
 class AuthorityTransferController final {
 public:
     [[nodiscard]] Result<void> transfer_to_native(SocioeconomicDomainGate gate);
+    [[nodiscard]] Result<void> restore_transferred_count(std::size_t transferred_count);
     [[nodiscard]] bool native_write_enabled(SocioeconomicDomainGate gate) const noexcept;
     [[nodiscard]] bool typescript_write_enabled(SocioeconomicDomainGate gate) const noexcept;
     [[nodiscard]] Result<void> validate_single_writer(SocioeconomicDomainGate gate) const;
@@ -105,6 +106,7 @@ public:
     [[nodiscard]] prism::PerformanceTelemetry& telemetry() noexcept { return telemetry_; }
 
     void bump_revision(SocioeconomicDomainGate gate) noexcept;
+    void restore_revision(SocioeconomicDomainGate gate, std::uint64_t revision) noexcept;
     [[nodiscard]] std::uint64_t revision(SocioeconomicDomainGate gate) const noexcept;
     [[nodiscard]] Result<std::uint64_t> publish_snapshot(std::uint64_t tick);
 
