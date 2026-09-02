@@ -1,4 +1,5 @@
 #include <civic/core/NativeEngine.hpp>
+#include <civic/persistence/TransportationSaveV9.hpp>
 
 #include <algorithm>
 #include <cstring>
@@ -132,18 +133,29 @@ std::uint64_t NativeEngine::fnv1a64(std::string_view bytes) noexcept {
 
 Result<DomainHash> NativeEngine::domainHash(std::string_view domain) const {
     if (domain == "kernel") return DomainHash{DomainOwnership::owned, 1, fnv1a64(kernelCanonicalState())};
-    static constexpr std::string_view unowned[] = {"world", "cadastre", "buildings", "transportation", "population", "economy", "services"};
+    if (domain == "transportation") return DomainHash{DomainOwnership::owned, 1, transportation_.domain_hash()};
+    static constexpr std::string_view unowned[] = {"world", "cadastre", "buildings", "population", "economy", "services"};
     if (std::ranges::find(unowned, domain) != std::end(unowned)) return DomainHash{DomainOwnership::unowned, 1, 0};
     return std::unexpected(make_error(ErrorCode::invalid_argument, "unknown domain hash: " + std::string{domain}));
 }
 
 Result<void> NativeEngine::loadV9(std::string_view json) {
     auto parsed = parseSaveV9(json); if (!parsed) return std::unexpected(parsed.error());
+    auto transportation = parseTransportationV9(parsed->canonicalJson); if (!transportation) return std::unexpected(transportation.error());
+    transport::TransportationAuthority nextTransportation;
+    try {
+        nextTransportation.restore(*transportation);
+    } catch (const std::exception& error) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, error.what()));
+    } catch (...) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, "unknown transportation restore failure"));
+    }
     seed_ = parsed->seed;
     clock_.restore(parsed->tick, parsed->speed);
     random_ = RandomStreamRegistry(seed_);
     commands_ = CommandQueue{};
     events_ = DomainEventJournal{};
+    transportation_ = std::move(nextTransportation);
     loaded_save_ = std::move(*parsed);
     return {};
 }
