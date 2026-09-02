@@ -36,15 +36,19 @@ function cutoverFixture() {
   return { economyDomain, population, housingRelocation, cutover };
 }
 
-function authorityAddon(options: Readonly<{ failSubmit?: boolean; failStep?: boolean }> = {}):
-  NativeEngineAddon & { submitted: unknown[][]; stepCalls: number } {
+function authorityAddon(
+  options: Readonly<{ failSubmit?: boolean; failStep?: boolean }> = {},
+): NativeEngineAddon & { submitted: unknown[][]; stepCalls: number } {
   const handle = {};
   let tick = 0;
   let transferredCount = 0;
   let pending: ReadonlyArray<Readonly<Record<string, unknown>>> = [];
   const owned = new Set<string>();
   const submitted: unknown[][] = [];
-  const addon: NativeEngineAddon & { submitted: unknown[][]; stepCalls: number } = {
+  const addon: NativeEngineAddon & {
+    submitted: unknown[][];
+    stepCalls: number;
+  } = {
     submitted,
     stepCalls: 0,
     createEngine: () => handle,
