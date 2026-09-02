@@ -42,6 +42,27 @@ private:
     std::optional<HudNotice> active_;
 };
 
+enum class HudShortcutAction : std::uint8_t {
+    None,
+    InspectTool,
+    RoadTool,
+    ZoneTool,
+    FacilityTool,
+    TransitTool,
+    CancelTool,
+    SpeedPause,
+    SpeedNormal,
+    SpeedFast,
+    SpeedVeryFast,
+};
+
+struct ShortcutContext {
+    bool ui_keyboard_capture{false};
+    bool editable_control_active{false};
+};
+
+[[nodiscard]] HudShortcutAction resolveHudShortcut(int virtual_key, ShortcutContext context) noexcept;
+
 struct CityHudState {
     std::string city_name{"Civic Foundry"};
     std::uint64_t simulation_tick{};
