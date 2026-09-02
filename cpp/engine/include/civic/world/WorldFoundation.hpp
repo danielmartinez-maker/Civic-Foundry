@@ -5,6 +5,7 @@
 #include "civic/world/Hydrology.hpp"
 #include "civic/world/Terrain.hpp"
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,16 +26,60 @@ struct GeographyEntity final {
   std::string sort_key;
 };
 struct GeographyHierarchy final { std::vector<GeographyEntity> entities; };
+
+struct ScenarioPoint final { double x{}; double y{}; };
+struct ScenarioPolygon final { std::vector<ScenarioPoint> points; };
+struct ScenarioGenerationOverrides final {
+  std::optional<std::uint32_t> width;
+  std::optional<std::uint32_t> height;
+  std::optional<double> meters_per_cell;
+  std::optional<WorldPreset> preset;
+};
+struct ScenarioElevationOverride final {
+  std::int64_t x{};
+  std::int64_t y{};
+  double elevation_meters{};
+};
+struct ScenarioPermanentWaterRegion final {
+  SurfaceWaterClass surface_water{SurfaceWaterClass::lake};
+  ScenarioPolygon polygon;
+};
+struct ScenarioSoilRegion final {
+  SoilClass soil_class{SoilClass::loam};
+  ScenarioPolygon polygon;
+};
+struct ScenarioGroundwaterRegion final {
+  double depth_meters{};
+  ScenarioPolygon polygon;
+};
+struct ScenarioContaminationRegion final {
+  double index{};
+  ScenarioPolygon polygon;
+};
+struct ScenarioWorldDefinition final {
+  std::string id;
+  std::optional<ScenarioGenerationOverrides> generation;
+  std::optional<ScenarioPolygon> root_boundary;
+  std::vector<ScenarioElevationOverride> elevation_overrides;
+  std::vector<ScenarioPermanentWaterRegion> permanent_water_regions;
+  std::vector<ScenarioSoilRegion> soil_regions;
+  std::vector<ScenarioGroundwaterRegion> groundwater_regions;
+  std::vector<ScenarioContaminationRegion> contamination_regions;
+  std::optional<GeographyHierarchy> administrative_boundaries;
+};
+
 struct WorldSnapshot final {
   std::uint32_t seed{};
   WorldConfig config{};
   TerrainField terrain{};
   GeographyHierarchy geography{};
   HydrologyState hydrology{};
+  std::optional<std::string> scenario_id{};
 };
 class WorldFoundation final {
 public:
   [[nodiscard]] static civic::core::Result<WorldFoundation> generate(std::uint32_t seed, const WorldConfig& config) noexcept;
+  [[nodiscard]] static civic::core::Result<WorldFoundation> generate(std::uint32_t seed, const WorldConfig& config, const ScenarioWorldDefinition& scenario) noexcept;
   [[nodiscard]] static civic::core::Result<WorldFoundation> restore(WorldSnapshot snapshot) noexcept;
   [[nodiscard]] const TerrainField& terrain() const noexcept { return snapshot_.terrain; }
   [[nodiscard]] const GeographyHierarchy& geography() const noexcept { return snapshot_.geography; }

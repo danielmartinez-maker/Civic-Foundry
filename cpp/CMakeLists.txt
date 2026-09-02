@@ -17,6 +17,7 @@ add_library(civic_engine STATIC
   engine/src/world/Terrain.cpp
   engine/src/world/Hydrology.cpp
   engine/src/world/WorldFoundation.cpp
+  engine/src/world/WorldScenario.cpp
   engine/src/cadastre/Cadastre.cpp
   engine/src/cadastre/CadastreMutation.cpp
   engine/src/cadastre/ParcelGeneration.cpp

@@ -2,6 +2,8 @@
 
 #include "civic/world/WorldFoundation.hpp"
 
+#include <cmath>
+
 namespace {
 using civic::world::ScenarioContaminationRegion;
 using civic::world::ScenarioElevationOverride;
@@ -42,7 +44,7 @@ TEST(WorldScenarioParityRed, ScenarioPhysicalOverridesTakePrecedenceAndRebuildDe
       41002,
       WorldConfig{4, 4, 30.0, WorldPreset::plain},
       scenario);
-  ASSERT_TRUE(world.has_value()) << world.error().message;
+  ASSERT_TRUE(world.has_value());
   ASSERT_TRUE(world->snapshot().scenario_id.has_value());
   EXPECT_EQ(*world->snapshot().scenario_id, scenario.id);
 
@@ -78,7 +80,7 @@ TEST(WorldScenarioParityRed, ScenarioGenerationOverridesAreResolvedBeforeWorldGe
       99,
       WorldConfig{4, 4, 30.0, WorldPreset::plain},
       scenario);
-  ASSERT_TRUE(world.has_value()) << world.error().message;
+  ASSERT_TRUE(world.has_value());
   EXPECT_EQ(world->snapshot().config.width, 5u);
   EXPECT_EQ(world->snapshot().config.height, 3u);
   EXPECT_DOUBLE_EQ(world->snapshot().config.meters_per_cell, 20.0);
@@ -101,6 +103,27 @@ TEST(WorldScenarioParityRed, ScenarioRootBoundaryMustContainEveryCellCenter) {
       scenario);
   ASSERT_FALSE(world.has_value());
   EXPECT_EQ(world.error().code, civic::core::ErrorCode::invalid_argument);
+}
+
+TEST(WorldScenarioParityRed, IrregularValidRootBoundaryDrivesNativeAdministrativeGeography) {
+  ScenarioWorldDefinition scenario{};
+  scenario.id = "scenario:irregular-root";
+  scenario.root_boundary = ScenarioPolygon{{
+      ScenarioPoint{-0.25, -0.25},
+      ScenarioPoint{4.25, -0.10},
+      ScenarioPoint{4.10, 4.25},
+      ScenarioPoint{-0.20, 4.10},
+  }};
+  auto first = WorldFoundation::generate(1234, WorldConfig{4, 4, 30.0, WorldPreset::plain}, scenario);
+  auto second = WorldFoundation::generate(1234, WorldConfig{4, 4, 30.0, WorldPreset::plain}, scenario);
+  ASSERT_TRUE(first.has_value());
+  ASSERT_TRUE(second.has_value());
+  ASSERT_FALSE(first->geography().entities.empty());
+  EXPECT_EQ(first->deterministic_hash(), second->deterministic_hash());
+  EXPECT_EQ(first->geography().entities.front().id, "region:0");
+  EXPECT_EQ(
+      first->geography().entities.front().boundary.vertices,
+      second->geography().entities.front().boundary.vertices);
 }
 
 TEST(WorldScenarioParityRed, MalformedScenarioOverridesAreRejectedBeforeAuthorityEscapes) {
