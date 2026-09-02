@@ -39,8 +39,8 @@ TEST(CAbi, DomainHashCanonicalizesSemanticCommandPayloadAndMarksUnownedDomains) 
     const cf_engine_config config{17, 0, 1};
     ASSERT_EQ(cf_engine_create(&config, &left), CF_ERROR_NONE);
     ASSERT_EQ(cf_engine_create(&config, &right), CF_ERROR_NONE);
-    const std::string left_commands = R"([{"sequence":1,"tick":1,"type":"semantic","payload":{"a":1,"b":2}}])";
-    const std::string right_commands = R"([{"sequence":1,"tick":1,"type":"semantic","payload":{"b":2,"a":1}}])";
+    const std::string left_commands = R"([{"version":1,"sequence":1,"tick":1,"type":"semantic","payload":{"a":1,"b":2}}])";
+    const std::string right_commands = R"([{"version":1,"sequence":1,"tick":1,"type":"semantic","payload":{"b":2,"a":1}}])";
     ASSERT_EQ(cf_engine_submit_commands(left, reinterpret_cast<const uint8_t*>(left_commands.data()), left_commands.size()), CF_ERROR_NONE);
     ASSERT_EQ(cf_engine_submit_commands(right, reinterpret_cast<const uint8_t*>(right_commands.data()), right_commands.size()), CF_ERROR_NONE);
     cf_domain_hash left_hash{};
@@ -83,7 +83,7 @@ TEST(CAbi, SnapshotEscapesControlCharactersInCommandIdentity) {
     cf_engine* engine = nullptr;
     const cf_engine_config config{29, 0, 1};
     ASSERT_EQ(cf_engine_create(&config, &engine), CF_ERROR_NONE);
-    const std::string command = R"([{"sequence":1,"tick":10,"type":"\u0001","payload":null}])";
+    const std::string command = R"([{"version":1,"sequence":1,"tick":10,"type":"\u0001","payload":null}])";
     ASSERT_EQ(cf_engine_submit_commands(engine, reinterpret_cast<const uint8_t*>(command.data()), command.size()), CF_ERROR_NONE);
     cf_buffer snapshot{};
     ASSERT_EQ(cf_engine_get_snapshot(engine, &snapshot), CF_ERROR_NONE);
@@ -157,7 +157,7 @@ TEST(CAbi, CommandPayloadCanonicalKeysUseJavaScriptUtf16OrdinalOrder) {
     cf_engine* engine = nullptr;
     const cf_engine_config config{37, 0, 1};
     ASSERT_EQ(cf_engine_create(&config, &engine), CF_ERROR_NONE);
-    const std::string commands = "[{\"sequence\":1,\"tick\":10,\"type\":\"unicode\",\"payload\":{\"" + kPrivateBmp + "\":2,\"" + kSupplementary + "\":1}}]";
+    const std::string commands = "[{\"version\":1,\"sequence\":1,\"tick\":10,\"type\":\"unicode\",\"payload\":{\"" + kPrivateBmp + "\":2,\"" + kSupplementary + "\":1}}]";
     ASSERT_EQ(cf_engine_submit_commands(engine, reinterpret_cast<const uint8_t*>(commands.data()), commands.size()), CF_ERROR_NONE);
     cf_buffer snapshot{};
     ASSERT_EQ(cf_engine_get_snapshot(engine, &snapshot), CF_ERROR_NONE);

@@ -135,7 +135,10 @@ bool hasOnlyJsonWhitespace(const uint8_t* data, size_t size, size_t offset) {
 }
 
 civic::Result<std::vector<civic::CommandEnvelope>> parseCommands(const uint8_t* data, size_t size) {
-    if (!data && size != 0) return std::unexpected(civic::make_error(civic::ErrorCode::invalid_argument, "command buffer is null"));
+    if (!data) {
+        if (size != 0) return std::unexpected(civic::make_error(civic::ErrorCode::invalid_argument, "command buffer is null"));
+        return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure, "command buffer is empty"));
+    }
     if (size > static_cast<size_t>(std::numeric_limits<int>::max())) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure, "command JSON exceeds parser size limit"));
     json_tokener* tokener = json_tokener_new();
     if (!tokener) return std::unexpected(civic::make_error(civic::ErrorCode::internal_error, "failed to allocate command parser"));
@@ -154,12 +157,10 @@ civic::Result<std::vector<civic::CommandEnvelope>> parseCommands(const uint8_t* 
         if (!json_object_object_get_ex(item,"sequence",&sequence)||json_object_get_type(sequence)!=json_type_int||json_object_get_int64(sequence)<=0) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"command.sequence must be positive"));
         if (!json_object_object_get_ex(item,"tick",&tick)||json_object_get_type(tick)!=json_type_int||json_object_get_int64(tick)<0) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"command.tick must be non-negative"));
         if (!json_object_object_get_ex(item,"type",&type)||json_object_get_type(type)!=json_type_string) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"command.type must be a string"));
-        std::string payloadText="null";
-        if (json_object_object_get_ex(item,"payload",&payload)) {
-            auto canonical = canonicalJson(payload);
-            if (!canonical) return std::unexpected(canonical.error());
-            payloadText = std::move(*canonical);
-        }
+        if (!json_object_object_get_ex(item,"payload",&payload)) return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"command.payload is required"));
+        auto canonical = canonicalJson(payload);
+        if (!canonical) return std::unexpected(canonical.error());
+        auto payloadText = std::move(*canonical);
         std::vector<std::byte> bytes(payloadText.size()); std::memcpy(bytes.data(),payloadText.data(),payloadText.size());
         commands.push_back({static_cast<uint64_t>(json_object_get_int64(sequence)),static_cast<uint64_t>(json_object_get_int64(tick)),json_object_get_string(type),std::move(bytes),static_cast<std::uint32_t>(json_object_get_int64(version))});
     }
@@ -182,7 +183,7 @@ cf_error_code cf_engine_create(const cf_engine_config* config, cf_engine** out_e
 void cf_engine_destroy(cf_engine* engine) { delete engine; }
 cf_error_code cf_engine_submit_commands(cf_engine* engine, const uint8_t* data, size_t size) { return guarded(engine,[&]()->civic::Result<void>{ auto parsed=parseCommands(data,size); if(!parsed)return std::unexpected(parsed.error()); return engine->value->submit(*parsed); }); }
 cf_error_code cf_engine_step(cf_engine* engine, uint64_t ticks) { return guarded(engine,[&](){ return engine->value->step(ticks); }); }
-cf_error_code cf_engine_load_v9(cf_engine* engine, const uint8_t* data, size_t size) { return guarded(engine,[&]()->civic::Result<void>{ if(!data&&size!=0)return std::unexpected(civic::make_error(civic::ErrorCode::invalid_argument,"save buffer is null")); return engine->value->loadV9(std::string_view(reinterpret_cast<const char*>(data),size)); }); }
+cf_error_code cf_engine_load_v9(cf_engine* engine, const uint8_t* data, size_t size) { return guarded(engine,[&]()->civic::Result<void>{ if(!data){ if(size!=0)return std::unexpected(civic::make_error(civic::ErrorCode::invalid_argument,"save buffer is null")); return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure,"save buffer is empty")); } return engine->value->loadV9(std::string_view(reinterpret_cast<const char*>(data),size)); }); }
 cf_error_code cf_engine_save_v9(cf_engine* engine, cf_buffer* out_buffer) { return guarded(engine,[&]()->civic::Result<void>{ auto result=engine->value->saveV9(); if(!result)return std::unexpected(result.error()); const auto copied=copyBuffer(*result,out_buffer); if(copied!=CF_ERROR_NONE)return std::unexpected(civic::make_error(civic::ErrorCode::internal_error,"failed to allocate save buffer")); return {}; }); }
 cf_error_code cf_engine_get_snapshot(cf_engine* engine, cf_buffer* out_buffer) { return guarded(engine,[&]()->civic::Result<void>{ auto result=engine->value->snapshot(); if(!result)return std::unexpected(result.error()); const auto copied=copyBuffer(result->json,out_buffer); if(copied!=CF_ERROR_NONE)return std::unexpected(civic::make_error(civic::ErrorCode::internal_error,"failed to allocate snapshot buffer")); return {}; }); }
 cf_error_code cf_engine_get_events(cf_engine* engine, cf_buffer* out_buffer) { return guarded(engine,[&]()->civic::Result<void>{ auto result=engine->value->drainEvents(); if(!result)return std::unexpected(result.error()); const auto copied=copyBuffer(result->json,out_buffer); if(copied!=CF_ERROR_NONE)return std::unexpected(civic::make_error(civic::ErrorCode::internal_error,"failed to allocate event buffer")); return {}; }); }

@@ -13,6 +13,7 @@ template<class Tag, class Storage = std::uint64_t>
 class StrongId final {
     static_assert(std::is_integral_v<Storage> && std::is_unsigned_v<Storage>);
 public:
+    constexpr StrongId() noexcept = default;
     constexpr explicit StrongId(Storage value) noexcept : value_(value) {}
     [[nodiscard]] constexpr Storage value() const noexcept { return value_; }
     auto operator<=>(const StrongId&) const = default;
