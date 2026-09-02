@@ -1,8 +1,26 @@
 #include <gtest/gtest.h>
 
 #include <civic/core/NativeEngine.hpp>
+#include <civic/geometry/Geometry.hpp>
+#include <civic/world/WorldFoundation.hpp>
 
 #include <string>
+
+TEST(NativeWorldAuthority, GeneratedAdministrativeGeometryUsesCellCoordinates) {
+    const auto generated = civic::world::WorldFoundation::generate(
+        1337,
+        civic::world::WorldConfig{6, 5, 30.0, civic::world::WorldPreset::rolling_uplands});
+    ASSERT_TRUE(generated);
+    ASSERT_FALSE(generated->geography().entities.empty());
+    const auto& region = generated->geography().entities.front();
+    ASSERT_EQ(region.id, "region:0");
+    const auto bounds = civic::geometry::bounds(region.boundary);
+    ASSERT_TRUE(bounds);
+    EXPECT_EQ(bounds->min_x, 0);
+    EXPECT_EQ(bounds->min_y, 0);
+    EXPECT_EQ(bounds->max_x, 600);
+    EXPECT_EQ(bounds->max_y, 500);
+}
 
 TEST(NativeWorldAuthority, EngineHandleOwnsGeneratedWorldAndStormMutation) {
     auto created = civic::NativeEngine::create({1337, 0, civic::SpeedMode::normal});
