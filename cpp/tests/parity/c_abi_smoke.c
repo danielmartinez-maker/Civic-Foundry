@@ -6,6 +6,8 @@ int main(void) {
     const cf_engine_config config = {9u, 0u, 1u};
     assert(cf_engine_create(&config, &engine) == CF_ERROR_NONE);
     assert(engine != 0);
+    assert(cf_engine_submit_commands(engine, 0, 0u) == CF_ERROR_SERIALIZATION_FAILURE);
+    assert(cf_engine_load_v9(engine, 0, 0u) == CF_ERROR_SERIALIZATION_FAILURE);
     assert(cf_engine_step(engine, 0u) == CF_ERROR_NONE);
     assert(cf_engine_step(engine, 1u) == CF_ERROR_NONE);
     cf_buffer snapshot = {0};
