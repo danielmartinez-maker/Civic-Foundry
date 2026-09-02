@@ -103,6 +103,7 @@ struct RenderPacket {
     std::vector<TransitStopRenderRecord> transit_stops;
     std::vector<OverlayRenderRecord> overlays;
     SelectionState selection{};
+    ToolPreviewState tool_preview{};
     CullingStats culling;
 };
 
