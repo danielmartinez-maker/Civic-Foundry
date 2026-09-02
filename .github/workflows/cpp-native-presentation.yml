@@ -129,4 +129,4 @@ jobs:
       - name: Build WASM reference runtime
         run: cmake --build cpp/build-stack4-wasm --target civic_wasm --parallel
       - name: Execute shared deterministic fixture in WASM
-        run: node cpp/build-stack4-wasm/civic_wasm.js
+        run: node cpp/build-stack4-wasm/civic_wasm.cjs
