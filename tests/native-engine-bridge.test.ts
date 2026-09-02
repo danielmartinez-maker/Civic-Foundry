@@ -260,9 +260,11 @@ test("native engine bridge is the concrete NativeWorldBridge and materializes fl
   const stormCall = addon.calls.find((call) => call.startsWith("world-storm:"));
   assert.ok(stormCall);
   assert.deepEqual(
-    (JSON.parse(stormCall.slice("world-storm:".length)) as {
-      imperviousFraction: number[];
-    }).imperviousFraction,
+    (
+      JSON.parse(stormCall.slice("world-storm:".length)) as {
+        imperviousFraction: number[];
+      }
+    ).imperviousFraction,
     [0, 0.5],
   );
 
@@ -286,7 +288,8 @@ test("shadow runner feeds identical normalized commands to both runtimes and ign
   const steps: number[] = [];
   const runner = new ShadowSimulationRunner(
     {
-      submit: (commands) => received.push(commands.map((item) => item.sequence)),
+      submit: (commands) =>
+        received.push(commands.map((item) => item.sequence)),
       step: (ticks) => steps.push(ticks),
       domainHash: () => 42n,
     },
