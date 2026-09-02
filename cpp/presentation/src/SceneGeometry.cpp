@@ -149,8 +149,35 @@ double overlayPulse(OverlayMetric metric, int index) noexcept {
 
 Point2 shifted(Point2 point, double dx, double dy) noexcept { return {point.x + dx, point.y + dy}; }
 
-bool sameEntity(const SelectionState& selection, const EntityRef& entity) noexcept {
-    return selection.active && selection.entity == entity;
+bool pixelBoundsVisible(
+    double min_x,
+    double min_y,
+    double max_x,
+    double max_y,
+    PixelViewport viewport,
+    double margin = 0.0) noexcept {
+    const double width = static_cast<double>(viewport.width);
+    const double height = static_cast<double>(viewport.height);
+    return max_x >= -margin && min_x <= width + margin && max_y >= -margin && min_y <= height + margin;
+}
+
+bool pointVisible(Point2 point, PixelViewport viewport, double margin = 0.0) noexcept {
+    return pixelBoundsVisible(point.x, point.y, point.x, point.y, viewport, margin);
+}
+
+bool polygonVisible(const std::vector<Point2>& polygon, PixelViewport viewport, double margin = 0.0) noexcept {
+    if (polygon.empty()) return false;
+    double min_x = polygon.front().x;
+    double max_x = min_x;
+    double min_y = polygon.front().y;
+    double max_y = min_y;
+    for (const auto point : polygon) {
+        min_x = std::min(min_x, point.x);
+        max_x = std::max(max_x, point.x);
+        min_y = std::min(min_y, point.y);
+        max_y = std::max(max_y, point.y);
+    }
+    return pixelBoundsVisible(min_x, min_y, max_x, max_y, viewport, margin);
 }
 
 std::optional<Point2> selectedWorldPoint(const RenderPacket& packet) {
@@ -233,7 +260,7 @@ SceneGeometry SceneGeometryBuilder::build(const RenderPacket& packet, const Isom
 
     for (const auto& cell : packet.terrain) {
         const auto polygon = camera.tilePolygon(cell.x, cell.y, world);
-        if (polygon.size() != 4) continue;
+        if (polygon.size() != 4 || !polygonVisible(polygon, viewport)) continue;
         const auto color = terrainColor(cell);
         quad(scene.opaque, vertex(polygon[0],viewport,color), vertex(polygon[1],viewport,color), vertex(polygon[2],viewport,color), vertex(polygon[3],viewport,color), scene.stats.terrain_triangles);
     }
@@ -245,6 +272,10 @@ SceneGeometry SceneGeometryBuilder::build(const RenderPacket& packet, const Isom
         const double length = std::hypot(dx,dy);
         if (length <= 1e-6) continue;
         const double half_width = std::max(2.0, static_cast<double>(road.lanes) * 1.25 * camera.zoom());
+        if (!pixelBoundsVisible(
+                std::min(a.x, b.x), std::min(a.y, b.y),
+                std::max(a.x, b.x), std::max(a.y, b.y),
+                viewport, half_width + 12.0)) continue;
         const double nx = -dy / length * half_width, ny = dx / length * half_width;
         const auto color = roadColor(road.road_class, road.condition);
         quad(scene.opaque,
@@ -255,11 +286,6 @@ SceneGeometry SceneGeometryBuilder::build(const RenderPacket& packet, const Isom
 
     for (const auto& building : packet.buildings) {
         if (building.footprint.size() < 3) continue;
-        ++scene.stats.canonical_buildings;
-        scene.stats.max_building_height_m = std::max(scene.stats.max_building_height_m, building.height_m);
-        const auto base_color = buildingColor(building);
-        const Color roof_color{std::min(1.0F,base_color.r*1.12F),std::min(1.0F,base_color.g*1.12F),std::min(1.0F,base_color.b*1.12F),1.0F};
-        const Color wall_color{base_color.r*0.82F,base_color.g*0.82F,base_color.b*0.82F,1.0F};
         const double height_px = std::max(2.0, static_cast<double>(building.height_m) * 0.9 * camera.zoom());
         std::vector<Point2> ground; ground.reserve(building.footprint.size());
         std::vector<Point2> roof; roof.reserve(building.footprint.size());
@@ -267,6 +293,12 @@ SceneGeometry SceneGeometryBuilder::build(const RenderPacket& packet, const Isom
             const auto projected = camera.worldToCanvas(point.x,point.y,world);
             ground.push_back(projected); roof.push_back(shifted(projected,0.0,-height_px));
         }
+        if (!polygonVisible(ground, viewport, height_px)) continue;
+        ++scene.stats.canonical_buildings;
+        scene.stats.max_building_height_m = std::max(scene.stats.max_building_height_m, building.height_m);
+        const auto base_color = buildingColor(building);
+        const Color roof_color{std::min(1.0F,base_color.r*1.12F),std::min(1.0F,base_color.g*1.12F),std::min(1.0F,base_color.b*1.12F),1.0F};
+        const Color wall_color{base_color.r*0.82F,base_color.g*0.82F,base_color.b*0.82F,1.0F};
         for (std::size_t i=1;i+1<roof.size();++i) triangle(scene.opaque,vertex(roof[0],viewport,roof_color),vertex(roof[i],viewport,roof_color),vertex(roof[i+1],viewport,roof_color),scene.stats.building_triangles);
         for (std::size_t i=0;i<ground.size();++i) {
             const std::size_t next=(i+1)%ground.size();
@@ -277,6 +309,9 @@ SceneGeometry SceneGeometryBuilder::build(const RenderPacket& packet, const Isom
     for (const auto& vehicle : packet.vehicles) {
         if (vehicle.out_of_service) continue;
         const auto center = camera.worldToCanvas(vehicle.position.x,vehicle.position.y,world);
+        const double length = (vehicle.kind==VehicleKind::Metro || vehicle.kind==VehicleKind::Rail) ? 11.0 : 5.0;
+        const double width = (vehicle.kind==VehicleKind::Metro || vehicle.kind==VehicleKind::Rail) ? 4.0 : 3.0;
+        if (!pointVisible(center, viewport, length + width + 2.0)) continue;
         const Point2 forward_world{
             vehicle.position.x + std::cos(static_cast<double>(vehicle.heading_radians)) * 0.5,
             vehicle.position.y + std::sin(static_cast<double>(vehicle.heading_radians)) * 0.5,
@@ -288,8 +323,6 @@ SceneGeometry SceneGeometryBuilder::build(const RenderPacket& packet, const Isom
         if (heading_length <= 1e-6) { ux = 1.0; uy = 0.0; heading_length = 1.0; }
         ux /= heading_length; uy /= heading_length;
         const double px = -uy, py = ux;
-        const double length = (vehicle.kind==VehicleKind::Metro || vehicle.kind==VehicleKind::Rail) ? 11.0 : 5.0;
-        const double width = (vehicle.kind==VehicleKind::Metro || vehicle.kind==VehicleKind::Rail) ? 4.0 : 3.0;
         const auto color=vehicleColor(vehicle.kind);
         quad(scene.opaque,
             vertex(shifted(center,-ux*length-px*width,-uy*length-py*width),viewport,color),
@@ -302,6 +335,7 @@ SceneGeometry SceneGeometryBuilder::build(const RenderPacket& packet, const Isom
     for (const auto& stop : packet.transit_stops) {
         const auto center = camera.worldToCanvas(stop.position.x,stop.position.y,world);
         const double radius = stop.kind==TransitStopKind::MetroStation ? 7.0 : 5.0;
+        if (!pointVisible(center, viewport, radius)) continue;
         const Color color = stop.kind==TransitStopKind::MetroStation ? Color{0.55F,0.40F,0.80F,1.0F} : Color{0.30F,0.65F,0.82F,1.0F};
         constexpr int segments=8;
         for(int i=0;i<segments;++i){
@@ -312,10 +346,11 @@ SceneGeometry SceneGeometryBuilder::build(const RenderPacket& packet, const Isom
     }
 
     for (const auto& sample : packet.overlays) {
-        ++scene.stats.overlay_samples;
         const auto center = camera.worldToCanvas(sample.position.x,sample.position.y,world);
-        const auto color=overlayColor(sample.metric,sample.value);
         const double radius=6.0+8.0*std::clamp(static_cast<double>(sample.value),0.0,1.0);
+        if (!pointVisible(center, viewport, radius)) continue;
+        ++scene.stats.overlay_samples;
+        const auto color=overlayColor(sample.metric,sample.value);
         const int segments = overlaySegments(sample.metric);
         const double phase = overlayPhase(sample.metric);
         for(int i=0;i<segments;++i){
@@ -330,6 +365,7 @@ SceneGeometry SceneGeometryBuilder::build(const RenderPacket& packet, const Isom
     if (const auto selected = selectedWorldPoint(packet); selected) {
         const auto center = camera.worldToCanvas(selected->x, selected->y, world);
         const double radius = std::max(8.0, 10.0 * camera.zoom());
+        if (!pointVisible(center, viewport, radius)) return scene;
         const double inner = radius * 0.48;
         const Color cue{1.0F,0.94F,0.34F,0.96F};
         const std::array<Point2,4> outer{
