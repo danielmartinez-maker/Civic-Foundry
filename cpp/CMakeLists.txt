@@ -26,6 +26,7 @@ add_library(civic_engine STATIC
   engine/src/persistence/SaveV9.cpp
   engine/src/persistence/TransportationLegacyEdgeV9.cpp
   engine/src/persistence/TransportationLegacyRoadAuthorityV9.cpp
+  engine/src/persistence/TransportationNativeV9.cpp
   engine/src/persistence/TransportationSaveV9.cpp
   engine/src/persistence/TransportationSaveV9Continuation.cpp
   engine/src/persistence/TransportationTrafficV9.cpp
