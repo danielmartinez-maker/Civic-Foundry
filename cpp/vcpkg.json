@@ -3,5 +3,14 @@
   "name": "civic-foundry-native",
   "version-string": "0.1.0",
   "builtin-baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d",
-  "dependencies": ["gtest", "json-c"]
+  "dependencies": [
+    "gtest",
+    "json-c",
+    {
+      "name": "imgui",
+      "default-features": false,
+      "features": ["docking-experimental", "dx12-binding", "freetype", "win32-binding"],
+      "platform": "windows"
+    }
+  ]
 }
