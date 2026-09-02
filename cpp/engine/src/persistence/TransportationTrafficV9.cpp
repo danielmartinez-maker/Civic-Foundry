@@ -142,7 +142,7 @@ Result<RoadTrafficStateV9> parseLegacyRoadTrafficV9(
     if (!failedTrips) return std::unexpected(failedTrips.error());
     auto congestionEpoch = nonNegativeUint(traffic, "congestionEpoch");
     if (!congestionEpoch) return std::unexpected(congestionEpoch.error());
-    state.nextVehicleId = *nextVehicleId;
+    state.nextVehicleId = std::max<std::uint64_t>(1U, *nextVehicleId);
     state.completedTrips = *completedTrips;
     state.failedTrips = *failedTrips;
     state.congestionEpoch = *congestionEpoch;
