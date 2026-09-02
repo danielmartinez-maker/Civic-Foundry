@@ -17,6 +17,9 @@ public:
     std::expected<PipelineHandle,std::string> createPipeline(const PipelineDesc&) override;
     std::expected<FrameToken,std::string> beginFrame() override;
     std::expected<void,std::string> recordDraw(const FrameToken&,const DrawCommand&) override;
+    [[nodiscard]] bool supportsMiniatureComposite() const noexcept override { return true; }
+    std::expected<void,std::string> beginMiniatureWorldPass(const FrameToken&,const MiniatureCompositeDesc&) override;
+    std::expected<void,std::string> compositeMiniatureWorld(const FrameToken&,const MiniatureCompositeDesc&) override;
     std::expected<std::uint64_t,std::string> submit(const FrameToken&) override;
     std::expected<void,std::string> present(const FrameToken&) override;
     std::expected<void,std::string> waitForFence(std::uint64_t) override;
