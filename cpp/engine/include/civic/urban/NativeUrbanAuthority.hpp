@@ -45,6 +45,11 @@ public:
     [[nodiscard]] Result<void> tickBuildingRenovations(std::uint64_t tick);
     [[nodiscard]] Result<void> tickBuildingLifecycle(std::uint64_t tick);
 
+    void inheritRuntimeContext(const NativeUrbanAuthority& source) {
+        lifecycle_typologies_ = source.lifecycle_typologies_;
+        lifecycle_inputs_ = source.lifecycle_inputs_;
+    }
+
     [[nodiscard]] std::uint64_t cadastreHash() const noexcept;
     [[nodiscard]] std::uint64_t urbanHash() const noexcept;
 
