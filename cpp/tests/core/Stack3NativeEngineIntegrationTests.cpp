@@ -85,11 +85,20 @@ TEST(Stack3NativeEngine, RejectsOutOfOrderAuthorityTransferTransactionally) {
     EXPECT_EQ(firms->ownership, civic::DomainOwnership::unowned);
 }
 
-TEST(Stack3NativeEngine, SaveV9MergesNativeSocioeconomicSidecarWithoutDroppingCompatibilityFields) {
+TEST(Stack3NativeEngine, SaveV9PreservesLegacyMaterializationUntilSocioeconomicCutover) {
     auto created = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal});
     ASSERT_TRUE(created);
     auto& engine = **created;
     ASSERT_TRUE(engine.loadV9(minimal_save()));
+
+    auto untouched = engine.saveV9();
+    ASSERT_TRUE(untouched);
+    EXPECT_EQ(untouched->find("\"nativeSocioeconomic\""), std::string::npos);
+    EXPECT_NE(untouched->find("\"unknownCompatibility\""), std::string::npos);
+
+    const auto transfer = transfer_command(1, 12, "inventory_freight");
+    ASSERT_TRUE(engine.submit(std::span<const civic::CommandEnvelope>{&transfer, 1}));
+    ASSERT_TRUE(engine.step(1));
 
     auto saved = engine.saveV9();
     ASSERT_TRUE(saved);
