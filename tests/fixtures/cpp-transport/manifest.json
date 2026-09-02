@@ -138,8 +138,7 @@
     },
     {
       "id": "vehicle-failure",
-      "classification": "CORRECTION",
-      "bugRefs": ["SIM-007"],
+      "classification": "PARITY",
       "expected": {
         "failedVehicleOnboardWeightDeleted": false,
         "failedVehiclePassengersReturnedAsStrandedCohorts": true,
