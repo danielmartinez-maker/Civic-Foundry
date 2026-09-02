@@ -4,6 +4,7 @@
 #include <cmath>
 #include <vector>
 
+#include <civic/prism/PrismBenchmark.hpp>
 #include <civic/prism/PrismRuntime.hpp>
 #include <civic/socioeconomic/HousingEconomics.hpp>
 #include <civic/socioeconomic/SocioeconomicAuthority.hpp>
@@ -38,7 +39,7 @@ TEST(Stack3FreightRouting, VehicleAssignmentConsumesNativeTransportQuote) {
 }
 
 TEST(Stack3BusinessLifecycle, PortsAcceptedDistressClosureRecoveryAndFormationScoring) {
-    socio::BusinessLifecycle lifecycle;
+    socio::BusinessLifecycleModel lifecycle;
     socio::FirmLifecycleMemory memory{
         .status = socio::BusinessLifecycleState::operating,
         .cash_health = 0.30,
@@ -88,7 +89,7 @@ TEST(Stack3Lifecycle, AgingCadenceMutatesPeopleWithoutChangingPopulationCount) {
     socio::PersonRegistry people;
     auto p1 = people.create({civic::HouseholdId{1}, 20, 2, 1, true, civic::Money{100}}); ASSERT_TRUE(p1);
     auto p2 = people.create({civic::HouseholdId{1}, 70, 3, 2, false, civic::Money{0}}); ASSERT_TRUE(p2);
-    socio::LifecycleScheduler scheduler{123, {.aging_ticks = 10, .employment_ticks = 1000, .migration_ticks = 1000}};
+    socio::AuthoritativeLifecycleScheduler scheduler{123, {.aging_ticks = 10, .employment_ticks = 1000, .migration_ticks = 1000}};
 
     const auto count_before = people.size();
     ASSERT_TRUE(scheduler.step(9, people));
@@ -176,7 +177,7 @@ TEST(Stack3Causality, CommuteAccessibilityTraceIsStructuredAndReconstructable) {
     prism::CausalityTraceStore traces;
     auto id = socio::record_commute_accessibility_trace(
         traces,
-        44,
+        socio::PersonId{44},
         91,
         0.55,
         0.30,
