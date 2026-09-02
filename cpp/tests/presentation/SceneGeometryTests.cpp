@@ -52,3 +52,46 @@ TEST(SceneGeometry, OverlayIsSpatialGeometryNotFullScreenTint) {
     EXPECT_LT(max_y - min_y, 0.5F);
     EXPECT_EQ(scene.stats.overlay_samples, 1U);
 }
+
+TEST(SceneGeometry, FloodAndWaterStateChangesTerrainPresentation) {
+    SceneGeometryBuilder builder{};
+    IsometricCamera camera{};
+    RenderPacket dry{};
+    dry.terrain.push_back({{EntityKind::Terrain,"cell"},1,2,2,TerrainBiome::Plains,0.0F,0.0F,true,false});
+    RenderPacket flooded = dry;
+    flooded.terrain.front().flood_depth_m = 0.8F;
+    flooded.terrain.front().water = true;
+
+    const auto dry_scene = builder.build(dry, camera, WorldSize{8,8}, PixelViewport{800,600});
+    const auto wet_scene = builder.build(flooded, camera, WorldSize{8,8}, PixelViewport{800,600});
+    ASSERT_FALSE(dry_scene.opaque.empty());
+    ASSERT_FALSE(wet_scene.opaque.empty());
+    EXPECT_NE(dry_scene.opaque.front().r, wet_scene.opaque.front().r);
+    EXPECT_NE(dry_scene.opaque.front().g, wet_scene.opaque.front().g);
+    EXPECT_NE(dry_scene.opaque.front().b, wet_scene.opaque.front().b);
+}
+
+TEST(SceneGeometry, LaneAndDirectionDetailAppearsOnlyAtUsefulZoom) {
+    SceneGeometryBuilder builder{};
+    RenderPacket packet{};
+    packet.roads.push_back({{EntityKind::Road,"one-way"},2,RoadClass::Arterial,{1,3},{7,3},4,true,0.9F,0.2F,0.8F,500.0F});
+
+    IsometricCamera low_zoom{};
+    low_zoom.zoomBy(0.5, 0.0, 0.0);
+    const auto low = builder.build(packet, low_zoom, WorldSize{20,20}, PixelViewport{1280,720});
+
+    IsometricCamera high_zoom{};
+    high_zoom.zoomBy(2.0, 0.0, 0.0);
+    const auto high = builder.build(packet, high_zoom, WorldSize{20,20}, PixelViewport{1280,720});
+    EXPECT_GT(high.stats.road_triangles, low.stats.road_triangles);
+}
+
+TEST(SceneGeometry, ActiveTypedSelectionProducesAVisibleRedundantCue) {
+    SceneGeometryBuilder builder{};
+    IsometricCamera camera{};
+    auto packet = fixturePacket();
+    packet.selection = SelectionState{true, {EntityKind::Building, "b"}};
+    const auto scene = builder.build(packet, camera, WorldSize{20,20}, PixelViewport{1280,720});
+    EXPECT_GT(scene.stats.selection_triangles, 0U);
+    EXPECT_FALSE(scene.overlay.empty());
+}
