@@ -48,6 +48,7 @@ public:
     [[nodiscard]] Result<DomainHash> authoritativeDomainHash(std::string_view domain) const;
     [[nodiscard]] Result<SnapshotBlob> rebuildUrbanLegacy(std::string_view request_json);
     [[nodiscard]] Result<SnapshotBlob> restoreUrbanState(std::string_view snapshot_json);
+    [[nodiscard]] Result<SnapshotBlob> applyUrbanCommand(std::string_view request_json);
     [[nodiscard]] Result<SnapshotBlob> urbanSnapshot() const;
 
     [[nodiscard]] Result<SnapshotBlob> createWorld(std::string_view request_json);
