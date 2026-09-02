@@ -115,6 +115,13 @@ Result<void> NativeEngine::loadV9Authoritative(std::string_view json_text) {
     return ensureUrbanScheduler();
 }
 
+Result<void> NativeEngine::stageSaveV9Envelope(std::string_view json_text) {
+    auto parsed = parseSaveV9(json_text);
+    if (!parsed) return std::unexpected(parsed.error());
+    loaded_save_ = std::move(*parsed);
+    return {};
+}
+
 Result<std::string> NativeEngine::saveV9Authoritative() const {
     auto base = saveV9();
     if (!base) return std::unexpected(base.error());
