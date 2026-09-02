@@ -37,6 +37,7 @@ add_library(civic_engine STATIC
   engine/src/world/WorldFoundation.cpp
   engine/src/world/WorldScenario.cpp
   engine/src/cadastre/Cadastre.cpp
+  engine/src/cadastre/CadastreHistory.cpp
   engine/src/cadastre/CadastreMutation.cpp
   engine/src/cadastre/ParcelGeneration.cpp
   engine/src/urban/UrbanFabric.cpp
