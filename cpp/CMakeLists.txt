@@ -55,6 +55,7 @@ if(CIVIC_BUILD_TESTS)
     tests/socioeconomic/Stack3SocioeconomicTests.cpp
     tests/socioeconomic/Stack3AuthorityTests.cpp
     tests/socioeconomic/Stack3PersistenceTests.cpp
+    tests/socioeconomic/Stack3HousingLifecycleTests.cpp
     tests/prism/Stack3PrismRuntimeTests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main ${CIVIC_JSON_TARGET})
