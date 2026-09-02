@@ -24,6 +24,35 @@ using Microsoft::WRL::ComPtr;
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
 namespace civic::presentation {
+namespace {
+
+void applyAccessiblePalette(bool high_contrast) {
+    ImGui::StyleColorsDark();
+    if (!high_contrast) return;
+    auto& colors = ImGui::GetStyle().Colors;
+    colors[ImGuiCol_Text] = ImVec4(1.0F, 1.0F, 1.0F, 1.0F);
+    colors[ImGuiCol_TextDisabled] = ImVec4(0.72F, 0.72F, 0.72F, 1.0F);
+    colors[ImGuiCol_WindowBg] = ImVec4(0.01F, 0.01F, 0.01F, 1.0F);
+    colors[ImGuiCol_ChildBg] = ImVec4(0.01F, 0.01F, 0.01F, 1.0F);
+    colors[ImGuiCol_PopupBg] = ImVec4(0.02F, 0.02F, 0.02F, 1.0F);
+    colors[ImGuiCol_Border] = ImVec4(0.88F, 0.88F, 0.88F, 1.0F);
+    colors[ImGuiCol_FrameBg] = ImVec4(0.14F, 0.14F, 0.14F, 1.0F);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.28F, 0.28F, 0.28F, 1.0F);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.36F, 0.36F, 0.36F, 1.0F);
+    colors[ImGuiCol_TitleBg] = ImVec4(0.05F, 0.05F, 0.05F, 1.0F);
+    colors[ImGuiCol_TitleBgActive] = ImVec4(0.16F, 0.16F, 0.16F, 1.0F);
+    colors[ImGuiCol_Button] = ImVec4(0.18F, 0.18F, 0.18F, 1.0F);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.36F, 0.36F, 0.36F, 1.0F);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.48F, 0.48F, 0.48F, 1.0F);
+    colors[ImGuiCol_Header] = ImVec4(0.20F, 0.20F, 0.20F, 1.0F);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(0.38F, 0.38F, 0.38F, 1.0F);
+    colors[ImGuiCol_HeaderActive] = ImVec4(0.50F, 0.50F, 0.50F, 1.0F);
+    colors[ImGuiCol_CheckMark] = ImVec4(1.0F, 0.88F, 0.20F, 1.0F);
+    colors[ImGuiCol_SliderGrab] = ImVec4(1.0F, 0.88F, 0.20F, 1.0F);
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(1.0F, 0.96F, 0.55F, 1.0F);
+}
+
+} // namespace
 
 struct Win32NativeUi::Impl {
     HWND window{};
@@ -35,6 +64,7 @@ struct Win32NativeUi::Impl {
     ImGuiContext* context{};
     NativeUiRuntimeModel model;
     float applied_style_scale{1.0F};
+    bool applied_high_contrast{};
     bool initialized{};
 
     ~Impl() { shutdown(); }
@@ -139,7 +169,7 @@ std::expected<Win32NativeUi, std::string> Win32NativeUi::create(const Win32Nativ
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigWindowsMoveFromTitleBarOnly = true;
-    ImGui::StyleColorsDark();
+    applyAccessiblePalette(false);
 
     if (!ImGui_ImplWin32_Init(config.window)) {
         impl->shutdown();
@@ -188,6 +218,11 @@ std::expected<UiFrameState, std::string> Win32NativeUi::beginFrame(
     ImGui_ImplDX12_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
+
+    if (frame->high_contrast != impl_->applied_high_contrast) {
+        applyAccessiblePalette(frame->high_contrast);
+        impl_->applied_high_contrast = frame->high_contrast;
+    }
 
     const float target_scale = std::clamp(frame->effective_scale, 0.5F, 4.0F);
     if (std::abs(target_scale - impl_->applied_style_scale) > 0.001F) {
