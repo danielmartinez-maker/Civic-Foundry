@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 #include <civic/core/NativeEngine.hpp>
 #include <civic/persistence/TransportationSaveV9.hpp>
@@ -28,6 +30,15 @@ std::string replaceOnce(std::string source, const std::string& from, const std::
     return source;
 }
 
+const civic::transport::Carriageway* findCarriageway(
+    const civic::transport::NetworkSnapshot& network,
+    const civic::transport::CarriagewayId& id) {
+    const auto iterator = std::find_if(network.carriageways.begin(), network.carriageways.end(), [&](const auto& carriageway) {
+        return carriageway.id == id;
+    });
+    return iterator == network.carriageways.end() ? nullptr : &*iterator;
+}
+
 } // namespace
 
 TEST(NativeEngineTransportation, PreservesLegacyTrafficAndIntersectionContinuationInMigrationHash) {
@@ -46,4 +57,32 @@ TEST(NativeEngineTransportation, PreservesLegacyTrafficAndIntersectionContinuati
 
     const auto requeued = replaceOnce(kTrafficContinuationSave, "\"queuedTick\":10", "\"queuedTick\":11");
     EXPECT_NE(transportationHash(requeued), baseline);
+}
+
+TEST(NativeEngineTransportation, ResolvesLegacyGraphEdgesToExactNativeCarriageways) {
+    const std::vector<civic::transport::LegacyRoadCell> roads{
+        {0, 0, civic::transport::RoadClass::local, false, civic::transport::Direction::forward},
+        {1, 0, civic::transport::RoadClass::collector, false, civic::transport::Direction::forward},
+        {2, 0, civic::transport::RoadClass::arterial, false, civic::transport::Direction::forward},
+    };
+    const auto network = civic::transport::LegacyRoadAdapter{}.project(roads, 7);
+
+    auto forward = civic::resolveLegacyEdgeV9(network, "e:n:0,0>n:1,0");
+    ASSERT_TRUE(forward);
+    const auto* forwardCarriageway = findCarriageway(network, *forward);
+    ASSERT_NE(forwardCarriageway, nullptr);
+    EXPECT_EQ(forwardCarriageway->from_junction_id.value, "j:legacy:0,0");
+    EXPECT_EQ(forwardCarriageway->to_junction_id.value, "j:legacy:1,0");
+
+    auto reverse = civic::resolveLegacyEdgeV9(network, "e:n:1,0>n:0,0");
+    ASSERT_TRUE(reverse);
+    const auto* reverseCarriageway = findCarriageway(network, *reverse);
+    ASSERT_NE(reverseCarriageway, nullptr);
+    EXPECT_EQ(reverseCarriageway->from_junction_id.value, "j:legacy:1,0");
+    EXPECT_EQ(reverseCarriageway->to_junction_id.value, "j:legacy:0,0");
+    EXPECT_NE(reverse->value, forward->value);
+
+    EXPECT_FALSE(civic::resolveLegacyEdgeV9(network, "e:n:0,0>n:9,9"));
+    EXPECT_FALSE(civic::resolveLegacyEdgeV9(network, "not-an-edge"));
+    EXPECT_FALSE(civic::resolveLegacyEdgeV9(network, "e:n:0,0>n:1,0:trailing"));
 }
