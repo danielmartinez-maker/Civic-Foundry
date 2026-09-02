@@ -155,6 +155,7 @@ struct PresentationSettings {
     float input_sensitivity{1.0F};
     bool reduced_motion{false};
     bool color_independent_cues{true};
+    bool visual_effects{true};
 };
 
 struct FrameSnapshot {
