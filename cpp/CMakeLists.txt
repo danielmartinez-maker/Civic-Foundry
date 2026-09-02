@@ -44,6 +44,7 @@ add_library(civic_engine STATIC
   engine/src/urban/NativeUrbanAuthority.cpp
   engine/src/urban/NativeUrbanCommands.cpp
   engine/src/urban/NativeUrbanLegacyRebuild.cpp
+  engine/src/urban/NativeUrbanRuntime.cpp
   engine/src/urban/NativeUrbanHistory.cpp
   engine/src/urban/Zoning.cpp
   engine/src/urban/BuildableEnvelope.cpp
