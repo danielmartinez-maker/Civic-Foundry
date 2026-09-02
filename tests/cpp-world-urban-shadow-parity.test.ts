@@ -173,7 +173,8 @@ function worldHash(): string {
     hash.mixU64(SOIL_INDEX[sample.soilClass]);
     hash.mixU64(Math.round(sample.groundwaterDepthMeters * 1e5));
   }
-  for (const entity of snapshot.geography.entities) mixRawAscii(hash, entity.id);
+  for (const entity of snapshot.geography.entities)
+    mixRawAscii(hash, entity.id);
   for (const accumulation of snapshot.hydrology.flowAccumulation) {
     hash.mixU64(Math.round(accumulation * 1e6));
   }
@@ -183,7 +184,9 @@ function worldHash(): string {
 function cadastreHash(): string {
   const graph = new CadastralGraph(cadastralSnapshot());
   const hash = new ShadowHash64();
-  for (const parcel of [...graph.listParcels()].sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const parcel of [...graph.listParcels()].sort((a, b) =>
+    a.id.localeCompare(b.id),
+  )) {
     hash.mixString(parcel.id);
     hash.mixString(parcel.blockId);
     for (const point of graph.parcelPolygon(parcel.id)) {
@@ -228,8 +231,12 @@ function cadastralSnapshot(): CadastralSnapshot {
     });
   }
 
-  const maxX = Math.max(...fixture.cadastre.parcels.map((parcel) => parcel.maxX));
-  const maxY = Math.max(...fixture.cadastre.parcels.map((parcel) => parcel.maxY));
+  const maxX = Math.max(
+    ...fixture.cadastre.parcels.map((parcel) => parcel.maxX),
+  );
+  const maxY = Math.max(
+    ...fixture.cadastre.parcels.map((parcel) => parcel.maxY),
+  );
   return {
     nodes,
     edges,
