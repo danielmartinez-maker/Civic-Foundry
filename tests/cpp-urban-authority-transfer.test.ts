@@ -12,6 +12,7 @@ import {
   withNativeUrbanAuthorityOverride,
   type NativeUrbanBridge,
 } from "../src/native/urban/NativeUrbanAuthority.ts";
+import { hydrateCoreV9 } from "../src/save/saveV9.ts";
 import { BuildingSystem } from "../src/simulation/buildings/BuildingSystem.ts";
 import {
   NEW_BUILDING_LIFECYCLE,
@@ -20,6 +21,7 @@ import {
 import { SimulationCore } from "../src/simulation/core/SimulationCore.ts";
 import type { Lot } from "../src/world/lots/LotSystem.ts";
 import { TerrainGrid } from "../src/world/terrain/TerrainGrid.ts";
+import { createUrbanFabricV9Save } from "./support/cppMigrationFixtures.ts";
 
 const EMPTY_URBAN_SNAPSHOT: NativeUrbanSnapshot = Object.freeze({
   urbanFabric: Object.freeze({
@@ -91,7 +93,17 @@ class FakeNativeUrbanBridge implements NativeUrbanBridge {
     return this.snapshotValue;
   }
 
-  loadV9(): void {}
+  loadV9(save: unknown): void {
+    const state = save as NativeUrbanState;
+    this.snapshotValue = Object.freeze({
+      urbanFabric: structuredClone(state.urbanFabric),
+      zoningV2: structuredClone(state.zoningV2),
+      buildingsV2: Object.freeze(structuredClone(state.buildingsV2)),
+      propertyMarket: structuredClone(state.propertyMarket),
+      legacyLots: Object.freeze([]),
+      compatibilityDiagnostics: Object.freeze([]),
+    });
+  }
 
   saveV9<T = unknown>(): T {
     return {} as T;
@@ -189,6 +201,24 @@ test("Task 20 keeps BuildingV2 native-first after construction override scope en
   const painted = core.paintZone([{ x: 0, y: 0 }], "residential");
   assert.equal(painted.painted, 1);
   assert.equal(bridge.rebuildCalls.length, rebuildsAfterConstruction + 1);
+});
+
+test("Task 20 V9 hydration rebinds cadastral mutations to native authority", () => {
+  const save = createUrbanFabricV9Save(23);
+  const bridge = new FakeNativeUrbanBridge();
+  const core = withNativeUrbanAuthorityOverride(
+    { enabled: true, bridge },
+    () => hydrateCoreV9(save),
+  );
+  const commandsBeforeMutation = bridge.commandCalls.length;
+
+  core.cadastralMutations.removeEasement("easement:missing");
+
+  assert.equal(bridge.commandCalls.length, commandsBeforeMutation + 1);
+  assert.equal(
+    bridge.commandCalls.at(-1)?.type,
+    "cadastre.remove-easement",
+  );
 });
 
 test("Task 20 legacy BuildingSystem is rebuilt from native BuildingV2 and cannot retain deleted buildings", () => {
