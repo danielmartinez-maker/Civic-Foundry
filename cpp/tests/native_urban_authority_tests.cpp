@@ -23,11 +23,14 @@ TEST(NativeUrbanAuthority, LegacyRebuildOwnsCadastreZoningAndCompatibilityProjec
 
   ASSERT_EQ(snapshot.at("urbanFabric").at("parcels").size(), 1U);
   EXPECT_EQ(snapshot.at("urbanFabric").at("parcels").at(0).at("id"), "parcel:0,0");
-  EXPECT_DOUBLE_EQ(snapshot.at("urbanFabric").at("parcels").at(0).at("areaM2").get<double>(), 400.0);
+  EXPECT_EQ(
+      snapshot.at("urbanFabric").at("parcels").at(0).at("zoningDistrictId"),
+      "residential");
+  EXPECT_DOUBLE_EQ(
+      snapshot.at("urbanFabric").at("parcels").at(0).at("areaM2").get<double>(),
+      400.0);
 
-  ASSERT_EQ(snapshot.at("zoningV2").at("parcelAssignments").size(), 1U);
-  EXPECT_EQ(snapshot.at("zoningV2").at("parcelAssignments").at(0).at("parcelId"), "parcel:0,0");
-  EXPECT_EQ(snapshot.at("zoningV2").at("parcelAssignments").at(0).at("districtId"), "residential");
+  EXPECT_TRUE(snapshot.at("zoningV2").at("parcelAssignments").empty());
 
   ASSERT_EQ(snapshot.at("legacyLots").size(), 1U);
   EXPECT_EQ(snapshot.at("legacyLots").at(0).at("parcelId"), "parcel:0,0");
