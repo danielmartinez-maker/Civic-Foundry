@@ -82,6 +82,12 @@ Result<DomainHash> NativeEngine::authoritativeDomainHash(std::string_view domain
 }
 
 Result<SnapshotBlob> NativeEngine::rebuildUrbanLegacy(std::string_view request_json) {
+    if (urban_) {
+        auto snapshot = urban_->rebuildLegacyPreservingAuthority(request_json);
+        if (!snapshot) return std::unexpected(snapshot.error());
+        return SnapshotBlob{std::move(*snapshot)};
+    }
+
     auto authority = NativeUrbanAuthority::rebuildLegacy(request_json);
     if (!authority) return std::unexpected(authority.error());
     auto snapshot = (*authority)->snapshotJson();
