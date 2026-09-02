@@ -1,5 +1,6 @@
 #include <civic/core/NativeEngine.hpp>
 
+#include <civic/transport/RoadTrafficRuntime.hpp>
 #include <civic/transport/TransportationCommands.hpp>
 
 #include <algorithm>
@@ -85,6 +86,14 @@ Result<void> NativeEngine::step(std::uint64_t ticks) {
         }
         try {
             transportation_.incidents().step(clock_.tick());
+            const auto network = transportation_.network().snapshot();
+            (void)transport::step_road_traffic(
+                transportation_.road_traffic(),
+                network,
+                transportation_.controls(),
+                transportation_.incidents(),
+                clock_.tick());
+            transportation_.traffic().restore(transportation_.road_traffic().flow_snapshot());
         } catch (const std::exception& error) {
             rollback();
             return std::unexpected(make_error(ErrorCode::invalid_state, error.what()));
