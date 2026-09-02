@@ -1,8 +1,11 @@
 #include <civic/transport/TransportationCommands.hpp>
 
+#include <civic/transport/RoadTrafficRuntime.hpp>
+
 #include <json-c/json.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -67,6 +70,18 @@ Result<std::uint64_t> uintField(json_object* root, const char* name) {
     return static_cast<std::uint64_t>(json_object_get_int64(value));
 }
 
+Result<double> positiveNumberField(json_object* root, const char* name) {
+    auto* value = field(root, name);
+    if (!value || (json_object_get_type(value) != json_type_int && json_object_get_type(value) != json_type_double)) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, std::string{"transport command field must be numeric: "} + name));
+    }
+    const double result = json_object_get_double(value);
+    if (!std::isfinite(result) || result <= 0.0) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, std::string{"transport command field must be positive and finite: "} + name));
+    }
+    return result;
+}
+
 Result<bool> boolField(json_object* root, const char* name) {
     auto* value = field(root, name);
     if (!value || json_object_get_type(value) != json_type_boolean) {
@@ -80,6 +95,17 @@ Result<transport::RoadClass> roadClass(std::string_view value) {
     if (value == "collector") return transport::RoadClass::collector;
     if (value == "arterial") return transport::RoadClass::arterial;
     return std::unexpected(make_error(ErrorCode::invalid_argument, "legacy road command supports local, collector, or arterial"));
+}
+
+Result<transport::TripCause> tripCause(std::string_view value) {
+    if (value == "home_to_work" || value == "commute") return transport::TripCause::home_to_work;
+    if (value == "home_to_school" || value == "school") return transport::TripCause::home_to_school;
+    if (value == "home_to_shopping" || value == "shopping") return transport::TripCause::home_to_shopping;
+    if (value == "firm_to_supplier" || value == "supplier") return transport::TripCause::firm_to_supplier;
+    if (value == "warehouse_to_customer" || value == "freight") return transport::TripCause::warehouse_to_customer;
+    if (value == "incident_to_facility" || value == "service") return transport::TripCause::incident_to_facility;
+    if (value == "construction_to_supplier" || value == "construction") return transport::TripCause::construction_to_supplier;
+    return std::unexpected(make_error(ErrorCode::invalid_argument, "unsupported transportation trip cause"));
 }
 
 Result<void> replaceLegacyRoads(transport::TransportationAuthority& authority, LegacyRoadAuthorityV9& legacyRoads, json_object* root) {
@@ -131,6 +157,55 @@ Result<void> replaceLegacyRoads(transport::TransportationAuthority& authority, L
     return {};
 }
 
+Result<void> submitRoadTrip(transport::TransportationAuthority& authority, json_object* root, std::uint64_t tick) {
+    auto tripId = stringField(root, "tripId");
+    auto causeName = stringField(root, "cause");
+    auto travelerWeight = positiveNumberField(root, "travelerWeight");
+    auto originId = stringField(root, "originId");
+    auto destinationId = stringField(root, "destinationId");
+    auto startJunctionId = stringField(root, "startJunctionId");
+    auto endJunctionId = stringField(root, "endJunctionId");
+    if (!tripId) return std::unexpected(tripId.error());
+    if (!causeName) return std::unexpected(causeName.error());
+    if (!travelerWeight) return std::unexpected(travelerWeight.error());
+    if (!originId) return std::unexpected(originId.error());
+    if (!destinationId) return std::unexpected(destinationId.error());
+    if (!startJunctionId) return std::unexpected(startJunctionId.error());
+    if (!endJunctionId) return std::unexpected(endJunctionId.error());
+    auto cause = tripCause(*causeName);
+    if (!cause) return std::unexpected(cause.error());
+
+    try {
+        const auto network = authority.network().snapshot();
+        transport::GeneralizedCostConfig cost;
+        cost.cost_revision = network.cost_revision ^ authority.incidents().cost_revision();
+        cost.incident_penalty = [&](const transport::CarriagewayId& id) {
+            return authority.incidents().route_penalty(id);
+        };
+        transport::RoutingEngine routing;
+        auto route = routing.find_route(
+            network,
+            transport::JunctionId{*startJunctionId},
+            transport::JunctionId{*endJunctionId},
+            transport::permission(transport::VehiclePermission::private_car),
+            cost);
+        if (!route) return std::unexpected(make_error(ErrorCode::invalid_state, "transport road trip has no reachable native route"));
+        (void)transport::submit_road_trip(authority.road_traffic(), network, transport::RoadTripSubmission{
+            transport::TripId{*tripId},
+            *cause,
+            *travelerWeight,
+            *originId,
+            *destinationId,
+            *route,
+            tick,
+        });
+        authority.traffic().restore(authority.road_traffic().flow_snapshot());
+        return {};
+    } catch (const std::exception& error) {
+        return std::unexpected(make_error(ErrorCode::invalid_state, error.what()));
+    }
+}
+
 } // namespace
 
 Result<bool> applyTransportationCommand(transport::TransportationAuthority& authority, LegacyRoadAuthorityV9& legacyRoads, const CommandEnvelope& command) {
@@ -140,6 +215,11 @@ Result<bool> applyTransportationCommand(transport::TransportationAuthority& auth
 
     if (command.type == "transport.legacy_roads.replace") {
         auto result = replaceLegacyRoads(authority, legacyRoads, payload->get());
+        if (!result) return std::unexpected(result.error());
+        return true;
+    }
+    if (command.type == "transport.road_trip.submit") {
+        auto result = submitRoadTrip(authority, payload->get(), command.tick);
         if (!result) return std::unexpected(result.error());
         return true;
     }
