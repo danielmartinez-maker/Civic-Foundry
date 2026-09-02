@@ -62,6 +62,30 @@ TEST(SettingsPersistence, RoundTripsMachinePreferencesOutsideCitySave) {
     EXPECT_FLOAT_EQ(loaded->master_volume, 0.42F);
 }
 
+TEST(SettingsPersistence, OlderSettingsWithoutVisualEffectsFlagRemainLoadable) {
+    const auto root = scratch("civic-foundry-native-settings-legacy-test");
+    const auto path = root / "settings.json";
+    std::ofstream output(path, std::ios::binary);
+    output << R"({
+      "masterVolume":1.0,
+      "musicVolume":0.8,
+      "uiScale":1.0,
+      "cameraSensitivity":1.0,
+      "cameraSmoothing":0.35,
+      "tiltShiftStrength":0.55,
+      "inputSensitivity":1.0,
+      "reducedMotion":false,
+      "colorIndependentCues":true
+    })";
+    output.close();
+
+    SettingsStore store(path);
+    const auto loaded = store.load();
+    ASSERT_TRUE(loaded.has_value()) << loaded.error();
+    EXPECT_TRUE(loaded->visual_effects);
+    EXPECT_FLOAT_EQ(loaded->tilt_shift_strength, 0.55F);
+}
+
 TEST(SaveWorkflow, AtomicWriteLeavesNoTemporaryFileAndPreservesExactPayload) {
     const auto root = scratch("civic-foundry-native-save-test");
     SaveFileWorkflow saves{};
