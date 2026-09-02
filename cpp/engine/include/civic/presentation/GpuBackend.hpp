@@ -69,6 +69,16 @@ struct GpuCapabilities {
 };
 struct FrameToken { std::uint64_t frame_index{}; TextureHandle backbuffer{}; };
 
+struct MiniatureCompositeDesc {
+    float focus_center{0.5F};
+    float focus_width{1.0F};
+    float blur_radius_px{};
+    float scale_cue_strength{};
+    float material_softness{};
+    float saturation{1.0F};
+    float contrast{1.0F};
+};
+
 class IGpuBackend {
 public:
     virtual ~IGpuBackend() = default;
@@ -82,6 +92,13 @@ public:
     virtual std::expected<PipelineHandle, std::string> createPipeline(const PipelineDesc&) = 0;
     virtual std::expected<FrameToken, std::string> beginFrame() = 0;
     virtual std::expected<void, std::string> recordDraw(const FrameToken&, const DrawCommand&) = 0;
+    [[nodiscard]] virtual bool supportsMiniatureComposite() const noexcept { return false; }
+    virtual std::expected<void, std::string> beginMiniatureWorldPass(const FrameToken&, const MiniatureCompositeDesc&) {
+        return std::unexpected("miniature composite is unsupported by this GPU backend");
+    }
+    virtual std::expected<void, std::string> compositeMiniatureWorld(const FrameToken&, const MiniatureCompositeDesc&) {
+        return std::unexpected("miniature composite is unsupported by this GPU backend");
+    }
     virtual std::expected<std::uint64_t, std::string> submit(const FrameToken&) = 0;
     virtual std::expected<void, std::string> present(const FrameToken&) = 0;
     virtual std::expected<void, std::string> waitForFence(std::uint64_t value) = 0;
