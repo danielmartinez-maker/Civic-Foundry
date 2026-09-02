@@ -29,6 +29,7 @@ add_library(civic_engine STATIC
   engine/src/persistence/SaveV9.cpp
   engine/src/bridge/civic_engine.cpp
   engine/src/bridge/civic_world_bridge.cpp
+  engine/src/bridge/civic_urban_bridge.cpp
   engine/src/geometry/Geometry.cpp
   engine/src/geometry/BooleanOps.cpp
   engine/src/world/Terrain.cpp
