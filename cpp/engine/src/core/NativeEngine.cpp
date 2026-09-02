@@ -177,15 +177,22 @@ Result<DomainHash> NativeEngine::domainHash(std::string_view domain) const {
 Result<void> NativeEngine::loadV9(std::string_view json) {
     auto parsed = parseSaveV9(json); if (!parsed) return std::unexpected(parsed.error());
     auto legacyRoads = parseLegacyRoadAuthorityV9(parsed->canonicalJson); if (!legacyRoads) return std::unexpected(legacyRoads.error());
-    auto transportation = parseTransportationV9(parsed->canonicalJson); if (!transportation) return std::unexpected(transportation.error());
+    auto nativeTransportation = parseNativeTransportationV9(parsed->canonicalJson); if (!nativeTransportation) return std::unexpected(nativeTransportation.error());
+    transport::TransportationSnapshot transportation;
+    if (nativeTransportation->has_value()) {
+        transportation = std::move(nativeTransportation->value());
+    } else {
+        auto migrated = parseTransportationV9(parsed->canonicalJson); if (!migrated) return std::unexpected(migrated.error());
+        transportation = std::move(*migrated);
+        auto roadTraffic = parseLegacyRoadTrafficV9(parsed->canonicalJson, transportation.network); if (!roadTraffic) return std::unexpected(roadTraffic.error());
+        auto traffic = deriveTrafficFlowV9(transportation.network, *roadTraffic); if (!traffic) return std::unexpected(traffic.error());
+        transportation.road_traffic = std::move(*roadTraffic);
+        transportation.traffic = std::move(*traffic);
+    }
     auto continuation = parseTransportationContinuationV9(parsed->canonicalJson); if (!continuation) return std::unexpected(continuation.error());
-    auto roadTraffic = parseLegacyRoadTrafficV9(parsed->canonicalJson, transportation->network); if (!roadTraffic) return std::unexpected(roadTraffic.error());
-    auto traffic = deriveTrafficFlowV9(transportation->network, *roadTraffic); if (!traffic) return std::unexpected(traffic.error());
-    transportation->road_traffic = std::move(*roadTraffic);
-    transportation->traffic = std::move(*traffic);
     transport::TransportationAuthority nextTransportation;
     try {
-        nextTransportation.restore(*transportation);
+        nextTransportation.restore(transportation);
     } catch (const std::exception& error) {
         return std::unexpected(make_error(ErrorCode::serialization_failure, error.what()));
     } catch (...) {
