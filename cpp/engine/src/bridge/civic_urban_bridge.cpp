@@ -100,6 +100,16 @@ cf_error_code cf_engine_restore_urban_state(
     });
 }
 
+cf_error_code cf_engine_apply_urban_command(
+    cf_engine* engine,
+    const uint8_t* data,
+    size_t size,
+    cf_buffer* out_buffer) {
+    return json_operation(engine, data, size, out_buffer, [&](std::string_view input) {
+        return engine->value->applyUrbanCommand(input);
+    });
+}
+
 cf_error_code cf_engine_get_urban_snapshot(cf_engine* engine, cf_buffer* out_buffer) {
     if (!engine || !engine->value || !out_buffer) return CF_ERROR_INVALID_ARGUMENT;
     out_buffer->data = nullptr;
