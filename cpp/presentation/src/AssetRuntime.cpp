@@ -17,6 +17,7 @@ constexpr std::uint32_t kBinChunk = 0x004e4942U;
 constexpr std::uint32_t kTriangles = 4U;
 
 struct JsonGuard final {
+    explicit JsonGuard(json_object* object) noexcept : value(object) {}
     json_object* value{};
     ~JsonGuard() { if (value) json_object_put(value); }
     JsonGuard(const JsonGuard&) = delete;
@@ -483,7 +484,7 @@ std::expected<std::vector<GlbNode>, std::string> parseNodes(json_object* root, s
             if (!json_object_is_type(extensions, json_type_object)) return std::unexpected("node extensions must be an object");
             if (json_object* lod = member(extensions, "MSFT_lod")) {
                 json_object* ids = member(lod, "ids");
-                if (!lod || !json_object_is_type(lod, json_type_object) || !ids || !json_object_is_type(ids, json_type_array)) return std::unexpected("MSFT_lod node extension requires an ids array");
+                if (!json_object_is_type(lod, json_type_object) || !ids || !json_object_is_type(ids, json_type_array)) return std::unexpected("MSFT_lod node extension requires an ids array");
                 const auto lod_count = json_object_array_length(ids);
                 node.lod_node_ids.reserve(lod_count);
                 for (std::size_t lod_index = 0; lod_index < lod_count; ++lod_index) {
@@ -573,8 +574,8 @@ std::expected<GlbAsset, std::string> GlbLoader::load(std::span<const std::byte> 
     auto primitives = parsePrimitives(root.value, *accessors, *views, asset.binary_chunk, asset.materials.size());
     if (!primitives) return std::unexpected(primitives.error());
     asset.primitives = std::move(*primitives);
-    const auto mesh_count = member(root.value, "meshes") && json_object_is_type(member(root.value, "meshes"), json_type_array)
-        ? json_object_array_length(member(root.value, "meshes")) : 0U;
+    json_object* meshes = member(root.value, "meshes");
+    const auto mesh_count = meshes && json_object_is_type(meshes, json_type_array) ? json_object_array_length(meshes) : 0U;
     auto nodes = parseNodes(root.value, mesh_count);
     if (!nodes) return std::unexpected(nodes.error());
     asset.nodes = std::move(*nodes);
@@ -612,7 +613,8 @@ std::optional<GlbGpuResources> GlbGpuResourceCache::resolve(std::string_view ass
 }
 
 void GlbGpuResourceCache::erase(std::string_view asset_id) {
-    resources_.erase(std::string{asset_id});
+    const auto iterator = resources_.find(asset_id);
+    if (iterator != resources_.end()) resources_.erase(iterator);
 }
 
 } // namespace civic::presentation
