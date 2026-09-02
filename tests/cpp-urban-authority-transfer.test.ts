@@ -12,7 +12,13 @@ import {
   withNativeUrbanAuthorityOverride,
   type NativeUrbanBridge,
 } from "../src/native/urban/NativeUrbanAuthority.ts";
+import { BuildingSystem } from "../src/simulation/buildings/BuildingSystem.ts";
+import {
+  NEW_BUILDING_LIFECYCLE,
+  type BuildingV2,
+} from "../src/simulation/buildings/BuildingTypes.ts";
 import { SimulationCore } from "../src/simulation/core/SimulationCore.ts";
+import type { Lot } from "../src/world/lots/LotSystem.ts";
 import { TerrainGrid } from "../src/world/terrain/TerrainGrid.ts";
 
 const EMPTY_URBAN_SNAPSHOT: NativeUrbanSnapshot = Object.freeze({
@@ -107,6 +113,38 @@ function buildableTerrain(): TerrainGrid {
   );
 }
 
+function canonicalBuilding(): BuildingV2 {
+  return Object.freeze({
+    id: "building:parcel:test",
+    parcelIds: Object.freeze(["parcel:test"]),
+    typologyId: "typology:residential_rowhouse",
+    footprint: Object.freeze([
+      Object.freeze({ x: 0, y: 0 }),
+      Object.freeze({ x: 10, y: 0 }),
+      Object.freeze({ x: 10, y: 10 }),
+      Object.freeze({ x: 0, y: 10 }),
+    ]),
+    grossFloorAreaM2: 180,
+    usableFloorAreaM2: 150,
+    heightMeters: 9.6,
+    stories: 3,
+    realizedFAR: 0.45,
+    coverageRatio: 0.25,
+    floors: Object.freeze([]),
+    status: "occupied",
+    yearBuilt: 12,
+    projectCost: 250_000,
+    entitlement: Object.freeze({
+      approvalTick: 12,
+      zoningDistrictId: "residential",
+      approvedFAR: 1,
+      approvedHeightMeters: 12,
+      approvedUses: Object.freeze(["residential"]),
+    }),
+    lifecycle: NEW_BUILDING_LIFECYCLE,
+  });
+}
+
 test("Task 20 keeps BuildingV2 native-first after construction override scope ends", () => {
   const bridge = new FakeNativeUrbanBridge();
   const core = withNativeUrbanAuthorityOverride(
@@ -138,4 +176,40 @@ test("Task 20 keeps BuildingV2 native-first after construction override scope en
   const painted = core.paintZone([{ x: 0, y: 0 }], "residential");
   assert.equal(painted.painted, 1);
   assert.equal(bridge.rebuildCalls.length, rebuildsAfterConstruction + 1);
+});
+
+test("Task 20 legacy BuildingSystem is rebuilt from native BuildingV2 and cannot retain deleted buildings", () => {
+  const buildings = new BuildingSystem();
+  const lots: readonly Lot[] = Object.freeze([
+    Object.freeze({
+      id: "lot:0,0",
+      x: 0,
+      y: 0,
+      zone: "residential",
+      frontageRoadKey: "0,-1",
+    }),
+  ]);
+  const compatibility = Object.freeze([
+    Object.freeze({
+      parcelId: "parcel:test",
+      x: 0,
+      y: 0,
+      faithful: true,
+    }),
+  ]);
+
+  buildings.restoreLegacyProjectionFromV2(
+    Object.freeze([canonicalBuilding()]),
+    lots,
+    compatibility,
+  );
+  assert.deepEqual(
+    buildings.list().map((building) => building.id),
+    ["building:lot:0,0"],
+  );
+  assert.equal(buildings.list()[0]?.definitionId, "residential_rowhouse");
+  assert.equal(buildings.list()[0]?.status, "occupied");
+
+  buildings.restoreLegacyProjectionFromV2(Object.freeze([]), lots, compatibility);
+  assert.deepEqual(buildings.list(), []);
 });
