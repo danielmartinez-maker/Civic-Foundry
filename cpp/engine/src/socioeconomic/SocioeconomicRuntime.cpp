@@ -702,14 +702,15 @@ Result<void> SocioeconomicRuntime::restore_v9_extension(std::string_view json) {
                 input.home_entity = EntityId{static_cast<std::uint64_t>(raw)};
             } else if (home && json_object_get_type(home) != json_type_null) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person homeEntity"));
             json_object* location_kind = nullptr; json_object* location_entity = nullptr;
-            if (!json_object_object_get_ex(item, "locationKind", &location_kind) || !json_object_object_get_ex(item, "locationEntity", &location_entity)) return std::unexpected(make_error(ErrorCode::serialization_failure, "person location fields missing"));
-            if (location_kind && json_object_get_type(location_kind) == json_type_int) {
-                if (!location_entity || json_object_get_type(location_entity) != json_type_int) return std::unexpected(make_error(ErrorCode::serialization_failure, "person location entity missing"));
+            const bool has_location_kind = json_object_object_get_ex(item, "locationKind", &location_kind);
+            const bool has_location_entity = json_object_object_get_ex(item, "locationEntity", &location_entity);
+            if (!has_location_kind || !has_location_entity) return std::unexpected(make_error(ErrorCode::serialization_failure, "person location fields missing"));
+            if ((location_kind == nullptr) != (location_entity == nullptr)) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location nullability"));
+            if (location_kind != nullptr) {
+                if (json_object_get_type(location_kind) != json_type_int || json_object_get_type(location_entity) != json_type_int) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location"));
                 const auto kind = json_object_get_int64(location_kind); const auto entity = json_object_get_int64(location_entity);
                 if (kind < 0 || kind > static_cast<std::int64_t>(PersonLocationKind::network) || entity <= 0) return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location"));
                 input.location = PersonLocation{static_cast<PersonLocationKind>(kind), EntityId{static_cast<std::uint64_t>(entity)}};
-            } else if (!location_kind || json_object_get_type(location_kind) != json_type_null || !location_entity || json_object_get_type(location_entity) != json_type_null) {
-                return std::unexpected(make_error(ErrorCode::serialization_failure, "invalid person location nullability"));
             }
         } else {
             input.resident = true;
