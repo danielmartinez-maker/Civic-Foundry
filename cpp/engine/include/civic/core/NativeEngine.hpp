@@ -35,6 +35,7 @@ class NativeEngine final {
 public:
     [[nodiscard]] static Result<std::unique_ptr<NativeEngine>> create(const EngineConfig&);
     [[nodiscard]] Result<void> submit(std::span<const CommandEnvelope>);
+    [[nodiscard]] Result<void> applyReadyCommands();
     [[nodiscard]] Result<void> step(std::uint64_t ticks);
     [[nodiscard]] Result<SnapshotBlob> snapshot() const;
     [[nodiscard]] Result<EventBlob> drainEvents();
