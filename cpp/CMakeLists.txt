@@ -33,7 +33,9 @@ add_library(civic_engine STATIC
   engine/src/socioeconomic/HousingEconomics.cpp
   engine/src/socioeconomic/SocioeconomicAuthority.cpp
   engine/src/socioeconomic/SocioeconomicPersistence.cpp
+  engine/src/socioeconomic/SocioeconomicIntegration.cpp
   engine/src/prism/PrismRuntime.cpp
+  engine/src/prism/PrismBenchmark.cpp
   engine/src/bridge/civic_engine.cpp
 )
 target_include_directories(civic_engine PUBLIC engine/include)
