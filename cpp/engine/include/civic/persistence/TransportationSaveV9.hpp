@@ -31,6 +31,8 @@ struct TransitVehicleContinuationV9 final {
 
 struct TransportationContinuationV9 final {
     std::vector<TransitVehicleContinuationV9> vehicles;
+    std::string trafficCanonical{"null"};
+    std::string intersectionsCanonical{"null"};
     std::string canonical;
     auto operator<=>(const TransportationContinuationV9&) const = default;
 };
