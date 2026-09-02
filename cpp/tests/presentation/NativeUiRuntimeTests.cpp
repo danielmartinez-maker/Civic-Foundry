@@ -42,6 +42,22 @@ TEST(NativeUiRuntimeModel, CombinesDpiAndUserScaleWithoutChangingSnapshot) {
     EXPECT_EQ(snapshot.revision, 9U);
 }
 
+TEST(NativeUiRuntimeModel, CarriesAccessibilityPresentationPolicyIntoFrameState) {
+    NativeUiRuntimeModel runtime{};
+    ASSERT_TRUE(runtime.initialize(1.0F).has_value());
+    FrameSnapshot snapshot{};
+    PresentationSettings settings{};
+    settings.high_contrast = true;
+    settings.reduced_motion = true;
+    settings.color_independent_cues = true;
+
+    const auto frame = runtime.beginFrame(snapshot, settings);
+    ASSERT_TRUE(frame.has_value());
+    EXPECT_TRUE(frame->high_contrast);
+    EXPECT_TRUE(frame->reduced_motion);
+    EXPECT_TRUE(frame->color_independent_cues);
+}
+
 TEST(NativeUiRuntimeModel, AppliesPerMonitorDpiChangesBetweenFrames) {
     NativeUiRuntimeModel runtime{};
     ASSERT_TRUE(runtime.initialize(1.0F).has_value());
