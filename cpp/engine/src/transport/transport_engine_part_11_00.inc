@@ -29,7 +29,7 @@
 }
 
 void TransportationAuthority::load_network(const NetworkSnapshot& s){network_.restore(s);}
-TransportationSnapshot TransportationAuthority::snapshot()const{return {network_.snapshot(),controls_.snapshot(),parking_.snapshot(),incidents_.snapshot(),traffic_.snapshot(),transit_.snapshot(),queues_.snapshot(),operations_.snapshot()};}
+TransportationSnapshot TransportationAuthority::snapshot()const{return {network_.snapshot(),controls_.snapshot(),parking_.snapshot(),incidents_.snapshot(),traffic_.snapshot(),road_traffic_.snapshot(),transit_.snapshot(),queues_.snapshot(),operations_.snapshot()};}
 void TransportationAuthority::restore(const TransportationSnapshot& s) {
     validate_network(s.network);
     validate_transit(s.transit);
