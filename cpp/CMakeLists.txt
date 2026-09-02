@@ -77,6 +77,7 @@ if(CIVIC_BUILD_TESTS)
     tests/presentation/RenderPipelineTests.cpp
     tests/presentation/NativeClientSupportTests.cpp
     tests/presentation/PlatformTests.cpp
+    tests/presentation/SceneGeometryTests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine civic_presentation GTest::gtest_main ${CIVIC_JSON_TARGET})
   if(WIN32 AND CIVIC_BUILD_NATIVE_CLIENT)
