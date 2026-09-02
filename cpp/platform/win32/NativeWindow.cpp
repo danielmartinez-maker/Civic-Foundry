@@ -22,6 +22,8 @@ struct NativeWindow::Impl {
     HWND hwnd{};
     HINSTANCE instance{};
     PlatformEventQueue events;
+    NativeMessageHandler message_handler{};
+    void* message_handler_user_data{};
     std::uint32_t width{};
     std::uint32_t height{};
     bool closed{};
@@ -35,6 +37,14 @@ struct NativeWindow::Impl {
             self->hwnd = hwnd;
         }
         if (!self) return DefWindowProcW(hwnd, message, wparam, lparam);
+
+        const bool presentation_handled = self->message_handler && self->message_handler(
+            self->message_handler_user_data,
+            hwnd,
+            static_cast<std::uint32_t>(message),
+            static_cast<std::uintptr_t>(wparam),
+            static_cast<std::intptr_t>(lparam));
+
         switch (message) {
             case WM_CLOSE:
                 self->events.push({PlatformEventType::Close});
@@ -79,14 +89,19 @@ struct NativeWindow::Impl {
                 SetWindowPos(hwnd, nullptr, suggested->left, suggested->top, suggested->right - suggested->left, suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
                 return 0;
             }
-            default: return DefWindowProcW(hwnd, message, wparam, lparam);
+            default: return presentation_handled ? 1 : DefWindowProcW(hwnd, message, wparam, lparam);
         }
     }
 };
 
 NativeWindow::NativeWindow(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
 NativeWindow::~NativeWindow() {
-    if (impl_ && impl_->hwnd && IsWindow(impl_->hwnd)) DestroyWindow(impl_->hwnd);
+    if (!impl_) return;
+    // Presentation handlers are non-owning. Clear them before DestroyWindow can
+    // synchronously emit WM_DESTROY and other teardown messages.
+    impl_->message_handler = nullptr;
+    impl_->message_handler_user_data = nullptr;
+    if (impl_->hwnd && IsWindow(impl_->hwnd)) DestroyWindow(impl_->hwnd);
 }
 
 std::expected<std::unique_ptr<NativeWindow>, std::string> NativeWindow::create(const NativeWindowConfig& config) {
@@ -128,6 +143,10 @@ bool NativeWindow::pumpMessages() {
     return !impl_->closed;
 }
 std::vector<PlatformEvent> NativeWindow::drainEvents() { return impl_->events.drain(); }
+void NativeWindow::setMessageHandler(NativeMessageHandler handler, void* user_data) noexcept {
+    impl_->message_handler = handler;
+    impl_->message_handler_user_data = handler ? user_data : nullptr;
+}
 void* NativeWindow::nativeHandle() const noexcept { return impl_->hwnd; }
 std::uint32_t NativeWindow::clientWidth() const noexcept { return impl_->width; }
 std::uint32_t NativeWindow::clientHeight() const noexcept { return impl_->height; }
