@@ -24,6 +24,7 @@ find_package(Clipper2 CONFIG REQUIRED)
 add_library(civic_engine STATIC
   engine/src/core/Kernel.cpp
   engine/src/core/NativeEngine.cpp
+  engine/src/core/NativeEngineUrban.cpp
   engine/src/core/RandomStreamRegistry.cpp
   engine/src/persistence/SaveV9.cpp
   engine/src/bridge/civic_engine.cpp
