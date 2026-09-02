@@ -38,3 +38,18 @@ TEST(NativeHudNotifications, ReplacementOwnsItsExpiryInsteadOfInheritingOlderTim
     EXPECT_TRUE(notifications.current(16.9).has_value());
     EXPECT_FALSE(notifications.current(17.01).has_value());
 }
+
+TEST(NativeHudShortcuts, UiCaptureAndEditableControlsSuppressGameplayActions) {
+    EXPECT_EQ(resolveHudShortcut('R', {}), HudShortcutAction::RoadTool);
+    EXPECT_EQ(resolveHudShortcut('4', {}), HudShortcutAction::SpeedVeryFast);
+
+    EXPECT_EQ(
+        resolveHudShortcut('R', ShortcutContext{.ui_keyboard_capture = true}),
+        HudShortcutAction::None);
+    EXPECT_EQ(
+        resolveHudShortcut('R', ShortcutContext{.editable_control_active = true}),
+        HudShortcutAction::None);
+    EXPECT_EQ(
+        resolveHudShortcut('4', ShortcutContext{.ui_keyboard_capture = true, .editable_control_active = true}),
+        HudShortcutAction::None);
+}
