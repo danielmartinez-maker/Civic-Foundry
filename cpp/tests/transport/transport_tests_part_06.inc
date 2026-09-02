@@ -26,7 +26,7 @@ void test_native_road_traffic_progression_and_incident_conservation() {
         *route,
         0,
     };
-    const auto vehicle_id = traffic.submit(network, submission);
+    const auto vehicle_id = submit_road_trip(traffic, network, submission);
     CHECK(vehicle_id.has_value());
     CHECK(traffic.snapshot().vehicles.size() == 1);
     CHECK_NEAR(traffic.flow_snapshot().loads.front().weighted_vehicles, 2.5, 1e-9);
@@ -44,7 +44,7 @@ void test_native_road_traffic_progression_and_incident_conservation() {
         0,
     });
 
-    const auto blocked = traffic.step(network, controls, incidents, 1);
+    const auto blocked = step_road_traffic(traffic, network, controls, incidents, 1);
     CHECK(blocked.completed_weight == 0.0);
     CHECK(blocked.failed_weight == 0.0);
     CHECK(blocked.active_vehicle_count == 1);
@@ -55,7 +55,7 @@ void test_native_road_traffic_progression_and_incident_conservation() {
     incidents.clear(IncidentId{"incident:block"});
     double completed_weight = 0.0;
     for (std::uint64_t tick = 2; tick < 20 && traffic.snapshot().vehicles.size() > 0; ++tick) {
-        completed_weight += traffic.step(network, controls, incidents, tick).completed_weight;
+        completed_weight += step_road_traffic(traffic, network, controls, incidents, tick).completed_weight;
     }
     CHECK(traffic.snapshot().vehicles.empty());
     CHECK_NEAR(completed_weight, 2.5, 1e-9);
@@ -77,7 +77,7 @@ void test_native_same_node_road_trip_completes_without_active_vehicle() {
     if (!route) return;
 
     RoadTrafficState traffic;
-    const auto vehicle_id = traffic.submit(network, RoadTripSubmission{
+    const auto vehicle_id = submit_road_trip(traffic, network, RoadTripSubmission{
         TripId{"trip:same-node"},
         TripCause::home_to_shopping,
         1.25,
