@@ -56,6 +56,39 @@ TEST(NativeTransportationAuthorityTransfer, SaveV9SerializesCurrentNativeRoadPro
     EXPECT_NE(saved->find("\"revision\":9"), std::string::npos);
     EXPECT_NE(saved->find("\"x\":0,\"y\":1,\"type\":\"arterial\""), std::string::npos);
     EXPECT_EQ(saved->find("\"x\":1,\"y\":0,\"type\":\"collector\""), std::string::npos);
+    EXPECT_NE(saved->find("\"tick\":12"), std::string::npos);
+    EXPECT_NE(saved->find("\"nativeTransportation\""), std::string::npos);
+}
+
+TEST(NativeTransportationAuthorityTransfer, NativeOnlyLaneStateRoundTripsExactly) {
+    auto engine = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal});
+    ASSERT_TRUE(engine);
+    ASSERT_TRUE((*engine)->loadV9(kAuthorityTransferSave));
+    const auto network = (*engine)->transportation().network().snapshot();
+    ASSERT_FALSE(network.lanes.empty());
+    const auto laneId = network.lanes.front().id.value;
+
+    const std::string payload = std::string{"{\"laneId\":\""} + laneId + "\",\"open\":false}";
+    const std::vector<civic::CommandEnvelope> commands{{1, 12, "transport.lane.set_open", bytes(payload)}};
+    ASSERT_TRUE((*engine)->submit(commands));
+    ASSERT_TRUE((*engine)->step(1));
+    const auto beforeHash = (*engine)->domainHash("transportation");
+    ASSERT_TRUE(beforeHash);
+    const auto beforeSnapshot = (*engine)->snapshot();
+    ASSERT_TRUE(beforeSnapshot);
+
+    auto saved = (*engine)->saveV9();
+    ASSERT_TRUE(saved);
+    auto restored = civic::NativeEngine::create({1, 0, civic::SpeedMode::paused});
+    ASSERT_TRUE(restored);
+    ASSERT_TRUE((*restored)->loadV9(*saved));
+    EXPECT_EQ((*restored)->tick(), 12U);
+    const auto afterHash = (*restored)->domainHash("transportation");
+    ASSERT_TRUE(afterHash);
+    EXPECT_EQ(afterHash->value, beforeHash->value);
+    const auto afterSnapshot = (*restored)->snapshot();
+    ASSERT_TRUE(afterSnapshot);
+    EXPECT_EQ(afterSnapshot->json, beforeSnapshot->json);
 }
 
 TEST(NativeTransportationAuthorityTransfer, UnknownTransportCommandsFailTransactionally) {
