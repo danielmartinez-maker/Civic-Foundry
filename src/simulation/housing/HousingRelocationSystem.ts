@@ -271,8 +271,18 @@ export class HousingRelocationSystem {
   private initialized = false;
   private pendingCycle = emptyCycle();
   private latestCycle = emptyCycle();
+  private writeEnabled = true;
+
+  setWriteEnabled(enabled: boolean): void {
+    this.writeEnabled = enabled === true;
+  }
+
+  typescriptWriteEnabled(): boolean {
+    return this.writeEnabled;
+  }
 
   initialize(population: number, options: readonly HousingTenureOption[]): HousingRelocationSnapshot {
+    if (!this.writeEnabled) return this.snapshot();
     finiteNonNegative('population', population);
     const validOptions = validateOptions(options);
     this.allocations = [];
@@ -292,6 +302,7 @@ export class HousingRelocationSystem {
   }
 
   reconcile(input: HousingReconcileInput): HousingRelocationSnapshot {
+    if (!this.writeEnabled) return this.snapshot();
     finiteNonNegative('population', input.population);
     const options = validateOptions(input.options);
     if (!this.initialized) return this.initialize(input.population, options);
@@ -343,6 +354,7 @@ export class HousingRelocationSystem {
   }
 
   displaceBuilding(buildingId: string): number {
+    if (!this.writeEnabled) return 0;
     if (buildingId.length === 0) throw new Error('buildingId must be non-empty');
     const displaced = this.allocations.filter((item) => item.buildingId === buildingId);
     if (displaced.length === 0) return 0;
@@ -379,6 +391,7 @@ export class HousingRelocationSystem {
   }
 
   refreshSnapshot(population: number, options: readonly HousingTenureOption[]): HousingRelocationSnapshot {
+    if (!this.writeEnabled) return this.snapshot();
     finiteNonNegative('population', population);
     const validOptions = validateOptions(options);
     if (!this.initialized) return this.initialize(population, validOptions);
@@ -399,6 +412,7 @@ export class HousingRelocationSystem {
   }
 
   restoreState(state: HousingRelocationState): HousingRelocationState {
+    if (!this.writeEnabled) return this.snapshotState();
     if (!state || typeof state !== 'object') throw new Error('housing relocation state must be an object');
     const allocationKeys = new Set<string>();
     const allocations: HousingCohortAllocation[] = [];
