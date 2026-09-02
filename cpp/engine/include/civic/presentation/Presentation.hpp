@@ -72,6 +72,12 @@ struct TerrainCellSnapshot {
     float flood_depth_m{};
 };
 
+struct ParcelSnapshot {
+    std::string id;
+    RenderRevision revision{};
+    std::vector<Point2> polygon;
+};
+
 struct RoadSnapshot {
     std::string id;
     RenderRevision revision{};
@@ -181,6 +187,7 @@ struct FrameSnapshot {
     std::uint64_t simulation_tick{};
     WorldSize world{};
     std::vector<TerrainCellSnapshot> terrain;
+    std::vector<ParcelSnapshot> parcels;
     std::vector<RoadSnapshot> roads;
     std::vector<BuildingSnapshot> buildings;
     std::vector<VehicleSnapshot> vehicles;
@@ -218,6 +225,7 @@ public:
     void rotate(int direction) noexcept;
     void rotateAroundCanvasPoint(int direction, WorldSize size, Point2 anchor) noexcept;
     [[nodiscard]] Point2 worldToCanvas(double x, double y, WorldSize size) const noexcept;
+    [[nodiscard]] std::optional<Point2> canvasToWorld(double canvas_x, double canvas_y, WorldSize size) const noexcept;
     [[nodiscard]] std::optional<std::pair<std::uint32_t, std::uint32_t>> canvasToCell(double canvas_x, double canvas_y, WorldSize size) const noexcept;
     [[nodiscard]] std::vector<Point2> tilePolygon(std::uint32_t x, std::uint32_t y, WorldSize size) const;
 private:
@@ -248,12 +256,13 @@ private:
 
 struct SceneUpdateStats {
     std::size_t terrain_rebuilt{};
+    std::size_t parcels_rebuilt{};
     std::size_t roads_rebuilt{};
     std::size_t buildings_rebuilt{};
     std::size_t vehicles_updated{};
     std::size_t transit_rebuilt{};
     std::size_t overlays_rebuilt{};
-    [[nodiscard]] std::size_t totalRebuilt() const noexcept { return terrain_rebuilt + roads_rebuilt + buildings_rebuilt + vehicles_updated + transit_rebuilt + overlays_rebuilt; }
+    [[nodiscard]] std::size_t totalRebuilt() const noexcept { return terrain_rebuilt + parcels_rebuilt + roads_rebuilt + buildings_rebuilt + vehicles_updated + transit_rebuilt + overlays_rebuilt; }
 };
 
 class RetainedScene {
@@ -263,6 +272,7 @@ public:
 private:
     RenderRevision applied_revision_{};
     std::map<std::string, RenderRevision> terrain_;
+    std::map<std::string, RenderRevision> parcels_;
     std::map<std::string, RenderRevision> roads_;
     std::map<std::string, RenderRevision> buildings_;
     std::map<std::string, RenderRevision> vehicles_;
@@ -275,6 +285,7 @@ public:
     void rebuild(const FrameSnapshot& snapshot);
     [[nodiscard]] std::optional<EntityRef> pickWorld(Point2 point, double tolerance) const noexcept;
 private:
+    std::vector<ParcelSnapshot> parcels_;
     std::vector<RoadSnapshot> roads_;
     std::vector<BuildingSnapshot> buildings_;
     std::vector<VehicleSnapshot> vehicles_;
