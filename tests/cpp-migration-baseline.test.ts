@@ -129,24 +129,21 @@ test("manifest pins concrete V9 domain hashes for executable save fixtures", () 
   assert.ok(urbanSave);
   assert.ok(historySave);
 
-  assert.equal(
-    urbanScenario.expectedDomainHashes.urbanFabric,
-    digestCanonical(urbanSave.urbanFabric),
-  );
-  assert.equal(
-    urbanScenario.expectedDomainHashes.buildings,
-    digestCanonical(urbanSave.buildingsV2),
-  );
-  assert.equal(
-    urbanScenario.expectedDomainHashes.propertyMarket,
-    digestCanonical(urbanSave.propertyMarket),
-  );
-  assert.equal(
-    historyScenario.expectedDomainHashes.urbanFabric,
-    digestCanonical(historySave.urbanFabric),
-  );
-  assert.equal(
-    historyScenario.expectedDomainHashes.propertyMarket,
-    digestCanonical(historySave.propertyMarket),
+  assert.deepEqual(
+    {
+      urbanFabric: urbanScenario.expectedDomainHashes.urbanFabric,
+      buildings: urbanScenario.expectedDomainHashes.buildings,
+      propertyMarket: urbanScenario.expectedDomainHashes.propertyMarket,
+      historyUrbanFabric: historyScenario.expectedDomainHashes.urbanFabric,
+      historyPropertyMarket:
+        historyScenario.expectedDomainHashes.propertyMarket,
+    },
+    {
+      urbanFabric: digestCanonical(urbanSave.urbanFabric),
+      buildings: digestCanonical(urbanSave.buildingsV2),
+      propertyMarket: digestCanonical(urbanSave.propertyMarket),
+      historyUrbanFabric: digestCanonical(historySave.urbanFabric),
+      historyPropertyMarket: digestCanonical(historySave.propertyMarket),
+    },
   );
 });
