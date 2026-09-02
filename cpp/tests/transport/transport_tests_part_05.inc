@@ -26,6 +26,8 @@ int main() {
     test_transit_vehicle_failure_preserves_passengers();
     test_multimodal_transfer_and_crowding_capacity();
     test_snapshot_roundtrip_and_hash();
+    test_native_road_traffic_progression_and_incident_conservation();
+    test_native_same_node_road_trip_completes_without_active_vehicle();
     if (failures) { std::cerr << failures << " failure(s)\n"; return 1; }
     std::cout << "transport tests passed\n";
     return 0;
