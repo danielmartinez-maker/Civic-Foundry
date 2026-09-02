@@ -1,3 +1,8 @@
+import type { BuildingV2 } from "../simulation/buildings/BuildingTypes.ts";
+import type { PropertyMarketSnapshot } from "../simulation/development/PropertyMarketSystem.ts";
+import type { ParcelZoningAssignment } from "../simulation/zoning/ZoningTypes.ts";
+import type { CadastralSnapshot } from "../world/cadastre/CadastralTypes.ts";
+
 export const NATIVE_COMMAND_PROTOCOL_VERSION = 1 as const;
 
 export const NATIVE_DOMAIN_OWNERSHIP = Object.freeze({
@@ -42,6 +47,34 @@ export type NativeDomainHash = Readonly<{
   value: bigint;
 }>;
 
+export type NativeUrbanLegacyRequest = Readonly<{
+  terrain: readonly Readonly<{ x: number; y: number; buildable: boolean }>[];
+  roads: readonly Readonly<{ x: number; y: number; roadRef: string }>[];
+  zoning: readonly Readonly<{
+    x: number;
+    y: number;
+    zoningDistrictId: string;
+  }>[];
+}>;
+
+export type NativeUrbanState = Readonly<{
+  urbanFabric: CadastralSnapshot;
+  zoningV2: Readonly<{ parcelAssignments: readonly ParcelZoningAssignment[] }>;
+  buildingsV2: readonly BuildingV2[];
+  propertyMarket: PropertyMarketSnapshot;
+}>;
+
+export type NativeUrbanSnapshot = NativeUrbanState &
+  Readonly<{
+    legacyLots: readonly Readonly<{
+      parcelId: string;
+      x: number;
+      y: number;
+      faithful: boolean;
+    }>[];
+    compatibilityDiagnostics: readonly string[];
+  }>;
+
 export interface NativeEngineAddon {
   createEngine(
     config?: Readonly<{
@@ -65,4 +98,7 @@ export interface NativeEngineAddon {
   restoreWorld(handle: NativeEngineHandle, snapshotJson: string): string;
   createLegacyWorld(handle: NativeEngineHandle, requestJson: string): string;
   runDesignStorm(handle: NativeEngineHandle, requestJson: string): string;
+  rebuildUrbanLegacy(handle: NativeEngineHandle, requestJson: string): string;
+  restoreUrbanState(handle: NativeEngineHandle, snapshotJson: string): string;
+  getUrbanSnapshot(handle: NativeEngineHandle): string;
 }
