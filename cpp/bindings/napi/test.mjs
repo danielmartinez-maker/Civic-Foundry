@@ -77,7 +77,29 @@ const urbanPreview = JSON.parse(
 assert.equal(urbanPreview.urbanFabric.parcels.length, 1);
 assert.equal(urbanPreview.urbanFabric.parcels[0].id, "parcel:0,0");
 assert.equal(urbanPreview.urbanFabric.parcels[0].areaM2, 400);
-assert.equal(addon.getDomainHash(handle, "cadastre").ownership, 2);
+assert.equal(addon.getDomainHash(handle, "cadastre").ownership, 1);
+assert.equal(addon.getDomainHash(handle, "buildings").ownership, 1);
+assert.equal(addon.getDomainHash(handle, "zoning").ownership, 1);
+assert.equal(addon.getDomainHash(handle, "property").ownership, 1);
+
+const splitResponse = JSON.parse(
+  addon.applyUrbanCommand(
+    handle,
+    JSON.stringify({
+      type: "cadastre.split",
+      parcelId: "parcel:0,0",
+      cutLine: [
+        { x: 10, y: 0 },
+        { x: 10, y: 20 },
+      ],
+    }),
+  ),
+);
+assert.equal(splitResponse.result.committed, true);
+assert.equal(splitResponse.result.resultingParcelIds.length, 2);
+assert.equal(splitResponse.snapshot.urbanFabric.parcels.length, 2);
+assert.deepEqual(JSON.parse(addon.getUrbanSnapshot(handle)), splitResponse.snapshot);
+
 const committedUrban = JSON.parse(
   addon.restoreUrbanState(
     handle,
@@ -90,10 +112,6 @@ const committedUrban = JSON.parse(
   ),
 );
 assert.deepEqual(JSON.parse(addon.getUrbanSnapshot(handle)), committedUrban);
-assert.equal(addon.getDomainHash(handle, "cadastre").ownership, 1);
-assert.equal(addon.getDomainHash(handle, "buildings").ownership, 1);
-assert.equal(addon.getDomainHash(handle, "zoning").ownership, 1);
-assert.equal(addon.getDomainHash(handle, "property").ownership, 1);
 
 const left = addon.createEngine({ seed: 7 });
 const right = addon.createEngine({ seed: 7 });
