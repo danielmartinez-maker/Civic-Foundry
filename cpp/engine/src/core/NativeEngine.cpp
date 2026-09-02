@@ -47,7 +47,11 @@ Result<std::unique_ptr<NativeEngine>> NativeEngine::create(const EngineConfig& c
     catch (...) { return std::unexpected(make_error(ErrorCode::internal_error, "unknown native engine creation failure")); }
 }
 
-Result<void> NativeEngine::submit(std::span<const CommandEnvelope> commands) { return commands_.submit(commands, clock_.tick()); }
+Result<void> NativeEngine::submit(std::span<const CommandEnvelope> commands) {
+    auto submitted = commands_.submit(commands, clock_.tick());
+    if (!submitted) return submitted;
+    return applyReadyCommands();
+}
 
 Result<void> NativeEngine::applyReadyCommands() {
     const auto checkpoint_commands = commands_;
