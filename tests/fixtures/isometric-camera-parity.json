@@ -1,0 +1,20 @@
+{
+  "metrics": { "tileWidth": 64, "tileHeight": 32 },
+  "world": { "width": 40, "height": 24 },
+  "fractionalPoint": { "x": 7.25, "y": 11.75 },
+  "cells": [
+    { "x": 0, "y": 0 },
+    { "x": 39, "y": 0 },
+    { "x": 0, "y": 23 },
+    { "x": 39, "y": 23 },
+    { "x": 6, "y": 9 }
+  ],
+  "focusWorld": { "x": 10, "y": 15 },
+  "zoomCell": { "x": 6, "y": 9 },
+  "zoomFactor": 1.12,
+  "zoomMaxProbe": 100,
+  "zoomMinProbe": 0.0001,
+  "zoomMax": 2.5,
+  "zoomMin": 0.45,
+  "outsideCanvas": { "x": -1000, "y": -1000 }
+}
