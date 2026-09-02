@@ -4,10 +4,12 @@ import { readFileSync } from "node:fs";
 
 import {
   canonicalStringify,
+  digestCanonical,
   runKernelParityScenarios,
 } from "./support/kernelParity.ts";
 import {
   loadMigrationManifest,
+  materializeMigrationSaveInput,
   runTypeScriptMigrationCorpus,
 } from "./support/cppMigrationFixtures.ts";
 
@@ -38,9 +40,7 @@ test("C++ migration baseline names the exact accepted TypeScript commit and requ
   );
   assert.ok(
     manifest.scenarios.every((scenario) =>
-      ["PARITY", "CORRECTION", "DEFERRED"].includes(
-        scenario.classification,
-      ),
+      ["PARITY", "CORRECTION", "DEFERRED"].includes(scenario.classification),
     ),
   );
   assert.ok(
@@ -60,7 +60,10 @@ test("every C++ migration scenario records executable save input and an ordered 
       Array.isArray(scenario.commandJournal),
       `${scenario.id} must record commandJournal`,
     );
-    assert.ok(scenario.targetTicks.length > 0, `${scenario.id} needs target ticks`);
+    assert.ok(
+      scenario.targetTicks.length > 0,
+      `${scenario.id} needs target ticks`,
+    );
     let previousSequence = 0;
     for (const command of scenario.commandJournal) {
       assert.ok(
@@ -112,5 +115,35 @@ test("manifest pins accepted legacy domain hashes rather than recomputing expect
       "legacy-authoritative-save@2000"
     ],
     frozen.scenarios["economy-freight"]?.checkpoints["tick-2000"],
+  );
+});
+
+test("manifest pins concrete V9 domain hashes for executable save fixtures", () => {
+  const urbanScenario = manifest.scenarios[2];
+  const historyScenario = manifest.scenarios[5];
+  assert.ok(urbanScenario);
+  assert.ok(historyScenario);
+
+  const urbanSave = materializeMigrationSaveInput(urbanScenario);
+  const historySave = materializeMigrationSaveInput(historyScenario);
+  assert.ok(urbanSave);
+  assert.ok(historySave);
+
+  assert.deepEqual(
+    {
+      urbanFabric: urbanScenario.expectedDomainHashes.urbanFabric,
+      buildings: urbanScenario.expectedDomainHashes.buildings,
+      propertyMarket: urbanScenario.expectedDomainHashes.propertyMarket,
+      historyUrbanFabric: historyScenario.expectedDomainHashes.urbanFabric,
+      historyPropertyMarket:
+        historyScenario.expectedDomainHashes.propertyMarket,
+    },
+    {
+      urbanFabric: digestCanonical(urbanSave.urbanFabric),
+      buildings: digestCanonical(urbanSave.buildingsV2),
+      propertyMarket: digestCanonical(urbanSave.propertyMarket),
+      historyUrbanFabric: digestCanonical(historySave.urbanFabric),
+      historyPropertyMarket: digestCanonical(historySave.propertyMarket),
+    },
   );
 });

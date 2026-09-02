@@ -5,7 +5,10 @@ import {
   isNativeShadowEnabled,
   nativeShadowEnabledFromGlobal,
 } from "../src/native/NativeEngineBridge.ts";
-import { ShadowSimulationRunner } from "../src/native/ShadowSimulationRunner.ts";
+import {
+  ShadowSimulationRunner,
+  createShadowSimulationSessionIfEnabled,
+} from "../src/native/ShadowSimulationRunner.ts";
 import type {
   NativeEngineAddon,
   NativeEngineHandle,
@@ -107,4 +110,36 @@ test("native shadow mode is opt-in and disabled by default-like values", () => {
     nativeShadowEnabledFromGlobal({ __CIVIC_NATIVE_SHADOW__: "1" }),
     true,
   );
+});
+
+test("shadow feature flag constructs a dev/test session only when explicitly enabled", () => {
+  const reference = {
+    submit: () => undefined,
+    step: () => undefined,
+    domainHash: () => 42n,
+  };
+
+  const disabledAddon = fakeAddon();
+  const disabled = createShadowSimulationSessionIfEnabled(
+    reference,
+    disabledAddon,
+    { seed: 3 },
+    {},
+  );
+  assert.equal(disabled, null);
+  assert.deepEqual(disabledAddon.calls, []);
+
+  const enabledAddon = fakeAddon();
+  const enabled = createShadowSimulationSessionIfEnabled(
+    reference,
+    enabledAddon,
+    { seed: 3 },
+    { __CIVIC_NATIVE_SHADOW__: "1" },
+  );
+  assert.ok(enabled);
+  assert.deepEqual(enabledAddon.calls, ["create"]);
+  enabled.runner.step(1);
+  enabled.dispose();
+  enabled.dispose();
+  assert.equal(enabledAddon.calls.filter((call) => call === "destroy").length, 1);
 });

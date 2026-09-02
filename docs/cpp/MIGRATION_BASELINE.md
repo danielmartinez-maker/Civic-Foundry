@@ -39,7 +39,7 @@ normalized command batch
 
 ## Fixture corpus
 
-`tests/fixtures/cpp-migration/manifest.json` binds six required scenarios to the accepted TypeScript regression corpus:
+`tests/fixtures/cpp-migration/manifest.json` is the machine-readable Stack 0 migration corpus. Version 2 binds the six required scenarios to explicit executable inputs:
 
 1. empty/new city;
 2. small road/zoning city;
@@ -47,6 +47,12 @@ normalized command batch
 4. active transit city;
 5. active freight/economy city;
 6. city containing cadastral history.
+
+Each scenario records a deterministic seed, either a fresh-start descriptor or a materialized Save V9 input, an ordered command envelope journal, target ticks, expected domain hashes, expected invariant outcomes, and a `PARITY`, `CORRECTION`, or `DEFERRED` classification.
+
+`tests/support/cppMigrationFixtures.ts` materializes the same corpus for the TypeScript shadow kernel. `tests/native-migration-parity.mjs` feeds the same save inputs and ordered command envelopes through the native Node-API bridge and compares normalized snapshots, drained events, and domain-hash protocol results at every target tick. The Windows native CI lane runs this shared-corpus comparison after the native Debug tests and TypeScript bridge tests.
+
+The cross-runtime fixture runner does not transfer gameplay authority. At Stack 0, the native `kernel` hash is owned while `world`, `cadastre`, `buildings`, `transportation`, `population`, `economy`, and `services` remain explicitly `unowned`. Gameplay behavior for those domains continues to be frozen by the accepted TypeScript corpus and compatibility tests.
 
 The older Phase 0A parity oracle remains immutable under `tests/fixtures/kernel-v7-parity/baseline.json`. V9-specific scenarios are additionally exercised through the current `save-v9` regression suites and the native differential round-trip gate.
 
@@ -62,4 +68,4 @@ The historical bug catalog predates this implementation baseline and is evidence
 
 ## Determinism rule
 
-The migration oracle is normalized before hashing. A repeated run from the same save, seed, ordered command journal, and target ticks must produce byte-identical normalized output. Hashes are over semantic canonical state, never native object memory or container iteration order.
+The migration oracle is normalized before hashing. A repeated run from the same save, seed, ordered command journal, and target ticks must produce byte-identical normalized output. The TypeScript corpus runs twice in the repository test gate, and the native shared-corpus gate repeats every native scenario. Hashes are over semantic canonical state, never native object memory or container iteration order.

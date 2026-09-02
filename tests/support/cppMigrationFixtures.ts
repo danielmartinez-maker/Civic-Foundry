@@ -66,7 +66,11 @@ export type MigrationCheckpoint = Readonly<{
   domainHashes: Readonly<
     Record<
       string,
-      Readonly<{ ownership: "owned" | "unowned"; version: number; value: string }>
+      Readonly<{
+        ownership: "owned" | "unowned";
+        version: number;
+        value: string;
+      }>
     >
   >;
 }>;
@@ -116,10 +120,7 @@ export function createUrbanFabricV9Save(
     startingFunds: 500_000,
   });
   assert.equal(core.buildRoad([{ x: 2, y: 3 }], "local").ok, true);
-  assert.equal(
-    core.paintZone([{ x: 2, y: 2 }], "residential").painted,
-    1,
-  );
+  assert.equal(core.paintZone([{ x: 2, y: 2 }], "residential").painted, 1);
   core.buildings.restore([
     {
       id: "building:lot:2,2",
@@ -288,7 +289,9 @@ export function runTypeScriptMigrationScenario(
   clock.restore(startTick, speed);
   const kernel = new SimulationKernel({ clock, seed });
 
-  for (const type of new Set(scenario.commandJournal.map((command) => command.type))) {
+  for (const type of new Set(
+    scenario.commandJournal.map((command) => command.type),
+  )) {
     kernel.commands.registerHandler(type, (command, context) => {
       context.events.append(context.tick, {
         type: command.command.type,
@@ -335,6 +338,8 @@ export function runTypeScriptMigrationCorpus(
   manifest: MigrationManifest = loadMigrationManifest(),
 ): readonly MigrationScenarioResult[] {
   return Object.freeze(
-    manifest.scenarios.map((scenario) => runTypeScriptMigrationScenario(scenario)),
+    manifest.scenarios.map((scenario) =>
+      runTypeScriptMigrationScenario(scenario),
+    ),
   );
 }
