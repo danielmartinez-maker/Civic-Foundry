@@ -76,9 +76,9 @@
       ],
       "targetTicks": [0, 1, 10],
       "expectedDomainHashes": {
-        "urbanFabric": "runtime-fixture:urban-fabric-v9",
-        "buildings": "runtime-fixture:buildings-v9",
-        "propertyMarket": "runtime-fixture:property-market-v9"
+        "urbanFabric": "4c5701f5ba4c9a6068adf641ded53237e426198b155a38e3275d45d5287e5ce3",
+        "buildings": "c4716928812115bd39a4e43aa663da41a639ed4c6b6a2e28aa4f3160a7bfe017",
+        "propertyMarket": "f7b9b985022b7d95a6184d665ef66f5b339b370572f079d30a29d5b60aba8b54"
       },
       "expectedInvariants": {
         "saveRoundTrip": true,
@@ -177,8 +177,8 @@
       ],
       "targetTicks": [0, 1, 10],
       "expectedDomainHashes": {
-        "urbanFabric": "runtime-fixture:cadastral-history",
-        "propertyMarket": "runtime-fixture:historical-transactions"
+        "urbanFabric": "f89bfd370a2305956ad44d485fa9993653ebcabf55d7f30e0f7a21be1cbaedc0",
+        "propertyMarket": "2faf84c687e487798583580a01600168d7594b61975e4760167c9d0541cb964f"
       },
       "expectedInvariants": {
         "lineagePreserved": true,
