@@ -43,4 +43,8 @@ export function restoreUrbanState(
   handle: NativeHandle,
   snapshotJson: string,
 ): string;
+export function applyUrbanCommand(
+  handle: NativeHandle,
+  requestJson: string,
+): string;
 export function getUrbanSnapshot(handle: NativeHandle): string;
