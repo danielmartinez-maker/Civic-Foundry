@@ -40,6 +40,7 @@ add_library(civic_presentation STATIC
   presentation/src/NativeUi.cpp
   presentation/src/Audio.cpp
   presentation/src/Platform.cpp
+  presentation/src/SceneGeometry.cpp
 )
 target_include_directories(civic_presentation PUBLIC engine/include)
 target_link_libraries(civic_presentation PUBLIC ${CIVIC_JSON_TARGET})
