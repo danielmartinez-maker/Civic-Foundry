@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <string>
 
+#include <civic/core/NativeEngine.hpp>
 #include <civic/persistence/TransportationSaveV9.hpp>
 
 namespace {
@@ -12,17 +13,19 @@ const std::string kActiveTrafficSave = R"({"saveVersion":9,"gameVersion":"0.9.0-
 } // namespace
 
 TEST(NativeEngineTransportation, HydratesMappedLegacyVehicleWeightIntoDirectionalNativeTraffic) {
-    auto parsed = civic::parseTransportationV9(kActiveTrafficSave);
-    ASSERT_TRUE(parsed);
+    auto engine = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal});
+    ASSERT_TRUE(engine);
+    ASSERT_TRUE((*engine)->loadV9(kActiveTrafficSave));
+    const auto snapshot = (*engine)->transportation().snapshot();
 
-    auto mapped = civic::resolveLegacyEdgeV9(parsed->network, "e:n:1,0>n:2,0");
+    auto mapped = civic::resolveLegacyEdgeV9(snapshot.network, "e:n:1,0>n:2,0");
     ASSERT_TRUE(mapped);
-    const auto load = std::find_if(parsed->traffic.loads.begin(), parsed->traffic.loads.end(), [&](const auto& item) {
+    const auto load = std::find_if(snapshot.traffic.loads.begin(), snapshot.traffic.loads.end(), [&](const auto& item) {
         return item.carriageway_id == *mapped;
     });
-    ASSERT_NE(load, parsed->traffic.loads.end());
+    ASSERT_NE(load, snapshot.traffic.loads.end());
     EXPECT_DOUBLE_EQ(load->weighted_vehicles, 2.5);
-    EXPECT_EQ(parsed->traffic.loads.size(), 1U);
+    EXPECT_EQ(snapshot.traffic.loads.size(), 1U);
 }
 
 TEST(NativeEngineTransportation, LeavesStaleLegacyRoutesInCompatibilityStateInsteadOfRejectingSave) {
@@ -38,9 +41,10 @@ TEST(NativeEngineTransportation, LeavesStaleLegacyRoutesInCompatibilityStateInst
         return value;
     }();
 
-    auto parsed = civic::parseTransportationV9(stale);
-    ASSERT_TRUE(parsed);
-    EXPECT_TRUE(parsed->traffic.loads.empty());
+    auto engine = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal});
+    ASSERT_TRUE(engine);
+    ASSERT_TRUE((*engine)->loadV9(stale));
+    EXPECT_TRUE((*engine)->transportation().snapshot().traffic.loads.empty());
     auto continuation = civic::parseTransportationContinuationV9(stale);
     ASSERT_TRUE(continuation);
     EXPECT_NE(continuation->trafficCanonical.find("e:n:1,0>n:9,9"), std::string::npos);
