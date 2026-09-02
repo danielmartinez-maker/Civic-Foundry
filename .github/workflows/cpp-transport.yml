@@ -12,7 +12,10 @@ on:
       - "cpp/engine/src/bridge/transport_c_api.cpp"
       - "cpp/tests/transport/**"
       - "cpp/transport/**"
+      - "tests/fixtures/cpp-transport/**"
+      - "tests/transport-cpp-fixtures.test.ts"
       - "tests/transport-cpp-shadow.test.ts"
+      - "tests/transport-cpp-deep-shadow.test.ts"
       - "tests/support/transportCppShadowHarness.ts"
       - ".github/workflows/cpp-transport.yml"
 
@@ -91,4 +94,8 @@ jobs:
       - name: TypeScript/native shadow parity
         env:
           CIVIC_TRANSPORT_NAPI: ${{ github.workspace }}/build/cpp-transport-shadow/civic_transport_napi.node
-        run: node --experimental-strip-types --test tests/transport-cpp-shadow.test.ts
+          CIVIC_TRANSPORT_FIXTURE_RUNNER: ${{ github.workspace }}/build/cpp-transport-shadow/civic_transport_fixture_runner
+        run: >-
+          node --experimental-strip-types --test
+          tests/transport-cpp-shadow.test.ts
+          tests/transport-cpp-deep-shadow.test.ts

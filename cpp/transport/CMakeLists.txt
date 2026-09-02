@@ -50,6 +50,12 @@ civic_transport_warnings(civic_transport_c_api_smoke)
 civic_transport_sanitizers(civic_transport_c_api_smoke)
 add_test(NAME civic_transport_c_api_smoke COMMAND civic_transport_c_api_smoke)
 
+add_executable(civic_transport_fixture_runner "${CIVIC_CPP_ROOT}/tests/transport/transport_fixture_runner.cpp")
+target_link_libraries(civic_transport_fixture_runner PRIVATE civic_transport)
+civic_transport_warnings(civic_transport_fixture_runner)
+civic_transport_sanitizers(civic_transport_fixture_runner)
+add_test(NAME civic_transport_fixture_runner COMMAND civic_transport_fixture_runner)
+
 if(CIVIC_TRANSPORT_BUILD_NAPI)
   set(CIVIC_NODE_INCLUDE_DIR "" CACHE PATH "Directory containing node_api.h")
   if(NOT EXISTS "${CIVIC_NODE_INCLUDE_DIR}/node_api.h")
