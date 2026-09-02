@@ -4,6 +4,8 @@
 
 #ifdef _WIN32
 
+#include <civic/presentation/D3D12Backend.hpp>
+
 #include <type_traits>
 
 using namespace civic::presentation;
@@ -22,6 +24,16 @@ TEST(Win32NativeUiContract, ConfigDefaultsAreSafeAndBounded) {
     const Win32NativeUiConfig config{};
     EXPECT_EQ(config.frames_in_flight, 2U);
     EXPECT_GE(config.descriptor_capacity, 8U);
+}
+
+TEST(Win32NativeUiContract, D3D12BackendPublishesOnlyPresentationNativeContext) {
+    D3D12Backend backend{};
+    const auto native = backend.nativeUiContext();
+    EXPECT_EQ(native.device, nullptr);
+    EXPECT_EQ(native.command_queue, nullptr);
+    EXPECT_EQ(native.command_list, nullptr);
+    EXPECT_EQ(native.frames_in_flight, 2U);
+    EXPECT_EQ(native.rtv_format, 87U);
 }
 
 #endif
