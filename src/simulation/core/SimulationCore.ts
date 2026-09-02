@@ -3,6 +3,8 @@ import type { RoadType } from '../../data/roads.ts';
 import type {
   NativeBuildingLifecycleRuntimeInput,
   NativeBuildingRuntimeTypology,
+  NativeDevelopmentHbuApproval,
+  NativeHighestBestUseInput,
   NativeUrbanCommand,
   NativeUrbanLegacyRequest,
   NativeUrbanSnapshot,
@@ -18,7 +20,12 @@ import {
 import type { Parcel } from '../../world/cadastre/CadastralTypes.ts';
 import type { WorldFoundation } from '../../world/foundation/WorldFoundation.ts';
 import { resolveWorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
+import type { Lot } from '../../world/lots/LotSystem.ts';
 import type { BuildingV2 } from '../buildings/BuildingTypes.ts';
+import type {
+  DevelopmentFeasibilityResult,
+  PhysicalDevelopmentFeasibilityResult,
+} from '../development/DevelopmentTypes.ts';
 import {
   captureAuthoritativeTransactionCheckpoint,
   restoreAuthoritativeTransactionCheckpoint,
@@ -41,6 +48,12 @@ const rebuildServices = new WeakMap<
 >();
 const nativeUrbanBridges = new WeakMap<SimulationCoreBase, NativeUrbanBridge>();
 const installedMutationBridges = new WeakSet<SimulationCoreBase>();
+type PendingHbuApproval = Omit<NativeDevelopmentHbuApproval, 'buildingId'> &
+  Readonly<{ typologyId: string }>;
+const nativeHbuApprovals = new WeakMap<
+  SimulationCoreBase,
+  Map<string, PendingHbuApproval>
+>();
 const nativeBuildingRuntimeTypologies: readonly NativeBuildingRuntimeTypology[] =
   Object.freeze(
     BUILDING_TYPOLOGIES.map((typology) =>
@@ -67,6 +80,14 @@ function legacyZoneForParcel(parcel: Parcel): ZoneType | undefined {
     zone === 'industrial'
     ? zone
     : undefined;
+}
+
+function boundedRatio(value: number): number {
+  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+}
+
+function hbuApprovalKey(parcelIds: readonly string[], typologyId: string): string {
+  return `${[...parcelIds].sort((a, b) => a.localeCompare(b)).join('|')}::${typologyId}`;
 }
 
 function nativeBuildingLifecycleInput(
@@ -193,17 +214,42 @@ function reconcileNativeBuildingProposal(
   core: SimulationCoreBase,
   bridge: NativeUrbanBridge,
 ): void {
+  const nativeBefore = bridge.urbanSnapshot();
+  const nativeBuildingIds = new Set(
+    nativeBefore.buildingsV2.map((building) => building.id),
+  );
   const buildingsV2 = core.buildings.listV2();
   const lifecycleInputs = buildingsV2.flatMap((building) => {
     const input = nativeBuildingLifecycleInput(building);
     return input ? [input] : [];
   });
+  const pendingApprovals = nativeHbuApprovals.get(core) ?? new Map();
+  const hbuApprovals: NativeDevelopmentHbuApproval[] = [];
+  for (const building of buildingsV2) {
+    if (nativeBuildingIds.has(building.id)) continue;
+    const key = hbuApprovalKey(building.parcelIds, building.typologyId);
+    const pending = pendingApprovals.get(key);
+    if (!pending) {
+      throw new Error(`new BuildingV2 lacks HBU approval: ${building.id}`);
+    }
+    hbuApprovals.push(
+      Object.freeze({
+        buildingId: building.id,
+        candidateId: pending.candidateId,
+        parcelIds: pending.parcelIds,
+        zoningLegal: pending.zoningLegal,
+        hbuInput: pending.hbuInput,
+      }),
+    );
+  }
   const response = bridge.applyUrbanCommand(
     Object.freeze({
       type: 'buildings.reconcile',
       buildingsV2,
       typologies: nativeBuildingRuntimeTypologies,
       lifecycleInputs: Object.freeze(lifecycleInputs),
+      requireHbuForNewBuildings: true,
+      hbuApprovals: Object.freeze(hbuApprovals),
     }),
   );
   if (!response.result.committed) {
@@ -211,6 +257,7 @@ function reconcileNativeBuildingProposal(
       `native building reconciliation rejected: ${response.result.rejectionReasons.join(', ')}`,
     );
   }
+  nativeHbuApprovals.set(core, new Map());
   projectNativeUrbanState(core, response.snapshot);
 }
 
@@ -380,6 +427,60 @@ export class SimulationCore extends SimulationCoreBase {
         throw error;
       }
     }
+  }
+
+  protected override collectVacantDevelopmentOpportunities(
+    lots: readonly Lot[],
+    occupiedLots: ReadonlySet<string>,
+  ): DevelopmentFeasibilityResult[] {
+    const opportunities = super.collectVacantDevelopmentOpportunities(
+      lots,
+      occupiedLots,
+    );
+    const hurdles = this.developerMarket
+      .listDevelopers()
+      .map((developer) => developer.hurdleRate);
+    const developerHurdleRate = hurdles.length > 0 ? Math.min(...hurdles) : 1;
+    const approvals = new Map<string, PendingHbuApproval>();
+    nativeHbuApprovals.set(this, approvals);
+
+    return opportunities.filter((opportunity) => {
+      if (!opportunity.legal || !opportunity.feasible) return true;
+      const physical = opportunity as Partial<PhysicalDevelopmentFeasibilityResult>;
+      if (!physical.candidateId || !physical.typologyId || !physical.siteId) {
+        return false;
+      }
+      const parcelIds = Object.freeze([physical.siteId]);
+      const hbuInput: NativeHighestBestUseInput = Object.freeze({
+        parcelIds,
+        holdValue: Math.max(0, opportunity.landValue),
+        buildingCondition: 0,
+        developerHurdleRate,
+        renovationNetValue: 0,
+        renovationExpectedReturn: 0,
+        renovationRiskScore: 0,
+        conversionNetValue: 0,
+        conversionExpectedReturn: 0,
+        conversionRiskScore: 0,
+        redevelopmentNetValue: Math.max(0, opportunity.residualLandValue),
+        redevelopmentExpectedReturn: boundedRatio(opportunity.returnOnCost),
+        redevelopmentRiskScore: boundedRatio(opportunity.riskScore),
+      });
+      const decision = this.highestBestUse.evaluate(hbuInput);
+      if (decision.bestStrategy !== 'redevelop') return false;
+
+      approvals.set(
+        hbuApprovalKey(parcelIds, physical.typologyId),
+        Object.freeze({
+          candidateId: physical.candidateId,
+          typologyId: physical.typologyId,
+          parcelIds,
+          zoningLegal: opportunity.legal,
+          hbuInput,
+        }),
+      );
+      return true;
+    });
   }
 
   override rebuildCadastreFromLegacyState(): void {
