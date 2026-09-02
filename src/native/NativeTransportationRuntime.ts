@@ -2,8 +2,7 @@ import { desktopNativeEngineAddonFromGlobal, hasDesktopNativeHost } from "./Desk
 import { NativeEngineBridge } from "./NativeEngineBridge.ts";
 import type { NativeTransportationSnapshot } from "./NativeEngineTypes.ts";
 import type { MobilityPersonTrip } from "../simulation/mobility/MobilityScheduler.ts";
-import type { TrafficStateSnapshot, TrafficVehicle } from "../simulation/traffic/TrafficSystem.ts";
-import type { TrafficSystem } from "../simulation/traffic/TrafficSystem.ts";
+import type { TrafficStateSnapshot, TrafficVehicle, TrafficSystem } from "../simulation/traffic/TrafficSystem.ts";
 import type { TransportationGraph } from "../simulation/traffic/TransportationGraph.ts";
 import type { RoadSystem } from "../world/roads/RoadSystem.ts";
 
@@ -25,9 +24,7 @@ export class NativeTransportationRuntime {
   private readonly bridge: NativeEngineBridge;
   private nextSequence = 1;
 
-  constructor(bridge: NativeEngineBridge) {
-    this.bridge = bridge;
-  }
+  constructor(bridge: NativeEngineBridge) { this.bridge = bridge; }
 
   static fromDesktopGlobal(seed: number, scope: unknown = globalThis): NativeTransportationRuntime | null {
     const addon = desktopNativeEngineAddonFromGlobal(scope);
@@ -39,7 +36,6 @@ export class NativeTransportationRuntime {
   }
 
   dispose(): void { this.bridge.dispose(); }
-
   get tick(): number { return this.bridge.snapshot().tick; }
 
   snapshot(): NativeTransportationSnapshot {
@@ -49,7 +45,7 @@ export class NativeTransportationRuntime {
   }
 
   syncRoads(roads: RoadSystem): void {
-    this.submitNow("transport.legacy_roads.replace", {
+    this.submitAt(this.tick, "transport.legacy_roads.replace", {
       revision: roads.revision,
       cells: roads.list().map((cell) => ({ x: cell.x, y: cell.y, roadClass: cell.type })),
     });
@@ -57,7 +53,7 @@ export class NativeTransportationRuntime {
 
   submitCarTrip(trip: MobilityPersonTrip, travelerWeight: number): void {
     if (!trip.originRoadNodeId || !trip.destinationRoadNodeId) throw new Error("native car trip requires road endpoints");
-    this.submitNow("transport.road_trip.submit", {
+    this.submitAt(trip.departureTick, "transport.road_trip.submit", {
       tripId: trip.id,
       cause: trip.purpose,
       travelerWeight,
@@ -69,11 +65,14 @@ export class NativeTransportationRuntime {
   }
 
   step(ticks = 1): void { this.bridge.step(ticks); }
-
   loadV9(save: unknown): void { this.bridge.loadV9(save); }
   saveV9<T = unknown>(): T { return this.bridge.saveV9<T>(); }
 
-  projectTraffic(graph: TransportationGraph, traffic: TrafficSystem): void {
+  projectTraffic(
+    graph: TransportationGraph,
+    traffic: TrafficSystem,
+    extraEdgeLoads: Readonly<Record<string, number>> = {},
+  ): void {
     const transportation = this.snapshot();
     const edgeByCarriageway = new Map<string, string>();
     for (const carriageway of transportation.carriageways) {
@@ -113,11 +112,10 @@ export class NativeTransportationRuntime {
       congestionEpoch: transportation.roadTraffic.congestionEpoch,
     });
     traffic.restoreState(state);
-    traffic.refreshMetrics(graph);
+    traffic.refreshMetrics(graph, extraEdgeLoads);
   }
 
-  private submitNow(type: string, payload: unknown): void {
-    const tick = this.bridge.snapshot().tick;
+  private submitAt(tick: number, type: string, payload: unknown): void {
     this.bridge.submit([{ sequence: this.nextSequence++, tick, type, payload }]);
   }
 }
