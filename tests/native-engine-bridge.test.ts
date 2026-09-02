@@ -108,6 +108,14 @@ test("native bridge rejects lossy payloads and normalizes JSON numeric semantics
       ]),
     /safe integer/,
   );
+  assert.throws(
+    () =>
+      bridge.loadV9({
+        saveVersion: 9,
+        compatibility: { nonFinite: Number.NaN },
+      }),
+    /Save V9.*JSON-compatible/,
+  );
   const normalized = bridge.submit([
     {
       sequence: 100,
