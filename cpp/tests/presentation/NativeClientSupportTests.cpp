@@ -2,6 +2,8 @@
 
 #include <civic/presentation/AssetRuntime.hpp>
 #include <civic/presentation/Audio.hpp>
+#include <civic/presentation/NativeHud.hpp>
+#include <civic/presentation/NativePanels.hpp>
 #include <civic/presentation/NativeUi.hpp>
 #include <civic/presentation/PresentationIO.hpp>
 
@@ -47,6 +49,19 @@ struct Sink final : ICommandSink {
     std::vector<AuthoritativeCommand> submitted;
     std::expected<void, std::string> submit(const AuthoritativeCommand& command) override { submitted.push_back(command); return {}; }
 };
+struct RecordingAudioOutput final : IAudioBusOutput {
+    int apply_count{};
+    AudioMix last{};
+    std::expected<void, std::string> apply(const AudioMix& mix) override {
+        ++apply_count;
+        last = mix;
+        return {};
+    }
+};
+std::string readText(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(input)), {});
+}
 }
 
 TEST(SettingsPersistence, RoundTripsMachinePreferencesOutsideCitySave) {
@@ -60,6 +75,25 @@ TEST(SettingsPersistence, RoundTripsMachinePreferencesOutsideCitySave) {
     EXPECT_FLOAT_EQ(loaded->ui_scale, 1.35F);
     EXPECT_TRUE(loaded->reduced_motion);
     EXPECT_FLOAT_EQ(loaded->master_volume, 0.42F);
+}
+
+TEST(SettingsPersistence, RoundTripsAccessibilityPolicyAndCustomKeyBindings) {
+    const auto root = scratch("civic-foundry-native-settings-accessibility-test");
+    SettingsStore store(root / "settings.json");
+    PresentationSettings settings{};
+    settings.high_contrast = true;
+    settings.minimum_alert_severity = AlertSeverity::Warning;
+    settings.keybindings.inspect = 0x51;
+    settings.keybindings.speed_very_fast = 0x57;
+
+    ASSERT_TRUE(store.save(settings).has_value());
+    const auto loaded = store.load();
+    ASSERT_TRUE(loaded.has_value()) << loaded.error();
+    EXPECT_TRUE(loaded->high_contrast);
+    EXPECT_EQ(loaded->minimum_alert_severity, AlertSeverity::Warning);
+    EXPECT_EQ(loaded->keybindings.inspect, 0x51);
+    EXPECT_EQ(loaded->keybindings.speed_very_fast, 0x57);
+    EXPECT_EQ(resolveHudShortcut(0x51, {}, loaded->keybindings), HudShortcutAction::InspectTool);
 }
 
 TEST(SettingsPersistence, OlderSettingsWithoutVisualEffectsFlagRemainLoadable) {
@@ -83,6 +117,8 @@ TEST(SettingsPersistence, OlderSettingsWithoutVisualEffectsFlagRemainLoadable) {
     const auto loaded = store.load();
     ASSERT_TRUE(loaded.has_value()) << loaded.error();
     EXPECT_TRUE(loaded->visual_effects);
+    EXPECT_FALSE(loaded->high_contrast);
+    EXPECT_EQ(loaded->minimum_alert_severity, AlertSeverity::Info);
     EXPECT_FLOAT_EQ(loaded->tilt_shift_strength, 0.55F);
 }
 
@@ -92,9 +128,31 @@ TEST(SaveWorkflow, AtomicWriteLeavesNoTemporaryFileAndPreservesExactPayload) {
     const auto target = root / "city.cf9";
     ASSERT_TRUE(saves.writeAtomic(target, "save-v9-payload").has_value());
     EXPECT_FALSE(std::filesystem::exists(target.string() + ".tmp"));
-    std::ifstream input(target, std::ios::binary);
-    const std::string loaded((std::istreambuf_iterator<char>(input)), {});
-    EXPECT_EQ(loaded, "save-v9-payload");
+    EXPECT_EQ(readText(target), "save-v9-payload");
+}
+
+TEST(SaveWorkflow, ReplacementKeepsLastKnownGoodBackupAndValidatedLoadCanRecoverIt) {
+    const auto root = scratch("civic-foundry-native-save-backup-test");
+    SaveFileWorkflow saves{};
+    const auto target = root / "city.cf9";
+    ASSERT_TRUE(saves.writeAtomic(target, "good-v9-a").has_value());
+    ASSERT_TRUE(saves.writeAtomic(target, "good-v9-b").has_value());
+
+    auto backup = target;
+    backup += ".bak";
+    ASSERT_TRUE(std::filesystem::exists(backup));
+    EXPECT_EQ(readText(backup), "good-v9-a");
+
+    std::ofstream corrupt(target, std::ios::binary | std::ios::trunc);
+    corrupt << "corrupt";
+    corrupt.close();
+
+    const auto recovered = saves.readValidated(target, [](std::string_view payload) {
+        return payload.starts_with("good-v9-");
+    });
+    ASSERT_TRUE(recovered.has_value()) << recovered.error();
+    EXPECT_TRUE(recovered->used_backup);
+    EXPECT_EQ(recovered->payload, "good-v9-a");
 }
 
 TEST(GlbRuntime, ParsesSupportedContainerAndCountsRuntimeResources) {
@@ -146,4 +204,52 @@ TEST(AudioPlanner, DerivesAmbienceOnlyFromSnapshotState) {
     EXPECT_GT(mix.traffic, 0.0F);
     EXPECT_GT(mix.freight, 0.0F);
     EXPECT_GT(mix.construction, 0.0F);
+}
+
+TEST(NativeAudioRuntime, AppliesSnapshotDerivedIndustrialNeighborhoodAndMobilityBuses) {
+    FrameSnapshot snapshot{};
+    snapshot.roads.push_back({"r", 1, RoadClass::Arterial, {0,0}, {2,0}, 2, false, 1.0F, 0.5F, 0.7F, 600.0F});
+    snapshot.vehicles.push_back({"freight", 1, VehicleKind::Freight, {1,0}, 0.0F, 1.0F, false});
+    snapshot.buildings.push_back({"industrial", 1, "p1", {{0,0},{1,0},{1,1}}, 2, 7.0F, {{BuildingUse::Industrial, 1.0F}}, 1.0F, 1.0F});
+    snapshot.buildings.push_back({"home", 1, "p2", {{2,0},{3,0},{3,1}}, 2, 7.0F, {{BuildingUse::Residential, 1.0F}}, 1.0F, 1.0F});
+
+    RecordingAudioOutput output{};
+    NativeAudioRuntime runtime(output);
+    ASSERT_TRUE(runtime.update(snapshot, PresentationSettings{}).has_value());
+    EXPECT_EQ(output.apply_count, 1);
+    EXPECT_GT(output.last.traffic, 0.0F);
+    EXPECT_GT(output.last.freight, 0.0F);
+    EXPECT_GT(output.last.industrial, 0.0F);
+    EXPECT_GT(output.last.neighborhood, 0.0F);
+}
+
+TEST(NativePanels, CarriesInspectorTrendHistoryAndCausalContributorsWithoutAuthorityMutation) {
+    NativePanelSnapshot panels{};
+    panels.inspector = InspectorSnapshot{
+        .entity = {EntityKind::Parcel, "parcel:7"},
+        .title = "Parcel parcel:7",
+        .fields = {{"Area", "640.0 m2"}, {"District", "MX-3"}},
+    };
+    panels.management.push_back(ManagementPanelSnapshot{
+        .id = "economy-housing",
+        .title = "Economy & Housing",
+        .fields = {{"Active firms", "18"}},
+        .diagnostics = {{
+            .id = "freight-delay",
+            .label = "Freight delay",
+            .current_value = 6.0,
+            .previous_value = 4.0,
+            .unit = "ticks",
+            .history = {{100, 3.0}, {200, 4.0}, {300, 6.0}},
+            .contributors = {{"Congestion", 1.4, "arterial queueing"}, {"Incidents", 0.6, "blocked movement"}},
+        }},
+    });
+
+    ASSERT_TRUE(panels.inspector.has_value());
+    EXPECT_EQ(panels.inspector->entity.id, "parcel:7");
+    const auto* economy = findManagementPanel(panels, "economy-housing");
+    ASSERT_NE(economy, nullptr);
+    ASSERT_EQ(economy->diagnostics.size(), 1U);
+    EXPECT_EQ(classifyTrend(economy->diagnostics.front()), TrendDirection::Up);
+    EXPECT_EQ(economy->diagnostics.front().contributors.front().label, "Congestion");
 }
