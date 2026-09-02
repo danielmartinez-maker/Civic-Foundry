@@ -36,6 +36,14 @@ jobs:
         run: cmake --build cpp/build-stack4-clang --parallel
       - name: Test
         run: ctest --test-dir cpp/build-stack4-clang --output-on-failure
+      - name: Record large-city presentation benchmark
+        run: cpp/build-stack4-clang/civic_presentation_benchmark | tee "$RUNNER_TEMP/presentation-benchmark-clang.json"
+      - uses: actions/upload-artifact@v6.0.0
+        with:
+          name: presentation-benchmark-clang-${{ github.sha }}
+          path: ${{ runner.temp }}/presentation-benchmark-clang.json
+          if-no-files-found: error
+          retention-days: 14
 
   msvc-native-client:
     runs-on: windows-latest
@@ -60,18 +68,65 @@ jobs:
         run: ctest --test-dir cpp/build-stack4-msvc -C Debug --output-on-failure
       - name: Release build
         run: cmake --build cpp/build-stack4-msvc --config Release --parallel
+      - name: Record release presentation benchmark
+        shell: pwsh
+        run: |
+          & "cpp\build-stack4-msvc\Release\civic_presentation_benchmark.exe" | Tee-Object -FilePath "$env:RUNNER_TEMP\presentation-benchmark-msvc.json"
+          if ($LASTEXITCODE -ne 0) { throw "Presentation benchmark contract failed with exit code $LASTEXITCODE" }
       - name: Stage native package
         shell: pwsh
         run: cmake --install cpp/build-stack4-msvc --config Release --prefix "$env:RUNNER_TEMP\civic-foundry-native"
+      - name: Build reproducible ZIP package
+        shell: pwsh
+        run: cpack --config cpp/build-stack4-msvc/CPackConfig.cmake -C Release -B "$env:RUNNER_TEMP\civic-foundry-cpack"
       - name: Verify package boundary
         shell: pwsh
         run: |
-          $files = Get-ChildItem -Recurse "$env:RUNNER_TEMP\civic-foundry-native" | Select-Object -ExpandProperty Name
-          if ($files -match 'electron') { throw 'Native package unexpectedly contains Electron runtime files.' }
-          if (-not (Test-Path "$env:RUNNER_TEMP\civic-foundry-native\civic_foundry_native_client.exe")) { throw 'Native executable missing from package.' }
+          $root = "$env:RUNNER_TEMP\civic-foundry-native"
+          $files = Get-ChildItem -Recurse $root
+          $names = $files | Select-Object -ExpandProperty Name
+          $forbidden = $names | Where-Object { $_ -match '(?i)(electron|node\.exe|node\.dll|app\.asar|chrome_elf|pixi)' }
+          if ($forbidden) { throw "Native package contains forbidden web-runtime files: $($forbidden -join ', ')" }
+          if (-not (Test-Path "$root\civic_foundry_native_client.exe")) { throw 'Native executable missing from package.' }
+          if (-not (Test-Path "$root\assets\runtime\manifest.json")) { throw 'Offline runtime asset manifest missing from package.' }
+          if (-not (Test-Path "$root\symbols\civic_foundry_native_client.pdb")) { throw 'Native crash symbols missing from package.' }
+          $zips = Get-ChildItem "$env:RUNNER_TEMP\civic-foundry-cpack" -Filter 'CivicFoundryNative-*-windows-x64.zip'
+          if ($zips.Count -ne 1) { throw "Expected exactly one CPack ZIP, found $($zips.Count)." }
       - uses: actions/upload-artifact@v6.0.0
         with:
           name: civic-foundry-native-windows-${{ github.sha }}
-          path: ${{ runner.temp }}\civic-foundry-native
+          path: |
+            ${{ runner.temp }}\civic-foundry-native
+            ${{ runner.temp }}\civic-foundry-cpack\CivicFoundryNative-*-windows-x64.zip
+            ${{ runner.temp }}\presentation-benchmark-msvc.json
           if-no-files-found: error
           retention-days: 14
+
+  wasm-reference:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Setup pinned Emscripten SDK
+        uses: emscripten-core/setup-emsdk@v15
+        with:
+          version: 6.0.6
+      - name: Bootstrap vcpkg
+        run: |
+          git clone --depth 1 --branch 2026.07.29 https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Configure WASM reference runtime
+        run: |
+          EMSCRIPTEN_ROOT="$(dirname "$(command -v emcc)")"
+          cmake -S cpp -B cpp/build-stack4-wasm \
+            -DCMAKE_TOOLCHAIN_FILE="$RUNNER_TEMP/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSCRIPTEN_ROOT/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCIVIC_BUILD_TESTS=OFF \
+            -DCIVIC_BUILD_NATIVE_CLIENT=OFF \
+            -DCIVIC_BUILD_NAPI=OFF \
+            -DCIVIC_BUILD_WASM=ON
+      - name: Build WASM reference runtime
+        run: cmake --build cpp/build-stack4-wasm --target civic_wasm --parallel
+      - name: Execute shared deterministic fixture in WASM
+        run: node cpp/build-stack4-wasm/civic_wasm.js
