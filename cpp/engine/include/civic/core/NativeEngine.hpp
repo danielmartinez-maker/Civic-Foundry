@@ -59,6 +59,7 @@ public:
 
 private:
     explicit NativeEngine(const EngineConfig&);
+    [[nodiscard]] Result<void> ensureUrbanScheduler();
     [[nodiscard]] std::string kernelCanonicalState() const;
     [[nodiscard]] Result<std::string> worldSnapshotJson() const;
     static std::uint64_t fnv1a64(std::string_view bytes) noexcept;
@@ -78,6 +79,7 @@ private:
     std::optional<std::string> legacy_compatibility_json_;
 
     std::unique_ptr<NativeUrbanAuthority> urban_;
+    bool urban_scheduler_configured_{false};
 };
 
 } // namespace civic
