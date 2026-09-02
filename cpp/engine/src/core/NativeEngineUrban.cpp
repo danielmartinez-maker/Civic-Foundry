@@ -46,40 +46,54 @@ json rejectedMutation(std::string reason) {
         {"parcelReferenceRewrites", json::object()},
     };
 }
+
+bool hasActiveRenovation(const NativeUrbanAuthority& authority) {
+    for (const auto& [_, building] : authority.buildings().buildings()) {
+        if (building.status == urban::BuildingStatus::renovation && building.project &&
+            building.project->phase == urban::BuildingProjectPhase::fit_out) {
+            return true;
+        }
+    }
+    return false;
+}
 }  // namespace
 
 Result<void> NativeEngine::ensureUrbanScheduler() {
     if (urban_scheduler_configured_) return {};
 
-    auto renovation = scheduler_.registerSystem(SystemDefinition{
-        .id = "urban.building-renovation",
+    auto building_state = scheduler_.registerSystem(SystemDefinition{
+        .id = "urban.building-state",
         .cadence = {1, 0},
         .after = {},
-        .before = {"urban.building-lifecycle"},
+        .before = {},
         .reads = {},
         .writes = {"urban.buildings"},
         .order = 100,
         .execute = [this](std::uint64_t tick) -> Result<void> {
             if (!urban_) return {};
-            return urban_->tickBuildingRenovations(tick);
-        },
-    });
-    if (!renovation) return renovation;
 
-    auto lifecycle = scheduler_.registerSystem(SystemDefinition{
-        .id = "urban.building-lifecycle",
-        .cadence = {urban::BuildingLifecycleDriver::lifecycle_cadence_ticks, 0},
-        .after = {"urban.building-renovation"},
-        .before = {},
-        .reads = {},
-        .writes = {"urban.buildings"},
-        .order = 110,
-        .execute = [this](std::uint64_t tick) -> Result<void> {
-            if (!urban_) return {};
-            return urban_->tickBuildingLifecycle(tick);
+            const bool renovation_due = hasActiveRenovation(*urban_);
+            const bool lifecycle_due =
+                tick % urban::BuildingLifecycleDriver::lifecycle_cadence_ticks == 0;
+            if (!renovation_due && !lifecycle_due) return {};
+
+            auto staged = urban_->cloneForTransaction();
+            if (!staged) return std::unexpected(staged.error());
+
+            if (renovation_due) {
+                auto renovation = (*staged)->tickBuildingRenovations(tick);
+                if (!renovation) return renovation;
+            }
+            if (lifecycle_due) {
+                auto lifecycle = (*staged)->tickBuildingLifecycle(tick);
+                if (!lifecycle) return lifecycle;
+            }
+
+            urban_ = std::move(*staged);
+            return {};
         },
     });
-    if (!lifecycle) return lifecycle;
+    if (!building_state) return building_state;
 
     auto compiled = scheduler_.compile();
     if (!compiled) return compiled;
@@ -160,11 +174,8 @@ Result<SnapshotBlob> NativeEngine::applyUrbanCommand(std::string_view request_js
 
     auto current_snapshot = urban_->snapshotJson();
     if (!current_snapshot) return std::unexpected(current_snapshot.error());
-    auto dto = urbanDtoFromSnapshot(*current_snapshot);
-    if (!dto) return std::unexpected(dto.error());
-    auto staged = NativeUrbanAuthority::restoreAuthoritativeV9(*dto);
+    auto staged = urban_->cloneForTransaction();
     if (!staged) return std::unexpected(staged.error());
-    (*staged)->inheritRuntimeContext(*urban_);
 
     Result<std::string> mutation = std::unexpected(make_error(
         ErrorCode::serialization_failure,
