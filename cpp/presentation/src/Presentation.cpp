@@ -228,7 +228,6 @@ void InputState::lostFocus() noexcept { active_pointer_id_ = -1; dragging_ = fal
 
 SceneUpdateStats RetainedScene::apply(const FrameSnapshot& snapshot) {
     SceneUpdateStats stats{};
-    if (initialized_ && snapshot.revision == applied_revision_) return stats;
     stats.terrain_rebuilt = updateRevisionMap(snapshot.terrain, terrain_);
     stats.parcels_rebuilt = updateRevisionMap(snapshot.parcels, parcels_);
     stats.roads_rebuilt = updateRevisionMap(snapshot.roads, roads_);
@@ -246,7 +245,6 @@ SceneUpdateStats RetainedScene::apply(const FrameSnapshot& snapshot) {
     for (const auto& [key, revision] : overlays_) { (void)revision; if (!next_overlay.contains(key)) ++stats.overlays_rebuilt; }
     overlays_ = std::move(next_overlay);
     applied_revision_ = snapshot.revision;
-    initialized_ = true;
     return stats;
 }
 
