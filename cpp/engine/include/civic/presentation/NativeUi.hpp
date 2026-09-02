@@ -12,10 +12,23 @@ namespace civic::presentation {
 struct BuildRoadCommand { std::vector<Point2> path; RoadClass road_class{RoadClass::Local}; };
 struct ZoneParcelCommand { std::string parcel_id; std::string zoning_code; };
 struct PlaceFacilityCommand { Point2 position{}; std::string facility_type; };
+struct PlaceUtilityCommand { Point2 position{}; std::string utility_type; };
+struct PlaceServiceFacilityCommand { Point2 position{}; std::string service_type; };
+struct PlaceTransitStopCommand { Point2 position{}; TransitStopKind kind{TransitStopKind::BusStop}; };
+struct BulldozeCommand { Point2 position{}; };
 struct CreateTransitLineCommand { std::vector<std::string> stop_ids; VehicleKind mode{VehicleKind::Bus}; };
 struct SetSimulationSpeedCommand { int speed{1}; };
 
-using AuthoritativeCommand = std::variant<BuildRoadCommand, ZoneParcelCommand, PlaceFacilityCommand, CreateTransitLineCommand, SetSimulationSpeedCommand>;
+using AuthoritativeCommand = std::variant<
+    BuildRoadCommand,
+    ZoneParcelCommand,
+    PlaceFacilityCommand,
+    PlaceUtilityCommand,
+    PlaceServiceFacilityCommand,
+    PlaceTransitStopCommand,
+    BulldozeCommand,
+    CreateTransitLineCommand,
+    SetSimulationSpeedCommand>;
 
 class ICommandSink {
 public:
@@ -29,6 +42,10 @@ public:
     [[nodiscard]] std::expected<void, std::string> buildRoad(std::vector<Point2> path, RoadClass road_class);
     [[nodiscard]] std::expected<void, std::string> zoneParcel(std::string parcel_id, std::string zoning_code);
     [[nodiscard]] std::expected<void, std::string> placeFacility(Point2 position, std::string facility_type);
+    [[nodiscard]] std::expected<void, std::string> placeUtility(Point2 position, std::string utility_type);
+    [[nodiscard]] std::expected<void, std::string> placeServiceFacility(Point2 position, std::string service_type);
+    [[nodiscard]] std::expected<void, std::string> placeTransitStop(Point2 position, TransitStopKind kind);
+    [[nodiscard]] std::expected<void, std::string> bulldoze(Point2 position);
     [[nodiscard]] std::expected<void, std::string> createTransitLine(std::vector<std::string> stop_ids, VehicleKind mode);
     [[nodiscard]] std::expected<void, std::string> setSimulationSpeed(int speed);
 private:
