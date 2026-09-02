@@ -66,6 +66,16 @@ TEST(CommandContracts, StableOrderingDuplicateRejectionAndPastTickParity) {
     EXPECT_FALSE(queue.submit(duplicate, 6));
 }
 
+TEST(CommandContracts, RejectsUnsupportedEnvelopeVersion) {
+    civic::CommandQueue queue;
+    auto command = civic::CommandEnvelope{1, 0, "future-protocol", {}};
+    command.version = civic::command_protocol_version + 1U;
+    const std::vector<civic::CommandEnvelope> commands{command};
+    const auto result = queue.submit(commands, 0);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, civic::ErrorCode::invalid_argument);
+}
+
 TEST(CommandContracts, RejectsSequenceReuseAfterDispatch) {
     civic::CommandQueue queue;
     const std::vector<civic::CommandEnvelope> first{{1, 0, "first", {}}};
