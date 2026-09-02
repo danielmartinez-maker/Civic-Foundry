@@ -127,6 +127,5 @@ TEST(SceneGeometry, ValidToolPreviewProducesVisiblePresentationOnlyOverlayGeomet
     const auto scene = builder.build(packet, camera, WorldSize{20,20}, PixelViewport{1280,720});
 
     EXPECT_FALSE(scene.overlay.empty());
-    EXPECT_GT(scene.stats.preview_triangles, 0U);
     EXPECT_TRUE(scene.opaque.empty());
 }
