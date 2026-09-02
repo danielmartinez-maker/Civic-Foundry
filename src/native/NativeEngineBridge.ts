@@ -19,6 +19,9 @@ import {
   type NativeEngineHandle,
   type NativeEvent,
   type NativeSnapshot,
+  type NativeUrbanLegacyRequest,
+  type NativeUrbanSnapshot,
+  type NativeUrbanState,
 } from "./NativeEngineTypes.ts";
 
 function requireNonNegativeInteger(value: number, label: string): void {
@@ -232,6 +235,35 @@ export class NativeEngineBridge implements NativeWorldBridge {
     if (!ownership)
       throw new Error(`unknown native domain ownership: ${raw.ownership}`);
     return Object.freeze({ ownership, version: raw.version, value: raw.value });
+  }
+
+  rebuildUrbanLegacy(request: NativeUrbanLegacyRequest): NativeUrbanSnapshot {
+    const normalized = normalizeJsonValue(request, "native urban legacy rebuild request");
+    return parseNativeJson<NativeUrbanSnapshot>(
+      this.addon.rebuildUrbanLegacy(
+        this.requireHandle(),
+        JSON.stringify(normalized),
+      ),
+      "native urban legacy rebuild",
+    );
+  }
+
+  restoreUrbanState(snapshot: NativeUrbanState): NativeUrbanSnapshot {
+    const normalized = normalizeJsonValue(snapshot, "native urban state");
+    return parseNativeJson<NativeUrbanSnapshot>(
+      this.addon.restoreUrbanState(
+        this.requireHandle(),
+        JSON.stringify(normalized),
+      ),
+      "native urban restore",
+    );
+  }
+
+  urbanSnapshot(): NativeUrbanSnapshot {
+    return parseNativeJson<NativeUrbanSnapshot>(
+      this.addon.getUrbanSnapshot(this.requireHandle()),
+      "native urban snapshot",
+    );
   }
 
   createWorld(request: NativeWorldCreateRequest): WorldFoundationSnapshot {
