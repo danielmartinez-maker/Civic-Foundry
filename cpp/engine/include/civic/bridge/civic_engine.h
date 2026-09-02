@@ -42,6 +42,7 @@ CF_API void cf_engine_destroy(cf_engine* engine);
 CF_API cf_error_code cf_engine_submit_commands(cf_engine* engine, const uint8_t* data, size_t size);
 CF_API cf_error_code cf_engine_step(cf_engine* engine, uint64_t ticks);
 CF_API cf_error_code cf_engine_load_v9(cf_engine* engine, const uint8_t* data, size_t size);
+CF_API cf_error_code cf_engine_stage_save_v9(cf_engine* engine, const uint8_t* data, size_t size);
 CF_API cf_error_code cf_engine_save_v9(cf_engine* engine, cf_buffer* out_buffer);
 CF_API cf_error_code cf_engine_get_snapshot(cf_engine* engine, cf_buffer* out_buffer);
 CF_API cf_error_code cf_engine_get_events(cf_engine* engine, cf_buffer* out_buffer);
