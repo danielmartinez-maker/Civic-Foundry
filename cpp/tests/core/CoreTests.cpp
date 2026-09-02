@@ -7,9 +7,22 @@
 #include <civic/core/StrongId.hpp>
 
 TEST(CoreContracts, NumericAndIdentityValueTypesRoundTrip) {
+    const civic::EntityId entity{11};
+    EXPECT_EQ(civic::EntityId{entity.value()}, entity);
     const civic::ParcelId parcel{42};
-    const civic::ParcelId restoredParcel{parcel.value()};
-    EXPECT_EQ(restoredParcel, parcel);
+    EXPECT_EQ(civic::ParcelId{parcel.value()}, parcel);
+    const civic::BuildingId building{43};
+    EXPECT_EQ(civic::BuildingId{building.value()}, building);
+    const civic::FirmId firm{44};
+    EXPECT_EQ(civic::FirmId{firm.value()}, firm);
+    const civic::HouseholdId household{45};
+    EXPECT_EQ(civic::HouseholdId{household.value()}, household);
+    const civic::VehicleId vehicle{46};
+    EXPECT_EQ(civic::VehicleId{vehicle.value()}, vehicle);
+    const civic::NetworkNodeId node{47};
+    EXPECT_EQ(civic::NetworkNodeId{node.value()}, node);
+    const civic::NetworkEdgeId edge{48};
+    EXPECT_EQ(civic::NetworkEdgeId{edge.value()}, edge);
     const civic::Money money{-12345};
     EXPECT_EQ(civic::Money{money.minor_units()}, money);
     auto weighted = civic::WeightedCount::create(2.5); ASSERT_TRUE(weighted);
