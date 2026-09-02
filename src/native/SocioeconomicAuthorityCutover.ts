@@ -32,12 +32,12 @@ export interface LegacySocioeconomicCompatibilityRuntime {
   }>;
 }
 
-export class LegacySocioeconomicAuthorityCutover
-  implements SocioeconomicAuthorityCutoverAdapter
-{
+export class LegacySocioeconomicAuthorityCutover implements SocioeconomicAuthorityCutoverAdapter {
   private readonly nativeOwned = new Set<SocioeconomicAuthorityGate>();
 
-  constructor(private readonly runtime: LegacySocioeconomicCompatibilityRuntime) {}
+  constructor(
+    private readonly runtime: LegacySocioeconomicCompatibilityRuntime,
+  ) {}
 
   disableTypescriptWrites(gate: SocioeconomicAuthorityGate): void {
     this.nativeOwned.add(gate);
@@ -66,7 +66,9 @@ export class LegacySocioeconomicAuthorityCutover
 
   nativeOwnedGates(): readonly SocioeconomicAuthorityGate[] {
     return Object.freeze(
-      SOCIOECONOMIC_AUTHORITY_GATES.filter((gate) => this.nativeOwned.has(gate)),
+      SOCIOECONOMIC_AUTHORITY_GATES.filter((gate) =>
+        this.nativeOwned.has(gate),
+      ),
     );
   }
 
