@@ -32,6 +32,7 @@ public:
     [[nodiscard]] static Result<std::unique_ptr<NativeUrbanAuthority>> rebuildLegacy(
         std::string_view request_json);
 
+    [[nodiscard]] Result<std::unique_ptr<NativeUrbanAuthority>> cloneForTransaction() const;
     [[nodiscard]] Result<std::string> snapshotJson() const;
     [[nodiscard]] Result<std::string> cadastreJson() const;
     [[nodiscard]] Result<std::string> zoningJson() const;
