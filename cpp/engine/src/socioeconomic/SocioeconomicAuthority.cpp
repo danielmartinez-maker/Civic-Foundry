@@ -33,6 +33,22 @@ Result<void> AuthorityTransferController::transfer_to_native(SocioeconomicDomain
     return validate_single_writer(gate);
 }
 
+Result<void> AuthorityTransferController::restore_transferred_count(std::size_t transferred_count) {
+    if (transferred_count > gate_count) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, "persisted socioeconomic authority count exceeds known gates"));
+    }
+    native_writes_.fill(false);
+    for (std::size_t position = 0; position < transferred_count; ++position) {
+        native_writes_[position] = true;
+    }
+    transferred_count_ = transferred_count;
+    for (std::size_t position = 0; position < gate_count; ++position) {
+        auto valid = validate_single_writer(static_cast<SocioeconomicDomainGate>(position));
+        if (!valid) return valid;
+    }
+    return {};
+}
+
 bool AuthorityTransferController::native_write_enabled(SocioeconomicDomainGate gate) const noexcept {
     const auto position = index(gate);
     return position < gate_count && native_writes_[position];
@@ -96,6 +112,11 @@ SocioeconomicAuthority::SocioeconomicAuthority(std::uint32_t seed) : seed_(seed)
 void SocioeconomicAuthority::bump_revision(SocioeconomicDomainGate gate) noexcept {
     const auto position = gate_index(gate);
     if (position < revisions_.size()) ++revisions_[position];
+}
+
+void SocioeconomicAuthority::restore_revision(SocioeconomicDomainGate gate, std::uint64_t revision) noexcept {
+    const auto position = gate_index(gate);
+    if (position < revisions_.size()) revisions_[position] = revision;
 }
 
 std::uint64_t SocioeconomicAuthority::revision(SocioeconomicDomainGate gate) const noexcept {
