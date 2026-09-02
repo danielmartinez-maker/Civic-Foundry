@@ -150,6 +150,8 @@ Result<void> NativeEngine::loadV9(std::string_view json) {
     auto parsed = parseSaveV9(json); if (!parsed) return std::unexpected(parsed.error());
     auto transportation = parseTransportationV9(parsed->canonicalJson); if (!transportation) return std::unexpected(transportation.error());
     auto continuation = parseTransportationContinuationV9(parsed->canonicalJson); if (!continuation) return std::unexpected(continuation.error());
+    auto traffic = parseLegacyTrafficFlowV9(parsed->canonicalJson, transportation->network); if (!traffic) return std::unexpected(traffic.error());
+    transportation->traffic = std::move(*traffic);
     transport::TransportationAuthority nextTransportation;
     try {
         nextTransportation.restore(*transportation);
