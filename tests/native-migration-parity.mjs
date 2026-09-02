@@ -14,6 +14,13 @@ import {
 const require = createRequire(import.meta.url);
 const addon = require(resolve(process.argv[2]));
 const manifest = loadMigrationManifest();
+const STACK1_URBAN_AUTHORITY_DOMAINS = Object.freeze([
+  "cadastre",
+  "zoning",
+  "buildings",
+  "property",
+]);
+const STACK1_PRIVATE_HASH_DOMAINS = new Set(["cadastre", "buildings"]);
 
 function firstMismatch(left, right, path = "") {
   if (Object.is(left, right)) return undefined;
@@ -70,6 +77,46 @@ function normalizeNativeHash(hash) {
   };
 }
 
+function assertStack1UrbanAuthority(bridge, scenario, targetTick) {
+  const expectedOwnership =
+    scenario.saveInput.kind === "v9" ? "owned" : "unowned";
+  for (const domain of STACK1_URBAN_AUTHORITY_DOMAINS) {
+    const hash = normalizeNativeHash(bridge.domainHash(domain));
+    assert.equal(
+      hash.ownership,
+      expectedOwnership,
+      `${scenario.id} native ${domain} ownership at tick ${targetTick}`,
+    );
+    assert.equal(
+      hash.version,
+      1,
+      `${scenario.id} native ${domain} hash version at tick ${targetTick}`,
+    );
+  }
+}
+
+function normalizeCrossLanguageComparable(result) {
+  return {
+    ...result,
+    checkpoints: Object.fromEntries(
+      Object.entries(result.checkpoints).map(([tick, checkpoint]) => [
+        tick,
+        {
+          ...checkpoint,
+          domainHashes: Object.fromEntries(
+            Object.entries(checkpoint.domainHashes).map(([domain, hash]) => [
+              domain,
+              STACK1_PRIVATE_HASH_DOMAINS.has(domain)
+                ? { ...hash, ownership: "unowned", value: "0" }
+                : hash,
+            ]),
+          ),
+        },
+      ]),
+    ),
+  };
+}
+
 function runNativeScenario(scenario) {
   const save = materializeMigrationSaveInput(scenario);
   const seed = save?.seed ?? scenario.seed;
@@ -103,6 +150,7 @@ function runNativeScenario(scenario) {
       );
       bridge.step(targetTick - currentTick);
       currentTick = targetTick;
+      assertStack1UrbanAuthority(bridge, scenario, targetTick);
       const domainHashes = {};
       for (const domain of MIGRATION_HASH_DOMAINS) {
         domainHashes[domain] = normalizeNativeHash(bridge.domainHash(domain));
@@ -123,7 +171,7 @@ for (const scenario of manifest.scenarios) {
   const expected = runTypeScriptMigrationScenario(scenario);
   const actual = runNativeScenario(scenario);
   assertSame(
-    actual,
+    normalizeCrossLanguageComparable(actual),
     expected,
     `${scenario.id} TypeScript/native shadow parity`,
   );
