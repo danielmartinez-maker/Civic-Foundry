@@ -241,6 +241,12 @@ napi_value createLegacyWorld(napi_env env, napi_callback_info info) {
 napi_value runDesignStorm(napi_env env, napi_callback_info info) {
     return textOutputOperation(env, info, cf_engine_run_design_storm);
 }
+napi_value rebuildUrbanLegacy(napi_env env, napi_callback_info info) {
+    return textOutputOperation(env, info, cf_engine_rebuild_urban_legacy);
+}
+napi_value restoreUrbanState(napi_env env, napi_callback_info info) {
+    return textOutputOperation(env, info, cf_engine_restore_urban_state);
+}
 
 napi_value outputOperation(
     napi_env env,
@@ -268,6 +274,9 @@ napi_value getSnapshot(napi_env env, napi_callback_info info) {
 }
 napi_value getEvents(napi_env env, napi_callback_info info) {
     return outputOperation(env, info, cf_engine_get_events);
+}
+napi_value getUrbanSnapshot(napi_env env, napi_callback_info info) {
+    return outputOperation(env, info, cf_engine_get_urban_snapshot);
 }
 
 napi_value getDomainHash(napi_env env, napi_callback_info info) {
@@ -313,6 +322,9 @@ napi_value init(napi_env env, napi_value exports) {
         {"restoreWorld", nullptr, restoreWorld, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"createLegacyWorld", nullptr, createLegacyWorld, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"runDesignStorm", nullptr, runDesignStorm, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"rebuildUrbanLegacy", nullptr, rebuildUrbanLegacy, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"restoreUrbanState", nullptr, restoreUrbanState, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"getUrbanSnapshot", nullptr, getUrbanSnapshot, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);
     return exports;
