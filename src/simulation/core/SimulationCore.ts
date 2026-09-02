@@ -1,5 +1,6 @@
 import type { RoadType } from '../../data/roads.ts';
 import type {
+  NativeUrbanCommand,
   NativeUrbanLegacyRequest,
   NativeUrbanState,
 } from '../../native/NativeEngineTypes.ts';
@@ -202,23 +203,36 @@ function installNativeMutationBridge(
     createEasement: CadastralRuntimeMutationService['createEasement'];
     removeEasement: CadastralRuntimeMutationService['removeEasement'];
   };
-  const sync = (result: CadastralRuntimeMutationResult) => {
-    if (result.committed) commitNativeUrbanState(core, bridge);
-    return result;
+
+  const apply = (command: NativeUrbanCommand): CadastralRuntimeMutationResult => {
+    const response = bridge.applyUrbanCommand(command);
+    projectNativeUrbanState(core, response.snapshot);
+    return response.result;
   };
 
-  const splitParcel = service.splitParcel.bind(service);
-  service.splitParcel = (parcelId, cutLine) => sync(splitParcel(parcelId, cutLine));
-  const assembleParcels = service.assembleParcels.bind(service);
-  service.assembleParcels = (parcelIds) => sync(assembleParcels(parcelIds));
-  const dedicateRightOfWay = service.dedicateRightOfWay.bind(service);
+  service.splitParcel = (parcelId, cutLine) =>
+    apply(Object.freeze({ type: 'cadastre.split', parcelId, cutLine }));
+  service.assembleParcels = (parcelIds) =>
+    apply(Object.freeze({ type: 'cadastre.assemble', parcelIds }));
   service.dedicateRightOfWay = (parcelId, dedication) =>
-    sync(dedicateRightOfWay(parcelId, dedication));
-  const createEasement = service.createEasement.bind(service);
+    apply(
+      Object.freeze({
+        type: 'cadastre.dedicate-right-of-way',
+        parcelId,
+        dedication,
+      }),
+    );
   service.createEasement = (parcelIds, kind, geometry) =>
-    sync(createEasement(parcelIds, kind, geometry));
-  const removeEasement = service.removeEasement.bind(service);
-  service.removeEasement = (easementId) => sync(removeEasement(easementId));
+    apply(
+      Object.freeze({
+        type: 'cadastre.create-easement',
+        parcelIds,
+        kind,
+        geometry,
+      }),
+    );
+  service.removeEasement = (easementId) =>
+    apply(Object.freeze({ type: 'cadastre.remove-easement', easementId }));
 }
 
 export class SimulationCore extends SimulationCoreBase {
