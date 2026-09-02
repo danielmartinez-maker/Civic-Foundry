@@ -18,6 +18,7 @@ export type NativeUrbanAuthorityOverride = Readonly<{
 }>;
 
 const overrides: NativeUrbanAuthorityOverride[] = [];
+let suspensionDepth = 0;
 
 function isBridge(value: unknown): value is NativeUrbanBridge {
   if (!value || typeof value !== "object") return false;
@@ -43,6 +44,15 @@ export function withNativeUrbanAuthorityOverride<T>(
   }
 }
 
+export function withNativeUrbanAuthoritySuspended<T>(operation: () => T): T {
+  suspensionDepth += 1;
+  try {
+    return operation();
+  } finally {
+    suspensionDepth -= 1;
+  }
+}
+
 export function nativeUrbanAuthorityEnabledFromGlobal(
   scope: unknown = globalThis,
 ): boolean {
@@ -55,6 +65,7 @@ export function nativeUrbanAuthorityEnabledFromGlobal(
 export function activeNativeUrbanAuthorityOverride(
   scope: unknown = globalThis,
 ): NativeUrbanAuthorityOverride | undefined {
+  if (suspensionDepth > 0) return undefined;
   const override = overrides[overrides.length - 1];
   if (override) return override;
   if (!nativeUrbanAuthorityEnabledFromGlobal(scope)) return undefined;
