@@ -136,6 +136,30 @@ json lifecycle_input_fixture(std::string building_id) {
   };
 }
 
+json hbu_approval(double redevelopment_net_value) {
+  return {
+      {"buildingId", "building:transaction:1"},
+      {"candidateId", "candidate:transaction:1"},
+      {"parcelIds", json::array({"parcel:0,0"})},
+      {"zoningLegal", true},
+      {"hbuInput", {
+          {"parcelIds", json::array({"parcel:0,0"})},
+          {"holdValue", 100.0},
+          {"buildingCondition", 0.0},
+          {"developerHurdleRate", 0.10},
+          {"renovationNetValue", 0.0},
+          {"renovationExpectedReturn", 0.0},
+          {"renovationRiskScore", 0.0},
+          {"conversionNetValue", 0.0},
+          {"conversionExpectedReturn", 0.0},
+          {"conversionRiskScore", 0.0},
+          {"redevelopmentNetValue", redevelopment_net_value},
+          {"redevelopmentExpectedReturn", 0.30},
+          {"redevelopmentRiskScore", 0.10},
+      }},
+  };
+}
+
 civic::SaveV9Dto dto_from_snapshot(const json& snapshot) {
   civic::SaveV9Dto dto{};
   dto.urbanFabric = snapshot.at("urbanFabric").dump();
@@ -210,6 +234,36 @@ TEST(NativeUrbanTransactions, SchedulerDiscardsRenovationMutationWhenLaterLifecy
   auto after_text = (*engine)->urbanSnapshot();
   ASSERT_TRUE(after_text.has_value()) << after_text.error().message;
   EXPECT_EQ(json::parse(after_text->json), before);
+}
+
+TEST(NativeUrbanTransactions, NewBuildingAdmissionRequiresNativeHighestBestUseApproval) {
+  auto snapshot = base_snapshot();
+  auto authority = civic::NativeUrbanAuthority::restoreAuthoritativeV9(dto_from_snapshot(snapshot));
+  ASSERT_TRUE(authority.has_value()) << authority.error().message;
+
+  const auto building = occupied_building();
+  json rejected{
+      {"type", "buildings.reconcile"},
+      {"buildingsV2", json::array({building})},
+      {"typologies", json::array({typology_fixture()})},
+      {"lifecycleInputs", json::array({lifecycle_input_fixture("building:transaction:1")})},
+      {"requireHbuForNewBuildings", true},
+      {"hbuApprovals", json::array({hbu_approval(50.0)})},
+  };
+  auto rejected_result = (*authority)->reconcileBuildings(rejected.dump());
+  ASSERT_FALSE(rejected_result.has_value());
+  EXPECT_NE(rejected_result.error().message.find("HBU rejected"), std::string::npos);
+
+  auto after_rejection = (*authority)->snapshotJson();
+  ASSERT_TRUE(after_rejection.has_value());
+  EXPECT_TRUE(json::parse(*after_rejection).at("buildingsV2").empty());
+
+  rejected["hbuApprovals"] = json::array({hbu_approval(200.0)});
+  auto accepted_result = (*authority)->reconcileBuildings(rejected.dump());
+  ASSERT_TRUE(accepted_result.has_value()) << accepted_result.error().message;
+  auto after_acceptance = (*authority)->snapshotJson();
+  ASSERT_TRUE(after_acceptance.has_value());
+  ASSERT_EQ(json::parse(*after_acceptance).at("buildingsV2").size(), 1U);
 }
 
 }  // namespace
