@@ -39,6 +39,7 @@ class FakeNativeUrbanBridge implements NativeUrbanBridge {
   rebuildCalls: NativeUrbanLegacyRequest[] = [];
   restoreCalls: NativeUrbanState[] = [];
   commandCalls: NativeUrbanCommand[] = [];
+  stepCalls: number[] = [];
   private snapshotValue = EMPTY_URBAN_SNAPSHOT;
 
   rebuildUrbanLegacy(request: NativeUrbanLegacyRequest): NativeUrbanSnapshot {
@@ -60,14 +61,18 @@ class FakeNativeUrbanBridge implements NativeUrbanBridge {
     this.commandCalls.push(structuredClone(command));
     return Object.freeze({
       result: Object.freeze({
-        committed: false,
+        committed: true,
         resultingParcelIds: Object.freeze([]),
         retiredParcelIds: Object.freeze([]),
-        rejectionReasons: Object.freeze(["fake-command-not-configured"]),
+        rejectionReasons: Object.freeze([]),
         parcelReferenceRewrites: Object.freeze({}),
       }),
       snapshot: this.snapshotValue,
     });
+  }
+
+  step(ticks = 1): void {
+    this.stepCalls.push(ticks);
   }
 
   urbanSnapshot(): NativeUrbanSnapshot {
@@ -102,7 +107,7 @@ function buildableTerrain(): TerrainGrid {
   );
 }
 
-test("Task 20 keeps the native urban bridge attached after construction override scope ends", () => {
+test("Task 20 keeps BuildingV2 native-first after construction override scope ends", () => {
   const bridge = new FakeNativeUrbanBridge();
   const core = withNativeUrbanAuthorityOverride(
     { enabled: true, bridge },
@@ -116,11 +121,18 @@ test("Task 20 keeps the native urban bridge attached after construction override
 
   const rebuildsAfterConstruction = bridge.rebuildCalls.length;
   const restoresAfterConstruction = bridge.restoreCalls.length;
+  const commandsAfterConstruction = bridge.commandCalls.length;
   assert.ok(rebuildsAfterConstruction > 0);
-  assert.ok(restoresAfterConstruction > 0);
 
   core.step(1);
-  assert.equal(bridge.restoreCalls.length, restoresAfterConstruction + 1);
+
+  assert.equal(bridge.restoreCalls.length, restoresAfterConstruction);
+  assert.deepEqual(bridge.stepCalls, [1]);
+  assert.equal(bridge.commandCalls.length, commandsAfterConstruction + 1);
+  assert.equal(
+    (bridge.commandCalls.at(-1) as Readonly<{ type: string }> | undefined)?.type,
+    "buildings.reconcile",
+  );
 
   const painted = core.paintZone([{ x: 0, y: 0 }], "residential");
   assert.equal(painted.painted, 1);
