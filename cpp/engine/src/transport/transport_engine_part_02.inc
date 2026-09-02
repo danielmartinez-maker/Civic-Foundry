@@ -53,6 +53,15 @@ std::string canonical_text(const TransportationSnapshot& s) {
     for (const auto& i : s.incidents.incidents) { o << "I"; id(i.id); id(i.carriageway_id); o << ':' << i.capacity_factor << ':' << i.speed_factor << ':' << static_cast<int>(i.state) << ':' << i.start_tick << ':' << i.clear_tick; }
     for (const auto& load : s.traffic.loads) { o << "F"; id(load.carriageway_id); o << ':' << load.weighted_vehicles; }
 
+    o << "RT:" << s.road_traffic.next_vehicle_id << ':' << s.road_traffic.completed_trips << ':' << s.road_traffic.failed_trips << ':' << s.road_traffic.congestion_epoch;
+    for (const auto& v : s.road_traffic.vehicles) {
+        o << "A"; str(v.id); id(v.trip_id); o << ':' << static_cast<int>(v.cause) << ':' << v.traveler_weight; str(v.origin_id); str(v.destination_id);
+        o << ':' << v.carriageway_ids.size(); for (const auto& carriageway : v.carriageway_ids) id(carriageway);
+        o << ':' << v.current_carriageway_index << ':' << v.carriageway_progress_ticks << ':' << v.departure_tick << ':' << v.accumulated_delay_ticks << ':' << v.free_flow_ticks
+          << ':' << static_cast<int>(v.status) << ':' << v.queued_junction_id.has_value();
+        if (v.queued_junction_id) id(*v.queued_junction_id);
+    }
+
     o << "TN:" << s.transit.revision;
     for (const auto& st : s.transit.stops) { o << "T"; id(st.id); o << ':' << st.x << ':' << st.y << ':' << static_cast<int>(st.mode); }
     for (const auto& line : s.transit.lines) {
