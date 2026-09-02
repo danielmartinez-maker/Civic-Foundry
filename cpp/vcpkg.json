@@ -9,7 +9,12 @@
     {
       "name": "imgui",
       "default-features": false,
-      "features": ["docking-experimental", "dx12-binding", "freetype", "win32-binding"],
+      "features": [
+        "docking-experimental",
+        "dx12-binding",
+        "freetype",
+        "win32-binding"
+      ],
       "platform": "windows"
     }
   ]
