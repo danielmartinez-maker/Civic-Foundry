@@ -1,5 +1,7 @@
 #pragma once
 
+#include <civic/presentation/Presentation.hpp>
+
 #include <cstdint>
 #include <expected>
 #include <optional>
@@ -16,12 +18,7 @@ enum class SaveStatus : std::uint8_t {
     Error,
 };
 
-enum class HudNoticeSeverity : std::uint8_t {
-    Info,
-    Success,
-    Warning,
-    Error,
-};
+using HudNoticeSeverity = AlertSeverity;
 
 struct HudNotice {
     std::string message;
@@ -62,6 +59,13 @@ struct ShortcutContext {
 };
 
 [[nodiscard]] HudShortcutAction resolveHudShortcut(int virtual_key, ShortcutContext context) noexcept;
+[[nodiscard]] HudShortcutAction resolveHudShortcut(
+    int virtual_key,
+    ShortcutContext context,
+    const KeyBindings& bindings) noexcept;
+[[nodiscard]] bool hudNoticeMeetsMinimum(
+    HudNoticeSeverity severity,
+    AlertSeverity minimum) noexcept;
 
 struct CityHudState {
     std::string city_name{"Civic Foundry"};
