@@ -250,3 +250,33 @@ Urban Fabric acceptance now includes:
 - all inherited Phase 1R, Phase 6/7, Urban Fabric, and isometric functional/visual gates.
 
 GitHub remains the durable canonical source of truth. The desktop GPU runtime was verified on PR #98 head `725c9cec`, merged into `main` as `c2e7befd`, and is now the production presentation path. Deferred Canvas2D parity work remains non-authoritative presentation migration work and does not alter simulation or persistence ownership.
+
+## Stack 8 debugging, observability, and architecture hardening
+
+Stack 8 adds engineering infrastructure around the authority graph above; it does not add a gameplay domain or change ownership. `SimulationCore` remains the public façade and exposes a narrow `SimulationDiagnosticsService` rather than absorbing debugging implementation. Save V9 stays `0.9.0-urban-fabric`, and Prism remains a parallel non-authoritative program.
+
+### Read-only diagnostics
+
+`core.diagnostics.snapshot()` is renderer-independent and observational. It exposes kernel state, stable scheduler declarations, domain counts, semantic revisions, per-system performance attribution, deterministic authority hash, and a selected cross-domain integrity summary for canonical BuildingV2/property references to live cadastral parcels. Diagnostics never repair state, consume simulation RNG, or persist their hashes as gameplay facts.
+
+The causal trace is a bounded deterministic ring buffer with stable codes and optional parent sequence. It is diagnostic state only. Appending trace entries cannot change the authoritative checkpoint hash.
+
+### Structured failures, replay, and transaction boundaries
+
+Cross-domain architectural failures can be normalized to stable categories and codes with domain/operation/tick/entity/revision context. Deterministic repro bundles canonically serialize the starting authority hash, ordered commands, caller-supplied named RNG states, scheduler manifest, revisions, expected failure information, and optional diagnostics. Replay verifies the same failure code and pre-failure authority hash.
+
+`TransactionCoordinator` generalizes Stack 0 rollback without becoming a domain owner. Domain participants own `snapshot()` and `restore()` semantics; participant capture is stable by ID and rollback runs in reverse capture order. Rollback failure is fail-stop. Existing specialized cadastral/runtime mutation services remain authoritative for their own domain semantics.
+
+### Scheduler, revisions, and performance
+
+Kernel system declarations may publish read/write domains, RNG stream names, emitted events, invariant expectations, and performance budgets. The deterministic scheduler remains the ordering authority and continues to reject ambiguous overlapping writes. `PerformanceAttribution` reports call count, average, P95, maximum, over-budget count, and optional cache hit rate without influencing scheduling or simulation output.
+
+`RevisionRegistry` is an engineering primitive for semantic revision/cache contracts; it does not replace domain-native revisions. A revision advances only when its owner reports a meaningful change, and caches declare the authority revisions they depend on.
+
+### Architecture firewall and lifecycle
+
+Machine-enforced architecture policy prohibits presentation code from importing designated authoritative mutation internals and prohibits direct `Math.random()` use in authoritative TypeScript. Renderer/UI diagnostics remain read-only; Prism has no writeback path into TypeScript authority.
+
+Presentation resources now have explicit teardown ownership: `CivicRuntime` disposes dependent UI controllers before `GameApp`; `GameApp.dispose()` cancels its RAF, removes the key listener, clears owned timers, destroys the GPU renderer, and clears the root; UI controllers dispose their owned listeners/RAF/canvas state; `GpuWorldRenderer.destroy()` owns asynchronous Pixi destruction. These lifecycle paths are regression-tested and remain presentation-only.
+
+The detailed Stack 8 ownership/failure/cache/event audit is in `docs/architecture/STACK_8_BASELINE_AND_FAILURE_MAP.md`; the permanent cross-domain regression map is `docs/architecture/STACK_8_REGRESSION_MATRIX.md`.

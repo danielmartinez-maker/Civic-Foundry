@@ -10,16 +10,7 @@ The permanent suite/command/platform matrix is `docs/TEST_MATRIX.md`. This docum
 npm run verify:fast
 ```
 
-Runs:
-
-- changed-file formatting;
-- ESLint;
-- repository policy;
-- architecture policy;
-- production TypeScript typecheck;
-- test/tooling TypeScript typecheck;
-- the complete Node test suite;
-- asset repository policy.
+Runs changed-file formatting, ESLint, repository policy, architecture policy, production TypeScript typecheck, test/tooling TypeScript typecheck, the complete Node test suite, and asset repository policy.
 
 ### Compatibility core gate
 
@@ -27,7 +18,7 @@ Runs:
 npm run verify
 ```
 
-Retained for existing plans and branches. It runs the fast tier plus deterministic atlas/source validation and the production build.
+Runs the fast tier plus deterministic atlas/source validation and the production build.
 
 ### Tier 2 — full portable
 
@@ -35,7 +26,7 @@ Retained for existing plans and branches. It runs the fast tier plus determinist
 npm run verify:full
 ```
 
-This is the preferred portable completion gate. It runs the compatibility core gate and then:
+This is the preferred portable completion gate. It runs the compatibility core gate and then the portable browser/visual acceptance stack:
 
 ```bash
 npm run test:smoke
@@ -45,9 +36,7 @@ npm run test:smoke:isometric
 python tests/smoke/isometric_visual_smoke.py
 ```
 
-`npm run test:smoke:portable` is the canonical aggregate for those browser/visual suites.
-
-CI decomposes `verify:full` into the same constituent steps so cheap deterministic failures occur before Chromium installation while local and CI acceptance remain semantically aligned.
+`npm run test:smoke:portable` is the canonical aggregate for those browser/visual suites. CI decomposes `verify:full` into the same constituent steps so cheap deterministic failures occur before Chromium installation while local and CI acceptance remain semantically aligned.
 
 ### Supply-chain audit
 
@@ -55,13 +44,11 @@ CI decomposes `verify:full` into the same constituent steps so cheap determinist
 npm run security:audit
 ```
 
-This network-backed npm audit is intentionally separate from `verify:fast` so the inner loop remains usable without registry access. Canonical CI runs it before browser setup.
+This network-backed npm audit is separate from `verify:fast` so the inner loop remains usable without registry access. Canonical CI runs it before browser setup.
 
 ### Tier 3 — platform / infrastructure
 
-Tier 3 is reserved for checks that genuinely require a non-portable environment, including Windows packaging/launch, GitHub administrative rules, and future native/GPU checks that cannot execute in the portable Linux/browser environment.
-
-Ordinary browser and visual smoke tests are not CI-only.
+Tier 3 is reserved for checks that genuinely require a non-portable environment, including Windows packaging/launch, GitHub administrative rules, and future native/GPU checks that cannot execute in the portable Linux/browser environment. Ordinary browser and visual smoke tests are not CI-only.
 
 ## TypeScript test compilation
 
@@ -82,15 +69,7 @@ Pure deterministic formulas, geometry, rules, validation, transitions, serializa
 
 ### Invariant
 
-Conservation and integrity conditions such as:
-
-- no negative conserved weight;
-- inventory/freight conservation;
-- occupancy not exceeding capacity;
-- no conflicting ownership;
-- valid parcel/building references;
-- cadastral topology and lineage validity;
-- no double-booked scarce service units.
+Conservation and integrity conditions such as no negative conserved weight, inventory/freight conservation, occupancy not exceeding capacity, no conflicting ownership, valid parcel/building references, cadastral topology/lineage validity, and no double-booked scarce service units.
 
 ### Deterministic replay / continuation
 
@@ -106,7 +85,7 @@ Transitional systems preserve accepted behavior while a replacement is being bui
 
 ### Integration
 
-Cross-domain causal boundaries, especially where one authority hands state to another. High-value chains include cadastre ↔ lots/buildings/property, development ↔ economy/housing, transportation ↔ transit/services, freight ↔ inventory, save payloads ↔ live invariants, and simulation state ↔ presentation.
+Cross-domain causal boundaries, especially cadastre ↔ lots/buildings/property, development ↔ economy/housing, transportation ↔ transit/services, freight ↔ inventory, save payloads ↔ live invariants, and simulation state ↔ presentation.
 
 ### Browser smoke
 
@@ -118,7 +97,7 @@ Deterministic presentation scenes and interaction expectations. Visual checks re
 
 ### Performance
 
-Fixed deterministic scenarios that measure budgets separately from correctness assertions. Performance failures should not be disguised by weakening functional tests.
+Fixed deterministic scenarios measure budgets separately from correctness assertions. Performance failures must not be disguised by weakening functional tests.
 
 ### Architecture / repository policy
 
@@ -132,75 +111,26 @@ Source policy, deterministic generation/validation, manifest/reference integrity
 
 No Rust workspace is present on current `main`. Prism-native/Rust checks remain branch-specific while Prism is a non-authoritative mirror/target program. They become a permanent mainline contract only after an accepted native workspace is integrated.
 
-## Current Urban Fabric acceptance
+## Urban Fabric and Save V9 acceptance
 
-The existing Node suite contains the accepted Urban Fabric and World Foundation contracts. Stack 7 does not weaken or replace them.
+The existing Node suite retains accepted Urban Fabric and World Foundation contracts, including cadastral topology/mutations, dimensional zoning, massing/development, lifecycle/redevelopment, property holdings, world foundation invariants, deterministic continuation, and adversarial persistence validation.
 
-### Cadastral geometry and mutation
-
-Coverage includes:
-
-- canonical graph construction and snapshot restoration;
-- parcel adjacency, area, centroid, frontage/access, and validation;
-- deterministic parcel generation from inherited roads/zoning;
-- split, assembly, easement create/remove, and right-of-way dedication;
-- lineage and area conservation;
-- runtime cross-domain mutation coordination;
-- rollback on rejected or injected-fault commits;
-- deterministic mutation sequences and fixed-seed fuzzing.
-
-`tests/urban-fabric-fuzz.test.ts` uses fixed seeds and repeated controlled mutation attempts to expose topology/reference drift. After each operation the graph must validate and remain reconstructable from its snapshot; controlled land accounting must remain conserved within the accepted tolerance.
-
-### Zoning, massing, development, and lifecycle
-
-Coverage includes:
-
-- dimensional parcel zoning;
-- buildable envelopes;
-- zoning-compliance rejection reasons;
-- deterministic physical/mixed-use massing;
-- floor-area/capacity derivation;
-- canonical `BuildingV2` storage and identity;
-- maintenance, deterioration, distress, renovation, and adaptive reuse;
-- property holdings/transactions;
-- highest-and-best-use and redevelopment pressure;
-- site assembly;
-- runtime development materialization;
-- occupied-redevelopment safeguards and explicit project stages.
-
-### World Foundation regressions
-
-Urban Fabric continues to run the accepted physical-world coverage for geometry, geography hierarchy, terrain/soils, deterministic world presets and RNG isolation, hydrology/flooding, scenario overrides, World Foundation persistence, terrain economics, spatial indexes, and the invariant that ordinary city ticks do not mutate static world authority.
-
-## Urban Fabric browser smoke
-
-`tests/smoke/urban_fabric_smoke.py` boots the compiled application and verifies the live authority/presentation/save boundary. The deterministic scenario builds a real road and residential district, establishes required utilities, advances live simulation, requires canonical cadastral/building state, exercises cadastre/zoning overlays and picking, serializes the public save API, verifies Save V9 identity, hydrates, and confirms canonical parcel/building IDs remain stable.
-
-This smoke is a permanent required component of `npm run test:smoke:portable`.
-
-## Save V9 acceptance
-
-Current default persistence remains:
+Current persistence remains:
 
 ```text
 saveVersion: 9
 gameVersion: 0.9.0-urban-fabric
 ```
 
-Tests require:
+Tests require exact Urban Fabric round-trip, deterministic continuation, deterministic V8 → V9 migration, no fabricated legal/property history, valid live parcel references, historical transaction lineage, mutation → save → hydrate → continue integrity, explicit Save V8 compatibility, and World Foundation restoration before dependent legacy gameplay construction.
 
-- exact Urban Fabric cadastral/zoning/building/property round-trip;
-- deterministic continuation after load;
-- deterministic V8 → V9 migration;
-- no fabricated legal/property history;
-- legacy lots rebuilt from persisted cadastral topology;
-- valid live parcel references in zoning, canonical buildings, and current holdings;
-- historical transaction IDs to resolve to a live parcel or lineage-recognized retired parcel;
-- mutation → save → hydrate → continue integrity;
-- explicit Save V8 compatibility;
-- inherited World Foundation restoration before dependent legacy gameplay construction.
+Stack 8 changes no save field, save version, hydration authority, or migration semantics.
 
-Stack 7 changes no save field, save version, hydration authority, or migration semantics.
+## Urban Fabric browser smoke
+
+`tests/smoke/urban_fabric_smoke.py` boots the compiled application and verifies the live authority/presentation/save boundary. The deterministic scenario builds a real road and residential district, establishes required utilities, advances live simulation, requires canonical cadastral/building state, exercises cadastre/zoning overlays and picking, serializes the public save API, verifies Save V9 identity, hydrates, and confirms canonical parcel/building IDs remain stable.
+
+This smoke is a permanent required component of `npm run test:smoke:portable`.
 
 ## CI behavior
 
@@ -224,7 +154,7 @@ The browser setup and full smoke stack therefore do not run when formatting/type
 
 A required failure is evidence against the exact commit or PR merge ref under test. Do not mark a failing test as infrastructure without specific evidence. Diagnostic artifacts are preserved for failed runs when generated.
 
-Historical feature-head CI remains evidence for the commit it actually tested. It must not be presented as evidence for a later merged state that did not execute that run.
+Historical feature-head CI remains evidence for the commit it actually tested. It must not be presented as evidence for a later state that did not execute that run.
 
 ## Completion rule
 
@@ -237,3 +167,38 @@ A tranche may be called green only after:
 5. platform-specific checks pass where they genuinely apply;
 6. documentation reflects current authority and commands;
 7. fresh exact-head CI evidence is read before claiming completion.
+
+## Stack 8 architecture-hardening acceptance
+
+Stack 8 adds permanent tests for engineering behavior rather than gameplay behavior. The focused suite is split by failure class:
+
+- `tests/stack8-debugging-architecture.test.ts` — structured failures, deterministic serialization/hashing, transaction ordering and fail-stop rollback, causal trace, semantic revisions, reference-integrity primitives, performance attribution, repro bundles, scheduler contracts, and kernel failure diagnostics;
+- `tests/stack8-core-diagnostics.test.ts` — renderer-independent `SimulationCore` health snapshot, selected BuildingV2/property reference-integrity summary, deterministic authority hashing, and proof that trace observations do not change authority;
+- `tests/stack8-replay-diagnostics.test.ts` — deterministic snapshot comparison/assertion and N-tick profiling with an injected monotonic clock;
+- `tests/stack8-numeric-safety.test.ts` — NaN/Infinity rejection at confirmed traffic authority boundaries before mutation;
+- `tests/stack8-fuzz-soak.test.ts` — Save V9 continuation equivalence, fixed-seed transaction/revision fuzzing, bounded diagnostics, and deterministic checkpoint equivalence;
+- `tests/stack8-presentation-lifecycle.test.ts` — explicit RAF/listener/timer/UI/GPU teardown ownership;
+- `tests/architecture_policy.test.ts` — presentation-to-mutation firewall and direct-`Math.random()` ban in authoritative TypeScript.
+
+### Deterministic soak contract
+
+The ordinary Stack 8 CI suite executes two deterministic engine horizons:
+
+- 500 ticks with 100-tick checkpoints;
+- 10,000 ticks with 1,000-tick checkpoints.
+
+The same test file records manual synthetic horizons of 100,000 and 1,000,000 ticks for deeper stress. These are engine stress horizons rather than calendar claims because `SimulationClock` currently defines only integer ticks and no canonical tick-to-day conversion.
+
+Every horizon carries explicit budgets for event retention, diagnostic trace retention, command-queue depth, topology revision churn in the no-mutation fixture, and cross-domain invalid references. Twin fixed-seed cores must produce identical deterministic authority hashes at every checkpoint.
+
+### Performance attribution
+
+Performance attribution is diagnostic, not a gameplay feedback loop. Kernel/system measurements use an injectable monotonic clock in deterministic tests; production timing is observational. Stack 8 establishes calls/average/P95/max/over-budget/cache-hit instrumentation and leaves hotspot-specific optimization to measured follow-up work rather than changing simulation semantics speculatively.
+
+No performance speedup is claimed by Stack 8. The before/after change is observability: before Stack 8 the runtime lacked stable per-system attribution; after Stack 8 the kernel can attribute timing and budget violations without feeding timing into simulation authority.
+
+### Exact-head completion
+
+Exact-head Stack 8 completion uses the repository's canonical `npm run verify:full` semantics plus fresh PR CI evidence. The CI workflow separately runs `verify:fast`, dependency audit, asset validation, production build, and `test:smoke:portable`, which is semantically equivalent to the portable completion gate.
+
+No Rust workspace exists in this repository, so Prism-native `cargo` gates are not applicable. Prism remains non-authoritative.

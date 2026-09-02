@@ -19,14 +19,15 @@
     "build": "node scripts/build.mjs",
     "verify:fast": "npm run format:check && npm run lint && npm run policy:check && npm run architecture:check && npm run typecheck && npm run typecheck:tests && npm test && npm run assets:policy",
     "verify": "npm run verify:fast && npm run assets:check && npm run build",
-    "test:smoke:portable": "npm run test:smoke && npm run test:smoke:phase7 && npm run test:smoke:urban-fabric && npm run test:smoke:isometric && python tests/smoke/isometric_visual_smoke.py",
+    "test:smoke:portable": "npm run test:smoke && npm run test:smoke:phase7 && npm run test:smoke:urban-fabric && npm run test:smoke:isometric && npm run test:smoke:stack8 && python tests/smoke/isometric_visual_smoke.py",
     "verify:full": "npm run verify && npm run test:smoke:portable",
     "dev": "python -m http.server 5173 -d dist",
     "desktop": "npm run build && electron desktop/main.mjs",
     "test:smoke": "python tests/smoke/phase6_smoke.py",
     "test:smoke:phase7": "python tests/smoke/phase7_land_housing_smoke.py",
     "test:smoke:urban-fabric": "python tests/smoke/urban_fabric_smoke.py",
-    "test:smoke:isometric": "python tests/smoke/isometric_pass_a_smoke.py"
+    "test:smoke:isometric": "python tests/smoke/isometric_pass_a_smoke.py",
+    "test:smoke:stack8": "python tests/smoke/stack8_lifecycle_smoke.py"
   },
   "dependencies": {
     "clipper2-ts": "2.0.1-18",

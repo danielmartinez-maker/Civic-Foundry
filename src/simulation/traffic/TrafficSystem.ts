@@ -1,4 +1,5 @@
 import { clamp01 } from '../core/types.ts';
+import { engineFailure } from '../diagnostics/EngineFailure.ts';
 import type { RouteResult } from './PathfindingSystem.ts';
 import type { TripPurpose, TripRequest } from './TripGenerationSystem.ts';
 import type { IntersectionSystem } from './IntersectionSystem.ts';
@@ -67,6 +68,40 @@ export type TrafficStateSnapshot = Readonly<{
   congestionEpoch: number;
 }>;
 
+function trafficNumericFailure(
+  code: string,
+  operation: string,
+  valueName: string,
+  value: number,
+  entityIds: readonly string[] = [],
+): never {
+  throw engineFailure(
+    {
+      code,
+      category: 'InvariantViolation',
+      domain: 'traffic',
+      operation,
+      tick: 0,
+      entityIds,
+    },
+    `${valueName} must be finite; received ${String(value)}`,
+  );
+}
+
+function validateExternalLoads(extraEdgeLoads: Readonly<Record<string, number>>): void {
+  for (const [edgeId, load] of Object.entries(extraEdgeLoads).sort(([a], [b]) => a.localeCompare(b))) {
+    if (!Number.isFinite(load)) {
+      trafficNumericFailure(
+        'traffic-non-finite-external-load',
+        'validate-external-loads',
+        `external load for ${edgeId}`,
+        load,
+        [edgeId],
+      );
+    }
+  }
+}
+
 export class TrafficSystem {
   private readonly vehicles = new Map<string, MutableTrafficVehicle>();
   private readonly outcomes: TripOutcome[] = [];
@@ -90,6 +125,33 @@ export class TrafficSystem {
   }
 
   submitTrip(trip: TripRequest, route: RouteResult, tick: number, freeFlowTicks = route.totalCost): string | null {
+    if (!Number.isFinite(trip.travelerWeight)) {
+      trafficNumericFailure(
+        'traffic-non-finite-traveler-weight',
+        'submit-trip',
+        'travelerWeight',
+        trip.travelerWeight,
+        [trip.id],
+      );
+    }
+    if (!Number.isFinite(freeFlowTicks)) {
+      trafficNumericFailure(
+        'traffic-non-finite-free-flow-time',
+        'submit-trip',
+        'freeFlowTicks',
+        freeFlowTicks,
+        [trip.id],
+      );
+    }
+    if (!Number.isFinite(tick)) {
+      trafficNumericFailure(
+        'traffic-non-finite-tick',
+        'submit-trip',
+        'tick',
+        tick,
+        [trip.id],
+      );
+    }
     if (trip.travelerWeight <= 0) return null;
     if (route.edgeIds.length === 0) {
       this.completedTrips++;
@@ -123,6 +185,7 @@ export class TrafficSystem {
   }
 
   step(graph: TransportationGraph, intersections: IntersectionSystem, tick: number, extraEdgeLoads: Readonly<Record<string, number>> = {}): void {
+    validateExternalLoads(extraEdgeLoads);
     this.invalidateMissingRoutes(graph, intersections, tick);
     this.recoverOrphanedQueues(intersections, tick);
 
@@ -239,6 +302,7 @@ export class TrafficSystem {
   }
 
   refreshMetrics(graph: TransportationGraph, extraEdgeLoads: Readonly<Record<string, number>> = {}): void {
+    validateExternalLoads(extraEdgeLoads);
     this.edgeMetrics = this.calculateEdgeMetrics(graph, extraEdgeLoads);
   }
 

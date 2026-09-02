@@ -73,14 +73,19 @@ export class GpuWorldRenderer {
   private readonly vehicleLayer = new Graphics();
   private readonly overlayLayer = new Graphics();
   private readonly selectionLayer = new Graphics();
+  private readonly initialization: Promise<void>;
+  private initializationError: Error | null = null;
   private initialized = false;
+  private disposed = false;
   private lastWorldSize: RendererWorldSize | null = null;
   private urbanFabricOverlayMode: UrbanFabricOverlayMode = 'none';
   private urbanFabricSelectedParcelId: string | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    void this.initialize();
+    this.initialization = this.initialize().catch((error: unknown) => {
+      this.initializationError = error instanceof Error ? error : new Error(String(error));
+    });
   }
 
   get cellSize(): number { return this.camera.tileWidth; }
@@ -92,14 +97,21 @@ export class GpuWorldRenderer {
   get currentUrbanFabricSelectedParcelId(): string | null { return this.urbanFabricSelectedParcelId; }
 
   setUrbanFabricOverlay(mode: UrbanFabricOverlayMode, selectedParcelId: string | null = null): void {
+    if (this.disposed) return;
     this.urbanFabricOverlayMode = mode;
     this.urbanFabricSelectedParcelId = selectedParcelId;
   }
 
-  pan(dx: number, dy: number): void { this.camera.pan(dx, dy); }
-  zoomBy(factor: number, anchorX: number, anchorY: number): void { this.camera.zoomBy(factor, anchorX, anchorY); }
+  pan(dx: number, dy: number): void {
+    if (!this.disposed) this.camera.pan(dx, dy);
+  }
+
+  zoomBy(factor: number, anchorX: number, anchorY: number): void {
+    if (!this.disposed) this.camera.zoomBy(factor, anchorX, anchorY);
+  }
 
   rotate(direction: -1 | 1): void {
+    if (this.disposed) return;
     const size = this.lastWorldSize;
     const rect = this.canvas.getBoundingClientRect();
     if (size && rect.width > 0 && rect.height > 0) {
@@ -122,6 +134,7 @@ export class GpuWorldRenderer {
   }
 
   canvasToCell(clientX: number, clientY: number, core: SimulationCore): { x: number; y: number } | null {
+    if (this.disposed) return null;
     const rect = this.canvas.getBoundingClientRect();
     return this.camera.canvasToCell(clientX - rect.left, clientY - rect.top, this.worldSize(core));
   }
@@ -135,11 +148,11 @@ export class GpuWorldRenderer {
   }
 
   assetDiagnostics(): readonly string[] {
-    return Object.freeze([]);
+    return Object.freeze(this.initializationError ? [this.initializationError.message] : []);
   }
 
   resize(): void {
-    if (!this.initialized) return;
+    if (!this.initialized || this.disposed) return;
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     this.application.renderer.resize(Math.round(rect.width), Math.round(rect.height));
@@ -156,6 +169,7 @@ export class GpuWorldRenderer {
     urbanFabricOverlayMode?: UrbanFabricOverlayMode,
     selectedParcelId?: string | null,
   ): void {
+    if (this.disposed) return;
     this.worldSize(core);
     if (!this.initialized) return;
 
@@ -177,6 +191,19 @@ export class GpuWorldRenderer {
     this.drawSelection(core, selected, previewPath);
   }
 
+  async destroy(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    await this.initialization;
+    if (this.initialized) {
+      this.application.destroy(false, { children: true });
+      this.initialized = false;
+    }
+    this.lastWorldSize = null;
+    this.urbanFabricOverlayMode = 'none';
+    this.urbanFabricSelectedParcelId = null;
+  }
+
   private async initialize(): Promise<void> {
     await this.application.init({
       canvas: this.canvas,
@@ -188,6 +215,11 @@ export class GpuWorldRenderer {
       background: '#11171b',
       resizeTo: this.canvas.parentElement ?? window,
     });
+
+    if (this.disposed) {
+      this.application.destroy(false, { children: true });
+      return;
+    }
 
     this.scene.addChild(
       this.terrainLayer,
@@ -203,7 +235,10 @@ export class GpuWorldRenderer {
   }
 
   private async ready(): Promise<void> {
-    while (!this.initialized) await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    await this.initialization;
+    if (this.initializationError) throw this.initializationError;
+    if (this.disposed) throw new Error('GpuWorldRenderer has been disposed');
+    if (!this.initialized) throw new Error('GpuWorldRenderer failed to initialize');
   }
 
   private clearLayers(): void {

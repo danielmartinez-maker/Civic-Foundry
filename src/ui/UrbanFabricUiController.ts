@@ -2,6 +2,12 @@ import type { GameApp } from '../app/GameApp.ts';
 import type { UrbanFabricOverlayMode } from '../rendering/CadastralOverlayLayer.ts';
 import { ParcelInspector } from './ParcelInspector.ts';
 
+declare module '../app/GameApp.ts' {
+  interface GameApp {
+    urbanFabricOverlayMode?: UrbanFabricOverlayMode;
+  }
+}
+
 const EXCLUSIVE_OVERLAY_SELECTORS = ['#overlay', '#service-overlay', '#transit-overlay', '#economy-overlay'] as const;
 
 const LEGENDS: Record<UrbanFabricOverlayMode, string> = {
@@ -16,9 +22,12 @@ export class UrbanFabricUiController {
   private readonly legend: HTMLElement;
   private readonly worldCanvas: HTMLCanvasElement;
   private readonly inspector: HTMLElement;
+  private readonly section: HTMLElement;
+  private readonly abortController = new AbortController();
   private mode: UrbanFabricOverlayMode = 'none';
   private synchronizing = false;
   private selectedParcelId: string | null = null;
+  private disposed = false;
 
   constructor(private readonly app: GameApp, private readonly root: HTMLElement) {
     const economySection = this.required<HTMLElement>('[data-testid="economy-panel"]').closest<HTMLElement>('.panel-section');
@@ -35,6 +44,7 @@ export class UrbanFabricUiController {
         <option value="redevelopment">Redevelopment</option>
       </select>`;
     economySection.insertAdjacentElement('afterend', section);
+    this.section = section;
 
     this.select = this.required<HTMLSelectElement>('#urban-fabric-overlay');
     this.legend = this.required('#overlay-legend');
@@ -50,6 +60,17 @@ export class UrbanFabricUiController {
     this.app.renderer.setUrbanFabricOverlay('none');
   }
 
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.abortController.abort();
+    this.mode = 'none';
+    this.selectedParcelId = null;
+    this.app.renderer.setUrbanFabricOverlay('none');
+    delete this.app.urbanFabricOverlayMode;
+    this.section.remove();
+  }
+
   private bindControls(): void {
     this.select.addEventListener('change', () => {
       this.mode = this.select.value as UrbanFabricOverlayMode;
@@ -57,7 +78,7 @@ export class UrbanFabricUiController {
       if (this.mode === 'none') this.selectedParcelId = null;
       this.app.renderer.setUrbanFabricOverlay(this.mode, this.selectedParcelId);
       this.legend.textContent = LEGENDS[this.mode];
-    });
+    }, { signal: this.abortController.signal });
 
     for (const selector of EXCLUSIVE_OVERLAY_SELECTORS) {
       this.required<HTMLSelectElement>(selector).addEventListener('change', (event) => {
@@ -68,7 +89,7 @@ export class UrbanFabricUiController {
         this.selectedParcelId = null;
         this.select.value = 'none';
         this.app.renderer.setUrbanFabricOverlay('none');
-      });
+      }, { signal: this.abortController.signal });
     }
 
     this.worldCanvas.addEventListener('pointerdown', (event) => {
@@ -78,7 +99,7 @@ export class UrbanFabricUiController {
       this.app.renderer.setUrbanFabricOverlay(this.mode, this.selectedParcelId);
       if (!this.selectedParcelId || this.app.tools.activeTool !== 'inspect') return;
       this.inspector.innerHTML = new ParcelInspector().render(this.selectedParcelId, this.app.core);
-    });
+    }, { signal: this.abortController.signal });
   }
 
   private disableCompetingOverlays(): void {
