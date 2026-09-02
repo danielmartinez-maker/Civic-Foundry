@@ -51,6 +51,11 @@ struct ToolEditorState {
     int transit_mode_index{0};
 };
 
+struct PointerGestureState {
+    Point2 down{};
+    bool moved{};
+};
+
 class NativeClientCommandSink final : public ICommandSink {
 public:
     explicit NativeClientCommandSink(bool authority_cutover_gated) noexcept
@@ -108,14 +113,10 @@ bool forwardNativeUiMessage(
     std::intptr_t lparam) noexcept {
     auto* ui = static_cast<Win32NativeUi*>(user_data);
     if (!ui) return false;
-
     if (message == WM_DPICHANGED) {
         const auto dpi_x = static_cast<std::uint32_t>(wparam & 0xffffU);
-        if (dpi_x > 0U) {
-            (void)ui->model().updateDpiScale(static_cast<float>(dpi_x) / 96.0F);
-        }
+        if (dpi_x > 0U) (void)ui->model().updateDpiScale(static_cast<float>(dpi_x) / 96.0F);
     }
-
     return ui->handleMessage(native_window, message, wparam, lparam);
 }
 
@@ -126,7 +127,6 @@ void drawFrameworkPanel(
     const NativeRendererStats& renderer_stats) {
     const auto panel = ui.model().panel("framework-status");
     if (!panel || !panel->open) return;
-
     bool open = panel->open;
     if (ImGui::Begin(panel->title.c_str(), &open)) {
         ImGui::TextUnformatted("Civic Foundry native presentation runtime");
@@ -138,6 +138,7 @@ void drawFrameworkPanel(
         ImGui::Text("Accessibility: %s contrast, %s motion",
             frame.high_contrast ? "high" : "standard",
             frame.reduced_motion ? "reduced" : "standard");
+        ImGui::TextDisabled("World controls: drag to pan, wheel to zoom, Q/E to rotate, Inspect + click to select.");
         ImGui::Separator();
         ImGui::TextWrapped(
             "%s",
@@ -146,7 +147,6 @@ void drawFrameworkPanel(
                 : "Native simulation authority is queryable; command adapter binding is still required for mutations.");
     }
     ImGui::End();
-
     if (open != panel->open) (void)ui.model().setPanelOpen(panel->id, open);
 }
 
@@ -214,28 +214,20 @@ void drawCityOverview(
     double now_seconds) {
     const auto panel = ui.model().panel("city-overview");
     if (!panel || !panel->open) return;
-
     bool open = panel->open;
     if (ImGui::Begin(panel->title.c_str(), &open)) {
         ImGui::TextUnformatted(hud.city_name.c_str());
         ImGui::Separator();
         ImGui::Text("Tick: %llu", static_cast<unsigned long long>(hud.simulation_tick));
         ImGui::Text("Speed: %dx", hud.simulation_speed);
-
         const auto treasury = formatHudCurrency(hud.treasury);
         const auto population = formatHudCount(hud.population);
         ImGui::Text("Treasury: %s", treasury.c_str());
         ImGui::Text("Population: %s", population.c_str());
-
         if (hud.unemployment_rate) ImGui::Text("Unemployment: %.1f%%", *hud.unemployment_rate * 100.0);
         else ImGui::TextUnformatted("Unemployment: —");
-
-        if (hud.occupied_housing && hud.housing_capacity) {
-            ImGui::Text("Housing: %.0f / %.0f", *hud.occupied_housing, *hud.housing_capacity);
-        } else {
-            ImGui::TextUnformatted("Housing: —");
-        }
-
+        if (hud.occupied_housing && hud.housing_capacity) ImGui::Text("Housing: %.0f / %.0f", *hud.occupied_housing, *hud.housing_capacity);
+        else ImGui::TextUnformatted("Housing: —");
         ImGui::Separator();
         ImGui::Text("Tool: %s", hud.current_tool.c_str());
         ImGui::Text("Overlay: %s", hud.current_overlay.c_str());
@@ -246,7 +238,6 @@ void drawCityOverview(
         ImGui::TextDisabled("— means authoritative data is not available on the current native authority branch.");
     }
     ImGui::End();
-
     if (open != panel->open) (void)ui.model().setPanelOpen(panel->id, open);
 }
 
@@ -273,11 +264,7 @@ VehicleKind selectedTransitMode(int index) noexcept {
     }
 }
 
-void previewActiveTool(
-    NativeToolWorkflow& tools,
-    ToolEditorState& editor,
-    NotificationCenter& notifications,
-    double now_seconds) {
+void previewActiveTool(NativeToolWorkflow& tools, ToolEditorState& editor, NotificationCenter& notifications, double now_seconds) {
     std::expected<void, std::string> result{};
     switch (tools.activeTool()) {
         case NativeTool::Road:
@@ -286,9 +273,7 @@ void previewActiveTool(
                  {static_cast<double>(editor.road_end[0]), static_cast<double>(editor.road_end[1])}},
                 selectedRoadClass(editor.road_class_index));
             break;
-        case NativeTool::Zone:
-            result = tools.previewZone(editor.parcel_id, editor.zoning_code);
-            break;
+        case NativeTool::Zone: result = tools.previewZone(editor.parcel_id, editor.zoning_code); break;
         case NativeTool::Facility:
             result = tools.previewFacility(
                 {static_cast<double>(editor.facility_position[0]), static_cast<double>(editor.facility_position[1])},
@@ -300,18 +285,14 @@ void previewActiveTool(
                 selectedTransitMode(editor.transit_mode_index));
             break;
         case NativeTool::Inspect:
-        default:
-            result = std::unexpected("Inspect has no mutating preview to confirm.");
-            break;
+        default: result = std::unexpected("Inspect has no mutating preview to confirm."); break;
     }
-
     if (!result) showNotice(notifications, result.error(), HudNoticeSeverity::Warning, now_seconds);
 }
 
 void drawToolEditor(NativeToolWorkflow& tools, ToolEditorState& editor) {
     static const char* road_classes[] = {"Local", "Collector", "Arterial", "Avenue", "Expressway", "Highway"};
     static const char* transit_modes[] = {"Bus", "BRT", "Tram", "Metro", "Rail"};
-
     switch (tools.activeTool()) {
         case NativeTool::Road:
             ImGui::InputFloat2("Start", editor.road_start);
@@ -332,9 +313,7 @@ void drawToolEditor(NativeToolWorkflow& tools, ToolEditorState& editor) {
             ImGui::Combo("Mode", &editor.transit_mode_index, transit_modes, 5);
             break;
         case NativeTool::Inspect:
-        default:
-            ImGui::TextUnformatted("Inspect reads presentation selections and submits no simulation command.");
-            break;
+        default: ImGui::TextUnformatted("Inspect reads presentation selections and submits no simulation command."); break;
     }
 }
 
@@ -347,34 +326,23 @@ void drawToolPalette(
     double now_seconds) {
     const auto panel = ui.model().panel("tool-palette");
     if (!panel || !panel->open) return;
-
     bool open = panel->open;
     if (ImGui::Begin(panel->title.c_str(), &open)) {
         if (ImGui::Button("Inspect##tool")) tools.activate(NativeTool::Inspect);
-        ImGui::SameLine();
-        if (ImGui::Button("Road##tool")) tools.activate(NativeTool::Road);
-        ImGui::SameLine();
-        if (ImGui::Button("Zone##tool")) tools.activate(NativeTool::Zone);
-        ImGui::SameLine();
-        if (ImGui::Button("Facility##tool")) tools.activate(NativeTool::Facility);
-        ImGui::SameLine();
-        if (ImGui::Button("Transit##tool")) tools.activate(NativeTool::Transit);
-
+        ImGui::SameLine(); if (ImGui::Button("Road##tool")) tools.activate(NativeTool::Road);
+        ImGui::SameLine(); if (ImGui::Button("Zone##tool")) tools.activate(NativeTool::Zone);
+        ImGui::SameLine(); if (ImGui::Button("Facility##tool")) tools.activate(NativeTool::Facility);
+        ImGui::SameLine(); if (ImGui::Button("Transit##tool")) tools.activate(NativeTool::Transit);
         ImGui::Separator();
         ImGui::Text("Active tool: %s", nativeToolLabel(tools.activeTool()).data());
         drawToolEditor(tools, editor);
-
-        if (tools.activeTool() != NativeTool::Inspect) {
-            if (ImGui::Button("Preview")) previewActiveTool(tools, editor, notifications, now_seconds);
-        }
-
+        if (tools.activeTool() != NativeTool::Inspect && ImGui::Button("Preview")) previewActiveTool(tools, editor, notifications, now_seconds);
         const auto& preview = tools.preview();
         if (preview.valid) {
             ImGui::Separator();
             ImGui::Text("Preview: %s", preview.tool_id.c_str());
             ImGui::Text("Geometry points: %llu", static_cast<unsigned long long>(preview.geometry.size()));
             ImGui::TextDisabled("Preview is presentation-only. No authoritative state has changed.");
-
             if (ImGui::Button("Confirm")) {
                 const auto committed = tools.commit(controller);
                 if (committed) showNotice(notifications, "Authoritative tool command accepted.", HudNoticeSeverity::Success, now_seconds);
@@ -390,7 +358,6 @@ void drawToolPalette(
         }
     }
     ImGui::End();
-
     if (open != panel->open) (void)ui.model().setPanelOpen(panel->id, open);
 }
 
@@ -404,7 +371,6 @@ NativePanelSnapshot buildNativePanelSnapshot(const FrameSnapshot& snapshot, bool
             .fields = {{"Entity ID", snapshot.selection.entity.id}},
         };
     }
-
     const std::string status = authority_cutover_gated
         ? "Awaiting consolidated native authoritative query data"
         : "Native query adapter not yet bound";
@@ -423,14 +389,11 @@ void drawInspectorPanel(Win32NativeUi& ui, const NativePanelSnapshot& panels) {
     if (!panel || !panel->open) return;
     bool open = panel->open;
     if (ImGui::Begin(panel->title.c_str(), &open)) {
-        if (!panels.inspector) {
-            ImGui::TextUnformatted("No presentation selection.");
-        } else {
+        if (!panels.inspector) ImGui::TextUnformatted("No presentation selection.");
+        else {
             ImGui::TextUnformatted(panels.inspector->title.c_str());
             ImGui::Separator();
-            for (const auto& field : panels.inspector->fields) {
-                ImGui::Text("%s: %s", field.label.c_str(), field.value.c_str());
-            }
+            for (const auto& field : panels.inspector->fields) ImGui::Text("%s: %s", field.label.c_str(), field.value.c_str());
         }
     }
     ImGui::End();
@@ -443,47 +406,27 @@ void drawManagementPanel(Win32NativeUi& ui, const NativePanelSnapshot& panels, s
     bool open = ui_panel->open;
     if (ImGui::Begin(ui_panel->title.c_str(), &open)) {
         const auto* data = findManagementPanel(panels, panel_id);
-        if (!data) {
-            ImGui::TextUnformatted("No query snapshot is available for this panel.");
-        } else {
-            for (const auto& field : data->fields) {
-                ImGui::Text("%s: %s", field.label.c_str(), field.value.c_str());
-            }
+        if (!data) ImGui::TextUnformatted("No query snapshot is available for this panel.");
+        else {
+            for (const auto& field : data->fields) ImGui::Text("%s: %s", field.label.c_str(), field.value.c_str());
             if (!data->diagnostics.empty()) ImGui::Separator();
             for (const auto& diagnostic : data->diagnostics) {
                 const auto trend = classifyTrend(diagnostic);
-                ImGui::Text("%s: %.3f %s [%s]",
-                    diagnostic.label.c_str(),
-                    diagnostic.current_value,
-                    diagnostic.unit.c_str(),
-                    trendCue(trend).data());
+                ImGui::Text("%s: %.3f %s [%s]", diagnostic.label.c_str(), diagnostic.current_value, diagnostic.unit.c_str(), trendCue(trend).data());
                 if (!diagnostic.history.empty()) {
                     std::vector<float> values;
                     values.reserve(diagnostic.history.size());
                     for (const auto& sample : diagnostic.history) values.push_back(static_cast<float>(sample.value));
-                    ImGui::PlotLines(
-                        ("##history-" + diagnostic.id).c_str(),
-                        values.data(),
-                        static_cast<int>(values.size()),
-                        0,
-                        nullptr,
-                        FLT_MAX,
-                        FLT_MAX,
-                        ImVec2(0.0F, 60.0F));
+                    ImGui::PlotLines(("##history-" + diagnostic.id).c_str(), values.data(), static_cast<int>(values.size()), 0, nullptr, FLT_MAX, FLT_MAX, ImVec2(0.0F, 60.0F));
                 }
                 if (!diagnostic.contributors.empty() && ImGui::TreeNode(("Why?##" + diagnostic.id).c_str())) {
                     for (const auto& contributor : diagnostic.contributors) {
-                        ImGui::BulletText("%s: %+.3f — %s",
-                            contributor.label.c_str(),
-                            contributor.contribution,
-                            contributor.detail.c_str());
+                        ImGui::BulletText("%s: %+.3f — %s", contributor.label.c_str(), contributor.contribution, contributor.detail.c_str());
                     }
                     ImGui::TreePop();
                 }
             }
-            if (data->diagnostics.empty()) {
-                ImGui::TextDisabled("Historical series and causal traces appear here when the native analytics snapshot is bound.");
-            }
+            if (data->diagnostics.empty()) ImGui::TextDisabled("Historical series and causal traces appear here when the native analytics snapshot is bound.");
         }
     }
     ImGui::End();
@@ -511,13 +454,11 @@ void drawSettingsPanel(
         ImGui::Checkbox("Reduced motion", &settings.reduced_motion);
         ImGui::Checkbox("Color-independent cues", &settings.color_independent_cues);
         ImGui::Checkbox("High contrast", &settings.high_contrast);
-
         const char* severity_labels[] = {"Info", "Success", "Warning", "Error"};
         int severity = static_cast<int>(settings.minimum_alert_severity);
         if (ImGui::Combo("Minimum alert severity", &severity, severity_labels, 4)) {
             settings.minimum_alert_severity = static_cast<AlertSeverity>(std::clamp(severity, 0, 3));
         }
-
         if (ImGui::CollapsingHeader("Key bindings")) {
             ImGui::InputInt("Inspect key", &settings.keybindings.inspect);
             ImGui::InputInt("Road key", &settings.keybindings.road);
@@ -530,7 +471,6 @@ void drawSettingsPanel(
             ImGui::InputInt("Fast speed key", &settings.keybindings.speed_fast);
             ImGui::InputInt("Very fast speed key", &settings.keybindings.speed_very_fast);
         }
-
         if (ImGui::Button("Save Settings")) {
             settings = normalizeSettings(settings);
             const auto saved = store.save(settings);
@@ -543,28 +483,14 @@ void drawSettingsPanel(
     if (open != panel->open) (void)ui.model().setPanelOpen(panel->id, open);
 }
 
-void drawNotification(
-    const NotificationCenter& notifications,
-    double now_seconds,
-    const PresentationSettings& settings) {
+void drawNotification(const NotificationCenter& notifications, double now_seconds, const PresentationSettings& settings) {
     const auto notice = notifications.current(now_seconds);
     if (!notice || !hudNoticeMeetsMinimum(notice->severity, settings.minimum_alert_severity)) return;
-
     const auto* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(
-        ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5F, viewport->WorkPos.y + 12.0F),
-        ImGuiCond_Always,
-        ImVec2(0.5F, 0.0F));
+    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5F, viewport->WorkPos.y + 12.0F), ImGuiCond_Always, ImVec2(0.5F, 0.0F));
     ImGui::SetNextWindowBgAlpha(0.94F);
-    constexpr ImGuiWindowFlags flags =
-        ImGuiWindowFlags_NoDecoration |
-        ImGuiWindowFlags_AlwaysAutoResize |
-        ImGuiWindowFlags_NoSavedSettings |
-        ImGuiWindowFlags_NoDocking |
-        ImGuiWindowFlags_NoNav;
-    if (ImGui::Begin("##native-hud-notification", nullptr, flags)) {
-        ImGui::Text("[%s] %s", hudNoticeSeverityLabel(notice->severity).data(), notice->message.c_str());
-    }
+    constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoNav;
+    if (ImGui::Begin("##native-hud-notification", nullptr, flags)) ImGui::Text("[%s] %s", hudNoticeSeverityLabel(notice->severity).data(), notice->message.c_str());
     ImGui::End();
 }
 
@@ -597,57 +523,82 @@ void applyShortcut(
             if (changed) {
                 hud.simulation_speed = speed;
                 showNotice(notifications, "Simulation speed command accepted.", HudNoticeSeverity::Success, now_seconds);
-            } else {
-                showNotice(notifications, changed.error(), HudNoticeSeverity::Warning, now_seconds, 6.0);
-            }
+            } else showNotice(notifications, changed.error(), HudNoticeSeverity::Warning, now_seconds, 6.0);
             break;
         }
         case HudShortcutAction::None:
-        default:
-            break;
+        default: break;
     }
     hud.current_tool = std::string(nativeToolId(tools.activeTool()));
 }
 
-void applyCameraInput(
+bool applyCameraAndPickingInput(
     const std::vector<PlatformEvent>& events,
     bool mouse_captured,
     IsometricCamera& camera,
     InputState& pointer,
-    const PresentationSettings& settings) {
+    PointerGestureState& gesture,
+    const PresentationSettings& settings,
+    NativeTool active_tool,
+    const PickingIndex& picking,
+    FrameSnapshot& snapshot) {
+    bool presentation_changed = false;
     for (const auto& event : events) {
         switch (event.type) {
             case PlatformEventType::FocusLost:
                 pointer.lostFocus();
+                gesture.moved = false;
                 break;
             case PlatformEventType::PointerCancel:
                 pointer.pointerCancel(pointer.activePointerId());
+                gesture.moved = false;
                 break;
             case PlatformEventType::PointerDown:
-                if (!mouse_captured) pointer.pointerDown(0, {event.x, event.y});
+                if (!mouse_captured) {
+                    gesture.down = {event.x, event.y};
+                    gesture.moved = false;
+                    pointer.pointerDown(0, gesture.down);
+                }
                 break;
             case PlatformEventType::PointerMove: {
                 const auto previous = pointer.pointerPosition();
                 if (pointer.dragging()) {
+                    const double total_dx = event.x - gesture.down.x;
+                    const double total_dy = event.y - gesture.down.y;
+                    if (std::hypot(total_dx, total_dy) > 4.0) gesture.moved = true;
                     pointer.pointerMove(pointer.activePointerId(), {event.x, event.y});
                     const double sensitivity = static_cast<double>(settings.camera_sensitivity * settings.input_sensitivity);
                     camera.pan((event.x - previous.x) * sensitivity, (event.y - previous.y) * sensitivity);
+                    presentation_changed = true;
                 }
                 break;
             }
-            case PlatformEventType::PointerUp:
+            case PlatformEventType::PointerUp: {
+                const bool was_dragging = pointer.dragging();
                 pointer.pointerUp(pointer.activePointerId());
+                if (was_dragging && !gesture.moved && !mouse_captured && active_tool == NativeTool::Inspect) {
+                    const auto world = camera.canvasToWorld(event.x, event.y, snapshot.world);
+                    const auto picked = world ? picking.pickWorld(*world, 0.35 / std::max(0.45, camera.zoom())) : std::nullopt;
+                    const SelectionState next = picked ? SelectionState{true, *picked} : SelectionState{};
+                    if (!(next.active == snapshot.selection.active && (!next.active || next.entity == snapshot.selection.entity))) {
+                        snapshot.selection = next;
+                        presentation_changed = true;
+                    }
+                }
+                gesture.moved = false;
                 break;
+            }
             case PlatformEventType::Wheel:
                 if (!mouse_captured) {
                     const double exponent = event.wheel * static_cast<double>(settings.input_sensitivity);
                     camera.zoomBy(std::pow(1.12, exponent), event.x, event.y);
+                    presentation_changed = true;
                 }
                 break;
-            default:
-                break;
+            default: break;
         }
     }
+    return presentation_changed;
 }
 
 void drawNativeHud(
@@ -668,7 +619,6 @@ void drawNativeHud(
     const NativeRendererStats& renderer_stats,
     double now_seconds) {
     ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
-
     hud.current_tool = std::string(nativeToolId(tools.activeTool()));
     drawCityOverview(ui, hud, engine, save_workflow, save_path, notifications, now_seconds);
     drawToolPalette(ui, tools, editor, controller, notifications, now_seconds);
@@ -705,9 +655,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const auto world = (*engine)->domainHash("world");
     const bool authority_cutover_gated = !world || world->ownership == civic::DomainOwnership::unowned;
     if (authority_cutover_gated) {
-        SetWindowTextW(
-            static_cast<HWND>((*window)->nativeHandle()),
-            L"Civic Foundry Native Client — presentation active / authority cutover gated");
+        SetWindowTextW(static_cast<HWND>((*window)->nativeHandle()), L"Civic Foundry Native Client — presentation active / authority cutover gated");
     }
 
     const auto native_context = backend.nativeUiContext();
@@ -734,18 +682,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         {"framework-status", "Native Presentation", true, true},
     };
     for (const auto& panel : panels) {
-        if (auto registered = ui.model().registerPanel(panel); !registered) {
-            return showError("Civic Foundry Native UI Error", registered.error(), 6);
-        }
+        if (auto registered = ui.model().registerPanel(panel); !registered) return showError("Civic Foundry Native UI Error", registered.error(), 6);
     }
     (*window)->setMessageHandler(&forwardNativeUiMessage, &ui);
 
     const auto user_root = civicUserRoot();
     SettingsStore settings_store(user_root / L"settings.json");
     PresentationSettings presentation_settings{};
-    if (const auto loaded_settings = settings_store.load(); loaded_settings) {
-        presentation_settings = *loaded_settings;
-    }
+    if (const auto loaded_settings = settings_store.load(); loaded_settings) presentation_settings = *loaded_settings;
     presentation_settings = normalizeSettings(presentation_settings);
     const auto save_path = user_root / L"saves" / L"quick-save.cf9";
     SaveFileWorkflow save_workflow{};
@@ -756,9 +700,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     if (auto created_audio = XAudio2Output::create(); created_audio) {
         audio_output.emplace(std::move(*created_audio));
         audio_runtime = std::make_unique<NativeAudioRuntime>(*audio_output);
-    } else {
-        audio_initialization_error = created_audio.error();
-    }
+    } else audio_initialization_error = created_audio.error();
 
     FrameSnapshot presentation_snapshot{};
     presentation_snapshot.world = {1U, 1U};
@@ -770,6 +712,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     NativeUiController controller(command_sink);
     IsometricCamera camera{};
     InputState pointer_input{};
+    PointerGestureState pointer_gesture{};
+    PickingIndex picking_index{};
+    RenderRevision picking_revision = static_cast<RenderRevision>(-1);
     RenderPacketBuilder packet_builder{};
     SceneGeometryBuilder geometry_builder{};
     std::optional<SceneGeometry> cached_geometry;
@@ -794,10 +739,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         presentation_snapshot.revision = hud.simulation_tick;
         presentation_snapshot.simulation_tick = hud.simulation_tick;
         presentation_snapshot.tool_preview = tools.preview();
+        if (presentation_snapshot.revision != picking_revision) {
+            picking_index.rebuild(presentation_snapshot);
+            picking_revision = presentation_snapshot.revision;
+        }
 
         auto frame = backend.beginFrame();
         if (!frame) return showError("Civic Foundry Native Frame Error", frame.error(), 8);
-
         auto ui_frame = ui.beginFrame(presentation_snapshot, presentation_settings);
         if (!ui_frame) return showError("Civic Foundry Native UI Frame Error", ui_frame.error(), 9);
 
@@ -807,12 +755,23 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             audio_error_reported = true;
         }
 
+        const auto viewport = PixelViewport{(*window)->clientWidth(), (*window)->clientHeight()};
         const ShortcutContext shortcut_context{
             .ui_keyboard_capture = ui.wantsKeyboardCapture(),
             .editable_control_active = ui.wantsTextInput(),
         };
+        bool interaction_changed = false;
         for (const auto& event : events) {
             if (event.type != PlatformEventType::KeyDown) continue;
+            if (!shortcut_context.ui_keyboard_capture && !shortcut_context.editable_control_active && (event.data1 == 'Q' || event.data1 == 'E')) {
+                const int direction = event.data1 == 'Q' ? -1 : 1;
+                camera.rotateAroundCanvasPoint(
+                    direction,
+                    presentation_snapshot.world,
+                    {static_cast<double>(viewport.width) * 0.5, static_cast<double>(viewport.height) * 0.5});
+                interaction_changed = true;
+                continue;
+            }
             applyShortcut(
                 resolveHudShortcut(event.data1, shortcut_context, presentation_settings.keybindings),
                 tools,
@@ -821,10 +780,19 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                 notifications,
                 now_seconds);
         }
-        applyCameraInput(events, ui.wantsMouseCapture(), camera, pointer_input, presentation_settings);
+        interaction_changed = applyCameraAndPickingInput(
+            events,
+            ui.wantsMouseCapture(),
+            camera,
+            pointer_input,
+            pointer_gesture,
+            presentation_settings,
+            tools.activeTool(),
+            picking_index,
+            presentation_snapshot) || interaction_changed;
+        if (interaction_changed) cached_geometry.reset();
 
         presentation_snapshot.tool_preview = tools.preview();
-        const auto viewport = PixelViewport{(*window)->clientWidth(), (*window)->clientHeight()};
         const auto camera_state = camera.state();
         const bool camera_changed =
             camera_state.zoom != cached_camera.zoom ||
@@ -856,33 +824,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
         const auto panel_snapshot = buildNativePanelSnapshot(presentation_snapshot, authority_cutover_gated);
         drawNativeHud(
-            ui,
-            *ui_frame,
-            authority_cutover_gated,
-            hud,
-            tools,
-            editor,
-            controller,
-            notifications,
-            panel_snapshot,
-            presentation_settings,
-            settings_store,
-            **engine,
-            save_workflow,
-            save_path,
-            renderer.stats(),
-            now_seconds);
+            ui, *ui_frame, authority_cutover_gated, hud, tools, editor, controller, notifications,
+            panel_snapshot, presentation_settings, settings_store, **engine, save_workflow, save_path,
+            renderer.stats(), now_seconds);
 
         const auto active_context = backend.nativeUiContext();
-        if (auto rendered = ui.render(active_context.command_list); !rendered) {
-            return showError("Civic Foundry Native UI Render Error", rendered.error(), 11);
-        }
-
+        if (auto rendered = ui.render(active_context.command_list); !rendered) return showError("Civic Foundry Native UI Render Error", rendered.error(), 11);
         auto fence = backend.submit(*frame);
         if (!fence) return showError("Civic Foundry Native Submit Error", fence.error(), 12);
-        if (auto presented = backend.present(*frame); !presented) {
-            return showError("Civic Foundry Native Present Error", presented.error(), 13);
-        }
+        if (auto presented = backend.present(*frame); !presented) return showError("Civic Foundry Native Present Error", presented.error(), 13);
     }
 
     return 0;
