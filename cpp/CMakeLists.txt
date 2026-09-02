@@ -40,6 +40,7 @@ if(CIVIC_BUILD_TESTS)
   find_package(GTest CONFIG REQUIRED)
   add_executable(civic_engine_tests
     tests/core/CoreTests.cpp
+    tests/core/TransportationContinuationTests.cpp
     tests/persistence/SaveV9Tests.cpp
     tests/parity/ParityTests.cpp
   )
