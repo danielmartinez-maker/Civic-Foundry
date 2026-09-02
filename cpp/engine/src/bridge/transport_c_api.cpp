@@ -3,6 +3,8 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
+#include <limits>
 #include <new>
 #include <sstream>
 #include <string>
@@ -80,7 +82,9 @@ extern "C" cf_result cf_transport_find_route_json(cf_transport_handle* h, const 
     try {
         auto route=h->routing.find_route(h->authority.network().snapshot(),JunctionId{start},JunctionId{end},permissions,GeneralizedCostConfig{});
         if(!route)return error(h,CF_NOT_FOUND,"route not found");
-        std::ostringstream json; json<<"{\"junctionIds\":[";
+        std::ostringstream json;
+        json << std::setprecision(std::numeric_limits<double>::max_digits10);
+        json<<"{\"junctionIds\":[";
         for(size_t i=0;i<route->junction_ids.size();++i){if(i)json<<',';json<<'"'<<json_escape(route->junction_ids[i].value)<<'"';}
         json<<"],\"carriagewayIds\":[";for(size_t i=0;i<route->carriageway_ids.size();++i){if(i)json<<',';json<<'"'<<json_escape(route->carriageway_ids[i].value)<<'"';}
         json<<"],\"movementIds\":[";for(size_t i=0;i<route->movement_ids.size();++i){if(i)json<<',';json<<'"'<<json_escape(route->movement_ids[i].value)<<'"';}
