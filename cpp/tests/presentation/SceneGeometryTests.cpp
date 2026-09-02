@@ -36,10 +36,9 @@ TEST(SceneGeometry, BuildingExtrusionUsesCanonicalHeightRatherThanLegacyCellInte
     SceneGeometryBuilder builder{};
     IsometricCamera camera{};
     const auto scene = builder.build(fixturePacket(), camera, WorldSize{20,20}, PixelViewport{1280,720});
-    const auto top = std::min_element(scene.opaque.begin(), scene.opaque.end(), [](const SceneVertex& a, const SceneVertex& b){ return a.y < b.y; });
-    ASSERT_NE(top, scene.opaque.end());
-    EXPECT_LT(top->y, 0.0F);
     EXPECT_EQ(scene.stats.canonical_buildings, 1U);
+    EXPECT_FLOAT_EQ(scene.stats.max_building_height_m, 25.0F);
+    EXPECT_GE(scene.stats.building_triangles, 10U);
 }
 
 TEST(SceneGeometry, OverlayIsSpatialGeometryNotFullScreenTint) {
