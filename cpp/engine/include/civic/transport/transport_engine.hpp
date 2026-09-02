@@ -51,6 +51,7 @@ enum class TripCause { home_to_work, home_to_school, home_to_shopping, firm_to_s
 enum class TransitMode { bus, tram, metro, rail, ferry };
 enum class TravelMode { car, transit, unmet };
 enum class TransitVehicleState { in_service, out_of_service, failed };
+enum class RoadVehicleStatus { moving, queued };
 
 struct Junction { JunctionId id; double x{}; double y{}; std::string source_legacy_cell; auto operator<=>(const Junction&) const = default; };
 struct RoadSegment {
@@ -209,6 +210,29 @@ public:
     void restore(const TrafficFlowSnapshot&);
 private: std::map<CarriagewayId,double> loads_; };
 
+struct ActiveRoadVehicle {
+    std::string id; TripId trip_id; TripCause cause{TripCause::home_to_work}; double traveler_weight{};
+    std::string origin_id; std::string destination_id; std::vector<CarriagewayId> carriageway_ids;
+    std::size_t current_carriageway_index{}; double carriageway_progress_ticks{}; std::uint64_t departure_tick{};
+    double accumulated_delay_ticks{}; double free_flow_ticks{}; RoadVehicleStatus status{RoadVehicleStatus::moving};
+    std::optional<JunctionId> queued_junction_id;
+    auto operator<=>(const ActiveRoadVehicle&) const = default;
+};
+struct RoadTrafficSnapshot {
+    std::vector<ActiveRoadVehicle> vehicles; std::uint64_t next_vehicle_id{1}; std::uint64_t completed_trips{};
+    std::uint64_t failed_trips{}; std::uint64_t congestion_epoch{};
+    auto operator<=>(const RoadTrafficSnapshot&) const = default;
+};
+class RoadTrafficState {
+public:
+    [[nodiscard]] RoadTrafficSnapshot snapshot() const;
+    [[nodiscard]] TrafficFlowSnapshot flow_snapshot() const;
+    void restore(const NetworkSnapshot&, const RoadTrafficSnapshot&);
+private:
+    std::map<std::string,ActiveRoadVehicle> vehicles_;
+    std::uint64_t next_vehicle_id_{1}; std::uint64_t completed_trips_{}; std::uint64_t failed_trips_{}; std::uint64_t congestion_epoch_{};
+};
+
 struct TripSource { std::string id; double weight{}; };
 struct Trip {
     TripId id; TripCause cause{TripCause::home_to_work}; std::string origin_id; std::string destination_id; std::uint64_t departure_tick{}; double traveler_weight{};
@@ -296,7 +320,8 @@ public:
 };
 
 struct TransportationSnapshot {
-    NetworkSnapshot network; IntersectionControlSnapshot controls; ParkingSnapshot parking; IncidentSnapshot incidents; TrafficFlowSnapshot traffic; TransitNetworkSnapshot transit; PassengerQueueSnapshot queues; TransitOperationsSnapshot operations;
+    NetworkSnapshot network; IntersectionControlSnapshot controls; ParkingSnapshot parking; IncidentSnapshot incidents;
+    TrafficFlowSnapshot traffic; RoadTrafficSnapshot road_traffic; TransitNetworkSnapshot transit; PassengerQueueSnapshot queues; TransitOperationsSnapshot operations;
     auto operator<=>(const TransportationSnapshot&) const = default;
 };
 class TransportationAuthority {
@@ -310,6 +335,8 @@ public:
     [[nodiscard]] IncidentSystem& incidents() { return incidents_; }
     [[nodiscard]] TrafficFlowState& traffic() { return traffic_; }
     [[nodiscard]] const TrafficFlowState& traffic() const { return traffic_; }
+    [[nodiscard]] RoadTrafficState& road_traffic() { return road_traffic_; }
+    [[nodiscard]] const RoadTrafficState& road_traffic() const { return road_traffic_; }
     [[nodiscard]] TransitNetwork& transit() { return transit_; }
     [[nodiscard]] PassengerQueues& queues() { return queues_; }
     [[nodiscard]] TransitOperations& operations() { return operations_; }
@@ -317,7 +344,7 @@ public:
     void restore(const TransportationSnapshot&);
     [[nodiscard]] std::uint64_t domain_hash() const;
 private:
-    NetworkStore network_; IntersectionControlStore controls_; ParkingSystem parking_; IncidentSystem incidents_; TrafficFlowState traffic_; TransitNetwork transit_; PassengerQueues queues_; TransitOperations operations_;
+    NetworkStore network_; IntersectionControlStore controls_; ParkingSystem parking_; IncidentSystem incidents_; TrafficFlowState traffic_; RoadTrafficState road_traffic_; TransitNetwork transit_; PassengerQueues queues_; TransitOperations operations_;
 };
 
 } // namespace civic::transport
