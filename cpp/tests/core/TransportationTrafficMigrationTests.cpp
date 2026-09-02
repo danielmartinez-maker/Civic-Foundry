@@ -28,31 +28,32 @@ TEST(NativeEngineTransportation, HydratesMappedLegacyVehicleWeightIntoDirectiona
     EXPECT_EQ(snapshot.traffic.loads.size(), 1U);
 }
 
-TEST(NativeEngineTransportation, PublishesTypedActiveRoadVehicleContinuationWithNativeRouteIds) {
+TEST(NativeEngineTransportation, PublishesActiveRoadVehiclesInsideTransportationSnapshot) {
     auto engine = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal});
     ASSERT_TRUE(engine);
     ASSERT_TRUE((*engine)->loadV9(kActiveTrafficSave));
 
-    const auto& roadTraffic = (*engine)->roadTraffic();
+    const auto snapshot = (*engine)->transportation().snapshot();
+    const auto& roadTraffic = snapshot.road_traffic;
     ASSERT_EQ(roadTraffic.vehicles.size(), 1U);
     const auto& vehicle = roadTraffic.vehicles.front();
     EXPECT_EQ(vehicle.id, "vehicle:1");
-    EXPECT_EQ(vehicle.tripId, "trip:1");
-    EXPECT_EQ(vehicle.purpose, "commute");
-    EXPECT_DOUBLE_EQ(vehicle.travelerWeight, 2.5);
-    EXPECT_EQ(vehicle.carriagewayIds.size(), 2U);
-    EXPECT_EQ(vehicle.currentCarriagewayIndex, 1U);
-    EXPECT_DOUBLE_EQ(vehicle.carriagewayProgressTicks, 3.5);
-    EXPECT_EQ(vehicle.departureTick, 4U);
-    EXPECT_DOUBLE_EQ(vehicle.accumulatedDelayTicks, 2.0);
-    EXPECT_DOUBLE_EQ(vehicle.freeFlowTicks, 8.0);
-    EXPECT_EQ(vehicle.status, civic::RoadTrafficVehicleStatusV9::queued);
-    ASSERT_TRUE(vehicle.queuedJunctionId.has_value());
-    EXPECT_EQ(vehicle.queuedJunctionId->value, "j:legacy:2,0");
-    EXPECT_EQ(roadTraffic.nextVehicleId, 2U);
-    EXPECT_EQ(roadTraffic.completedTrips, 0U);
-    EXPECT_EQ(roadTraffic.failedTrips, 0U);
-    EXPECT_EQ(roadTraffic.congestionEpoch, 9U);
+    EXPECT_EQ(vehicle.trip_id.value, "trip:1");
+    EXPECT_EQ(vehicle.cause, civic::transport::TripCause::home_to_work);
+    EXPECT_DOUBLE_EQ(vehicle.traveler_weight, 2.5);
+    EXPECT_EQ(vehicle.carriageway_ids.size(), 2U);
+    EXPECT_EQ(vehicle.current_carriageway_index, 1U);
+    EXPECT_DOUBLE_EQ(vehicle.carriageway_progress_ticks, 3.5);
+    EXPECT_EQ(vehicle.departure_tick, 4U);
+    EXPECT_DOUBLE_EQ(vehicle.accumulated_delay_ticks, 2.0);
+    EXPECT_DOUBLE_EQ(vehicle.free_flow_ticks, 8.0);
+    EXPECT_EQ(vehicle.status, civic::transport::RoadVehicleStatus::queued);
+    ASSERT_TRUE(vehicle.queued_junction_id.has_value());
+    EXPECT_EQ(vehicle.queued_junction_id->value, "j:legacy:2,0");
+    EXPECT_EQ(roadTraffic.next_vehicle_id, 2U);
+    EXPECT_EQ(roadTraffic.completed_trips, 0U);
+    EXPECT_EQ(roadTraffic.failed_trips, 0U);
+    EXPECT_EQ(roadTraffic.congestion_epoch, 9U);
 }
 
 TEST(NativeEngineTransportation, ClampsRestoredNextVehicleIdLikeTypeScriptTrafficState) {
@@ -64,7 +65,7 @@ TEST(NativeEngineTransportation, ClampsRestoredNextVehicleIdLikeTypeScriptTraffi
     auto engine = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal});
     ASSERT_TRUE(engine);
     ASSERT_TRUE((*engine)->loadV9(save));
-    EXPECT_EQ((*engine)->roadTraffic().nextVehicleId, 1U);
+    EXPECT_EQ((*engine)->transportation().snapshot().road_traffic.next_vehicle_id, 1U);
 }
 
 TEST(NativeEngineTransportation, LeavesStaleLegacyRoutesInCompatibilityStateInsteadOfRejectingSave) {
@@ -83,8 +84,9 @@ TEST(NativeEngineTransportation, LeavesStaleLegacyRoutesInCompatibilityStateInst
     auto engine = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal});
     ASSERT_TRUE(engine);
     ASSERT_TRUE((*engine)->loadV9(stale));
-    EXPECT_TRUE((*engine)->transportation().snapshot().traffic.loads.empty());
-    EXPECT_TRUE((*engine)->roadTraffic().vehicles.empty());
+    const auto snapshot = (*engine)->transportation().snapshot();
+    EXPECT_TRUE(snapshot.traffic.loads.empty());
+    EXPECT_TRUE(snapshot.road_traffic.vehicles.empty());
     auto continuation = civic::parseTransportationContinuationV9(stale);
     ASSERT_TRUE(continuation);
     EXPECT_NE(continuation->trafficCanonical.find("e:n:1,0>n:9,9"), std::string::npos);
