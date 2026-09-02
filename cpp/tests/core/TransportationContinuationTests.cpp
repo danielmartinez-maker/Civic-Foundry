@@ -13,8 +13,9 @@ std::uint64_t transportationHash(const std::string& save) {
     auto engine = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal});
     EXPECT_TRUE(engine);
     if (!engine) return 0;
-    EXPECT_TRUE((*engine)->loadV9(save));
-    if (!(*engine)->loadV9(save)) return 0;
+    auto loaded = (*engine)->loadV9(save);
+    EXPECT_TRUE(loaded);
+    if (!loaded) return 0;
     auto hash = (*engine)->domainHash("transportation");
     EXPECT_TRUE(hash);
     return hash ? hash->value : 0;
