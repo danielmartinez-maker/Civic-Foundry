@@ -79,6 +79,22 @@ export type NativeUrbanSnapshot = NativeUrbanState &
     compatibilityDiagnostics: readonly string[];
   }>;
 
+export type NativeBuildingRuntimeTypology = Readonly<{
+  id: string;
+  name: string;
+  maintenanceCostPerM2: number;
+  complexityFactor: number;
+}>;
+
+export type NativeBuildingLifecycleRuntimeInput = Readonly<{
+  buildingId: string;
+  maintenanceSpend: number;
+  occupancyRatio: number;
+  utilizationRatio: number;
+  environmentalStress: number;
+  serviceStress: number;
+}>;
+
 export type NativeUrbanCommand =
   | Readonly<{
       type: "cadastre.split";
@@ -103,6 +119,12 @@ export type NativeUrbanCommand =
   | Readonly<{
       type: "cadastre.remove-easement";
       easementId: string;
+    }>
+  | Readonly<{
+      type: "buildings.reconcile";
+      buildingsV2: readonly BuildingV2[];
+      typologies: readonly NativeBuildingRuntimeTypology[];
+      lifecycleInputs: readonly NativeBuildingLifecycleRuntimeInput[];
     }>;
 
 export type NativeUrbanMutationResult = Readonly<{
