@@ -17,7 +17,7 @@ namespace civic::bridge {
         return 11;
     }
 
-    const std::string commands = R"([{"sequence":1,"tick":1,"type":"reference-fixture","payload":{"a":1,"b":2}}])";
+    const std::string commands = R"([{"version":1,"sequence":1,"tick":1,"type":"reference-fixture","payload":{"a":1,"b":2}}])";
     const auto* data = reinterpret_cast<const std::uint8_t*>(commands.data());
     if (cf_engine_submit_commands(left, data, commands.size()) != CF_ERROR_NONE ||
         cf_engine_submit_commands(right, data, commands.size()) != CF_ERROR_NONE) {
