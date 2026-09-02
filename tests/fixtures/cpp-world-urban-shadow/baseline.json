@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "world": {
+    "seed": 1337,
+    "width": 6,
+    "height": 5,
+    "metersPerCell": 30,
+    "preset": "rolling_uplands"
+  },
+  "cadastre": {
+    "parcels": [
+      {
+        "id": "parcel:a",
+        "blockId": "block:0",
+        "minX": 0,
+        "minY": 0,
+        "maxX": 20,
+        "maxY": 20,
+        "zoningDistrictId": "R2",
+        "ownerId": "owner:a"
+      },
+      {
+        "id": "parcel:b",
+        "blockId": "block:0",
+        "minX": 30,
+        "minY": 0,
+        "maxX": 50,
+        "maxY": 20,
+        "zoningDistrictId": "C1",
+        "ownerId": "owner:b"
+      }
+    ]
+  },
+  "urban": {
+    "typology": {
+      "id": "main_street_mixed_use",
+      "maintenanceCostPerM2": 24,
+      "complexityFactor": 1.1
+    },
+    "building": {
+      "id": "building:lifecycle:1",
+      "parcelId": "parcel:a",
+      "grossFloorAreaM2": 4000,
+      "ageTicks": 5000,
+      "condition": 82,
+      "structuralCondition": 86,
+      "systemsCondition": 80,
+      "exteriorCondition": 78,
+      "maintenanceBacklog": 0,
+      "deferredMaintenanceTicks": 0,
+      "effectiveAge": 20,
+      "vacancyDurationTicks": 0,
+      "distressScore": 15
+    },
+    "short": {
+      "ticks": 16,
+      "input": {
+        "maintenanceSpend": 0,
+        "occupancyRatio": 0.9,
+        "utilizationRatio": 0.75,
+        "environmentalStress": 0.1,
+        "serviceStress": 0.1,
+        "cadenceTicks": 1
+      }
+    },
+    "long": {
+      "ticks": 2500,
+      "stepTicks": 25,
+      "checkpoints": [250, 500, 1000, 2500],
+      "input": {
+        "maintenanceSpend": 0,
+        "occupancyRatio": 0.15,
+        "utilizationRatio": 0.75,
+        "environmentalStress": 0.1,
+        "serviceStress": 0.1,
+        "cadenceTicks": 25
+      }
+    }
+  },
+  "expected": {
+    "worldHash": "RECORD",
+    "cadastreHash": "RECORD",
+    "shortUrbanHashes": [],
+    "longUrbanHashes": []
+  }
+}
