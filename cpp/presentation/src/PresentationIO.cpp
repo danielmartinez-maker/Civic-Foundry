@@ -90,6 +90,14 @@ bool readBool(json_object* root, const char* key, bool& output) {
     return true;
 }
 
+bool readOptionalBool(json_object* root, const char* key, bool& output) {
+    json_object* value = nullptr;
+    if (!json_object_object_get_ex(root, key, &value)) return true;
+    if (!json_object_is_type(value, json_type_boolean)) return false;
+    output = json_object_get_boolean(value) != 0;
+    return true;
+}
+
 } // namespace
 
 std::expected<void, std::string> SaveFileWorkflow::writeAtomic(const std::filesystem::path& target, std::string_view payload) const {
@@ -148,7 +156,8 @@ std::expected<PresentationSettings, std::string> SettingsStore::load() const {
         readNumber(root, "tiltShiftStrength", settings.tilt_shift_strength) &&
         readNumber(root, "inputSensitivity", settings.input_sensitivity) &&
         readBool(root, "reducedMotion", settings.reduced_motion) &&
-        readBool(root, "colorIndependentCues", settings.color_independent_cues);
+        readBool(root, "colorIndependentCues", settings.color_independent_cues) &&
+        readOptionalBool(root, "visualEffects", settings.visual_effects);
     json_object_put(root);
     if (!valid) return std::unexpected("presentation settings schema is invalid");
     return normalizeSettings(settings);
@@ -167,6 +176,7 @@ std::expected<void, std::string> SettingsStore::save(const PresentationSettings&
     json_object_object_add(root, "inputSensitivity", json_object_new_double(settings.input_sensitivity));
     json_object_object_add(root, "reducedMotion", json_object_new_boolean(settings.reduced_motion));
     json_object_object_add(root, "colorIndependentCues", json_object_new_boolean(settings.color_independent_cues));
+    json_object_object_add(root, "visualEffects", json_object_new_boolean(settings.visual_effects));
     const char* serialized = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
     const std::string text = serialized ? serialized : "";
     json_object_put(root);
