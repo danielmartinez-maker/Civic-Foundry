@@ -54,8 +54,8 @@ TEST(NativeTransportationAuthorityTransfer, SaveV9SerializesCurrentNativeRoadPro
     auto saved = (*engine)->saveV9();
     ASSERT_TRUE(saved);
     EXPECT_NE(saved->find("\"revision\":9"), std::string::npos);
-    EXPECT_NE(saved->find("\"x\":0,\"y\":1,\"type\":\"arterial\""), std::string::npos);
-    EXPECT_EQ(saved->find("\"x\":1,\"y\":0,\"type\":\"collector\""), std::string::npos);
+    EXPECT_NE(saved->find("\"type\":\"arterial\",\"x\":0,\"y\":1"), std::string::npos);
+    EXPECT_EQ(saved->find("\"type\":\"collector\",\"x\":1,\"y\":0"), std::string::npos);
     EXPECT_NE(saved->find("\"tick\":12"), std::string::npos);
     EXPECT_NE(saved->find("\"nativeTransportation\""), std::string::npos);
 }
