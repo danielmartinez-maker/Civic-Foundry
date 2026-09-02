@@ -1,5 +1,7 @@
 #include <civic/persistence/TransportationSaveV9.hpp>
 
+#include "detail/SaveV9Json.hpp"
+
 #include <json-c/json.h>
 
 #include <algorithm>
@@ -119,7 +121,16 @@ TransitVehicleContinuationV9 parseVehicle(json_object* raw) {
     return vehicle;
 }
 
-std::string canonicalContinuation(const std::vector<TransitVehicleContinuationV9>& vehicles) {
+std::string canonicalOptionalObject(json_object* root, const char* name) {
+    auto* value = field(root, name);
+    if (!value) return "null";
+    if (json_object_get_type(value) != json_type_object) invalid(std::string{"transport continuation field has invalid type: "} + name);
+    auto canonical = save_v9_detail::canonical(value);
+    if (!canonical) invalid(canonical.error().message);
+    return *canonical;
+}
+
+std::string canonicalTransitVehicles(const std::vector<TransitVehicleContinuationV9>& vehicles) {
     std::ostringstream output;
     output << std::setprecision(std::numeric_limits<double>::max_digits10) << "TV9:" << vehicles.size();
     const auto appendString = [&](std::string_view value) { output << ':' << value.size() << '#' << value; };
@@ -142,6 +153,16 @@ std::string canonicalContinuation(const std::vector<TransitVehicleContinuationV9
     }
     return output.str();
 }
+
+std::string canonicalContinuation(const TransportationContinuationV9& continuation) {
+    const auto transit = canonicalTransitVehicles(continuation.vehicles);
+    std::ostringstream output;
+    output << "TR9:"
+           << continuation.trafficCanonical.size() << '#' << continuation.trafficCanonical << ':'
+           << continuation.intersectionsCanonical.size() << '#' << continuation.intersectionsCanonical << ':'
+           << transit.size() << '#' << transit;
+    return output.str();
+}
 } // namespace
 
 Result<TransportationContinuationV9> parseTransportationContinuationV9(std::string_view canonicalSaveJson) {
@@ -160,25 +181,26 @@ Result<TransportationContinuationV9> parseTransportationContinuationV9(std::stri
 
     try {
         TransportationContinuationV9 continuation;
-        auto* transit = field(root.get(), "transit");
-        if (!transit) {
-            continuation.canonical = canonicalContinuation(continuation.vehicles);
-            return continuation;
+        continuation.trafficCanonical = canonicalOptionalObject(root.get(), "traffic");
+        continuation.intersectionsCanonical = canonicalOptionalObject(root.get(), "intersections");
+
+        if (auto* transit = field(root.get(), "transit")) {
+            auto* mobility = required(transit, "mobility", json_type_object);
+            auto* vehicles = required(required(mobility, "vehicles", json_type_object), "vehicles", json_type_array);
+            const auto count = json_object_array_length(vehicles);
+            continuation.vehicles.reserve(count);
+            std::set<std::string> ids;
+            for (std::size_t index = 0; index < count; ++index) {
+                auto* vehicle = json_object_array_get_idx(vehicles, index);
+                if (!vehicle || json_object_get_type(vehicle) != json_type_object) invalid("invalid transport continuation vehicle");
+                auto parsed = parseVehicle(vehicle);
+                if (!ids.insert(parsed.id).second) invalid("duplicate transport continuation vehicle id: " + parsed.id);
+                continuation.vehicles.push_back(std::move(parsed));
+            }
+            std::sort(continuation.vehicles.begin(), continuation.vehicles.end(), [](const auto& left, const auto& right) { return left.id < right.id; });
         }
-        auto* mobility = required(transit, "mobility", json_type_object);
-        auto* vehicles = required(required(mobility, "vehicles", json_type_object), "vehicles", json_type_array);
-        const auto count = json_object_array_length(vehicles);
-        continuation.vehicles.reserve(count);
-        std::set<std::string> ids;
-        for (std::size_t index = 0; index < count; ++index) {
-            auto* vehicle = json_object_array_get_idx(vehicles, index);
-            if (!vehicle || json_object_get_type(vehicle) != json_type_object) invalid("invalid transport continuation vehicle");
-            auto parsed = parseVehicle(vehicle);
-            if (!ids.insert(parsed.id).second) invalid("duplicate transport continuation vehicle id: " + parsed.id);
-            continuation.vehicles.push_back(std::move(parsed));
-        }
-        std::sort(continuation.vehicles.begin(), continuation.vehicles.end(), [](const auto& left, const auto& right) { return left.id < right.id; });
-        continuation.canonical = canonicalContinuation(continuation.vehicles);
+
+        continuation.canonical = canonicalContinuation(continuation);
         return continuation;
     } catch (const std::exception& exception) {
         return std::unexpected(make_error(ErrorCode::serialization_failure, exception.what()));
