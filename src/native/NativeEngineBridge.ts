@@ -154,7 +154,9 @@ function parseNativeJson<T>(text: string, label: string): T {
     return JSON.parse(text) as T;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`${label} returned invalid JSON: ${detail}`);
+    throw new Error(`${label} returned invalid JSON: ${detail}`, {
+      cause: error,
+    });
   }
 }
 
