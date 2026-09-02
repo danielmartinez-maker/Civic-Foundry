@@ -13,7 +13,8 @@ struct SceneVertex { float x{}; float y{}; float r{1.0F}; float g{1.0F}; float b
 struct SceneGeometryStats {
     std::size_t terrain_triangles{}; std::size_t road_triangles{}; std::size_t building_triangles{};
     std::size_t vehicle_triangles{}; std::size_t transit_triangles{}; std::size_t overlay_triangles{};
-    std::size_t canonical_buildings{}; std::size_t overlay_samples{}; float max_building_height_m{};
+    std::size_t selection_triangles{}; std::size_t canonical_buildings{}; std::size_t overlay_samples{};
+    float max_building_height_m{};
 };
 struct SceneGeometry {
     RenderRevision revision{};
