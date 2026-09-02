@@ -134,6 +134,8 @@ public:
   [[nodiscard]] civic::core::Result<void> restore(
       const PropertyMarketSnapshot& snapshot,
       std::initializer_list<std::string> historical_parcel_ids = {}) noexcept;
+  [[nodiscard]] civic::core::Result<void> restore_with_cadastre_history(
+      const PropertyMarketSnapshot& snapshot) noexcept;
 
 private:
   const civic::cadastre::CadastralGraph* cadastre_{};
