@@ -10,6 +10,7 @@
 #include <civic/core/Error.hpp>
 #include <civic/core/Kernel.hpp>
 #include <civic/persistence/SaveV9.hpp>
+#include <civic/transport/transport_engine.hpp>
 
 namespace civic {
 
@@ -39,6 +40,7 @@ public:
     [[nodiscard]] Result<DomainHash> domainHash(std::string_view domain) const;
     [[nodiscard]] Result<void> loadV9(std::string_view json);
     [[nodiscard]] Result<std::string> saveV9() const;
+    [[nodiscard]] const transport::TransportationAuthority& transportation() const noexcept { return transportation_; }
     [[nodiscard]] std::uint64_t tick() const noexcept { return clock_.tick(); }
 private:
     explicit NativeEngine(const EngineConfig&);
@@ -52,6 +54,7 @@ private:
     DomainEventJournal events_;
     SystemScheduler scheduler_;
     InvariantRunner invariants_;
+    transport::TransportationAuthority transportation_;
     std::optional<SaveV9Dto> loaded_save_;
 };
 
