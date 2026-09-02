@@ -1,5 +1,4 @@
 #include <civic/core/NativeEngine.hpp>
-#include <civic/persistence/TransportationSaveV9.hpp>
 
 #include <algorithm>
 #include <cstring>
@@ -131,9 +130,17 @@ std::uint64_t NativeEngine::fnv1a64(std::string_view bytes) noexcept {
     return hash;
 }
 
+std::uint64_t NativeEngine::transportationDomainHash() const {
+    const auto nativeHash = transportation_.domain_hash();
+    if (transportation_continuation_.canonical.empty()) return nativeHash;
+    std::ostringstream canonical;
+    canonical << nativeHash << ':' << transportation_continuation_.canonical;
+    return fnv1a64(canonical.str());
+}
+
 Result<DomainHash> NativeEngine::domainHash(std::string_view domain) const {
     if (domain == "kernel") return DomainHash{DomainOwnership::owned, 1, fnv1a64(kernelCanonicalState())};
-    if (domain == "transportation") return DomainHash{DomainOwnership::owned, 1, transportation_.domain_hash()};
+    if (domain == "transportation") return DomainHash{DomainOwnership::owned, 1, transportationDomainHash()};
     static constexpr std::string_view unowned[] = {"world", "cadastre", "buildings", "population", "economy", "services"};
     if (std::ranges::find(unowned, domain) != std::end(unowned)) return DomainHash{DomainOwnership::unowned, 1, 0};
     return std::unexpected(make_error(ErrorCode::invalid_argument, "unknown domain hash: " + std::string{domain}));
@@ -142,6 +149,7 @@ Result<DomainHash> NativeEngine::domainHash(std::string_view domain) const {
 Result<void> NativeEngine::loadV9(std::string_view json) {
     auto parsed = parseSaveV9(json); if (!parsed) return std::unexpected(parsed.error());
     auto transportation = parseTransportationV9(parsed->canonicalJson); if (!transportation) return std::unexpected(transportation.error());
+    auto continuation = parseTransportationContinuationV9(parsed->canonicalJson); if (!continuation) return std::unexpected(continuation.error());
     transport::TransportationAuthority nextTransportation;
     try {
         nextTransportation.restore(*transportation);
@@ -156,6 +164,7 @@ Result<void> NativeEngine::loadV9(std::string_view json) {
     commands_ = CommandQueue{};
     events_ = DomainEventJournal{};
     transportation_ = std::move(nextTransportation);
+    transportation_continuation_ = std::move(*continuation);
     loaded_save_ = std::move(*parsed);
     return {};
 }
