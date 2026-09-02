@@ -38,6 +38,7 @@ add_library(civic_engine STATIC
   engine/src/cadastre/CadastreMutation.cpp
   engine/src/cadastre/ParcelGeneration.cpp
   engine/src/urban/UrbanFabric.cpp
+  engine/src/urban/NativeUrbanAuthority.cpp
   engine/src/urban/Zoning.cpp
   engine/src/urban/BuildableEnvelope.cpp
   engine/src/urban/BuildingMassing.cpp
@@ -78,6 +79,7 @@ if(CIVIC_BUILD_TESTS)
     tests/building_lifecycle_renovation_tests.cpp
     tests/development_authority_tests.cpp
     tests/native_urban_snapshot_tests.cpp
+    tests/native_urban_authority_tests.cpp
     tests/world_urban_shadow_parity_tests.cpp
   )
   target_compile_definitions(civic_engine_tests PRIVATE CIVIC_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
