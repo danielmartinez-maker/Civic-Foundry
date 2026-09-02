@@ -1,4 +1,6 @@
 import type {
+  NativeUrbanCommand,
+  NativeUrbanCommandResponse,
   NativeUrbanLegacyRequest,
   NativeUrbanSnapshot,
   NativeUrbanState,
@@ -7,6 +9,7 @@ import type {
 export interface NativeUrbanBridge {
   rebuildUrbanLegacy(request: NativeUrbanLegacyRequest): NativeUrbanSnapshot;
   restoreUrbanState(snapshot: NativeUrbanState): NativeUrbanSnapshot;
+  applyUrbanCommand(command: NativeUrbanCommand): NativeUrbanCommandResponse;
   urbanSnapshot(): NativeUrbanSnapshot;
   loadV9(save: unknown): void;
   saveV9<T = unknown>(): T;
@@ -26,6 +29,7 @@ function isBridge(value: unknown): value is NativeUrbanBridge {
   return (
     typeof candidate.rebuildUrbanLegacy === "function" &&
     typeof candidate.restoreUrbanState === "function" &&
+    typeof candidate.applyUrbanCommand === "function" &&
     typeof candidate.urbanSnapshot === "function" &&
     typeof candidate.loadV9 === "function" &&
     typeof candidate.saveV9 === "function"
