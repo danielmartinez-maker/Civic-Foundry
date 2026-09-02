@@ -13,6 +13,13 @@ const manifest = JSON.parse(
   scenarios: Array<{
     id: string;
     classification: string;
+    saveInput: unknown;
+    commandJournal: Array<{
+      sequence: number;
+      tick: number;
+      type: string;
+      payload: unknown;
+    }>;
     expectedDomainHashes: Record<string, string>;
   }>;
 };
@@ -48,6 +55,28 @@ test("C++ migration baseline names the exact accepted TypeScript commit and requ
       (scenario) => Object.keys(scenario.expectedDomainHashes).length > 0,
     ),
   );
+});
+
+test("every C++ migration scenario records executable save input and an ordered command journal", () => {
+  for (const scenario of manifest.scenarios) {
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(scenario, "saveInput"),
+      `${scenario.id} must record saveInput`,
+    );
+    assert.ok(
+      Array.isArray(scenario.commandJournal),
+      `${scenario.id} must record commandJournal`,
+    );
+    let previousSequence = 0;
+    for (const command of scenario.commandJournal) {
+      assert.ok(Number.isInteger(command.sequence) && command.sequence > previousSequence);
+      assert.ok(Number.isInteger(command.tick) && command.tick >= 0);
+      assert.equal(typeof command.type, "string");
+      assert.ok(command.type.trim().length > 0);
+      assert.ok(Object.prototype.hasOwnProperty.call(command, "payload"));
+      previousSequence = command.sequence;
+    }
+  }
 });
 
 test("frozen TypeScript migration oracle is byte-identical across repeated normalized runs", () => {
