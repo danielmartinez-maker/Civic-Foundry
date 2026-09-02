@@ -10,6 +10,7 @@
 #include <civic/core/Error.hpp>
 #include <civic/core/Kernel.hpp>
 #include <civic/persistence/SaveV9.hpp>
+#include <civic/persistence/TransportationSaveV9.hpp>
 #include <civic/transport/transport_engine.hpp>
 
 namespace civic {
@@ -45,6 +46,7 @@ public:
 private:
     explicit NativeEngine(const EngineConfig&);
     [[nodiscard]] std::string kernelCanonicalState() const;
+    [[nodiscard]] std::uint64_t transportationDomainHash() const;
     static std::uint64_t fnv1a64(std::string_view bytes) noexcept;
 
     std::uint32_t seed_{};
@@ -55,6 +57,7 @@ private:
     SystemScheduler scheduler_;
     InvariantRunner invariants_;
     transport::TransportationAuthority transportation_;
+    TransportationContinuationV9 transportation_continuation_;
     std::optional<SaveV9Dto> loaded_save_;
 };
 
