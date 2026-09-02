@@ -16,14 +16,26 @@ bool validPanelId(std::string_view id) noexcept {
     return true;
 }
 
+bool validDpiScale(float dpi_scale) noexcept {
+    return std::isfinite(dpi_scale) && dpi_scale > 0.0F;
+}
+
 } // namespace
 
 std::expected<void, std::string> NativeUiRuntimeModel::initialize(float dpi_scale) {
     if (initialized_) return std::unexpected("native UI runtime is already initialized");
-    if (!std::isfinite(dpi_scale) || dpi_scale <= 0.0F) return std::unexpected("native UI DPI scale must be finite and positive");
+    if (!validDpiScale(dpi_scale)) return std::unexpected("native UI DPI scale must be finite and positive");
     dpi_scale_ = dpi_scale;
     initialized_ = true;
     frame_active_ = false;
+    return {};
+}
+
+std::expected<void, std::string> NativeUiRuntimeModel::updateDpiScale(float dpi_scale) {
+    if (!initialized_) return std::unexpected("native UI runtime is not initialized");
+    if (frame_active_) return std::unexpected("native UI DPI scale cannot change during an active frame");
+    if (!validDpiScale(dpi_scale)) return std::unexpected("native UI DPI scale must be finite and positive");
+    dpi_scale_ = dpi_scale;
     return {};
 }
 
