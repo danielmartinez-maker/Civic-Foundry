@@ -49,6 +49,7 @@ if(CIVIC_BUILD_TESTS)
     tests/parity/ParityTests.cpp
     tests/presentation/PresentationTests.cpp
     tests/presentation/RenderPipelineTests.cpp
+    tests/presentation/NativeClientSupportTests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine civic_presentation GTest::gtest_main ${CIVIC_JSON_TARGET})
   civic_enable_warnings(civic_engine_tests)
