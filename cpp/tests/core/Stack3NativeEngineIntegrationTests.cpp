@@ -103,3 +103,40 @@ TEST(Stack3NativeEngine, SaveV9MergesNativeSocioeconomicSidecarWithoutDroppingCo
     ASSERT_TRUE(second_saved);
     EXPECT_EQ(*second_saved, *saved);
 }
+
+TEST(Stack3NativeEngine, SaveV9PreservesSocioeconomicAuthorityCutoverAndRevisions) {
+    auto created = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal});
+    ASSERT_TRUE(created);
+    auto& engine = **created;
+    ASSERT_TRUE(engine.loadV9(minimal_save()));
+
+    const std::array economy_transfers{
+        transfer_command(1, 12, "inventory_freight"),
+        transfer_command(2, 12, "firms_production"),
+        transfer_command(3, 12, "labor"),
+    };
+    ASSERT_TRUE(engine.submit(economy_transfers));
+    ASSERT_TRUE(engine.step(1));
+    auto before = engine.domainHash("economy");
+    ASSERT_TRUE(before);
+    ASSERT_EQ(before->ownership, civic::DomainOwnership::owned);
+
+    auto saved = engine.saveV9();
+    ASSERT_TRUE(saved);
+    EXPECT_NE(saved->find("\"authority\""), std::string::npos);
+
+    auto restored = civic::NativeEngine::create({1, 0, civic::SpeedMode::normal});
+    ASSERT_TRUE(restored);
+    ASSERT_TRUE((*restored)->loadV9(*saved));
+    auto after = (*restored)->domainHash("economy");
+    ASSERT_TRUE(after);
+    EXPECT_EQ(after->ownership, civic::DomainOwnership::owned);
+    EXPECT_EQ(after->value, before->value);
+
+    const auto next = transfer_command(1, 13, "households_housing");
+    ASSERT_TRUE((*restored)->submit(std::span<const civic::CommandEnvelope>{&next, 1}));
+    ASSERT_TRUE((*restored)->step(1));
+    auto household_gate = (*restored)->domainHash("population.households_housing");
+    ASSERT_TRUE(household_gate);
+    EXPECT_EQ(household_gate->ownership, civic::DomainOwnership::owned);
+}
