@@ -125,6 +125,17 @@ TEST(NativeUi, MutationsLeaveUiAsTypedCommandsOnly) {
     EXPECT_TRUE(std::holds_alternative<ZoneParcelCommand>(sink.submitted[1]));
 }
 
+TEST(NativeUi, SimulationSpeedAcceptsOnlyAuthoritativeClockModes) {
+    Sink sink{};
+    NativeUiController ui(sink);
+    for (const int speed : {0, 1, 2, 4}) {
+        ASSERT_TRUE(ui.setSimulationSpeed(speed).has_value());
+    }
+    const auto before_invalid = sink.submitted.size();
+    EXPECT_FALSE(ui.setSimulationSpeed(3).has_value());
+    EXPECT_EQ(sink.submitted.size(), before_invalid);
+}
+
 TEST(AudioPlanner, DerivesAmbienceOnlyFromSnapshotState) {
     FrameSnapshot snapshot{};
     snapshot.roads.push_back({"r", 1, RoadClass::Arterial, {0,0}, {2,0}, 2, false, 1.0F, 0.5F, 0.7F, 600.0F});
