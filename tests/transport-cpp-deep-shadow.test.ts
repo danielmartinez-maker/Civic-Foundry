@@ -148,13 +148,7 @@ function setupBusTransit() {
 
 function tsLegacyCrowding(): number {
   const scheduler = new MobilityScheduler();
-  const onboard = cohort(
-    "crowd:1",
-    "line:crowding",
-    "stop:a",
-    "stop:b",
-    5,
-  );
+  const onboard = cohort("crowd:1", "line:crowding", "stop:a", "stop:b", 5);
   scheduler.restoreState({
     decisions: [],
     crowdingPenaltyTicks: 0,
@@ -218,18 +212,10 @@ test(
     const native = nativeMetrics();
 
     const homes = Array.from({ length: 100 }, (_, index) =>
-      occupiedBuilding(
-        `home:${String(index).padStart(3, "0")}`,
-        "residential",
-      ),
+      occupiedBuilding(`home:${String(index).padStart(3, "0")}`, "residential"),
     );
     const commuteTrips = new TripGenerationSystem(17)
-      .generate(
-        10,
-        [...homes, occupiedBuilding("job:1", "industrial")],
-        100,
-        1,
-      )
+      .generate(10, [...homes, occupiedBuilding("job:1", "industrial")], 100, 1)
       .filter((trip) => trip.purpose === "commute");
     const commuteWeight = commuteTrips.reduce(
       (sum, trip) => sum + trip.travelerWeight,
