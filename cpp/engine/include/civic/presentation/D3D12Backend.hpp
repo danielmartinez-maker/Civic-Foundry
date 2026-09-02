@@ -3,6 +3,13 @@
 #include <civic/presentation/GpuBackend.hpp>
 #include <memory>
 namespace civic::presentation {
+struct D3D12NativeUiContext {
+    void* device{};
+    void* command_queue{};
+    void* command_list{};
+    std::uint32_t frames_in_flight{2U};
+    std::uint32_t rtv_format{87U};
+};
 class D3D12Backend final : public IGpuBackend {
 public:
     D3D12Backend(); ~D3D12Backend() override;
@@ -25,6 +32,7 @@ public:
     std::expected<void,std::string> waitForFence(std::uint64_t) override;
     [[nodiscard]] GpuCapabilities capabilities() const override;
     [[nodiscard]] std::string deviceLostReason() const override;
+    [[nodiscard]] D3D12NativeUiContext nativeUiContext() const noexcept;
 private: struct Impl; std::unique_ptr<Impl> impl_;
 };
 }
