@@ -29,6 +29,7 @@ add_library(civic_engine STATIC
   engine/src/urban/PropertyMarket.cpp
   engine/src/urban/SiteAssembly.cpp
   engine/src/urban/DevelopmentAuthority.cpp
+  engine/src/snapshot/UrbanFabricSnapshot.cpp
 )
 target_include_directories(civic_engine PUBLIC engine/include)
 target_link_libraries(civic_engine PUBLIC nlohmann_json::nlohmann_json Clipper2::Clipper2)
