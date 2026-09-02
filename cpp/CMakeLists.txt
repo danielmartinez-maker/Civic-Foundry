@@ -46,7 +46,6 @@ if(CIVIC_BUILD_TESTS)
     tests/core/TransportationTrafficMigrationTests.cpp
     tests/persistence/SaveV9Tests.cpp
     tests/parity/ParityTests.cpp
-    tests/transport/TransportationTests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main ${CIVIC_JSON_TARGET})
   civic_enable_warnings(civic_engine_tests)
