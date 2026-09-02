@@ -174,7 +174,8 @@ export class NativeEngineBridge {
   }
 
   loadV9(save: unknown): void {
-    this.addon.loadV9(this.requireHandle(), JSON.stringify(save));
+    const normalized = normalizeJsonValue(save, "Save V9");
+    this.addon.loadV9(this.requireHandle(), JSON.stringify(normalized));
   }
 
   saveV9<T = unknown>(): T {
