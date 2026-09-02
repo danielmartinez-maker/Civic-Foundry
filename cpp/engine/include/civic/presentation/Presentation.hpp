@@ -199,6 +199,10 @@ struct OverlayLegend {
 
 OverlayLegend overlayLegend(OverlayMetric metric);
 PresentationSettings normalizeSettings(PresentationSettings settings) noexcept;
+[[nodiscard]] FrameSnapshot interpolatePresentationSnapshots(
+    const FrameSnapshot& previous,
+    const FrameSnapshot& current,
+    double alpha);
 
 struct IsoMetrics { double tile_width{64.0}; double tile_height{32.0}; };
 class IsometricCamera {
