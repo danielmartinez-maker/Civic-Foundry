@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "stackId": "STACK_0_CPP_MIGRATION_FOUNDATION_ABI_DETERMINISM_AND_SAVE",
   "baselineCommit": "9ed741834e49d211555d2ee3131f1bb6797b4b0a",
   "saveVersion": 9,
@@ -8,7 +8,8 @@
       "id": "empty-new-city",
       "source": "tests/fixtures/kernel-v7-parity/baseline.json#empty-boundaries",
       "seed": 101,
-      "commands": [],
+      "saveInput": { "kind": "fresh", "startTick": 0, "speed": 1 },
+      "commandJournal": [],
       "targetTicks": [9, 10, 49, 50, 99, 100, 249, 250],
       "expectedDomainHashes": {
         "legacy-authoritative-save@250": "515e41e0c8a188ab0ce36dee114d1a6b7236d8b6c82b9d0ae4f7cc5146e54f31"
@@ -23,11 +24,32 @@
       "id": "small-road-zoning-city",
       "source": "tests/fixtures/kernel-v7-parity/baseline.json#city-development",
       "seed": 102,
-      "commands": [
-        "collector-spine",
-        "residential-zone",
-        "commercial-zone",
-        "industrial-zone"
+      "saveInput": { "kind": "fresh", "startTick": 0, "speed": 1 },
+      "commandJournal": [
+        {
+          "sequence": 1,
+          "tick": 0,
+          "type": "fixture.build-road",
+          "payload": { "roadClass": "collector", "fixture": "collector-spine" }
+        },
+        {
+          "sequence": 2,
+          "tick": 0,
+          "type": "fixture.paint-zone",
+          "payload": { "fixture": "residential-zone", "zone": "residential" }
+        },
+        {
+          "sequence": 3,
+          "tick": 0,
+          "type": "fixture.paint-zone",
+          "payload": { "fixture": "commercial-zone", "zone": "commercial" }
+        },
+        {
+          "sequence": 4,
+          "tick": 0,
+          "type": "fixture.paint-zone",
+          "payload": { "fixture": "industrial-zone", "zone": "industrial" }
+        }
       ],
       "targetTicks": [50, 250, 500],
       "expectedDomainHashes": {
@@ -41,16 +63,18 @@
     },
     {
       "id": "saved-urban-fabric-v9-city",
-      "source": "tests/save-v9.test.ts#Save V9 round-trip preserves Urban Fabric authority exactly",
+      "source": "tests/support/cppMigrationFixtures.ts#createUrbanFabricV9Save",
       "seed": 91,
-      "commands": [
-        "build-road",
-        "paint-zone",
-        "restore-building",
-        "assign-R5",
-        "property-sale"
+      "saveInput": { "kind": "v9", "fixture": "urban-fabric" },
+      "commandJournal": [
+        {
+          "sequence": 1,
+          "tick": 0,
+          "type": "fixture.saved-city-loaded",
+          "payload": { "fixture": "urban-fabric" }
+        }
       ],
-      "targetTicks": [0],
+      "targetTicks": [0, 1, 10],
       "expectedDomainHashes": {
         "urbanFabric": "runtime-fixture:urban-fabric-v9",
         "buildings": "runtime-fixture:buildings-v9",
@@ -66,11 +90,32 @@
       "id": "active-transit-city",
       "source": "tests/fixtures/kernel-v7-parity/baseline.json#transit",
       "seed": 104,
-      "commands": [
-        "collector-spine",
-        "two-surface-stops",
-        "bus-line",
-        "fleet-limit-4"
+      "saveInput": { "kind": "fresh", "startTick": 0, "speed": 1 },
+      "commandJournal": [
+        {
+          "sequence": 1,
+          "tick": 0,
+          "type": "fixture.build-road",
+          "payload": { "fixture": "collector-spine", "roadClass": "collector" }
+        },
+        {
+          "sequence": 2,
+          "tick": 0,
+          "type": "fixture.place-transit-stop",
+          "payload": { "fixture": "surface-stop-a", "mode": "bus" }
+        },
+        {
+          "sequence": 3,
+          "tick": 0,
+          "type": "fixture.place-transit-stop",
+          "payload": { "fixture": "surface-stop-b", "mode": "bus" }
+        },
+        {
+          "sequence": 4,
+          "tick": 0,
+          "type": "fixture.create-transit-line",
+          "payload": { "fixture": "bus-line", "fleetLimit": 4 }
+        }
       ],
       "targetTicks": [100, 500, 1000],
       "expectedDomainHashes": {
@@ -86,7 +131,27 @@
       "id": "active-freight-economy-city",
       "source": "tests/fixtures/kernel-v7-parity/baseline.json#economy-freight",
       "seed": 105,
-      "commands": ["collector-spine", "mixed-zoning", "utilities"],
+      "saveInput": { "kind": "fresh", "startTick": 0, "speed": 1 },
+      "commandJournal": [
+        {
+          "sequence": 1,
+          "tick": 0,
+          "type": "fixture.build-road",
+          "payload": { "fixture": "collector-spine", "roadClass": "collector" }
+        },
+        {
+          "sequence": 2,
+          "tick": 0,
+          "type": "fixture.paint-mixed-zoning",
+          "payload": { "fixture": "mixed-zoning" }
+        },
+        {
+          "sequence": 3,
+          "tick": 0,
+          "type": "fixture.place-utilities",
+          "payload": { "fixture": "utilities" }
+        }
+      ],
       "targetTicks": [250, 1000, 2000],
       "expectedDomainHashes": {
         "legacy-authoritative-save@2000": "f0c71dcfa52fd90dd312f91b1328ecd1fda3c4d88937a47ccce2129243eb56d6"
@@ -99,10 +164,18 @@
     },
     {
       "id": "cadastral-history-city",
-      "source": "tests/save-v9.test.ts#Save V9 preserves historical property transactions across runtime parcel retirement",
+      "source": "tests/support/cppMigrationFixtures.ts#createCadastralHistoryV9Save",
       "seed": 93,
-      "commands": ["build-road", "paint-zone", "property-sale", "split-parcel"],
-      "targetTicks": [10],
+      "saveInput": { "kind": "v9", "fixture": "cadastral-history" },
+      "commandJournal": [
+        {
+          "sequence": 1,
+          "tick": 0,
+          "type": "fixture.saved-city-loaded",
+          "payload": { "fixture": "cadastral-history" }
+        }
+      ],
+      "targetTicks": [0, 1, 10],
       "expectedDomainHashes": {
         "urbanFabric": "runtime-fixture:cadastral-history",
         "propertyMarket": "runtime-fixture:historical-transactions"
