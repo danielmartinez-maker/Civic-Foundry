@@ -57,6 +57,7 @@ private:
     SystemScheduler scheduler_;
     InvariantRunner invariants_;
     transport::TransportationAuthority transportation_;
+    LegacyRoadAuthorityV9 legacy_roads_;
     TransportationContinuationV9 transportation_continuation_;
     std::optional<SaveV9Dto> loaded_save_;
 };
