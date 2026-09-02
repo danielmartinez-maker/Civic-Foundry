@@ -4,6 +4,7 @@
 #include <civic/presentation/RenderPipeline.hpp>
 #include <civic/presentation/SceneGeometry.hpp>
 #include <civic/presentation/VisualAcceptance.hpp>
+#include <civic/presentation/VisualReference.hpp>
 
 #include <set>
 #include <string>
@@ -64,5 +65,29 @@ TEST(NativeVisualAcceptance, ScenarioSpecificSignalsArePresent) {
             EXPECT_TRUE(treatment.enabled);
             EXPECT_GT(treatment.blur_radius_px, 0.0F);
         }
+    }
+}
+
+TEST(NativeVisualAcceptance, EveryScenarioExportsReviewableSvgFromProductionSceneGeometry) {
+    RenderPacketBuilder packet_builder{};
+    SceneGeometryBuilder geometry_builder{};
+    IsometricCamera camera{};
+    constexpr PixelViewport viewport{1280U, 720U};
+
+    for (const auto& scenario : nativeVisualAcceptanceScenarios()) {
+        SCOPED_TRACE(scenario.id);
+        const auto packet = packet_builder.build(
+            scenario.snapshot,
+            {0.0, 0.0, static_cast<double>(scenario.snapshot.world.width), static_cast<double>(scenario.snapshot.world.height)});
+        const auto geometry = geometry_builder.build(packet, camera, scenario.snapshot.world, viewport);
+        const auto treatment = deriveMiniatureTreatment(scenario.settings, viewport);
+        const auto svg = sceneGeometryToSvg(geometry, viewport, scenario.id, scenario.description, treatment);
+
+        EXPECT_TRUE(svg.starts_with("<svg"));
+        EXPECT_NE(svg.find("data-scenario=\"" + scenario.id + "\""), std::string::npos);
+        EXPECT_NE(svg.find("<polygon"), std::string::npos);
+        EXPECT_NE(svg.find("data-geometry-key=\"" + std::to_string(geometry.geometry_key) + "\""), std::string::npos);
+        EXPECT_NE(svg.find(treatment.enabled ? "data-miniature=\"true\"" : "data-miniature=\"false\""), std::string::npos);
+        EXPECT_NE(svg.find("</svg>"), std::string::npos);
     }
 }
