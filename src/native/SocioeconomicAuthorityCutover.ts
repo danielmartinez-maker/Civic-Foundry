@@ -34,10 +34,11 @@ export interface LegacySocioeconomicCompatibilityRuntime {
 
 export class LegacySocioeconomicAuthorityCutover implements SocioeconomicAuthorityCutoverAdapter {
   private readonly nativeOwned = new Set<SocioeconomicAuthorityGate>();
+  private readonly runtime: LegacySocioeconomicCompatibilityRuntime;
 
-  constructor(
-    private readonly runtime: LegacySocioeconomicCompatibilityRuntime,
-  ) {}
+  constructor(runtime: LegacySocioeconomicCompatibilityRuntime) {
+    this.runtime = runtime;
+  }
 
   disableTypescriptWrites(gate: SocioeconomicAuthorityGate): void {
     this.nativeOwned.add(gate);
