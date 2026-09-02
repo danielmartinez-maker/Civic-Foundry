@@ -175,7 +175,9 @@ test("Task 20 keeps BuildingV2 native-first after construction override scope en
   const reconcileCalls = bridge.commandCalls
     .slice(commandsAfterConstruction)
     .filter(
-      (command): command is Extract<
+      (
+        command,
+      ): command is Extract<
         NativeUrbanCommand,
         Readonly<{ type: "buildings.reconcile" }>
       > => command.type === "buildings.reconcile",
