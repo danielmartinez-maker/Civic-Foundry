@@ -48,6 +48,7 @@ void countVisibility(bool visible, CullingStats& stats) noexcept {
 RenderPacket RenderPacketBuilder::build(const FrameSnapshot& snapshot, ViewportWorldBounds viewport) const {
     RenderPacket packet{};
     packet.revision = snapshot.revision;
+    packet.selection = snapshot.selection;
 
     for (const auto& record : snapshot.terrain) {
         const bool visible = pointVisible({static_cast<double>(record.x), static_cast<double>(record.y)}, viewport);
