@@ -39,5 +39,8 @@ struct TransportationContinuationV9 final {
 
 [[nodiscard]] Result<transport::TransportationSnapshot> parseTransportationV9(std::string_view canonicalSaveJson);
 [[nodiscard]] Result<TransportationContinuationV9> parseTransportationContinuationV9(std::string_view canonicalSaveJson);
+[[nodiscard]] Result<transport::CarriagewayId> resolveLegacyEdgeV9(
+    const transport::NetworkSnapshot& network,
+    std::string_view legacyEdgeId);
 
 } // namespace civic
