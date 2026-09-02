@@ -95,6 +95,33 @@ export type NativeBuildingLifecycleRuntimeInput = Readonly<{
   serviceStress: number;
 }>;
 
+export type NativeHighestBestUseInput = Readonly<{
+  parcelIds: readonly string[];
+  holdValue: number;
+  buildingCondition: number;
+  developerHurdleRate: number;
+  renovationNetValue: number;
+  renovationExpectedReturn: number;
+  renovationRiskScore: number;
+  conversionNetValue: number;
+  conversionExpectedReturn: number;
+  conversionRiskScore: number;
+  redevelopmentNetValue: number;
+  redevelopmentExpectedReturn: number;
+  redevelopmentRiskScore: number;
+  assemblyNetValue?: number;
+  assemblyExpectedReturn?: number;
+  assemblyRiskScore?: number;
+}>;
+
+export type NativeDevelopmentHbuApproval = Readonly<{
+  buildingId: string;
+  candidateId: string;
+  parcelIds: readonly string[];
+  zoningLegal: boolean;
+  hbuInput: NativeHighestBestUseInput;
+}>;
+
 export type NativeUrbanCommand =
   | Readonly<{
       type: "cadastre.split";
@@ -125,6 +152,8 @@ export type NativeUrbanCommand =
       buildingsV2: readonly BuildingV2[];
       typologies: readonly NativeBuildingRuntimeTypology[];
       lifecycleInputs: readonly NativeBuildingLifecycleRuntimeInput[];
+      requireHbuForNewBuildings?: boolean;
+      hbuApprovals?: readonly NativeDevelopmentHbuApproval[];
     }>;
 
 export type NativeUrbanMutationResult = Readonly<{
