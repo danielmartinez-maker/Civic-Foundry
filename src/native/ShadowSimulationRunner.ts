@@ -1,5 +1,12 @@
-import { NativeEngineBridge } from "./NativeEngineBridge.ts";
-import type { NativeCommand, NativeDomainHash } from "./NativeEngineTypes.ts";
+import {
+  NativeEngineBridge,
+  nativeShadowEnabledFromGlobal,
+} from "./NativeEngineBridge.ts";
+import type {
+  NativeCommand,
+  NativeDomainHash,
+  NativeEngineAddon,
+} from "./NativeEngineTypes.ts";
 
 export type ShadowReferenceRuntime = Readonly<{
   submit: (commands: readonly NativeCommand[]) => void;
@@ -12,6 +19,11 @@ export type ShadowDomainComparison = Readonly<{
   native: NativeDomainHash;
   reference?: bigint;
   matches?: boolean;
+}>;
+
+export type ShadowSimulationSession = Readonly<{
+  runner: ShadowSimulationRunner;
+  dispose: () => void;
 }>;
 
 export class ShadowSimulationRunner {
@@ -51,4 +63,22 @@ export class ShadowSimulationRunner {
       }),
     );
   }
+}
+
+export function createShadowSimulationSessionIfEnabled(
+  reference: ShadowReferenceRuntime,
+  addon: NativeEngineAddon,
+  config: Readonly<{
+    seed?: number;
+    startTick?: number;
+    speed?: 0 | 1 | 2 | 4;
+  }> = {},
+  scope: unknown = globalThis,
+): ShadowSimulationSession | null {
+  if (!nativeShadowEnabledFromGlobal(scope)) return null;
+  const native = new NativeEngineBridge(addon, config);
+  return Object.freeze({
+    runner: new ShadowSimulationRunner(reference, native),
+    dispose: () => native.dispose(),
+  });
 }
