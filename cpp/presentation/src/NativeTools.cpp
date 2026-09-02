@@ -10,6 +10,15 @@ bool validPoint(Point2 point) noexcept {
     return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
+ToolPreviewState emptyPreview(NativeTool tool) {
+    return ToolPreviewState{
+        .tool_id = std::string(nativeToolId(tool)),
+        .valid = false,
+        .geometry = {},
+        .invalid_reason = {},
+    };
+}
+
 std::expected<void, std::string> invalidPreview(ToolPreviewState& preview, std::string reason) {
     preview.valid = false;
     preview.geometry.clear();
@@ -27,7 +36,7 @@ std::expected<void, std::string> previewPoint(
     std::string_view invalid_reason) {
     active_tool = tool;
     draft = std::monostate{};
-    preview = ToolPreviewState{.tool_id = std::string(nativeToolId(tool)), .geometry = {}};
+    preview = emptyPreview(tool);
     if (!validPoint(position)) return invalidPreview(preview, std::string(invalid_reason));
     preview.valid = true;
     preview.geometry = {position};
@@ -71,7 +80,7 @@ std::string_view nativeToolLabel(NativeTool tool) noexcept {
 void NativeToolWorkflow::activate(NativeTool tool) noexcept {
     active_tool_ = tool;
     draft_ = std::monostate{};
-    preview_ = ToolPreviewState{.tool_id = std::string(nativeToolId(tool)), .geometry = {}};
+    preview_ = emptyPreview(tool);
 }
 
 std::expected<void, std::string> NativeToolWorkflow::previewRoad(std::vector<Point2> path, RoadClass road_class) {
@@ -210,7 +219,7 @@ std::expected<void, std::string> NativeToolWorkflow::commit(NativeUiController& 
 
 void NativeToolWorkflow::cancel() noexcept {
     draft_ = std::monostate{};
-    preview_ = ToolPreviewState{.tool_id = std::string(nativeToolId(active_tool_)), .geometry = {}};
+    preview_ = emptyPreview(active_tool_);
 }
 
 } // namespace civic::presentation
