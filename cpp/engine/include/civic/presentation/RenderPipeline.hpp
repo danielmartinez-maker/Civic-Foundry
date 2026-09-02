@@ -26,6 +26,12 @@ struct TerrainRenderRecord {
     bool water{};
 };
 
+struct ParcelRenderRecord {
+    EntityRef entity;
+    RenderRevision revision{};
+    std::vector<Point2> polygon;
+};
+
 struct RoadRenderRecord {
     EntityRef entity;
     RenderRevision revision{};
@@ -90,6 +96,7 @@ struct CullingStats {
 struct RenderPacket {
     RenderRevision revision{};
     std::vector<TerrainRenderRecord> terrain;
+    std::vector<ParcelRenderRecord> parcels;
     std::vector<RoadRenderRecord> roads;
     std::vector<BuildingRenderRecord> buildings;
     std::vector<VehicleRenderRecord> vehicles;
