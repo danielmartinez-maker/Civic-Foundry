@@ -92,7 +92,7 @@ public:
 
 private:
     NativeTool active_tool_{NativeTool::Inspect};
-    ToolPreviewState preview_{.tool_id = "inspect", .geometry = {}};
+    ToolPreviewState preview_{.tool_id = "inspect", .valid = false, .geometry = {}, .invalid_reason = {}};
     NativeToolDraft draft_{};
 };
 
