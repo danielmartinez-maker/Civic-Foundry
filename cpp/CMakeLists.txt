@@ -62,6 +62,7 @@ if(CIVIC_BUILD_TESTS)
     tests/core/NativeWorldAuthorityTests.cpp
     tests/persistence/SaveV9Tests.cpp
     tests/parity/ParityTests.cpp
+    tests/parity/WorldBridgeTests.cpp
     tests/contract_red_tests.cpp
     tests/world_foundation_tests.cpp
     tests/world_scenario_tests.cpp
