@@ -44,6 +44,7 @@ public:
     [[nodiscard]] Result<std::string> saveV9() const;
 
     [[nodiscard]] Result<void> loadV9Authoritative(std::string_view json);
+    [[nodiscard]] Result<void> stageSaveV9Envelope(std::string_view json);
     [[nodiscard]] Result<std::string> saveV9Authoritative() const;
     [[nodiscard]] Result<DomainHash> authoritativeDomainHash(std::string_view domain) const;
     [[nodiscard]] Result<SnapshotBlob> rebuildUrbanLegacy(std::string_view request_json);
