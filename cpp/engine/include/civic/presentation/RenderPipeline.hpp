@@ -95,6 +95,7 @@ struct RenderPacket {
     std::vector<VehicleRenderRecord> vehicles;
     std::vector<TransitStopRenderRecord> transit_stops;
     std::vector<OverlayRenderRecord> overlays;
+    SelectionState selection{};
     CullingStats culling;
 };
 
