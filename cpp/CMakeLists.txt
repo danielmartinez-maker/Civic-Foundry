@@ -34,6 +34,7 @@ civic_enable_sanitizers(civic_engine)
 
 add_library(civic_presentation STATIC
   presentation/src/Presentation.cpp
+  presentation/src/RenderPipeline.cpp
 )
 target_include_directories(civic_presentation PUBLIC engine/include)
 civic_enable_warnings(civic_presentation)
