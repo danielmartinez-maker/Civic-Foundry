@@ -80,23 +80,23 @@ test("native bridge rejects lossy payloads and normalizes JSON numeric semantics
   const sparseArray: unknown[] = Array(3);
   sparseArray[0] = 1;
   sparseArray[2] = 3;
-  const invalidPayloads: unknown[] = [
-    undefined,
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-    Number.NEGATIVE_INFINITY,
-    1n,
-    { nested: undefined },
-    new Date(0),
-    sparseArray,
+  const invalidPayloads: ReadonlyArray<readonly [unknown, RegExp]> = [
+    [undefined, /JSON-compatible/],
+    [Number.NaN, /JSON-compatible/],
+    [Number.POSITIVE_INFINITY, /JSON-compatible/],
+    [Number.NEGATIVE_INFINITY, /JSON-compatible/],
+    [1n, /JSON-compatible/],
+    [{ nested: undefined }, /JSON-compatible/],
+    [new Date(0), /JSON-compatible/],
+    [sparseArray, /sparse arrays/],
   ];
-  for (const [index, payload] of invalidPayloads.entries()) {
+  for (const [index, [payload, expected]] of invalidPayloads.entries()) {
     assert.throws(
       () =>
         bridge.submit([
           { sequence: index + 1, tick: 0, type: "invalid", payload },
         ]),
-      /JSON-compatible/,
+      expected,
     );
   }
   assert.throws(
