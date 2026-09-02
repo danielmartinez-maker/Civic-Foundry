@@ -2,6 +2,7 @@
 
 #include <civic/presentation/Presentation.hpp>
 
+#include <cstdint>
 #include <expected>
 #include <string>
 #include <variant>
@@ -18,6 +19,19 @@ struct PlaceTransitStopCommand { Point2 position{}; TransitStopKind kind{Transit
 struct BulldozeCommand { Point2 position{}; };
 struct CreateTransitLineCommand { std::vector<std::string> stop_ids; VehicleKind mode{VehicleKind::Bus}; };
 struct SetSimulationSpeedCommand { int speed{1}; };
+struct SetTaxRateCommand { std::string tax_category; double rate{}; };
+struct SetServiceFundingCommand { std::string department; double percent{100.0}; };
+struct CreateTransitServiceCommand { VehicleKind mode{VehicleKind::Bus}; std::string name; };
+struct SetTransitLineStopsCommand { std::string line_id; std::vector<std::string> stop_ids; };
+struct AppendTransitLineStopCommand { std::string line_id; std::string stop_id; };
+struct RemoveTransitLineStopCommand { std::string line_id; std::string stop_id; };
+struct ConfigureTransitLineCommand {
+    std::string line_id;
+    std::uint32_t headway_ticks{80U};
+    double fare{2.0};
+    std::uint32_t fleet_limit{2U};
+    bool enabled{true};
+};
 
 using AuthoritativeCommand = std::variant<
     BuildRoadCommand,
@@ -28,7 +42,14 @@ using AuthoritativeCommand = std::variant<
     PlaceTransitStopCommand,
     BulldozeCommand,
     CreateTransitLineCommand,
-    SetSimulationSpeedCommand>;
+    SetSimulationSpeedCommand,
+    SetTaxRateCommand,
+    SetServiceFundingCommand,
+    CreateTransitServiceCommand,
+    SetTransitLineStopsCommand,
+    AppendTransitLineStopCommand,
+    RemoveTransitLineStopCommand,
+    ConfigureTransitLineCommand>;
 
 class ICommandSink {
 public:
@@ -48,6 +69,18 @@ public:
     [[nodiscard]] std::expected<void, std::string> bulldoze(Point2 position);
     [[nodiscard]] std::expected<void, std::string> createTransitLine(std::vector<std::string> stop_ids, VehicleKind mode);
     [[nodiscard]] std::expected<void, std::string> setSimulationSpeed(int speed);
+    [[nodiscard]] std::expected<void, std::string> setTaxRate(std::string tax_category, double rate);
+    [[nodiscard]] std::expected<void, std::string> setServiceFunding(std::string department, double percent);
+    [[nodiscard]] std::expected<void, std::string> createTransitService(VehicleKind mode, std::string name);
+    [[nodiscard]] std::expected<void, std::string> setTransitLineStops(std::string line_id, std::vector<std::string> stop_ids);
+    [[nodiscard]] std::expected<void, std::string> appendTransitLineStop(std::string line_id, std::string stop_id);
+    [[nodiscard]] std::expected<void, std::string> removeTransitLineStop(std::string line_id, std::string stop_id);
+    [[nodiscard]] std::expected<void, std::string> configureTransitLine(
+        std::string line_id,
+        std::uint32_t headway_ticks,
+        double fare,
+        std::uint32_t fleet_limit,
+        bool enabled);
 private:
     ICommandSink& sink_;
 };
