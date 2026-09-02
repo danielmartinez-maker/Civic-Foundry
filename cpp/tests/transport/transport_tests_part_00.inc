@@ -1,4 +1,5 @@
 #include <civic/transport/transport_engine.hpp>
+#include <civic/transport/RoadTrafficRuntime.hpp>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
