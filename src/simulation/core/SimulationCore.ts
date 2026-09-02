@@ -1,5 +1,8 @@
+import { BUILDING_TYPOLOGIES } from '../../data/buildingTypologies.ts';
 import type { RoadType } from '../../data/roads.ts';
 import type {
+  NativeBuildingLifecycleRuntimeInput,
+  NativeBuildingRuntimeTypology,
   NativeUrbanCommand,
   NativeUrbanLegacyRequest,
   NativeUrbanState,
@@ -15,6 +18,7 @@ import {
 import type { Parcel } from '../../world/cadastre/CadastralTypes.ts';
 import type { WorldFoundation } from '../../world/foundation/WorldFoundation.ts';
 import { resolveWorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
+import type { BuildingV2 } from '../buildings/BuildingTypes.ts';
 import {
   captureAuthoritativeTransactionCheckpoint,
   restoreAuthoritativeTransactionCheckpoint,
@@ -37,6 +41,17 @@ const rebuildServices = new WeakMap<
 >();
 const nativeUrbanBridges = new WeakMap<SimulationCoreBase, NativeUrbanBridge>();
 const installedMutationBridges = new WeakSet<SimulationCoreBase>();
+const nativeBuildingRuntimeTypologies: readonly NativeBuildingRuntimeTypology[] =
+  Object.freeze(
+    BUILDING_TYPOLOGIES.map((typology) =>
+      Object.freeze({
+        id: typology.id,
+        name: typology.name,
+        maintenanceCostPerM2: typology.maintenanceCostPerM2,
+        complexityFactor: typology.complexityFactor,
+      }),
+    ),
+  );
 
 class ProtectedCanonicalParcelMutationError extends Error {
   constructor() {
@@ -52,6 +67,39 @@ function legacyZoneForParcel(parcel: Parcel): ZoneType | undefined {
     zone === 'industrial'
     ? zone
     : undefined;
+}
+
+function nativeBuildingLifecycleInput(
+  building: BuildingV2,
+): NativeBuildingLifecycleRuntimeInput | undefined {
+  const shared = Object.freeze({
+    buildingId: building.id,
+    maintenanceSpend: 0,
+    environmentalStress: 0.1,
+    serviceStress: 0.1,
+  });
+  switch (building.status) {
+    case 'occupied':
+      return Object.freeze({
+        ...shared,
+        occupancyRatio: 0.9,
+        utilizationRatio: 0.75,
+      });
+    case 'vacant':
+      return Object.freeze({
+        ...shared,
+        occupancyRatio: 0.05,
+        utilizationRatio: 0.1,
+      });
+    case 'abandoned':
+      return Object.freeze({
+        ...shared,
+        occupancyRatio: 0,
+        utilizationRatio: 0,
+      });
+    default:
+      return undefined;
+  }
 }
 
 function resolveNativeWorldOptions(
@@ -120,17 +168,6 @@ function reconcileCanonicalBuildingProjection(core: SimulationCoreBase): void {
   target.reconcileCanonicalBuildingProjection();
 }
 
-function captureNativeUrbanState(core: SimulationCoreBase): NativeUrbanState {
-  return Object.freeze({
-    urbanFabric: core.cadastre.snapshot(),
-    zoningV2: Object.freeze({
-      parcelAssignments: core.zoning.listParcelAssignments(),
-    }),
-    buildingsV2: core.buildings.listV2(),
-    propertyMarket: core.propertyMarket.snapshot(),
-  });
-}
-
 function projectNativeUrbanState(
   core: SimulationCoreBase,
   snapshot: NativeUrbanState,
@@ -147,12 +184,29 @@ function projectNativeUrbanState(
   });
 }
 
-function commitNativeUrbanState(
+function reconcileNativeBuildingProposal(
   core: SimulationCoreBase,
   bridge: NativeUrbanBridge,
 ): void {
-  const authoritative = bridge.restoreUrbanState(captureNativeUrbanState(core));
-  projectNativeUrbanState(core, authoritative);
+  const buildingsV2 = core.buildings.listV2();
+  const lifecycleInputs = buildingsV2.flatMap((building) => {
+    const input = nativeBuildingLifecycleInput(building);
+    return input ? [input] : [];
+  });
+  const response = bridge.applyUrbanCommand(
+    Object.freeze({
+      type: 'buildings.reconcile',
+      buildingsV2,
+      typologies: nativeBuildingRuntimeTypologies,
+      lifecycleInputs: Object.freeze(lifecycleInputs),
+    }),
+  );
+  if (!response.result.committed) {
+    throw new Error(
+      `native building reconciliation rejected: ${response.result.rejectionReasons.join(', ')}`,
+    );
+  }
+  projectNativeUrbanState(core, response.snapshot);
 }
 
 function nativeLegacyRebuildRequest(
@@ -287,7 +341,7 @@ export class SimulationCore extends SimulationCoreBase {
       const result = super.bulldozeAt(x, y);
       if (result.ok && result.kind === 'building') {
         const urbanBridge = nativeUrbanBridgeFor(this);
-        if (urbanBridge) commitNativeUrbanState(this, urbanBridge);
+        if (urbanBridge) reconcileNativeBuildingProposal(this, urbanBridge);
       }
       return result;
     } catch (error) {
@@ -300,14 +354,26 @@ export class SimulationCore extends SimulationCoreBase {
   }
 
   override step(ticks = 1): void {
-    const checkpoint = captureAuthoritativeTransactionCheckpoint(this);
-    try {
+    const urbanBridge = nativeUrbanBridgeFor(this);
+    if (!urbanBridge) {
       super.step(ticks);
-      const urbanBridge = nativeUrbanBridgeFor(this);
-      if (urbanBridge) commitNativeUrbanState(this, urbanBridge);
-    } catch (error) {
-      restoreAuthoritativeTransactionCheckpoint(this, checkpoint);
-      throw error;
+      return;
+    }
+    if (!Number.isInteger(ticks) || !Number.isFinite(ticks) || ticks < 0) {
+      super.step(ticks);
+      return;
+    }
+    for (let index = 0; index < ticks; index += 1) {
+      const checkpoint = captureAuthoritativeTransactionCheckpoint(this);
+      try {
+        super.step(1);
+        reconcileNativeBuildingProposal(this, urbanBridge);
+        urbanBridge.step(1);
+        projectNativeUrbanState(this, urbanBridge.urbanSnapshot());
+      } catch (error) {
+        restoreAuthoritativeTransactionCheckpoint(this, checkpoint);
+        throw error;
+      }
     }
   }
 
