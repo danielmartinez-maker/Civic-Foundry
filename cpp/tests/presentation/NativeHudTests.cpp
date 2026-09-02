@@ -1,8 +1,23 @@
 #include <gtest/gtest.h>
 
 #include <civic/presentation/NativeHud.hpp>
+#include <civic/presentation/NativeTools.hpp>
+#include <civic/presentation/NativeUi.hpp>
+
+#include <variant>
+#include <vector>
 
 using namespace civic::presentation;
+
+namespace {
+struct RecordingCommandSink final : ICommandSink {
+    std::vector<AuthoritativeCommand> submitted;
+    std::expected<void, std::string> submit(const AuthoritativeCommand& command) override {
+        submitted.push_back(command);
+        return {};
+    }
+};
+}
 
 TEST(NativeHud, MissingAuthorityRemainsUnavailableInsteadOfBecomingZero) {
     CityHudState hud{};
@@ -52,4 +67,25 @@ TEST(NativeHudShortcuts, UiCaptureAndEditableControlsSuppressGameplayActions) {
     EXPECT_EQ(
         resolveHudShortcut('4', ShortcutContext{.ui_keyboard_capture = true, .editable_control_active = true}),
         HudShortcutAction::None);
+}
+
+TEST(NativeToolWorkflow, PreviewIsPresentationOnlyUntilExplicitTypedCommit) {
+    RecordingCommandSink sink{};
+    NativeUiController controller(sink);
+    NativeToolWorkflow tools{};
+
+    tools.activate(NativeTool::Road);
+    ASSERT_TRUE(tools.previewRoad({{1.0, 2.0}, {6.0, 2.0}}, RoadClass::Collector).has_value());
+    ASSERT_TRUE(tools.preview().valid);
+    EXPECT_EQ(tools.preview().tool_id, "road");
+    ASSERT_EQ(tools.preview().geometry.size(), 2U);
+    EXPECT_TRUE(sink.submitted.empty());
+
+    ASSERT_TRUE(tools.commit(controller).has_value());
+    ASSERT_EQ(sink.submitted.size(), 1U);
+    ASSERT_TRUE(std::holds_alternative<BuildRoadCommand>(sink.submitted.front()));
+    const auto& command = std::get<BuildRoadCommand>(sink.submitted.front());
+    EXPECT_EQ(command.road_class, RoadClass::Collector);
+    EXPECT_EQ(command.path, (std::vector<Point2>{{1.0, 2.0}, {6.0, 2.0}}));
+    EXPECT_FALSE(tools.preview().valid);
 }
