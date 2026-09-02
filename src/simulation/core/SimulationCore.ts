@@ -1,12 +1,19 @@
-import { SimulationCore as SimulationCoreBase } from './SimulationCoreBase.ts';
-import type { Parcel } from '../../world/cadastre/CadastralTypes.ts';
-import { LegacyCadastreRebuildService } from '../land/LegacyCadastreRebuildService.ts';
-import type { CellCoord, ZoneType } from './types.ts';
 import type { RoadType } from '../../data/roads.ts';
+import {
+  NativeWorldAuthority,
+  activeNativeWorldAuthorityOverride,
+} from '../../native/world/NativeWorldAuthority.ts';
+import type { Parcel } from '../../world/cadastre/CadastralTypes.ts';
+import type { WorldFoundation } from '../../world/foundation/WorldFoundation.ts';
+import { resolveWorldGenerationConfig } from '../../world/generation/WorldGenerationConfig.ts';
 import {
   captureAuthoritativeTransactionCheckpoint,
   restoreAuthoritativeTransactionCheckpoint,
 } from './AuthoritativeTransactionCheckpoint.ts';
+import { SimulationCore as SimulationCoreBase } from './SimulationCoreBase.ts';
+import type { SimulationCoreOptions } from './SimulationCoreBase.ts';
+import type { CellCoord, ZoneType } from './types.ts';
+import { LegacyCadastreRebuildService } from '../land/LegacyCadastreRebuildService.ts';
 
 export { withSimulationCoreHydrationOverride } from './SimulationCoreBase.ts';
 export type { SimulationCoreOptions } from './SimulationCoreBase.ts';
@@ -23,6 +30,34 @@ class ProtectedCanonicalParcelMutationError extends Error {
 function legacyZoneForParcel(parcel: Parcel): ZoneType | undefined {
   const zone = parcel.zoningDistrictId;
   return zone === 'residential' || zone === 'commercial' || zone === 'industrial' ? zone : undefined;
+}
+
+function resolveNativeWorldOptions(options: SimulationCoreOptions): SimulationCoreOptions {
+  const override = activeNativeWorldAuthorityOverride();
+  if (!override?.enabled || options.world) return options;
+
+  const seed = options.seed ?? 1;
+  const nativeWorld = options.terrain
+    ? NativeWorldAuthority.fromLegacyTerrain(
+        override.bridge,
+        options.terrain,
+        seed,
+        options.terrainMode ?? 'legacy-explicit',
+      )
+    : NativeWorldAuthority.generate(override.bridge, {
+        seed,
+        config: resolveWorldGenerationConfig({
+          ...options.worldConfig,
+          ...(options.width !== undefined ? { width: options.width } : {}),
+          ...(options.height !== undefined ? { height: options.height } : {}),
+        }),
+        ...(options.scenarioWorld ? { scenario: options.scenarioWorld } : {}),
+      });
+
+  return Object.freeze({
+    ...options,
+    world: nativeWorld as unknown as WorldFoundation,
+  });
 }
 
 function rebuildServiceFor(core: SimulationCoreBase): LegacyCadastreRebuildService {
@@ -49,8 +84,8 @@ function reconcileCanonicalBuildingProjection(core: SimulationCoreBase): void {
 }
 
 export class SimulationCore extends SimulationCoreBase {
-  constructor(...args: ConstructorParameters<typeof SimulationCoreBase>) {
-    super(...args);
+  constructor(options: SimulationCoreOptions = {}) {
+    super(resolveNativeWorldOptions(options));
     this.tripGeneration.setDemandWeightMode('exact');
     this.kernel.registerTransactionParticipant({
       id: 'civic-foundry-authoritative-state',
