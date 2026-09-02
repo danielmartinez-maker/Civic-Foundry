@@ -5,6 +5,28 @@
 #include <utility>
 
 namespace civic::presentation {
+namespace {
+
+int normalizedShortcutKey(int key) noexcept {
+    if (key >= 'a' && key <= 'z') return key - ('a' - 'A');
+    return key;
+}
+
+bool shortcutMatches(int key, int configured) noexcept {
+    return normalizedShortcutKey(key) == normalizedShortcutKey(configured);
+}
+
+int severityRank(AlertSeverity severity) noexcept {
+    switch (severity) {
+        case AlertSeverity::Info: return 0;
+        case AlertSeverity::Success: return 1;
+        case AlertSeverity::Warning: return 2;
+        case AlertSeverity::Error: return 3;
+    }
+    return 0;
+}
+
+} // namespace
 
 std::expected<void, std::string> NotificationCenter::show(
     std::string message,
@@ -28,23 +50,30 @@ std::optional<HudNotice> NotificationCenter::current(double now_seconds) const n
 }
 
 HudShortcutAction resolveHudShortcut(int virtual_key, ShortcutContext context) noexcept {
+    return resolveHudShortcut(virtual_key, context, KeyBindings{});
+}
+
+HudShortcutAction resolveHudShortcut(
+    int virtual_key,
+    ShortcutContext context,
+    const KeyBindings& bindings) noexcept {
     if (context.ui_keyboard_capture || context.editable_control_active) return HudShortcutAction::None;
 
-    int key = virtual_key;
-    if (key >= 'a' && key <= 'z') key -= ('a' - 'A');
-    switch (key) {
-        case 'I': return HudShortcutAction::InspectTool;
-        case 'R': return HudShortcutAction::RoadTool;
-        case 'Z': return HudShortcutAction::ZoneTool;
-        case 'F': return HudShortcutAction::FacilityTool;
-        case 'T': return HudShortcutAction::TransitTool;
-        case 27: return HudShortcutAction::CancelTool;
-        case '0': return HudShortcutAction::SpeedPause;
-        case '1': return HudShortcutAction::SpeedNormal;
-        case '2': return HudShortcutAction::SpeedFast;
-        case '4': return HudShortcutAction::SpeedVeryFast;
-        default: return HudShortcutAction::None;
-    }
+    if (shortcutMatches(virtual_key, bindings.inspect)) return HudShortcutAction::InspectTool;
+    if (shortcutMatches(virtual_key, bindings.road)) return HudShortcutAction::RoadTool;
+    if (shortcutMatches(virtual_key, bindings.zone)) return HudShortcutAction::ZoneTool;
+    if (shortcutMatches(virtual_key, bindings.facility)) return HudShortcutAction::FacilityTool;
+    if (shortcutMatches(virtual_key, bindings.transit)) return HudShortcutAction::TransitTool;
+    if (shortcutMatches(virtual_key, bindings.cancel)) return HudShortcutAction::CancelTool;
+    if (shortcutMatches(virtual_key, bindings.speed_pause)) return HudShortcutAction::SpeedPause;
+    if (shortcutMatches(virtual_key, bindings.speed_normal)) return HudShortcutAction::SpeedNormal;
+    if (shortcutMatches(virtual_key, bindings.speed_fast)) return HudShortcutAction::SpeedFast;
+    if (shortcutMatches(virtual_key, bindings.speed_very_fast)) return HudShortcutAction::SpeedVeryFast;
+    return HudShortcutAction::None;
+}
+
+bool hudNoticeMeetsMinimum(HudNoticeSeverity severity, AlertSeverity minimum) noexcept {
+    return severityRank(severity) >= severityRank(minimum);
 }
 
 std::string formatHudCurrency(std::optional<std::int64_t> value) {
