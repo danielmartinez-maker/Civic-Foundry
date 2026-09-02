@@ -295,6 +295,13 @@ private:
     std::map<HouseholdId, Household> households_;
 };
 
+enum class PersonLifeStage : std::uint8_t { child, teen, adult, senior };
+enum class PersonHistoryProvenance : std::uint8_t { bootstrap_background, simulated_event, imported_fact };
+enum class PersonLocationKind : std::uint8_t { building, network };
+struct PersonLocation final {
+    PersonLocationKind kind{PersonLocationKind::building};
+    EntityId entity{0};
+};
 struct PersonInput final {
     HouseholdId household{0};
     std::uint16_t age{};
@@ -302,6 +309,11 @@ struct PersonInput final {
     std::uint16_t occupation{};
     bool employed{};
     Money income{};
+    bool resident{true};
+    std::optional<PersonLifeStage> life_stage;
+    PersonHistoryProvenance provenance{PersonHistoryProvenance::simulated_event};
+    std::optional<EntityId> home_entity;
+    std::optional<PersonLocation> location;
 };
 struct PersonView final {
     PersonId id{0};
@@ -312,6 +324,11 @@ struct PersonView final {
     bool employed{};
     Money income{};
     bool alive{};
+    bool resident{true};
+    PersonLifeStage life_stage{PersonLifeStage::adult};
+    PersonHistoryProvenance provenance{PersonHistoryProvenance::simulated_event};
+    std::optional<EntityId> home_entity;
+    std::optional<PersonLocation> location;
 };
 class PersonRegistry final {
 public:
@@ -323,6 +340,10 @@ public:
     [[nodiscard]] PersonId next_id() const noexcept { return PersonId{next_id_}; }
     void clear() noexcept;
 private:
+    struct SparseState final {
+        std::optional<EntityId> home_entity;
+        std::optional<PersonLocation> location;
+    };
     std::uint64_t next_id_{1};
     std::vector<PersonId> ids_;
     std::vector<HouseholdId> households_;
@@ -332,8 +353,12 @@ private:
     std::vector<bool> employed_;
     std::vector<Money> incomes_;
     std::vector<bool> alive_;
+    std::vector<bool> residents_;
+    std::vector<PersonLifeStage> life_stages_;
+    std::vector<PersonHistoryProvenance> provenances_;
     std::vector<std::size_t> free_slots_;
     std::map<PersonId, std::size_t> index_;
+    std::map<PersonId, SparseState> sparse_;
 };
 
 enum class PopulationFidelity : std::uint32_t { explicit_person, weighted_cohort, regional_aggregate };
