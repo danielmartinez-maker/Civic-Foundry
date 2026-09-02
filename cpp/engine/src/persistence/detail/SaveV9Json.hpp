@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <civic/core/Error.hpp>
+#include <civic/core/Utf16Ordinal.hpp>
 
 namespace civic::save_v9_detail {
 using JsonPtr = std::unique_ptr<json_object, decltype(&json_object_put)>;
@@ -91,7 +92,7 @@ inline Result<void> appendCanonical(json_object* value, std::string& output) {
         case json_type_object: {
             std::vector<std::string> keys;
             json_object_object_foreach(value, object_key, object_child) { (void)object_child; keys.emplace_back(object_key); }
-            std::ranges::sort(keys);
+            std::ranges::sort(keys, civic::Utf16OrdinalLess{});
             output.push_back('{');
             bool first = true;
             for (const auto& sorted_key : keys) {

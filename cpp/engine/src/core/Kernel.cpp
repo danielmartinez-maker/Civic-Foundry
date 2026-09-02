@@ -6,7 +6,9 @@
 
 namespace civic {
 namespace {
-bool validIdentity(std::string_view value) { return !value.empty() && value.find_first_not_of(" \t\r\n") != std::string_view::npos; }
+bool validIdentity(std::string_view value) {
+    return utf16_detail::validUtf8AndHasNonEcmaTrimCodePoint(value);
+}
 
 bool due(const SystemCadence& cadence, std::uint64_t tick) {
     return cadence.every > 0 && tick >= cadence.offset && ((tick - cadence.offset) % cadence.every) == 0;
@@ -104,8 +106,9 @@ Result<void> SystemScheduler::registerSystem(SystemDefinition system) {
 }
 
 Result<void> SystemScheduler::compile() {
-    std::map<std::string, std::set<std::string, std::less<>>, std::less<>> outgoing;
-    std::map<std::string, std::size_t, std::less<>> indegree;
+    using Utf16Set = std::set<std::string, Utf16OrdinalLess>;
+    std::map<std::string, Utf16Set, Utf16OrdinalLess> outgoing;
+    std::map<std::string, std::size_t, Utf16OrdinalLess> indegree;
     for (const auto& entry : systems_) { outgoing[entry.first]; indegree[entry.first] = 0; }
     auto addEdge = [&](const std::string& from, const std::string& to) -> Result<void> {
         if (!systems_.contains(from) || !systems_.contains(to)) return std::unexpected(make_error(ErrorCode::invalid_argument, "unknown kernel dependency: " + from + " -> " + to));
@@ -118,7 +121,7 @@ Result<void> SystemScheduler::compile() {
     }
     auto reaches = [&](const std::string& start, const std::string& target) {
         std::vector<std::string> stack(outgoing[start].begin(), outgoing[start].end());
-        std::set<std::string, std::less<>> seen;
+        Utf16Set seen;
         while (!stack.empty()) {
             auto current = std::move(stack.back()); stack.pop_back();
             if (current == target) return true;
@@ -135,10 +138,11 @@ Result<void> SystemScheduler::compile() {
             if (!ordered && (intersects(a->second.writes, b->second.reads) || intersects(b->second.writes, a->second.reads))) return std::unexpected(make_error(ErrorCode::invalid_state, "ambiguous read/write conflict: " + a->first + ", " + b->first));
         }
     }
+    const Utf16OrdinalLess ordinal_less{};
     auto priority = [&](const std::string& a, const std::string& b) {
         const auto& sa = systems_.at(a); const auto& sb = systems_.at(b);
         if (sa.order != sb.order) return sa.order < sb.order;
-        return a < b;
+        return ordinal_less(a, b);
     };
     std::vector<std::string> available;
     for (const auto& [id, degree] : indegree) if (degree == 0) available.push_back(id);

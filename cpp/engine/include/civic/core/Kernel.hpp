@@ -12,6 +12,7 @@
 
 #include <civic/core/Error.hpp>
 #include <civic/core/RandomStreamRegistry.hpp>
+#include <civic/core/Utf16Ordinal.hpp>
 
 namespace civic {
 
@@ -86,7 +87,7 @@ public:
     [[nodiscard]] Result<std::vector<SystemDefinition*>> dueSystems(std::uint64_t tick);
     [[nodiscard]] std::vector<std::string> orderedIds() const;
 private:
-    std::map<std::string, SystemDefinition, std::less<>> systems_;
+    std::map<std::string, SystemDefinition, Utf16OrdinalLess> systems_;
     std::vector<std::string> compiled_;
 };
 
@@ -101,7 +102,7 @@ public:
     [[nodiscard]] Result<void> registerInvariant(InvariantDefinition invariant);
     [[nodiscard]] Result<void> runDue(std::uint64_t tick) const;
 private:
-    std::map<std::string, InvariantDefinition, std::less<>> invariants_;
+    std::map<std::string, InvariantDefinition, Utf16OrdinalLess> invariants_;
 };
 
 } // namespace civic

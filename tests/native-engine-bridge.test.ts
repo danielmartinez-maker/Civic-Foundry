@@ -83,13 +83,11 @@ test("shadow runner feeds identical normalized commands to both runtimes and ign
   assert.deepEqual(received, [[1, 2]]);
   assert.deepEqual(steps, [4]);
   assert.deepEqual(
-    runner
-      .compareDomains(["kernel", "world"])
-      .map((item) => ({
-        domain: item.domain,
-        ownership: item.native.ownership,
-        matches: item.matches,
-      })),
+    runner.compareDomains(["kernel", "world"]).map((item) => ({
+      domain: item.domain,
+      ownership: item.native.ownership,
+      matches: item.matches,
+    })),
     [
       { domain: "kernel", ownership: "owned", matches: true },
       { domain: "world", ownership: "unowned", matches: undefined },
