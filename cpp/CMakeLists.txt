@@ -21,7 +21,7 @@ target_link_libraries(civic_engine PUBLIC ${CIVIC_JSON_TARGET})
 target_compile_definitions(civic_engine PUBLIC CIVIC_ENGINE_STATIC)
 civic_enable_warnings(civic_engine)
 civic_enable_sanitizers(civic_engine)
-add_library(civic_presentation STATIC presentation/src/Presentation.cpp presentation/src/RenderPipeline.cpp presentation/src/PresentationIO.cpp presentation/src/AssetRuntime.cpp presentation/src/NativeUi.cpp presentation/src/NativeUiRuntime.cpp presentation/src/NativeHud.cpp presentation/src/NativeTools.cpp presentation/src/Audio.cpp presentation/src/Platform.cpp presentation/src/SceneGeometry.cpp presentation/src/NativeRenderer.cpp presentation/src/MiniaturePresentation.cpp)
+add_library(civic_presentation STATIC presentation/src/Presentation.cpp presentation/src/RenderPipeline.cpp presentation/src/PresentationIO.cpp presentation/src/AssetRuntime.cpp presentation/src/NativeUi.cpp presentation/src/NativeUiRuntime.cpp presentation/src/NativeHud.cpp presentation/src/NativeTools.cpp presentation/src/Audio.cpp presentation/src/Platform.cpp presentation/src/SceneGeometry.cpp presentation/src/NativeRenderer.cpp presentation/src/MiniaturePresentation.cpp presentation/src/VisualAcceptance.cpp)
 target_include_directories(civic_presentation PUBLIC engine/include)
 target_link_libraries(civic_presentation PUBLIC ${CIVIC_JSON_TARGET})
 civic_enable_warnings(civic_presentation)
@@ -61,7 +61,25 @@ endif()
 if(CIVIC_BUILD_TESTS)
   enable_testing()
   find_package(GTest CONFIG REQUIRED)
-  add_executable(civic_engine_tests tests/core/CoreTests.cpp tests/persistence/SaveV9Tests.cpp tests/parity/ParityTests.cpp tests/presentation/PresentationTests.cpp tests/presentation/RenderPipelineTests.cpp tests/presentation/NativeClientSupportTests.cpp tests/presentation/NativeHudTests.cpp tests/presentation/GlbRuntimeTests.cpp tests/presentation/MiniaturePresentationTests.cpp tests/presentation/NativeUiRuntimeTests.cpp tests/presentation/Win32NativeUiTests.cpp tests/presentation/PlatformTests.cpp tests/presentation/SceneGeometryTests.cpp tests/presentation/NativeRendererTests.cpp)
+  add_executable(civic_engine_tests
+    tests/core/CoreTests.cpp
+    tests/persistence/SaveV9Tests.cpp
+    tests/parity/ParityTests.cpp
+    tests/parity/WasmReferenceFixtureTests.cpp
+    tests/presentation/PresentationTests.cpp
+    tests/presentation/RenderPipelineTests.cpp
+    tests/presentation/NativeClientSupportTests.cpp
+    tests/presentation/NativeHudTests.cpp
+    tests/presentation/GlbRuntimeTests.cpp
+    tests/presentation/MiniaturePresentationTests.cpp
+    tests/presentation/NativeUiRuntimeTests.cpp
+    tests/presentation/Win32NativeUiTests.cpp
+    tests/presentation/PlatformTests.cpp
+    tests/presentation/SceneGeometryTests.cpp
+    tests/presentation/NativeRendererTests.cpp
+    tests/presentation/NativeVisualAcceptanceTests.cpp
+    tests/release/NativeSoakTests.cpp
+    tests/release/CutoverGateTests.cpp)
   target_link_libraries(civic_engine_tests PRIVATE civic_engine civic_presentation GTest::gtest_main ${CIVIC_JSON_TARGET})
   if(WIN32 AND CIVIC_BUILD_NATIVE_CLIENT)
     target_link_libraries(civic_engine_tests PRIVATE civic_platform_win32)
@@ -72,6 +90,13 @@ if(CIVIC_BUILD_TESTS)
   target_link_libraries(civic_c_abi_smoke PRIVATE civic_engine)
   civic_enable_sanitizers(civic_c_abi_smoke)
   add_test(NAME civic_c_abi_smoke COMMAND civic_c_abi_smoke)
+
+  add_executable(civic_presentation_benchmark benchmarks/PresentationBenchmark.cpp)
+  target_link_libraries(civic_presentation_benchmark PRIVATE civic_engine civic_presentation)
+  civic_enable_warnings(civic_presentation_benchmark)
+  civic_enable_sanitizers(civic_presentation_benchmark)
+  add_test(NAME civic_presentation_benchmark_contract COMMAND civic_presentation_benchmark)
+
   include(GoogleTest)
   gtest_discover_tests(civic_engine_tests)
 endif()
