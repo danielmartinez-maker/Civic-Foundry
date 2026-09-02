@@ -36,6 +36,7 @@ enum class RoadClass : std::uint8_t { Local, Collector, Arterial, Avenue, Expres
 enum class BuildingUse : std::uint8_t { Residential, Commercial, Industrial, Civic, Office, Hospitality, Education, Healthcare, Mixed };
 enum class VehicleKind : std::uint8_t { PrivateCar, Service, Freight, Bus, Brt, Tram, Metro, Rail, Emergency };
 enum class TransitStopKind : std::uint8_t { BusStop, BrtStation, TramStop, MetroStation, RailStation };
+enum class AlertSeverity : std::uint8_t { Info, Success, Warning, Error };
 
 enum class OverlayMetric : std::uint8_t {
     TrafficCongestion,
@@ -145,6 +146,20 @@ struct ToolPreviewState {
     std::string invalid_reason;
 };
 
+struct KeyBindings {
+    int inspect{'I'};
+    int road{'R'};
+    int zone{'Z'};
+    int facility{'F'};
+    int transit{'T'};
+    int cancel{27};
+    int speed_pause{'0'};
+    int speed_normal{'1'};
+    int speed_fast{'2'};
+    int speed_very_fast{'4'};
+    friend bool operator==(const KeyBindings&, const KeyBindings&) = default;
+};
+
 struct PresentationSettings {
     float master_volume{1.0F};
     float music_volume{0.8F};
@@ -156,6 +171,9 @@ struct PresentationSettings {
     bool reduced_motion{false};
     bool color_independent_cues{true};
     bool visual_effects{true};
+    bool high_contrast{false};
+    AlertSeverity minimum_alert_severity{AlertSeverity::Info};
+    KeyBindings keybindings{};
 };
 
 struct FrameSnapshot {
