@@ -6,6 +6,7 @@
 namespace civic::presentation {
 namespace {
 bool validPoint(Point2 point) noexcept { return std::isfinite(point.x) && std::isfinite(point.y); }
+bool validSimulationSpeed(int speed) noexcept { return speed == 0 || speed == 1 || speed == 2 || speed == 4; }
 }
 
 std::expected<void, std::string> NativeUiController::buildRoad(std::vector<Point2> path, RoadClass road_class) {
@@ -27,7 +28,7 @@ std::expected<void, std::string> NativeUiController::createTransitLine(std::vect
     return sink_.submit(CreateTransitLineCommand{std::move(stop_ids), mode});
 }
 std::expected<void, std::string> NativeUiController::setSimulationSpeed(int speed) {
-    if (speed < 0 || speed > 4) return std::unexpected("simulation speed is outside supported native range");
+    if (!validSimulationSpeed(speed)) return std::unexpected("simulation speed must be one of 0, 1, 2, or 4");
     return sink_.submit(SetSimulationSpeedCommand{speed});
 }
 UiSummary buildUiSummary(const FrameSnapshot& snapshot) noexcept {
