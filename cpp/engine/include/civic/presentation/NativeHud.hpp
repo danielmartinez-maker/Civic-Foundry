@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -13,6 +14,32 @@ enum class SaveStatus : std::uint8_t {
     Saving,
     Saved,
     Error,
+};
+
+enum class HudNoticeSeverity : std::uint8_t {
+    Info,
+    Success,
+    Warning,
+    Error,
+};
+
+struct HudNotice {
+    std::string message;
+    HudNoticeSeverity severity{HudNoticeSeverity::Info};
+    double expires_at_seconds{};
+};
+
+class NotificationCenter {
+public:
+    [[nodiscard]] std::expected<void, std::string> show(
+        std::string message,
+        HudNoticeSeverity severity,
+        double now_seconds,
+        double ttl_seconds);
+    [[nodiscard]] std::optional<HudNotice> current(double now_seconds) const noexcept;
+    void clear() noexcept { active_.reset(); }
+private:
+    std::optional<HudNotice> active_;
 };
 
 struct CityHudState {
@@ -32,5 +59,6 @@ struct CityHudState {
 [[nodiscard]] std::string formatHudCurrency(std::optional<std::int64_t> value);
 [[nodiscard]] std::string formatHudCount(std::optional<double> value);
 [[nodiscard]] std::string_view saveStatusLabel(SaveStatus status) noexcept;
+[[nodiscard]] std::string_view hudNoticeSeverityLabel(HudNoticeSeverity severity) noexcept;
 
 } // namespace civic::presentation
