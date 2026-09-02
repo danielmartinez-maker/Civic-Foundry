@@ -239,33 +239,36 @@ export class NativeEngineBridge implements NativeWorldBridge {
   }
 
   rebuildUrbanLegacy(request: NativeUrbanLegacyRequest): NativeUrbanSnapshot {
+    const operation = this.addon.rebuildUrbanLegacy;
+    if (!operation)
+      throw new Error("native addon does not expose urban authority");
     const normalized = normalizeJsonValue(
       request,
       "native urban legacy rebuild request",
     );
     return parseNativeJson<NativeUrbanSnapshot>(
-      this.addon.rebuildUrbanLegacy(
-        this.requireHandle(),
-        JSON.stringify(normalized),
-      ),
+      operation(this.requireHandle(), JSON.stringify(normalized)),
       "native urban legacy rebuild",
     );
   }
 
   restoreUrbanState(snapshot: NativeUrbanState): NativeUrbanSnapshot {
+    const operation = this.addon.restoreUrbanState;
+    if (!operation)
+      throw new Error("native addon does not expose urban authority");
     const normalized = normalizeJsonValue(snapshot, "native urban state");
     return parseNativeJson<NativeUrbanSnapshot>(
-      this.addon.restoreUrbanState(
-        this.requireHandle(),
-        JSON.stringify(normalized),
-      ),
+      operation(this.requireHandle(), JSON.stringify(normalized)),
       "native urban restore",
     );
   }
 
   urbanSnapshot(): NativeUrbanSnapshot {
+    const operation = this.addon.getUrbanSnapshot;
+    if (!operation)
+      throw new Error("native addon does not expose urban authority");
     return parseNativeJson<NativeUrbanSnapshot>(
-      this.addon.getUrbanSnapshot(this.requireHandle()),
+      operation(this.requireHandle()),
       "native urban snapshot",
     );
   }
