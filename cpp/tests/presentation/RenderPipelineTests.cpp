@@ -66,6 +66,23 @@ TEST(RenderPipeline, SpatialOverlaysPreserveMetricAndSampleValue) {
     EXPECT_EQ(packet.overlays[0].entity.id, "road:a");
 }
 
+TEST(RenderPipeline, PreservesValidToolPreviewAcrossPresentationBoundary) {
+    RenderPacketBuilder builder{};
+    auto snapshot = renderFixture();
+    snapshot.tool_preview = ToolPreviewState{
+        .tool_id = "road",
+        .valid = true,
+        .geometry = {{2.0, 7.0}, {8.0, 7.0}},
+        .invalid_reason = {},
+    };
+
+    const auto packet = builder.build(snapshot, ViewportWorldBounds{0.0, 0.0, 10.0, 10.0});
+
+    EXPECT_TRUE(packet.tool_preview.valid);
+    EXPECT_EQ(packet.tool_preview.tool_id, "road");
+    EXPECT_EQ(packet.tool_preview.geometry, snapshot.tool_preview.geometry);
+}
+
 TEST(RenderPipeline, CullsRecordsOutsideWorldViewport) {
     RenderPacketBuilder builder{};
     const auto packet = builder.build(renderFixture(), ViewportWorldBounds{12.0, 12.0, 19.0, 19.0});
