@@ -155,4 +155,77 @@ TEST(NativeUrbanAuthority, SplitCommandRewritesZoningAndPropertyInsideNativeStat
   EXPECT_DOUBLE_EQ(reservation_total, 100000.0);
 }
 
+TEST(NativeUrbanAuthority, LegacyRebuildPreservesProtectedParcelIdentityAndProperty) {
+  auto snapshot = one_parcel_snapshot();
+  snapshot.at("zoningV2").at("parcelAssignments") = json::array({
+      {
+          {"parcelId", "parcel:0,0"},
+          {"districtId", "R5"},
+          {"overlayIds", json::array()},
+      },
+  });
+  snapshot.at("propertyMarket") = {
+      {"holdings", json::array({
+          {
+              {"parcelId", "parcel:0,0"},
+              {"ownerId", "owner:a"},
+              {"reservationValue", 100000.0},
+          },
+      })},
+      {"transactions", json::array()},
+      {"nextTransactionId", 1},
+  };
+  auto authority = civic::NativeUrbanAuthority::restoreAuthoritativeV9(dto_from_snapshot(snapshot));
+  ASSERT_TRUE(authority.has_value()) << authority.error().message;
+
+  const json request{
+      {"terrain", json::array({{{"x", 0}, {"y", 0}, {"buildable", true}}})},
+      {"roads", json::array()},
+      {"zoning", json::array({{{"x", 0}, {"y", 0}, {"zoningDistrictId", "commercial"}}})},
+  };
+  auto rebuilt_text = (*authority)->rebuildLegacyPreservingAuthority(request.dump());
+  ASSERT_TRUE(rebuilt_text.has_value()) << rebuilt_text.error().message;
+  const auto rebuilt = json::parse(*rebuilt_text);
+  ASSERT_EQ(rebuilt.at("urbanFabric").at("parcels").size(), 1U);
+  EXPECT_EQ(rebuilt.at("urbanFabric").at("parcels").at(0).at("id"), "parcel:0,0");
+  EXPECT_EQ(rebuilt.at("urbanFabric").at("parcels").at(0).at("zoningDistrictId"), "commercial");
+  ASSERT_EQ(rebuilt.at("zoningV2").at("parcelAssignments").size(), 1U);
+  EXPECT_EQ(rebuilt.at("zoningV2").at("parcelAssignments").at(0).at("parcelId"), "parcel:0,0");
+  ASSERT_EQ(rebuilt.at("propertyMarket").at("holdings").size(), 1U);
+  EXPECT_EQ(rebuilt.at("propertyMarket").at("holdings").at(0).at("parcelId"), "parcel:0,0");
+  EXPECT_EQ(rebuilt.at("propertyMarket").at("holdings").at(0).at("ownerId"), "owner:a");
+}
+
+TEST(NativeUrbanAuthority, LegacyRebuildRejectsProtectedTopologyChangeWithoutMutation) {
+  auto snapshot = one_parcel_snapshot();
+  snapshot.at("propertyMarket") = {
+      {"holdings", json::array({
+          {
+              {"parcelId", "parcel:0,0"},
+              {"ownerId", "owner:a"},
+              {"reservationValue", 100000.0},
+          },
+      })},
+      {"transactions", json::array()},
+      {"nextTransactionId", 1},
+  };
+  auto authority = civic::NativeUrbanAuthority::restoreAuthoritativeV9(dto_from_snapshot(snapshot));
+  ASSERT_TRUE(authority.has_value()) << authority.error().message;
+  auto before_text = (*authority)->snapshotJson();
+  ASSERT_TRUE(before_text.has_value()) << before_text.error().message;
+
+  const json request{
+      {"terrain", json::array({{{"x", 0}, {"y", 0}, {"buildable", true}}})},
+      {"roads", json::array({{{"x", 0}, {"y", 0}, {"roadRef", "0,0"}}})},
+      {"zoning", json::array()},
+  };
+  auto rebuilt = (*authority)->rebuildLegacyPreservingAuthority(request.dump());
+  ASSERT_FALSE(rebuilt.has_value());
+  EXPECT_EQ(rebuilt.error().message, "protected-parcel-topology-change");
+
+  auto after_text = (*authority)->snapshotJson();
+  ASSERT_TRUE(after_text.has_value()) << after_text.error().message;
+  EXPECT_EQ(json::parse(*after_text), json::parse(*before_text));
+}
+
 }  // namespace
