@@ -12,7 +12,7 @@ using civic::core::ParcelId;
 using civic::geometry::Point;
 using civic::geometry::Segment;
 
-constexpr civic::geometry::Coordinate kLegacyCellCm = 3000;
+constexpr civic::geometry::Coordinate kLegacyCellCm = 2000;
 constexpr double kOverlapToleranceM2 = 0.01;
 constexpr std::array<std::string_view, 4> kEasementKinds{
     "access", "utility", "drainage", "pedestrian"};
@@ -460,7 +460,7 @@ LegacyLotProjection CadastralGraph::legacy_lot_projection() const {
     });
     if (!faithful) {
       result.diagnostics.push_back(
-          "parcel " + parcel->external_id + " cannot be faithfully represented by one 30m legacy lot cell");
+          "parcel " + parcel->external_id + " cannot be faithfully represented by one 20m legacy lot cell");
     }
   }
 
