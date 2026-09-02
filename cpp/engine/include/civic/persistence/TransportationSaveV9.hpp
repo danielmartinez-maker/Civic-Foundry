@@ -3,6 +3,7 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -43,6 +44,7 @@ struct LegacyRoadAuthorityV9 final {
 };
 
 [[nodiscard]] Result<transport::TransportationSnapshot> parseTransportationV9(std::string_view canonicalSaveJson);
+[[nodiscard]] Result<std::optional<transport::TransportationSnapshot>> parseNativeTransportationV9(std::string_view canonicalSaveJson);
 [[nodiscard]] Result<LegacyRoadAuthorityV9> parseLegacyRoadAuthorityV9(std::string_view canonicalSaveJson);
 [[nodiscard]] Result<std::string> writeTransportationV9(
     std::string_view canonicalSaveJson,
