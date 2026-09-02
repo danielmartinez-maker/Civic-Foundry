@@ -23,6 +23,11 @@ FrameSnapshot makeSnapshot() {
         .elevation_m = 18.0F,
         .flood_depth_m = 0.0F,
     });
+    snapshot.parcels.push_back(ParcelSnapshot{
+        .id = "parcel:irregular",
+        .revision = 6,
+        .polygon = {{1.5, 1.5}, {5.5, 1.5}, {5.5, 4.5}, {1.5, 4.5}},
+    });
     snapshot.roads.push_back(RoadSnapshot{
         .id = "road:main",
         .revision = 4,
@@ -81,6 +86,7 @@ TEST(PresentationBoundary, SnapshotOwnsOnlyPresentationDtos) {
     const auto snapshot = makeSnapshot();
     EXPECT_EQ(snapshot.revision, 7U);
     EXPECT_EQ(snapshot.terrain.at(0).biome, TerrainBiome::Rock);
+    EXPECT_EQ(snapshot.parcels.at(0).id, "parcel:irregular");
     EXPECT_EQ(snapshot.buildings.at(0).parcel_id, "parcel:irregular");
     EXPECT_EQ(snapshot.transit_stops.at(0).kind, TransitStopKind::MetroStation);
 }
@@ -111,11 +117,23 @@ TEST(IsometricCameraParity, RotationAroundCanvasAnchorPreservesWorldPoint) {
     EXPECT_EQ(camera.quarterTurns(), 1);
 }
 
+TEST(IsometricCameraParity, CanvasToWorldRoundTripsContinuousPickingCoordinates) {
+    IsometricCamera camera{};
+    const WorldSize world{17, 13};
+    camera.rotate(1);
+    const auto canvas = camera.worldToCanvas(4.25, 7.5, world);
+    const auto world_point = camera.canvasToWorld(canvas.x, canvas.y, world);
+    ASSERT_TRUE(world_point.has_value());
+    EXPECT_NEAR(world_point->x, 4.25, 1e-9);
+    EXPECT_NEAR(world_point->y, 7.5, 1e-9);
+}
+
 TEST(RetainedScene, RebuildsOnlyRecordsWhoseRevisionChanged) {
     RetainedScene scene{};
     auto first = makeSnapshot();
     const auto first_stats = scene.apply(first);
     EXPECT_EQ(first_stats.terrain_rebuilt, 1U);
+    EXPECT_EQ(first_stats.parcels_rebuilt, 1U);
     EXPECT_EQ(first_stats.roads_rebuilt, 1U);
     EXPECT_EQ(first_stats.buildings_rebuilt, 1U);
     EXPECT_EQ(first_stats.vehicles_updated, 1U);
@@ -140,6 +158,16 @@ TEST(Picking, ReturnsTypedAuthoritativeEntityWithoutMutation) {
     EXPECT_EQ(result->kind, EntityKind::Road);
     EXPECT_EQ(result->id, "road:main");
     EXPECT_EQ(snapshot.revision, 7U);
+}
+
+TEST(Picking, SelectsParcelByTypedIdWhenNoMoreSpecificEntityWins) {
+    PickingIndex picking{};
+    const auto snapshot = makeSnapshot();
+    picking.rebuild(snapshot);
+    const auto result = picking.pickWorld({1.75, 4.25}, 0.2);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->kind, EntityKind::Parcel);
+    EXPECT_EQ(result->id, "parcel:irregular");
 }
 
 TEST(Overlays, DistinctMetricsHaveAccessibleLegendMetadata) {
