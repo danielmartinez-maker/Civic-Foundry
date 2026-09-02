@@ -27,6 +27,26 @@ std::optional<HudNotice> NotificationCenter::current(double now_seconds) const n
     return active_;
 }
 
+HudShortcutAction resolveHudShortcut(int virtual_key, ShortcutContext context) noexcept {
+    if (context.ui_keyboard_capture || context.editable_control_active) return HudShortcutAction::None;
+
+    int key = virtual_key;
+    if (key >= 'a' && key <= 'z') key -= ('a' - 'A');
+    switch (key) {
+        case 'I': return HudShortcutAction::InspectTool;
+        case 'R': return HudShortcutAction::RoadTool;
+        case 'Z': return HudShortcutAction::ZoneTool;
+        case 'F': return HudShortcutAction::FacilityTool;
+        case 'T': return HudShortcutAction::TransitTool;
+        case 27: return HudShortcutAction::CancelTool;
+        case '0': return HudShortcutAction::SpeedPause;
+        case '1': return HudShortcutAction::SpeedNormal;
+        case '2': return HudShortcutAction::SpeedFast;
+        case '4': return HudShortcutAction::SpeedVeryFast;
+        default: return HudShortcutAction::None;
+    }
+}
+
 std::string formatHudCurrency(std::optional<std::int64_t> value) {
     if (!value) return "—";
     return "$" + std::to_string(*value);
