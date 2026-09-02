@@ -65,6 +65,12 @@ class FakeNativeUrbanBridge implements NativeUrbanBridge {
 
   applyUrbanCommand(command: NativeUrbanCommand): NativeUrbanCommandResponse {
     this.commandCalls.push(structuredClone(command));
+    if (command.type === "buildings.reconcile") {
+      this.snapshotValue = Object.freeze({
+        ...this.snapshotValue,
+        buildingsV2: Object.freeze(structuredClone(command.buildingsV2)),
+      });
+    }
     return Object.freeze({
       result: Object.freeze({
         committed: true,
@@ -166,12 +172,17 @@ test("Task 20 keeps BuildingV2 native-first after construction override scope en
 
   assert.equal(bridge.restoreCalls.length, restoresAfterConstruction);
   assert.deepEqual(bridge.stepCalls, [1]);
-  assert.equal(bridge.commandCalls.length, commandsAfterConstruction + 1);
-  assert.equal(
-    (bridge.commandCalls.at(-1) as Readonly<{ type: string }> | undefined)
-      ?.type,
-    "buildings.reconcile",
-  );
+  const reconcileCalls = bridge.commandCalls
+    .slice(commandsAfterConstruction)
+    .filter(
+      (command): command is Extract<
+        NativeUrbanCommand,
+        Readonly<{ type: "buildings.reconcile" }>
+      > => command.type === "buildings.reconcile",
+    );
+  assert.equal(reconcileCalls.length, 2);
+  assert.equal(reconcileCalls[0]?.requireHbuForNewBuildings, false);
+  assert.equal(reconcileCalls[1]?.requireHbuForNewBuildings, true);
 
   const painted = core.paintZone([{ x: 0, y: 0 }], "residential");
   assert.equal(painted.painted, 1);
