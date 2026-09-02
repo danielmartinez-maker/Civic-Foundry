@@ -1,7 +1,11 @@
 import type { BuildingV2 } from "../simulation/buildings/BuildingTypes.ts";
 import type { PropertyMarketSnapshot } from "../simulation/development/PropertyMarketSystem.ts";
 import type { ParcelZoningAssignment } from "../simulation/zoning/ZoningTypes.ts";
-import type { CadastralSnapshot } from "../world/cadastre/CadastralTypes.ts";
+import type {
+  CadastralSnapshot,
+  EasementKind,
+} from "../world/cadastre/CadastralTypes.ts";
+import type { WorldPoint } from "../world/cadastre/Geometry.ts";
 
 export const NATIVE_COMMAND_PROTOCOL_VERSION = 1 as const;
 
@@ -75,6 +79,45 @@ export type NativeUrbanSnapshot = NativeUrbanState &
     compatibilityDiagnostics: readonly string[];
   }>;
 
+export type NativeUrbanCommand =
+  | Readonly<{
+      type: "cadastre.split";
+      parcelId: string;
+      cutLine: readonly WorldPoint[];
+    }>
+  | Readonly<{
+      type: "cadastre.assemble";
+      parcelIds: readonly string[];
+    }>
+  | Readonly<{
+      type: "cadastre.dedicate-right-of-way";
+      parcelId: string;
+      dedication: readonly WorldPoint[];
+    }>
+  | Readonly<{
+      type: "cadastre.create-easement";
+      parcelIds: readonly string[];
+      kind: EasementKind;
+      geometry: readonly WorldPoint[];
+    }>
+  | Readonly<{
+      type: "cadastre.remove-easement";
+      easementId: string;
+    }>;
+
+export type NativeUrbanMutationResult = Readonly<{
+  committed: boolean;
+  resultingParcelIds: readonly string[];
+  retiredParcelIds: readonly string[];
+  rejectionReasons: readonly string[];
+  parcelReferenceRewrites: Readonly<Record<string, string>>;
+}>;
+
+export type NativeUrbanCommandResponse = Readonly<{
+  result: NativeUrbanMutationResult;
+  snapshot: NativeUrbanSnapshot;
+}>;
+
 export interface NativeEngineAddon {
   createEngine(
     config?: Readonly<{
@@ -100,5 +143,6 @@ export interface NativeEngineAddon {
   runDesignStorm(handle: NativeEngineHandle, requestJson: string): string;
   rebuildUrbanLegacy?(handle: NativeEngineHandle, requestJson: string): string;
   restoreUrbanState?(handle: NativeEngineHandle, snapshotJson: string): string;
+  applyUrbanCommand?(handle: NativeEngineHandle, requestJson: string): string;
   getUrbanSnapshot?(handle: NativeEngineHandle): string;
 }
