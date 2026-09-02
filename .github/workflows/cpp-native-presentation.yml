@@ -1,0 +1,77 @@
+name: C++ Native Presentation
+
+on:
+  push:
+    branches: [feature/stack-4-cpp-native-presentation-cutover]
+  pull_request:
+    branches: [feat/cpp-stack-0-migration-foundation]
+
+permissions:
+  contents: read
+
+jobs:
+  clang-presentation:
+    runs-on: ubuntu-26.04
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Bootstrap vcpkg
+        run: |
+          git clone --depth 1 --branch 2026.07.29 https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Configure Clang native presentation
+        run: >-
+          cmake -S cpp -B cpp/build-stack4-clang
+          -DCMAKE_TOOLCHAIN_FILE="$RUNNER_TEMP/vcpkg/scripts/buildsystems/vcpkg.cmake"
+          -DCMAKE_C_COMPILER=clang-22
+          -DCMAKE_CXX_COMPILER=clang++-22
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCIVIC_BUILD_TESTS=ON
+          -DCIVIC_BUILD_NATIVE_CLIENT=OFF
+          -DCIVIC_BUILD_NAPI=OFF
+          -DCIVIC_ENABLE_SANITIZERS=ON
+      - name: Build
+        run: cmake --build cpp/build-stack4-clang --parallel
+      - name: Test
+        run: ctest --test-dir cpp/build-stack4-clang --output-on-failure
+
+  msvc-native-client:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch 2026.07.29 https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP\vcpkg"
+          & "$env:RUNNER_TEMP\vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+      - name: Configure MSVC native client
+        shell: pwsh
+        run: >-
+          cmake -S cpp -B cpp/build-stack4-msvc
+          "-DCMAKE_TOOLCHAIN_FILE=$env:RUNNER_TEMP\vcpkg\scripts\buildsystems\vcpkg.cmake"
+          -DCIVIC_BUILD_TESTS=ON
+          -DCIVIC_BUILD_NATIVE_CLIENT=ON
+          -DCIVIC_BUILD_NAPI=OFF
+      - name: Debug build
+        run: cmake --build cpp/build-stack4-msvc --config Debug --parallel
+      - name: Unit and contract tests
+        run: ctest --test-dir cpp/build-stack4-msvc -C Debug --output-on-failure
+      - name: Release build
+        run: cmake --build cpp/build-stack4-msvc --config Release --parallel
+      - name: Stage native package
+        shell: pwsh
+        run: cmake --install cpp/build-stack4-msvc --config Release --prefix "$env:RUNNER_TEMP\civic-foundry-native"
+      - name: Verify package boundary
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Recurse "$env:RUNNER_TEMP\civic-foundry-native" | Select-Object -ExpandProperty Name
+          if ($files -match 'electron') { throw 'Native package unexpectedly contains Electron runtime files.' }
+          if (-not (Test-Path "$env:RUNNER_TEMP\civic-foundry-native\civic_foundry_native_client.exe")) { throw 'Native executable missing from package.' }
+      - uses: actions/upload-artifact@v6.0.0
+        with:
+          name: civic-foundry-native-windows-${{ github.sha }}
+          path: ${{ runner.temp }}\civic-foundry-native
+          if-no-files-found: error
+          retention-days: 14
