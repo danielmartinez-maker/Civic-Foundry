@@ -95,3 +95,20 @@ TEST(SceneGeometry, ActiveTypedSelectionProducesAVisibleRedundantCue) {
     EXPECT_GT(scene.stats.selection_triangles, 0U);
     EXPECT_FALSE(scene.overlay.empty());
 }
+
+TEST(SceneGeometry, GeometryOutsideThePixelViewportIsCulledBeforeGpuUpload) {
+    SceneGeometryBuilder builder{};
+    IsometricCamera camera{};
+    camera.pan(100000.0, 100000.0);
+
+    const auto scene = builder.build(fixturePacket(), camera, WorldSize{20,20}, PixelViewport{1280,720});
+
+    EXPECT_TRUE(scene.opaque.empty());
+    EXPECT_TRUE(scene.overlay.empty());
+    EXPECT_EQ(scene.stats.terrain_triangles, 0U);
+    EXPECT_EQ(scene.stats.road_triangles, 0U);
+    EXPECT_EQ(scene.stats.building_triangles, 0U);
+    EXPECT_EQ(scene.stats.vehicle_triangles, 0U);
+    EXPECT_EQ(scene.stats.transit_triangles, 0U);
+    EXPECT_EQ(scene.stats.overlay_triangles, 0U);
+}
