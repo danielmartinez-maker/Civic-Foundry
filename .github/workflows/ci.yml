@@ -2,11 +2,15 @@ name: Civic Foundry CI
 
 on:
   push:
-    branches: [main, integration/stack-0-stack-2-transportation]
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
+
+concurrency:
+  group: civic-foundry-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   acceptance:

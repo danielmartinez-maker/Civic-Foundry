@@ -74,6 +74,54 @@ test("native bridge owns lifecycle and normalizes command order before shadow su
   assert.throws(() => bridge.step(), /disposed/);
 });
 
+test("native bridge rejects lossy payloads and normalizes JSON numeric semantics", () => {
+  const addon = fakeAddon();
+  const bridge = new NativeEngineBridge(addon);
+  const invalidPayloads: unknown[] = [
+    undefined,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    1n,
+    { nested: undefined },
+    new Date(0),
+    [1, , 3],
+  ];
+  for (const [index, payload] of invalidPayloads.entries()) {
+    assert.throws(
+      () =>
+        bridge.submit([
+          { sequence: index + 1, tick: 0, type: "invalid", payload },
+        ]),
+      /JSON-compatible/,
+    );
+  }
+  assert.throws(
+    () =>
+      bridge.submit([
+        {
+          sequence: Number.MAX_SAFE_INTEGER + 1,
+          tick: 0,
+          type: "unsafe-sequence",
+          payload: null,
+        },
+      ]),
+    /safe integer/,
+  );
+  const normalized = bridge.submit([
+    {
+      sequence: 100,
+      tick: 0,
+      type: "negative-zero",
+      payload: { value: -0 },
+    },
+  ]);
+  const payload = normalized[0].payload as Readonly<{ value: number }>;
+  assert.equal(payload.value, 0);
+  assert.equal(Object.is(payload.value, -0), false);
+  bridge.dispose();
+});
+
 test("shadow runner feeds identical normalized commands to both runtimes and ignores unowned domains", () => {
   const addon = fakeAddon();
   const bridge = new NativeEngineBridge(addon);

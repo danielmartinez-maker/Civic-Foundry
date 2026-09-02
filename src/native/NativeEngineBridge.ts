@@ -11,8 +11,85 @@ import {
 } from "./NativeEngineTypes.ts";
 
 function requireNonNegativeInteger(value: number, label: string): void {
-  if (!Number.isInteger(value) || !Number.isFinite(value) || value < 0)
-    throw new Error(`${label} must be a non-negative integer`);
+  if (!Number.isSafeInteger(value) || value < 0)
+    throw new Error(`${label} must be a non-negative safe integer`);
+}
+
+function requireUnicodeScalarString(value: string, label: string): void {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next < 0xdc00 || next > 0xdfff)
+        throw new Error(`${label} must be JSON-compatible Unicode`);
+      index += 1;
+      continue;
+    }
+    if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff)
+      throw new Error(`${label} must be JSON-compatible Unicode`);
+  }
+}
+
+function normalizeJsonValue(
+  value: unknown,
+  path: string,
+  ancestors = new Set<object>(),
+): unknown {
+  if (value === null) return null;
+  switch (typeof value) {
+    case "boolean":
+      return value;
+    case "string":
+      requireUnicodeScalarString(value, path);
+      return value;
+    case "number":
+      if (!Number.isFinite(value))
+        throw new Error(`${path} must contain only JSON-compatible values`);
+      return Object.is(value, -0) ? 0 : value;
+    case "object": {
+      if (ancestors.has(value))
+        throw new Error(`${path} must not contain JSON cycles`);
+      ancestors.add(value);
+      try {
+        if (Array.isArray(value)) {
+          const normalized: unknown[] = [];
+          for (let index = 0; index < value.length; index += 1) {
+            if (!(index in value))
+              throw new Error(`${path} must not contain sparse arrays`);
+            normalized.push(
+              normalizeJsonValue(value[index], `${path}[${index}]`, ancestors),
+            );
+          }
+          return Object.freeze(normalized);
+        }
+
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Object.prototype && prototype !== null)
+          throw new Error(`${path} must contain only JSON-compatible values`);
+        if (Object.getOwnPropertySymbols(value).length > 0)
+          throw new Error(`${path} must contain only JSON-compatible values`);
+
+        const descriptors = Object.getOwnPropertyDescriptors(value);
+        const normalized: Record<string, unknown> = {};
+        for (const key of Object.keys(value).sort()) {
+          requireUnicodeScalarString(key, `${path} key`);
+          const descriptor = descriptors[key];
+          if (!("value" in descriptor))
+            throw new Error(`${path} must not contain accessors`);
+          normalized[key] = normalizeJsonValue(
+            descriptor.value,
+            `${path}.${key}`,
+            ancestors,
+          );
+        }
+        return Object.freeze(normalized);
+      } finally {
+        ancestors.delete(value);
+      }
+    }
+    default:
+      throw new Error(`${path} must contain only JSON-compatible values`);
+  }
 }
 
 function normalizeCommands(
@@ -30,12 +107,13 @@ function normalizeCommands(
           throw new Error(`duplicate command sequence: ${command.sequence}`);
         if (command.type.trim().length === 0)
           throw new Error("command type must not be empty");
+        requireUnicodeScalarString(command.type, "command type");
         seen.add(command.sequence);
         return Object.freeze({
           sequence: command.sequence,
           tick: command.tick,
           type: command.type,
-          payload: structuredClone(command.payload),
+          payload: normalizeJsonValue(command.payload, "command payload"),
         });
       })
       .sort((left, right) => left.sequence - right.sequence),
