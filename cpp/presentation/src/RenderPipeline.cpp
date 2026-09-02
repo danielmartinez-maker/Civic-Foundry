@@ -37,6 +37,14 @@ bool roadVisible(const RoadSnapshot& road, ViewportWorldBounds viewport) noexcep
         viewport);
 }
 
+Point2 polygonCentroid(const std::vector<Point2>& polygon) noexcept {
+    Point2 center{};
+    if (polygon.empty()) return center;
+    for (const auto point : polygon) { center.x += point.x; center.y += point.y; }
+    const double denominator = static_cast<double>(polygon.size());
+    return {center.x / denominator, center.y / denominator};
+}
+
 void countVisibility(bool visible, CullingStats& stats) noexcept {
     ++stats.input_records;
     if (visible) ++stats.visible_records;
@@ -63,6 +71,15 @@ RenderPacket RenderPacketBuilder::build(const FrameSnapshot& snapshot, ViewportW
         countVisibility(visible, packet.culling);
         if (!visible) continue;
         packet.parcels.push_back({{EntityKind::Parcel, record.id}, record.revision, record.polygon});
+        if (snapshot.selection.active && snapshot.selection.entity == EntityRef{EntityKind::Parcel, record.id}) {
+            packet.overlays.push_back({
+                {EntityKind::Parcel, record.id},
+                record.revision,
+                OverlayMetric::Cadastre,
+                polygonCentroid(record.polygon),
+                1.0F,
+                1.0F});
+        }
     }
     for (const auto& record : snapshot.roads) {
         const bool visible = roadVisible(record, viewport);
