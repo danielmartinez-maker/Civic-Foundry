@@ -90,6 +90,7 @@ if(CIVIC_BUILD_TESTS)
     tests/native_urban_snapshot_tests.cpp
     tests/native_urban_authority_tests.cpp
     tests/native_urban_transaction_tests.cpp
+    tests/native_v9_continuation_tests.cpp
     tests/world_urban_shadow_parity_tests.cpp
   )
   target_compile_definitions(civic_engine_tests PRIVATE CIVIC_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
