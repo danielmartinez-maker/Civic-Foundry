@@ -88,6 +88,7 @@ if(CIVIC_BUILD_TESTS)
     tests/release/NativeSoakTests.cpp
     tests/release/CutoverGateTests.cpp)
   target_link_libraries(civic_engine_tests PRIVATE civic_engine civic_presentation GTest::gtest_main ${CIVIC_JSON_TARGET})
+  target_compile_definitions(civic_engine_tests PRIVATE CIVIC_REPOSITORY_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
   if(WIN32 AND CIVIC_BUILD_NATIVE_CLIENT)
     target_link_libraries(civic_engine_tests PRIVATE civic_platform_win32)
   endif()
