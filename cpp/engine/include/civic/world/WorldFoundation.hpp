@@ -80,7 +80,8 @@ class WorldFoundation final {
 public:
   [[nodiscard]] static civic::core::Result<WorldFoundation> generate(std::uint32_t seed, const WorldConfig& config) noexcept;
   [[nodiscard]] static civic::core::Result<WorldFoundation> generate(std::uint32_t seed, const WorldConfig& config, const ScenarioWorldDefinition& scenario) noexcept;
-  [[nodiscard]] static civic::core::Result<WorldFoundation> restore(WorldSnapshot snapshot, std::optional<FloodResult> last_flood_result = std::nullopt) noexcept;
+  [[nodiscard]] static civic::core::Result<WorldFoundation> restore(WorldSnapshot snapshot) noexcept;
+  [[nodiscard]] static civic::core::Result<WorldFoundation> restore_with_flood(WorldSnapshot snapshot, std::optional<FloodResult> last_flood_result) noexcept;
   [[nodiscard]] const TerrainField& terrain() const noexcept { return snapshot_.terrain; }
   [[nodiscard]] const GeographyHierarchy& geography() const noexcept { return snapshot_.geography; }
   [[nodiscard]] const HydrologyState& hydrology() const noexcept { return snapshot_.hydrology; }
