@@ -34,6 +34,24 @@ The stable C ABI uses opaque `cf_engine*` handles and caller-owned copies. Every
 
 The Node-API module mirrors only batch operations: create/destroy, command batch submission, step, Save V9 load/save, snapshots, events, and domain hashes.
 
+## Command protocol
+
+The native command wire protocol is explicitly versioned. Stack 0 accepts only command envelope version `1`, represented as `{ version, sequence, tick, type, payload }`. Missing or unsupported versions are rejected at the C ABI JSON boundary before a command enters the native engine.
+
+TypeScript gameplay commands remain the semantic `{ sequence, tick, type, payload }` shape. `NativeEngineBridge` adds `version: 1` only when serializing the native transport copy, while `ShadowSimulationRunner` feeds the unversioned normalized semantic command to the authoritative TypeScript reference runtime. Protocol metadata is intentionally excluded from the semantic kernel snapshot and domain hash so a transport-version field cannot change gameplay-state identity.
+
+The executable JSON contracts are recorded in:
+
+- `schemas/commands/command-envelope.schema.json`
+- `schemas/events/domain-event.schema.json`
+- `schemas/snapshots/kernel.schema.json`
+- `schemas/snapshots/domain-hash.schema.json`
+- `schemas/persistence/save-v9-native-boundary.schema.json`
+
+## Shadow activation
+
+Native shadow execution is opt-in. `createShadowSimulationSessionIfEnabled` constructs the native bridge only when `__CIVIC_NATIVE_SHADOW__` resolves to an enabled value (`true`, `"1"`, `"true"`, or `"on"`). Default-like or absent values leave the production TypeScript runtime unchanged.
+
 ## Persistence
 
 Native Save V9 parsing validates the current envelope, rejects non-finite numeric state and duplicate local IDs, validates the V9 Urban Fabric reference surface, and preserves the full compatibility envelope. It never serializes native object layouts, caches, or pointers and does not advance `saveVersion`.
