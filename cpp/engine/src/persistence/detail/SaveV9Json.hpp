@@ -20,7 +20,7 @@ using JsonPtr = std::unique_ptr<json_object, decltype(&json_object_put)>;
 
 inline bool isObject(json_object* value) { return value && json_object_get_type(value) == json_type_object; }
 inline bool isArray(json_object* value) { return value && json_object_get_type(value) == json_type_array; }
-inline bool nonBlank(std::string_view value) { return value.find_first_not_of(" \t\r\n") != std::string_view::npos; }
+inline bool nonBlank(std::string_view value) { return civic::utf16_detail::validUtf8AndHasNonEcmaTrimCodePoint(value); }
 
 inline Result<json_object*> requireField(json_object* object, const char* key, json_type type) {
     json_object* value = nullptr;
