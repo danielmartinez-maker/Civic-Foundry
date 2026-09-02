@@ -103,6 +103,8 @@ jobs:
         run: ctest --test-dir cpp/build-msvc -C Debug --output-on-failure
       - name: TypeScript shadow bridge tests
         run: node --experimental-strip-types --test tests/native-engine-bridge.test.ts
+      - name: Shared migration fixture parity
+        run: node --experimental-strip-types tests/native-migration-parity.mjs cpp/build-msvc/Debug/civic_native.node
       - name: Save V9 cross-language round trip
         run: node --experimental-strip-types tests/native-v9-roundtrip.mjs cpp/build-msvc/Debug/civic_native.node
       - name: MSVC Release build
