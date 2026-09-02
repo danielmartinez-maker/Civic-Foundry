@@ -10,6 +10,7 @@
 #include <civic/core/Error.hpp>
 #include <civic/core/Kernel.hpp>
 #include <civic/persistence/SaveV9.hpp>
+#include <civic/urban/NativeUrbanAuthority.hpp>
 #include <civic/world/Hydrology.hpp>
 #include <civic/world/WorldFoundation.hpp>
 
@@ -42,6 +43,13 @@ public:
     [[nodiscard]] Result<void> loadV9(std::string_view json);
     [[nodiscard]] Result<std::string> saveV9() const;
 
+    [[nodiscard]] Result<void> loadV9Authoritative(std::string_view json);
+    [[nodiscard]] Result<std::string> saveV9Authoritative() const;
+    [[nodiscard]] Result<DomainHash> authoritativeDomainHash(std::string_view domain) const;
+    [[nodiscard]] Result<SnapshotBlob> rebuildUrbanLegacy(std::string_view request_json);
+    [[nodiscard]] Result<SnapshotBlob> restoreUrbanState(std::string_view snapshot_json);
+    [[nodiscard]] Result<SnapshotBlob> urbanSnapshot() const;
+
     [[nodiscard]] Result<SnapshotBlob> createWorld(std::string_view request_json);
     [[nodiscard]] Result<SnapshotBlob> restoreWorld(std::string_view snapshot_json);
     [[nodiscard]] Result<SnapshotBlob> createLegacyWorld(std::string_view request_json);
@@ -67,6 +75,8 @@ private:
     std::optional<world::FloodResult> last_world_flood_;
     std::string world_mode_{"generated-1r"};
     std::optional<std::string> legacy_compatibility_json_;
+
+    std::unique_ptr<NativeUrbanAuthority> urban_;
 };
 
 } // namespace civic
