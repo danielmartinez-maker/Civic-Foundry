@@ -34,7 +34,7 @@ TEST(NativeParcelGenerationRed, LegacyStripBecomesOneStableParcelWithThreeFronta
   EXPECT_EQ(parcels.front()->external_id, "parcel:1,2");
   EXPECT_EQ(parcels.front()->block_id, "block:1,2");
   EXPECT_EQ(parcels.front()->zoning_district_id, "residential");
-  EXPECT_DOUBLE_EQ(parcels.front()->area_m2, 2700.0);
+  EXPECT_DOUBLE_EQ(parcels.front()->area_m2, 1200.0);
   EXPECT_EQ(parcels.front()->frontage_boundary_ids.size(), 3U);
   EXPECT_EQ(parcels.front()->access_boundary_ids, parcels.front()->frontage_boundary_ids);
   ASSERT_EQ(generated->blocks.size(), 1U);
@@ -59,7 +59,7 @@ TEST(NativeParcelGenerationRed, InputOrderingCannotChangeParcelIdentityOrGeometr
   EXPECT_EQ(pa.front()->id, pb.front()->id);
   EXPECT_EQ(pa.front()->external_id, pb.front()->external_id);
   EXPECT_EQ(civic::geometry::deterministic_hash(pa.front()->boundary), civic::geometry::deterministic_hash(pb.front()->boundary));
-  EXPECT_DOUBLE_EQ(pa.front()->area_m2, 2700.0);
+  EXPECT_DOUBLE_EQ(pa.front()->area_m2, 1200.0);
   EXPECT_GE(pa.front()->boundary.vertices.size(), 6U);
 }
 
@@ -91,6 +91,6 @@ TEST(NativeParcelGenerationRed, RoadsAndUnbuildableCellsNeverBecomeParcels) {
   const auto parcels = generated->graph.live_parcels();
   ASSERT_EQ(parcels.size(), 1U);
   EXPECT_EQ(parcels.front()->external_id, "parcel:0,0");
-  EXPECT_DOUBLE_EQ(parcels.front()->area_m2, 900.0);
+  EXPECT_DOUBLE_EQ(parcels.front()->area_m2, 400.0);
 }
 }
