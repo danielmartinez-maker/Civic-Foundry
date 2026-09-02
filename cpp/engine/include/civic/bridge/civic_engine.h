@@ -52,6 +52,7 @@ CF_API cf_error_code cf_engine_create_legacy_world(cf_engine* engine, const uint
 CF_API cf_error_code cf_engine_run_design_storm(cf_engine* engine, const uint8_t* data, size_t size, cf_buffer* out_buffer);
 CF_API cf_error_code cf_engine_rebuild_urban_legacy(cf_engine* engine, const uint8_t* data, size_t size, cf_buffer* out_buffer);
 CF_API cf_error_code cf_engine_restore_urban_state(cf_engine* engine, const uint8_t* data, size_t size, cf_buffer* out_buffer);
+CF_API cf_error_code cf_engine_apply_urban_command(cf_engine* engine, const uint8_t* data, size_t size, cf_buffer* out_buffer);
 CF_API cf_error_code cf_engine_get_urban_snapshot(cf_engine* engine, cf_buffer* out_buffer);
 CF_API cf_error_code cf_engine_get_last_error(cf_engine* engine, cf_error* out_error);
 CF_API void cf_buffer_free(cf_buffer buffer);
