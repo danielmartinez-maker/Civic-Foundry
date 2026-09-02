@@ -82,6 +82,7 @@ function registerNativeIpc() {
           'runDesignStorm',
           'rebuildUrbanLegacy',
           'restoreUrbanState',
+          'applyUrbanCommand',
           'getUrbanSnapshot',
         ]);
         if (!allowed.has(method)) throw new Error(`unsupported native method: ${method}`);
