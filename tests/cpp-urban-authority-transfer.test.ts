@@ -139,7 +139,7 @@ function canonicalBuilding(): BuildingV2 {
       zoningDistrictId: "residential",
       approvedFAR: 1,
       approvedHeightMeters: 12,
-      approvedUses: Object.freeze(["residential"]),
+      approvedUses: Object.freeze(["residential" as const]),
     }),
     lifecycle: NEW_BUILDING_LIFECYCLE,
   });
