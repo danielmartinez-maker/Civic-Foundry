@@ -9,21 +9,160 @@
     "DEFERRED": "Keep TypeScript ownership until a later accepted migration tranche."
   },
   "scenarios": [
-    {"id":"dead-end-local-road","classification":"PARITY","expected":{"connectedAlongRoad":true,"offNetworkRouteExists":false,"stableNetworkIds":true,"finiteRouteCost":true}},
-    {"id":"four-way-intersection","classification":"PARITY","expected":{"stableNetworkIds":true,"deterministicMovementOrdering":true,"legalMovementsOnly":true,"finiteRouteCost":true}},
-    {"id":"mixed-road-classes","classification":"CORRECTION","bugRefs":["SIM-012"],"expected":{"stableNetworkIds":true,"physicalConnectionIsDirectionallySymmetricUnlessExplicit":true,"finiteRouteCost":true}},
-    {"id":"one-way-pair","classification":"PARITY","expected":{"directionIsExplicit":true,"forbiddenReverseTraversalRejected":true,"legalForwardTraversalExists":true}},
-    {"id":"turn-restriction","classification":"PARITY","expected":{"restrictedMovementAllowed":false,"routingHonorsMovementLegality":true,"movementRevisionInvalidatesRouteCache":true}},
-    {"id":"signalized-intersection","classification":"PARITY","expected":{"deterministicPhaseOrder":true,"conflictingGreensRejected":true,"redMovementCapacityFactor":0,"greenMovementCapacityPositive":true}},
-    {"id":"disconnected-components","classification":"PARITY","expected":{"routeExists":false,"failureIsExplicit":true}},
-    {"id":"same-node-trip","classification":"PARITY","expected":{"routeExists":true,"junctionCount":1,"carriagewayCount":0,"movementCount":0,"totalCost":0}},
-    {"id":"congestion","classification":"CORRECTION","bugRefs":["SIM-011","SIM-021","SIM-022"],"expected":{"finiteMetricsOnly":true,"nanInputRejected":true,"negativeInputRejected":true,"higherValidLoadDoesNotIncreaseSpeed":true,"zeroCapacityDoesNotEmitInfinity":true}},
-    {"id":"road-edit-invalidation","classification":"PARITY","expected":{"topologyRevisionChanges":true,"staleRouteCacheRejected":true,"routeRecomputedAfterEdit":true}},
-    {"id":"bus-line","classification":"PARITY","expected":{"stopOrderPreserved":true,"lineReferencesValid":true,"boardingWeightConserved":true,"completionWeightConserved":true}},
-    {"id":"multi-line-transfer","classification":"PARITY","expected":{"transferLegsExplicit":true,"waitingPlusOnboardPlusCompletedPlusCancelledEqualsGenerated":true,"transferWeightPreserved":true}},
-    {"id":"full-vehicle-crowding","classification":"CORRECTION","bugRefs":["SIM-008"],"expected":{"boardingNeverExceedsAvailableCapacity":true,"outOfServiceCapacityExcluded":true,"unboardedWeightRemainsWaiting":true}},
-    {"id":"vehicle-failure","classification":"PARITY","expected":{"failedVehicleOnboardWeightDeleted":false,"failedVehiclePassengersReturnedAsStrandedCohorts":true,"passengerWeightConserved":true}},
-    {"id":"parking-constrained-destination","classification":"PARITY","expected":{"occupancyNeverExceedsCapacity":true,"scarcityRaisesGeneralizedCost":true,"parkingAccessPenaltyIncluded":true}},
-    {"id":"incident-capacity-reduction","classification":"PARITY","expected":{"activeIncidentReducesCapacity":true,"activeIncidentCanRaiseRouteCost":true,"incidentRevisionInvalidatesCostCache":true,"danglingCarriagewayReferenceRejectedOnRestore":true}}
+    {
+      "id": "dead-end-local-road",
+      "classification": "PARITY",
+      "expected": {
+        "connectedAlongRoad": true,
+        "offNetworkRouteExists": false,
+        "stableNetworkIds": true,
+        "finiteRouteCost": true
+      }
+    },
+    {
+      "id": "four-way-intersection",
+      "classification": "PARITY",
+      "expected": {
+        "stableNetworkIds": true,
+        "deterministicMovementOrdering": true,
+        "legalMovementsOnly": true,
+        "finiteRouteCost": true
+      }
+    },
+    {
+      "id": "mixed-road-classes",
+      "classification": "CORRECTION",
+      "bugRefs": ["SIM-012"],
+      "expected": {
+        "stableNetworkIds": true,
+        "physicalConnectionIsDirectionallySymmetricUnlessExplicit": true,
+        "finiteRouteCost": true
+      }
+    },
+    {
+      "id": "one-way-pair",
+      "classification": "PARITY",
+      "expected": {
+        "directionIsExplicit": true,
+        "forbiddenReverseTraversalRejected": true,
+        "legalForwardTraversalExists": true
+      }
+    },
+    {
+      "id": "turn-restriction",
+      "classification": "PARITY",
+      "expected": {
+        "restrictedMovementAllowed": false,
+        "routingHonorsMovementLegality": true,
+        "movementRevisionInvalidatesRouteCache": true
+      }
+    },
+    {
+      "id": "signalized-intersection",
+      "classification": "PARITY",
+      "expected": {
+        "deterministicPhaseOrder": true,
+        "conflictingGreensRejected": true,
+        "redMovementCapacityFactor": 0,
+        "greenMovementCapacityPositive": true
+      }
+    },
+    {
+      "id": "disconnected-components",
+      "classification": "PARITY",
+      "expected": {
+        "routeExists": false,
+        "failureIsExplicit": true
+      }
+    },
+    {
+      "id": "same-node-trip",
+      "classification": "PARITY",
+      "expected": {
+        "routeExists": true,
+        "junctionCount": 1,
+        "carriagewayCount": 0,
+        "movementCount": 0,
+        "totalCost": 0
+      }
+    },
+    {
+      "id": "congestion",
+      "classification": "CORRECTION",
+      "bugRefs": ["SIM-011", "SIM-021", "SIM-022"],
+      "expected": {
+        "finiteMetricsOnly": true,
+        "nanInputRejected": true,
+        "negativeInputRejected": true,
+        "higherValidLoadDoesNotIncreaseSpeed": true,
+        "zeroCapacityDoesNotEmitInfinity": true
+      }
+    },
+    {
+      "id": "road-edit-invalidation",
+      "classification": "PARITY",
+      "expected": {
+        "topologyRevisionChanges": true,
+        "staleRouteCacheRejected": true,
+        "routeRecomputedAfterEdit": true
+      }
+    },
+    {
+      "id": "bus-line",
+      "classification": "PARITY",
+      "expected": {
+        "stopOrderPreserved": true,
+        "lineReferencesValid": true,
+        "boardingWeightConserved": true,
+        "completionWeightConserved": true
+      }
+    },
+    {
+      "id": "multi-line-transfer",
+      "classification": "PARITY",
+      "expected": {
+        "transferLegsExplicit": true,
+        "waitingPlusOnboardPlusCompletedPlusCancelledEqualsGenerated": true,
+        "transferWeightPreserved": true
+      }
+    },
+    {
+      "id": "full-vehicle-crowding",
+      "classification": "CORRECTION",
+      "bugRefs": ["SIM-008"],
+      "expected": {
+        "boardingNeverExceedsAvailableCapacity": true,
+        "outOfServiceCapacityExcluded": true,
+        "unboardedWeightRemainsWaiting": true
+      }
+    },
+    {
+      "id": "vehicle-failure",
+      "classification": "PARITY",
+      "expected": {
+        "failedVehicleOnboardWeightDeleted": false,
+        "failedVehiclePassengersReturnedAsStrandedCohorts": true,
+        "passengerWeightConserved": true
+      }
+    },
+    {
+      "id": "parking-constrained-destination",
+      "classification": "PARITY",
+      "expected": {
+        "occupancyNeverExceedsCapacity": true,
+        "scarcityRaisesGeneralizedCost": true,
+        "parkingAccessPenaltyIncluded": true
+      }
+    },
+    {
+      "id": "incident-capacity-reduction",
+      "classification": "PARITY",
+      "expected": {
+        "activeIncidentReducesCapacity": true,
+        "activeIncidentCanRaiseRouteCost": true,
+        "incidentRevisionInvalidatesCostCache": true,
+        "danglingCarriagewayReferenceRejectedOnRestore": true
+      }
+    }
   ]
 }
