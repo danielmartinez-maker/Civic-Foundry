@@ -154,16 +154,21 @@ function validateSocioeconomicGateBatch(
   gates: readonly SocioeconomicAuthorityGate[],
 ): void {
   if (gates.length === 0)
-    throw new Error("socioeconomic authority transfer requires at least one gate");
+    throw new Error(
+      "socioeconomic authority transfer requires at least one gate",
+    );
   const seen = new Set<SocioeconomicAuthorityGate>();
   let previous = -1;
   for (const gate of gates) {
     const index = SOCIOECONOMIC_AUTHORITY_GATES.indexOf(gate);
-    if (index < 0) throw new Error(`unknown socioeconomic authority gate: ${gate}`);
+    if (index < 0)
+      throw new Error(`unknown socioeconomic authority gate: ${gate}`);
     if (seen.has(gate))
       throw new Error(`duplicate socioeconomic authority gate: ${gate}`);
     if (index <= previous)
-      throw new Error("socioeconomic authority gates must be supplied in declared order");
+      throw new Error(
+        "socioeconomic authority gates must be supplied in declared order",
+      );
     seen.add(gate);
     previous = index;
   }
@@ -214,7 +219,9 @@ export class NativeEngineBridge {
     if (sequenceStart < 1)
       throw new Error("socioeconomic transfer sequence must be positive");
     if (sequenceStart > Number.MAX_SAFE_INTEGER - gates.length + 1)
-      throw new Error("socioeconomic transfer sequence range exceeds safe integers");
+      throw new Error(
+        "socioeconomic transfer sequence range exceeds safe integers",
+      );
 
     for (const gate of gates) {
       if (!cutover.typescriptWriteEnabled(gate))
@@ -243,7 +250,8 @@ export class NativeEngineBridge {
       }));
       this.submit(commands);
     } catch (error) {
-      for (const gate of disabled.reverse()) cutover.enableTypescriptWrites(gate);
+      for (const gate of disabled.reverse())
+        cutover.enableTypescriptWrites(gate);
       throw error;
     }
 
@@ -256,7 +264,9 @@ export class NativeEngineBridge {
       if (native.ownership !== "owned")
         throw new Error(`native socioeconomic transfer did not claim ${gate}`);
       if (cutover.typescriptWriteEnabled(gate))
-        throw new Error(`dual socioeconomic writers detected after transfer: ${gate}`);
+        throw new Error(
+          `dual socioeconomic writers detected after transfer: ${gate}`,
+        );
     }
   }
 
