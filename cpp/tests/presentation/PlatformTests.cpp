@@ -4,6 +4,9 @@
 
 #ifdef _WIN32
 #include <civic/presentation/D3D12Backend.hpp>
+#include <civic/presentation/NativeWindow.hpp>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #endif
 
 using namespace civic::presentation;
@@ -32,5 +35,41 @@ TEST(D3D12Backend, UninitializedFrameFailsExplicitly) {
     D3D12Backend backend{};
     EXPECT_FALSE(backend.beginFrame().has_value());
     EXPECT_FALSE(backend.deviceLostReason().empty());
+}
+
+namespace {
+bool observeMessage(
+    void* user_data,
+    void*,
+    std::uint32_t message,
+    std::uintptr_t,
+    std::intptr_t) noexcept {
+    auto* observed = static_cast<std::uint32_t*>(user_data);
+    if (observed) *observed = message;
+    return true;
+}
+}
+
+TEST(NativeWindow, RawMessageHookDoesNotSuppressCivicPlatformEvents) {
+    NativeWindowConfig config{};
+    config.visible = false;
+    auto window = NativeWindow::create(config);
+    ASSERT_TRUE(window.has_value()) << window.error();
+    (void)(*window)->drainEvents();
+
+    std::uint32_t observed = 0U;
+    (*window)->setMessageHandler(&observeMessage, &observed);
+    SendMessageW(
+        static_cast<HWND>((*window)->nativeHandle()),
+        WM_MOUSEMOVE,
+        0,
+        MAKELPARAM(12, 34));
+
+    EXPECT_EQ(observed, static_cast<std::uint32_t>(WM_MOUSEMOVE));
+    const auto events = (*window)->drainEvents();
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events.front().type, PlatformEventType::PointerMove);
+    EXPECT_DOUBLE_EQ(events.front().x, 12.0);
+    EXPECT_DOUBLE_EQ(events.front().y, 34.0);
 }
 #endif
