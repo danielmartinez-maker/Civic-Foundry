@@ -288,11 +288,14 @@ Result<void> EconomyPersonhoodIntegrator::bind_worker(
 Result<std::vector<LaborAllocation>> EconomyPersonhoodIntegrator::clear_labor_and_apply(
     LaborMarket& labor,
     std::uint64_t tick) {
-    auto allocations = labor.clear();
+    LaborMarket staged_labor = labor;
+    SocioeconomicRuntime staged_runtime = runtime_;
+
+    auto allocations = staged_labor.clear();
     if (!allocations) return std::unexpected(allocations.error());
 
-    auto people_snapshot = runtime_.people().snapshot();
-    const PersonId next_person_id = runtime_.people().next_id();
+    auto people_snapshot = staged_runtime.people().snapshot();
+    const PersonId next_person_id = staged_runtime.people().next_id();
     std::map<PersonId, std::size_t> person_indexes;
     for (std::size_t index = 0; index < people_snapshot.size(); ++index) {
         person_indexes.emplace(people_snapshot[index].id, index);
@@ -304,7 +307,7 @@ Result<std::vector<LaborAllocation>> EconomyPersonhoodIntegrator::clear_labor_an
             return std::unexpected(make_error(ErrorCode::invalid_state, "authoritative labor allocation lacks a personhood binding"));
         }
         const auto person_index = person_indexes.find(binding->second.person);
-        const auto household = runtime_.households().get(binding->second.household);
+        const auto household = staged_runtime.households().get(binding->second.household);
         if (person_index == person_indexes.end() || !household ||
             people_snapshot[person_index->second].household != binding->second.household) {
             return std::unexpected(make_error(ErrorCode::invariant_failure, "labor binding became stale before authoritative commit"));
@@ -326,11 +329,13 @@ Result<std::vector<LaborAllocation>> EconomyPersonhoodIntegrator::clear_labor_an
 
     for (const auto& allocation : *allocations) {
         const auto& binding = worker_bindings_.at(allocation.worker);
-        auto paid = runtime_.pay_wage(allocation.firm, binding.household, allocation.wage, tick);
+        auto paid = staged_runtime.pay_wage(allocation.firm, binding.household, allocation.wage, tick);
         if (!paid) return std::unexpected(paid.error());
     }
 
-    runtime_.people() = std::move(replacement);
+    staged_runtime.people() = std::move(replacement);
+    runtime_ = std::move(staged_runtime);
+    labor = std::move(staged_labor);
     return *allocations;
 }
 
