@@ -1,5 +1,7 @@
 #include <civic/core/NativeEngine.hpp>
 
+#include <civic/transport/TransportationCommands.hpp>
+
 #include <algorithm>
 #include <cstring>
 #include <limits>
@@ -61,16 +63,32 @@ Result<void> NativeEngine::step(std::uint64_t ticks) {
         const auto checkpoint_commands = commands_;
         const auto checkpoint_events = events_;
         const auto checkpoint_random = random_;
+        const auto checkpoint_transportation = transportation_;
+        const auto checkpoint_legacy_roads = legacy_roads_;
+        const auto checkpoint_continuation = transportation_continuation_;
         auto rollback = [&] {
             clock_ = checkpoint_clock;
             commands_ = checkpoint_commands;
             events_ = checkpoint_events;
             random_ = checkpoint_random;
+            transportation_ = checkpoint_transportation;
+            legacy_roads_ = checkpoint_legacy_roads;
+            transportation_continuation_ = checkpoint_continuation;
         };
         auto advanced = clock_.step(1);
         if (!advanced) { rollback(); return advanced; }
         auto ready = commands_.takeReady(clock_.tick());
-        for (const auto& command : ready) events_.append(clock_.tick(), command.type, "shadow-command", command.payload);
+        for (const auto& command : ready) {
+            auto applied = applyTransportationCommand(transportation_, legacy_roads_, command);
+            if (!applied) { rollback(); return std::unexpected(applied.error()); }
+            events_.append(clock_.tick(), command.type, *applied ? "transportation-native" : "shadow-command", command.payload);
+        }
+        try {
+            transportation_.incidents().step(clock_.tick());
+        } catch (const std::exception& error) {
+            rollback();
+            return std::unexpected(make_error(ErrorCode::invalid_state, error.what()));
+        }
         auto due = scheduler_.dueSystems(clock_.tick());
         if (!due) { rollback(); return std::unexpected(due.error()); }
         for (auto* system : *due) {
@@ -107,7 +125,17 @@ std::string NativeEngine::kernelCanonicalState() const {
     return out.str();
 }
 
-Result<SnapshotBlob> NativeEngine::snapshot() const { return SnapshotBlob{kernelCanonicalState()}; }
+Result<SnapshotBlob> NativeEngine::snapshot() const {
+    auto transportationJson = transportationSnapshotJson(transportation_.snapshot());
+    if (!transportationJson) return std::unexpected(transportationJson.error());
+    auto json = kernelCanonicalState();
+    if (json.empty() || json.back() != '}') return std::unexpected(make_error(ErrorCode::internal_error, "kernel snapshot is not an object"));
+    json.pop_back();
+    json += ",\"transportation\":";
+    json += *transportationJson;
+    json.push_back('}');
+    return SnapshotBlob{std::move(json)};
+}
 
 Result<EventBlob> NativeEngine::drainEvents() {
     auto drained = events_.drain();
@@ -148,6 +176,7 @@ Result<DomainHash> NativeEngine::domainHash(std::string_view domain) const {
 
 Result<void> NativeEngine::loadV9(std::string_view json) {
     auto parsed = parseSaveV9(json); if (!parsed) return std::unexpected(parsed.error());
+    auto legacyRoads = parseLegacyRoadAuthorityV9(parsed->canonicalJson); if (!legacyRoads) return std::unexpected(legacyRoads.error());
     auto transportation = parseTransportationV9(parsed->canonicalJson); if (!transportation) return std::unexpected(transportation.error());
     auto continuation = parseTransportationContinuationV9(parsed->canonicalJson); if (!continuation) return std::unexpected(continuation.error());
     auto roadTraffic = parseLegacyRoadTrafficV9(parsed->canonicalJson, transportation->network); if (!roadTraffic) return std::unexpected(roadTraffic.error());
@@ -168,6 +197,7 @@ Result<void> NativeEngine::loadV9(std::string_view json) {
     commands_ = CommandQueue{};
     events_ = DomainEventJournal{};
     transportation_ = std::move(nextTransportation);
+    legacy_roads_ = std::move(*legacyRoads);
     transportation_continuation_ = std::move(*continuation);
     loaded_save_ = std::move(*parsed);
     return {};
@@ -175,7 +205,7 @@ Result<void> NativeEngine::loadV9(std::string_view json) {
 
 Result<std::string> NativeEngine::saveV9() const {
     if (!loaded_save_) return std::unexpected(make_error(ErrorCode::invalid_state, "no Save V9 is loaded"));
-    return loaded_save_->canonicalJson;
+    return writeTransportationV9(loaded_save_->canonicalJson, legacy_roads_, transportation_.snapshot());
 }
 
 } // namespace civic
