@@ -1,2 +1,16 @@
-#include <civic/bridge/civic_engine.h>
-int main() { cf_engine* engine = nullptr; const cf_engine_config config{1, 0, 1}; return cf_engine_create(&config, &engine) == CF_ERROR_NONE ? (cf_engine_destroy(engine), 0) : 1; }
+#include <civic/bridge/ReferenceFixture.hpp>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#define CIVIC_WASM_EXPORT EMSCRIPTEN_KEEPALIVE
+#else
+#define CIVIC_WASM_EXPORT
+#endif
+
+extern "C" CIVIC_WASM_EXPORT int civic_wasm_reference_fixture() {
+    return civic::bridge::runReferenceFixture();
+}
+
+int main() {
+    return civic_wasm_reference_fixture();
+}
