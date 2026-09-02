@@ -38,6 +38,67 @@ urban::BuildingLifecycleInput parse_lifecycle_input(const json& value) {
     return input;
 }
 
+urban::HighestBestUseInput parse_hbu_input(const json& value) {
+    urban::HighestBestUseInput input{};
+    for (const auto& parcel : value.at("parcelIds")) {
+        input.parcel_ids.push_back(cadastre::parcel_id_from_external(parcel.get<std::string>()));
+    }
+    input.hold_value = value.at("holdValue").get<double>();
+    input.building_condition = value.at("buildingCondition").get<double>();
+    input.developer_hurdle_rate = value.at("developerHurdleRate").get<double>();
+    input.renovation_net_value = value.at("renovationNetValue").get<double>();
+    input.renovation_expected_return = value.at("renovationExpectedReturn").get<double>();
+    input.renovation_risk_score = value.at("renovationRiskScore").get<double>();
+    input.conversion_net_value = value.at("conversionNetValue").get<double>();
+    input.conversion_expected_return = value.at("conversionExpectedReturn").get<double>();
+    input.conversion_risk_score = value.at("conversionRiskScore").get<double>();
+    input.redevelopment_net_value = value.at("redevelopmentNetValue").get<double>();
+    input.redevelopment_expected_return = value.at("redevelopmentExpectedReturn").get<double>();
+    input.redevelopment_risk_score = value.at("redevelopmentRiskScore").get<double>();
+    if (value.contains("assemblyNetValue")) {
+        input.assembly_net_value = value.at("assemblyNetValue").get<double>();
+        input.assembly_expected_return = value.value("assemblyExpectedReturn", 0.0);
+        input.assembly_risk_score = value.value("assemblyRiskScore", 0.0);
+    }
+    return input;
+}
+
+void validate_hbu_approval(const json& approval, const json& proposal) {
+    const auto building_id = approval.at("buildingId").get<std::string>();
+    if (building_id != proposal.at("id").get<std::string>()) {
+        throw std::invalid_argument("native HBU approval building id does not match proposal");
+    }
+    const auto candidate_id = approval.at("candidateId").get<std::string>();
+    if (candidate_id.empty()) {
+        throw std::invalid_argument("native HBU approval candidate id must not be empty");
+    }
+
+    auto candidate_parcel_names = approval.at("parcelIds").get<std::vector<std::string>>();
+    auto proposal_parcel_names = proposal.at("parcelIds").get<std::vector<std::string>>();
+    std::sort(candidate_parcel_names.begin(), candidate_parcel_names.end());
+    std::sort(proposal_parcel_names.begin(), proposal_parcel_names.end());
+    if (candidate_parcel_names != proposal_parcel_names) {
+        throw std::invalid_argument("native HBU approval parcels do not match BuildingV2 proposal");
+    }
+
+    urban::DevelopmentCandidate candidate{};
+    candidate.id = candidate_id;
+    candidate.typology_id = proposal.at("typologyId").get<std::string>();
+    candidate.zoning_legal = approval.at("zoningLegal").get<bool>();
+    for (const auto& parcel : candidate_parcel_names) {
+        candidate.parcel_ids.push_back(cadastre::parcel_id_from_external(parcel));
+    }
+
+    auto hbu_input = parse_hbu_input(approval.at("hbuInput"));
+    auto decision = urban::DevelopmentAuthority{}.evaluate(candidate, hbu_input);
+    if (!decision) {
+        throw std::invalid_argument("native HBU approval is invalid: " + decision.error().message);
+    }
+    if (!decision->eligible_for_developer_market) {
+        throw std::invalid_argument("native HBU rejected new BuildingV2 proposal");
+    }
+}
+
 json committed_building_result() {
     return json{
         {"committed", true},
@@ -74,6 +135,24 @@ Result<std::string> NativeUrbanAuthority::reconcileBuildings(std::string_view re
             current_by_id.emplace(building.at("id").get<std::string>(), building);
         }
 
+        const bool require_hbu = request.value("requireHbuForNewBuildings", false);
+        std::map<std::string, json> hbu_approvals;
+        if (require_hbu) {
+            if (!request.contains("hbuApprovals") || !request.at("hbuApprovals").is_array()) {
+                return std::unexpected(make_error(
+                    ErrorCode::serialization_failure,
+                    "native HBU enforcement requires hbuApprovals array"));
+            }
+            for (const auto& approval : request.at("hbuApprovals")) {
+                const auto id = approval.at("buildingId").get<std::string>();
+                if (id.empty() || !hbu_approvals.emplace(id, approval).second) {
+                    return std::unexpected(make_error(
+                        ErrorCode::invalid_argument,
+                        "duplicate or empty native HBU approval building id"));
+                }
+            }
+        }
+
         json merged = json::array();
         std::map<std::string, bool> proposed_ids;
         for (auto proposal : request.at("buildingsV2")) {
@@ -93,6 +172,14 @@ Result<std::string> NativeUrbanAuthority::reconcileBuildings(std::string_view re
                         proposal["project"] = existing->second.at("project");
                     }
                 }
+            } else if (require_hbu) {
+                const auto approval = hbu_approvals.find(id);
+                if (approval == hbu_approvals.end()) {
+                    return std::unexpected(make_error(
+                        ErrorCode::invalid_argument,
+                        "new BuildingV2 is missing native HBU approval: " + id));
+                }
+                validate_hbu_approval(approval->second, proposal);
             }
             merged.push_back(std::move(proposal));
         }
