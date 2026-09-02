@@ -13,6 +13,21 @@ bool boundsIntersect(double min_x, double min_y, double max_x, double max_y, Vie
     return max_x >= viewport.min_x && min_x <= viewport.max_x && max_y >= viewport.min_y && min_y <= viewport.max_y;
 }
 
+bool polygonVisible(const std::vector<Point2>& polygon, ViewportWorldBounds viewport) noexcept {
+    if (polygon.empty()) return false;
+    double min_x = polygon.front().x;
+    double max_x = min_x;
+    double min_y = polygon.front().y;
+    double max_y = min_y;
+    for (const auto point : polygon) {
+        min_x = std::min(min_x, point.x);
+        max_x = std::max(max_x, point.x);
+        min_y = std::min(min_y, point.y);
+        max_y = std::max(max_y, point.y);
+    }
+    return boundsIntersect(min_x, min_y, max_x, max_y, viewport);
+}
+
 bool roadVisible(const RoadSnapshot& road, ViewportWorldBounds viewport) noexcept {
     return boundsIntersect(
         std::min(road.from.x, road.to.x),
@@ -20,21 +35,6 @@ bool roadVisible(const RoadSnapshot& road, ViewportWorldBounds viewport) noexcep
         std::max(road.from.x, road.to.x),
         std::max(road.from.y, road.to.y),
         viewport);
-}
-
-bool buildingVisible(const BuildingSnapshot& building, ViewportWorldBounds viewport) noexcept {
-    if (building.footprint.empty()) return false;
-    double min_x = building.footprint.front().x;
-    double max_x = min_x;
-    double min_y = building.footprint.front().y;
-    double max_y = min_y;
-    for (const auto point : building.footprint) {
-        min_x = std::min(min_x, point.x);
-        max_x = std::max(max_x, point.x);
-        min_y = std::min(min_y, point.y);
-        max_y = std::max(max_y, point.y);
-    }
-    return boundsIntersect(min_x, min_y, max_x, max_y, viewport);
 }
 
 void countVisibility(bool visible, CullingStats& stats) noexcept {
@@ -58,6 +58,12 @@ RenderPacket RenderPacketBuilder::build(const FrameSnapshot& snapshot, ViewportW
             {EntityKind::Terrain, record.id}, record.revision, record.x, record.y, record.biome,
             record.elevation_m, record.flood_depth_m, record.buildable, record.water});
     }
+    for (const auto& record : snapshot.parcels) {
+        const bool visible = polygonVisible(record.polygon, viewport);
+        countVisibility(visible, packet.culling);
+        if (!visible) continue;
+        packet.parcels.push_back({{EntityKind::Parcel, record.id}, record.revision, record.polygon});
+    }
     for (const auto& record : snapshot.roads) {
         const bool visible = roadVisible(record, viewport);
         countVisibility(visible, packet.culling);
@@ -67,7 +73,7 @@ RenderPacket RenderPacketBuilder::build(const FrameSnapshot& snapshot, ViewportW
             record.lanes, record.one_way, record.condition, record.congestion, record.speed_ratio, record.volume});
     }
     for (const auto& record : snapshot.buildings) {
-        const bool visible = buildingVisible(record, viewport);
+        const bool visible = polygonVisible(record.footprint, viewport);
         countVisibility(visible, packet.culling);
         if (!visible) continue;
         packet.buildings.push_back({
