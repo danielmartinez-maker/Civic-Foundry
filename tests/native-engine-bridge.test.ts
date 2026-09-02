@@ -151,5 +151,8 @@ test("shadow feature flag constructs a dev/test session only when explicitly ena
   enabled.runner.step(1);
   enabled.dispose();
   enabled.dispose();
-  assert.equal(enabledAddon.calls.filter((call) => call === "destroy").length, 1);
+  assert.equal(
+    enabledAddon.calls.filter((call) => call === "destroy").length,
+    1,
+  );
 });
