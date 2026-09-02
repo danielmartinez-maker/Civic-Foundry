@@ -55,6 +55,18 @@ TEST(NativeEngineTransportation, PublishesTypedActiveRoadVehicleContinuationWith
     EXPECT_EQ(roadTraffic.congestionEpoch, 9U);
 }
 
+TEST(NativeEngineTransportation, ClampsRestoredNextVehicleIdLikeTypeScriptTrafficState) {
+    auto save = kActiveTrafficSave;
+    const auto offset = save.find("\"nextVehicleId\":2");
+    ASSERT_NE(offset, std::string::npos);
+    save.replace(offset, std::string{"\"nextVehicleId\":2"}.size(), "\"nextVehicleId\":0");
+
+    auto engine = civic::NativeEngine::create({7, 0, civic::SpeedMode::normal});
+    ASSERT_TRUE(engine);
+    ASSERT_TRUE((*engine)->loadV9(save));
+    EXPECT_EQ((*engine)->roadTraffic().nextVehicleId, 1U);
+}
+
 TEST(NativeEngineTransportation, LeavesStaleLegacyRoutesInCompatibilityStateInsteadOfRejectingSave) {
     const auto stale = [] {
         std::string value = kActiveTrafficSave;
