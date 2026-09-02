@@ -76,7 +76,7 @@ BuildingLifecycleInput lifecycle_input(double maintenance_spend = 0.0, double oc
 RenovationMarketContext market_fixture() {
   return RenovationMarketContext{
       .current_property_value = 2'000'000.0,
-      .projected_property_value = 5'500'000.0,
+      .projected_property_value = 8'000'000.0,
       .hurdle_rate = 0.12,
       .financing_rate = 0.06,
   };
