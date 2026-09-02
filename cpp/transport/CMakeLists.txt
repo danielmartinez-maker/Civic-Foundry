@@ -13,6 +13,7 @@ set(CIVIC_CPP_ROOT "${CMAKE_CURRENT_LIST_DIR}/..")
 set(CIVIC_ENGINE_INCLUDE "${CIVIC_CPP_ROOT}/engine/include")
 
 add_library(civic_transport STATIC
+  "${CIVIC_CPP_ROOT}/engine/src/transport/RoadTrafficRuntime.cpp"
   "${CIVIC_CPP_ROOT}/engine/src/transport/transport_engine.cpp"
   "${CIVIC_CPP_ROOT}/engine/src/bridge/transport_c_api.cpp"
 )
