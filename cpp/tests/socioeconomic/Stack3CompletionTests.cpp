@@ -121,6 +121,38 @@ TEST(Stack3CausalChains, AccessibilityLaborAndWagesFlowIntoPersonAndHouseholdSta
     EXPECT_EQ(runtime.households().get(civic::HouseholdId{1})->income.minor_units(), 2500);
 }
 
+TEST(Stack3CausalChains, FailedPayrollRollsBackLaborPeopleHouseholdsAndLedger) {
+    socio::SocioeconomicRuntime runtime{78};
+    ASSERT_TRUE(runtime.households().insert({civic::HouseholdId{1}, 1.0, civic::Money{0}, civic::Money{0}, 0, {}, 0}));
+    ASSERT_TRUE(runtime.households().insert({civic::HouseholdId{2}, 1.0, civic::Money{0}, civic::Money{0}, 0, {}, 0}));
+    auto first_person = runtime.people().create({civic::HouseholdId{1}, 30, 3, 2, false, civic::Money{0}}); ASSERT_TRUE(first_person);
+    auto second_person = runtime.people().create({civic::HouseholdId{2}, 31, 3, 2, false, civic::Money{0}}); ASSERT_TRUE(second_person);
+    ASSERT_TRUE(runtime.register_payroll_accounts(civic::FirmId{4}, civic::HouseholdId{1}, socio::AccountId{10}, socio::AccountId{11}));
+
+    socio::LaborMarket labor;
+    ASSERT_TRUE(labor.add_worker({socio::WorkerId{5}, 2, 1.0, true}));
+    ASSERT_TRUE(labor.add_worker({socio::WorkerId{6}, 2, 1.0, true}));
+    ASSERT_TRUE(labor.add_opening({socio::JobOpeningId{9}, civic::FirmId{4}, 2, civic::Money{2500}, 1.0, true}));
+    ASSERT_TRUE(labor.add_opening({socio::JobOpeningId{10}, civic::FirmId{4}, 2, civic::Money{2600}, 1.0, true}));
+
+    socio::EconomyPersonhoodIntegrator integration{runtime};
+    ASSERT_TRUE(integration.bind_worker(socio::WorkerId{5}, *first_person, civic::HouseholdId{1}));
+    ASSERT_TRUE(integration.bind_worker(socio::WorkerId{6}, *second_person, civic::HouseholdId{2}));
+    const auto hash_before = runtime.authoritative_hash();
+
+    auto failed = integration.clear_labor_and_apply(labor, 12);
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(runtime.authoritative_hash(), hash_before);
+    EXPECT_FALSE(runtime.people().get(*first_person)->employed);
+    EXPECT_FALSE(runtime.people().get(*second_person)->employed);
+    EXPECT_EQ(runtime.households().get(civic::HouseholdId{1})->income.minor_units(), 0);
+    EXPECT_EQ(runtime.ledger().entries().size(), 0U);
+
+    auto retry = labor.clear();
+    ASSERT_TRUE(retry);
+    EXPECT_EQ(retry->size(), 2U);
+}
+
 TEST(Stack3CausalChains, HousingCostProducesDeterministicRelocationPressure) {
     socio::SocioeconomicRuntime runtime{1};
     socio::EconomyPersonhoodIntegrator integration{runtime};
