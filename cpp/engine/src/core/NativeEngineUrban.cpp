@@ -48,6 +48,45 @@ json rejectedMutation(std::string reason) {
 }
 }  // namespace
 
+Result<void> NativeEngine::ensureUrbanScheduler() {
+    if (urban_scheduler_configured_) return {};
+
+    auto renovation = scheduler_.registerSystem(SystemDefinition{
+        .id = "urban.building-renovation",
+        .cadence = {1, 0},
+        .after = {},
+        .before = {"urban.building-lifecycle"},
+        .reads = {"urban.buildings"},
+        .writes = {"urban.buildings"},
+        .order = 100,
+        .execute = [this](std::uint64_t tick) -> Result<void> {
+            if (!urban_) return {};
+            return urban_->tickBuildingRenovations(tick);
+        },
+    });
+    if (!renovation) return renovation;
+
+    auto lifecycle = scheduler_.registerSystem(SystemDefinition{
+        .id = "urban.building-lifecycle",
+        .cadence = {urban::BuildingLifecycleDriver::lifecycle_cadence_ticks, 0},
+        .after = {"urban.building-renovation"},
+        .before = {},
+        .reads = {"urban.buildings"},
+        .writes = {"urban.buildings"},
+        .order = 110,
+        .execute = [this](std::uint64_t tick) -> Result<void> {
+            if (!urban_) return {};
+            return urban_->tickBuildingLifecycle(tick);
+        },
+    });
+    if (!lifecycle) return lifecycle;
+
+    auto compiled = scheduler_.compile();
+    if (!compiled) return compiled;
+    urban_scheduler_configured_ = true;
+    return {};
+}
+
 Result<void> NativeEngine::loadV9Authoritative(std::string_view json_text) {
     auto parsed = parseSaveV9(json_text);
     if (!parsed) return std::unexpected(parsed.error());
@@ -59,7 +98,7 @@ Result<void> NativeEngine::loadV9Authoritative(std::string_view json_text) {
     if (!kernel) return kernel;
 
     urban_ = std::move(*authority);
-    return {};
+    return ensureUrbanScheduler();
 }
 
 Result<std::string> NativeEngine::saveV9Authoritative() const {
@@ -93,6 +132,8 @@ Result<SnapshotBlob> NativeEngine::rebuildUrbanLegacy(std::string_view request_j
     auto snapshot = (*authority)->snapshotJson();
     if (!snapshot) return std::unexpected(snapshot.error());
     urban_ = std::move(*authority);
+    auto scheduled = ensureUrbanScheduler();
+    if (!scheduled) return std::unexpected(scheduled.error());
     return SnapshotBlob{std::move(*snapshot)};
 }
 
@@ -101,9 +142,12 @@ Result<SnapshotBlob> NativeEngine::restoreUrbanState(std::string_view snapshot_j
     if (!dto) return std::unexpected(dto.error());
     auto authority = NativeUrbanAuthority::restoreAuthoritativeV9(*dto);
     if (!authority) return std::unexpected(authority.error());
+    if (urban_) (*authority)->inheritRuntimeContext(*urban_);
     auto snapshot = (*authority)->snapshotJson();
     if (!snapshot) return std::unexpected(snapshot.error());
     urban_ = std::move(*authority);
+    auto scheduled = ensureUrbanScheduler();
+    if (!scheduled) return std::unexpected(scheduled.error());
     return SnapshotBlob{std::move(*snapshot)};
 }
 
@@ -120,8 +164,26 @@ Result<SnapshotBlob> NativeEngine::applyUrbanCommand(std::string_view request_js
     if (!dto) return std::unexpected(dto.error());
     auto staged = NativeUrbanAuthority::restoreAuthoritativeV9(*dto);
     if (!staged) return std::unexpected(staged.error());
+    (*staged)->inheritRuntimeContext(*urban_);
 
-    auto mutation = (*staged)->applyCommand(request_json);
+    Result<std::string> mutation = std::unexpected(make_error(
+        ErrorCode::serialization_failure,
+        "urban command requires string type"));
+    try {
+        const auto command = json::parse(request_json.begin(), request_json.end());
+        if (!command.is_object() || !command.contains("type") || !command.at("type").is_string()) {
+            return std::unexpected(make_error(
+                ErrorCode::serialization_failure,
+                "urban command requires string type"));
+        }
+        const auto type = command.at("type").get<std::string>();
+        mutation = type == "buildings.reconcile"
+            ? (*staged)->reconcileBuildings(request_json)
+            : (*staged)->applyCommand(request_json);
+    } catch (const json::exception& error) {
+        return std::unexpected(make_error(ErrorCode::serialization_failure, error.what()));
+    }
+
     if (!mutation) {
         try {
             return SnapshotBlob{json{
@@ -141,6 +203,8 @@ Result<SnapshotBlob> NativeEngine::applyUrbanCommand(std::string_view request_js
             {"snapshot", json::parse(*staged_snapshot)},
         }.dump();
         urban_ = std::move(*staged);
+        auto scheduled = ensureUrbanScheduler();
+        if (!scheduled) return std::unexpected(scheduled.error());
         return SnapshotBlob{std::move(response)};
     } catch (const json::exception& error) {
         return std::unexpected(make_error(ErrorCode::serialization_failure, error.what()));
