@@ -89,6 +89,8 @@ public:
   }
 
   [[nodiscard]] civic::core::Result<void> insert(Parcel parcel) noexcept;
+  [[nodiscard]] civic::core::Result<void> register_historical_identity(
+      std::string external_id) noexcept;
   [[nodiscard]] civic::core::Result<void> retire(civic::core::ParcelId id) noexcept;
   [[nodiscard]] civic::core::Result<void> add_easement(Easement easement) noexcept;
   [[nodiscard]] civic::core::Result<void> remove_easement(std::string_view id) noexcept;
