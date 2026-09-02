@@ -1,0 +1,191 @@
+{
+  "version": 2,
+  "stackId": "STACK_0_CPP_MIGRATION_FOUNDATION_ABI_DETERMINISM_AND_SAVE",
+  "baselineCommit": "9ed741834e49d211555d2ee3131f1bb6797b4b0a",
+  "saveVersion": 9,
+  "scenarios": [
+    {
+      "id": "empty-new-city",
+      "source": "tests/fixtures/kernel-v7-parity/baseline.json#empty-boundaries",
+      "seed": 101,
+      "saveInput": { "kind": "fresh", "startTick": 0, "speed": 1 },
+      "commandJournal": [],
+      "targetTicks": [9, 10, 49, 50, 99, 100, 249, 250],
+      "expectedDomainHashes": {
+        "legacy-authoritative-save@250": "515e41e0c8a188ab0ce36dee114d1a6b7236d8b6c82b9d0ae4f7cc5146e54f31"
+      },
+      "expectedInvariants": {
+        "deterministicReplay": true,
+        "finiteState": true
+      },
+      "classification": "PARITY"
+    },
+    {
+      "id": "small-road-zoning-city",
+      "source": "tests/fixtures/kernel-v7-parity/baseline.json#city-development",
+      "seed": 102,
+      "saveInput": { "kind": "fresh", "startTick": 0, "speed": 1 },
+      "commandJournal": [
+        {
+          "sequence": 1,
+          "tick": 0,
+          "type": "fixture.build-road",
+          "payload": { "roadClass": "collector", "fixture": "collector-spine" }
+        },
+        {
+          "sequence": 2,
+          "tick": 0,
+          "type": "fixture.paint-zone",
+          "payload": { "fixture": "residential-zone", "zone": "residential" }
+        },
+        {
+          "sequence": 3,
+          "tick": 0,
+          "type": "fixture.paint-zone",
+          "payload": { "fixture": "commercial-zone", "zone": "commercial" }
+        },
+        {
+          "sequence": 4,
+          "tick": 0,
+          "type": "fixture.paint-zone",
+          "payload": { "fixture": "industrial-zone", "zone": "industrial" }
+        }
+      ],
+      "targetTicks": [50, 250, 500],
+      "expectedDomainHashes": {
+        "legacy-authoritative-save@500": "64ba3c64b5768163e93a79b9db9d6e818264aa5d01059ac887bdf00b79b1b88f"
+      },
+      "expectedInvariants": {
+        "deterministicReplay": true,
+        "finiteState": true
+      },
+      "classification": "PARITY"
+    },
+    {
+      "id": "saved-urban-fabric-v9-city",
+      "source": "tests/support/cppMigrationFixtures.ts#createUrbanFabricV9Save",
+      "seed": 91,
+      "saveInput": { "kind": "v9", "fixture": "urban-fabric" },
+      "commandJournal": [
+        {
+          "sequence": 1,
+          "tick": 0,
+          "type": "fixture.saved-city-loaded",
+          "payload": { "fixture": "urban-fabric" }
+        }
+      ],
+      "targetTicks": [0, 1, 10],
+      "expectedDomainHashes": {
+        "urbanFabric": "4c5701f5ba4c9a6068adf641ded53237e426198b155a38e3275d45d5287e5ce3",
+        "buildings": "c4716928812115bd39a4e43aa663da41a639ed4c6b6a2e28aa4f3160a7bfe017",
+        "propertyMarket": "f7b9b985022b7d95a6184d665ef66f5b339b370572f079d30a29d5b60aba8b54"
+      },
+      "expectedInvariants": {
+        "saveRoundTrip": true,
+        "liveParcelReferences": true
+      },
+      "classification": "PARITY"
+    },
+    {
+      "id": "active-transit-city",
+      "source": "tests/fixtures/kernel-v7-parity/baseline.json#transit",
+      "seed": 104,
+      "saveInput": { "kind": "fresh", "startTick": 0, "speed": 1 },
+      "commandJournal": [
+        {
+          "sequence": 1,
+          "tick": 0,
+          "type": "fixture.build-road",
+          "payload": { "fixture": "collector-spine", "roadClass": "collector" }
+        },
+        {
+          "sequence": 2,
+          "tick": 0,
+          "type": "fixture.place-transit-stop",
+          "payload": { "fixture": "surface-stop-a", "mode": "bus" }
+        },
+        {
+          "sequence": 3,
+          "tick": 0,
+          "type": "fixture.place-transit-stop",
+          "payload": { "fixture": "surface-stop-b", "mode": "bus" }
+        },
+        {
+          "sequence": 4,
+          "tick": 0,
+          "type": "fixture.create-transit-line",
+          "payload": { "fixture": "bus-line", "fleetLimit": 4 }
+        }
+      ],
+      "targetTicks": [100, 500, 1000],
+      "expectedDomainHashes": {
+        "legacy-authoritative-save@1000": "66049d790a306d41e56bc6f9ee8e8a879504a99b339890d25e475ac315b664de"
+      },
+      "expectedInvariants": {
+        "deterministicReplay": true,
+        "passengerWeightConserved": true
+      },
+      "classification": "PARITY"
+    },
+    {
+      "id": "active-freight-economy-city",
+      "source": "tests/fixtures/kernel-v7-parity/baseline.json#economy-freight",
+      "seed": 105,
+      "saveInput": { "kind": "fresh", "startTick": 0, "speed": 1 },
+      "commandJournal": [
+        {
+          "sequence": 1,
+          "tick": 0,
+          "type": "fixture.build-road",
+          "payload": { "fixture": "collector-spine", "roadClass": "collector" }
+        },
+        {
+          "sequence": 2,
+          "tick": 0,
+          "type": "fixture.paint-mixed-zoning",
+          "payload": { "fixture": "mixed-zoning" }
+        },
+        {
+          "sequence": 3,
+          "tick": 0,
+          "type": "fixture.place-utilities",
+          "payload": { "fixture": "utilities" }
+        }
+      ],
+      "targetTicks": [250, 1000, 2000],
+      "expectedDomainHashes": {
+        "legacy-authoritative-save@2000": "f0c71dcfa52fd90dd312f91b1328ecd1fda3c4d88937a47ccce2129243eb56d6"
+      },
+      "expectedInvariants": {
+        "deterministicReplay": true,
+        "inventoryNonNegative": true
+      },
+      "classification": "PARITY"
+    },
+    {
+      "id": "cadastral-history-city",
+      "source": "tests/support/cppMigrationFixtures.ts#createCadastralHistoryV9Save",
+      "seed": 93,
+      "saveInput": { "kind": "v9", "fixture": "cadastral-history" },
+      "commandJournal": [
+        {
+          "sequence": 1,
+          "tick": 0,
+          "type": "fixture.saved-city-loaded",
+          "payload": { "fixture": "cadastral-history" }
+        }
+      ],
+      "targetTicks": [0, 1, 10],
+      "expectedDomainHashes": {
+        "urbanFabric": "f89bfd370a2305956ad44d485fa9993653ebcabf55d7f30e0f7a21be1cbaedc0",
+        "propertyMarket": "2faf84c687e487798583580a01600168d7594b61975e4760167c9d0541cb964f"
+      },
+      "expectedInvariants": {
+        "lineagePreserved": true,
+        "historicalTransactionsPreserved": true,
+        "liveParcelReferences": true
+      },
+      "classification": "PARITY"
+    }
+  ]
+}

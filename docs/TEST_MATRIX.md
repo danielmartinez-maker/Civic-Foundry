@@ -5,10 +5,10 @@ This matrix is the canonical map from repository contracts to local commands and
 ## Verification tiers
 
 - **Tier 1 — Fast:** `npm run verify:fast`. Portable inner-loop gate. It does not require Chromium or the Python rasterizer runtime.
-- **Tier 2 — Full portable:** `npm run verify:full`. Runs the complete portable repository acceptance contract, including build and browser/visual smoke tests. It requires the Python packages and Chromium installed by CI.
-- **Tier 3 — Platform / infrastructure:** Windows packaging or launch checks, GitHub branch/ruleset administration, and any future GPU/native checks that genuinely cannot run in the portable Linux/browser environment.
+- **Tier 2 — Full portable:** `npm run verify:full`. Runs the complete portable TypeScript/browser acceptance contract, including build and browser/visual smoke tests. It requires the Python packages and Chromium installed by CI.
+- **Tier 3 — Platform / native:** Windows packaging or launch checks, GitHub branch/ruleset administration, and the Stack 0 C++ migration gates that require MSVC, Clang sanitizers, vcpkg, or a native Node addon.
 
-`npm run verify` remains a compatibility command for existing branches and plans. It runs Tier 1 plus deterministic asset-source validation and the production build. New completion evidence should use `verify:full` when the required browser runtime is available.
+`npm run verify` remains a compatibility command for existing branches and plans. It runs Tier 1 plus deterministic asset-source validation and the production build. New TypeScript/browser completion evidence should use `verify:full` when the required browser runtime is available. Native migration completion additionally requires the `native-msvc` and `native-clang-sanitized` CI jobs.
 
 The network-backed dependency audit is intentionally separate from `verify:fast` so the inner loop remains usable offline. CI runs `npm run security:audit` before the expensive browser setup; the same command reproduces that supply-chain check locally when npm registry access is available.
 
@@ -23,6 +23,7 @@ The network-backed dependency audit is intentionally separate from `verify:fast`
 | Production TypeScript | `npm run typecheck` | `acceptance` / Fast verification | Fast | Yes | Portable | Production TypeScript |
 | Test TypeScript | `npm run typecheck:tests` | `acceptance` / Fast verification | Fast | Yes | Portable | Test architecture |
 | Node unit/integration/invariant/persistence tests | `npm test` | `acceptance` / Fast verification | Fast/medium | Yes | Portable | All simulation domains |
+| Native shadow adapter unit tests | `node --experimental-strip-types --test tests/native-engine-bridge.test.ts` | `acceptance` through `npm test`; repeated in `native-msvc` | Fast/native seam | Yes | Portable | Migration bridge |
 | Asset repository policy | `npm run assets:policy` | `acceptance` / Fast verification | Fast | Yes | Portable | Assets / repository |
 | Dependency security audit | `npm run security:audit` | `acceptance` / Dependency security audit | Network-backed | Yes in CI | Portable + npm registry | Supply chain |
 | Deterministic atlas source validation | `npm run assets:check` | `acceptance` / Asset source validation | Medium | Yes | Portable + Python/Pillow | Assets |
@@ -34,8 +35,26 @@ The network-backed dependency audit is intentionally separate from `verify:fast`
 | Isometric visual smoke | `python tests/smoke/isometric_visual_smoke.py` | `acceptance` / Portable browser and visual acceptance | Visual | Yes | Chromium | Presentation |
 | Portable smoke aggregate | `npm run test:smoke:portable` | `acceptance` / Portable browser and visual acceptance | Browser/visual | Yes | Chromium | Cross-domain |
 | Full portable acceptance | `npm run verify:full` | CI is deliberately decomposed into the same constituent gates | Full | Yes for completion | Portable + Chromium | Repository-wide |
-| Windows desktop launch/package | documented release check | Not in Linux CI | Platform | Release-dependent | Windows | Desktop host |
-| Prism native/Rust | branch-specific until native workspace reaches `main` | Active Prism branch CI | Platform/native | Stack-specific | Native toolchain | Prism mirror |
+| C++ GoogleTest/C ABI/N-API Debug suite | `ctest --test-dir cpp/build-msvc -C Debug --output-on-failure` | `native-msvc` / MSVC Debug tests | Native | Yes for Stack 0 | Windows/MSVC | Native migration substrate |
+| Save V9 TS↔C++ differential round trip | `node --experimental-strip-types tests/native-v9-roundtrip.mjs <civic_native.node>` | `native-msvc` / Save V9 cross-language round trip | Native/persistence | Yes for Stack 0 | Windows/MSVC + Node 22 | Save V9 parity |
+| MSVC Release compilation | `cmake --build cpp/build-msvc --config Release --parallel` | `native-msvc` / MSVC Release build | Native/release | Yes for Stack 0 | Windows/MSVC | Native build |
+| Clang ASan/UBSan suite | `ctest --test-dir cpp/build-clang --output-on-failure` after sanitizer configuration | `native-clang-sanitized` | Native/sanitizer | Yes for Stack 0 | Linux/Clang | Native correctness / UB |
+| Windows desktop launch/package | documented release check | Not in standard CI | Platform | Release-dependent | Windows | Desktop host |
+
+## Native migration prerequisites
+
+Stack 0 pins the vcpkg registry baseline in `cpp/vcpkg.json`. Configure the native project with CMake 3.30+ and the vcpkg toolchain. The production gameplay runtime remains TypeScript-authoritative; native tests validate the migration substrate and shadow parity only.
+
+Example Debug configuration:
+
+```bash
+cmake -S cpp -B cpp/build \
+  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+  -DCIVIC_BUILD_TESTS=ON \
+  -DCIVIC_BUILD_NAPI=ON
+cmake --build cpp/build --config Debug
+ctest --test-dir cpp/build -C Debug --output-on-failure
+```
 
 ## Test classes in the Node suite
 
@@ -51,7 +70,7 @@ The `tests/*.test.ts` collection contains multiple architectural classes even th
 - asset-pipeline contract tests;
 - performance contracts where a deterministic budget is part of acceptance.
 
-Browser and visual tests remain separate because they validate compiled/runtime integration that Node-only tests cannot prove.
+Browser and visual tests remain separate because they validate compiled/runtime integration that Node-only tests cannot prove. Native migration tests remain separate because they require a C++ toolchain and compiled addon.
 
 ## Local prerequisites for Tier 2
 
@@ -72,4 +91,4 @@ On Linux CI, `python -m playwright install --with-deps chromium` also installs r
 
 ## Failure ownership
 
-A failing required gate is evidence against the exact commit under test. Do not bypass or reclassify a failure as infrastructure without specific evidence. The workflow preserves `test-artifacts/` for seven days on failed acceptance runs when those artifacts exist.
+A failing required gate is evidence against the exact commit under test. Do not bypass or reclassify a failure as infrastructure without specific evidence. The workflow preserves `test-artifacts/` for seven days on failed acceptance runs when those artifacts exist. Native failures belong to the exact compiler/configuration lane that produced them and must be read before any completion claim.
