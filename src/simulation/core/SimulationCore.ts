@@ -440,7 +440,9 @@ export class SimulationCore extends SimulationCoreBase {
     const hurdles = this.developerMarket
       .listDevelopers()
       .map((developer) => developer.hurdleRate);
-    const developerHurdleRate = hurdles.length > 0 ? Math.min(...hurdles) : 1;
+    const developerHurdleRate = boundedRatio(
+      hurdles.length > 0 ? Math.min(...hurdles) : 1,
+    );
     const approvals = new Map<string, PendingHbuApproval>();
     nativeHbuApprovals.set(this, approvals);
 
