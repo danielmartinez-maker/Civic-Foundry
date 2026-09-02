@@ -210,6 +210,10 @@ test("Task 20 legacy BuildingSystem is rebuilt from native BuildingV2 and cannot
   assert.equal(buildings.list()[0]?.definitionId, "residential_rowhouse");
   assert.equal(buildings.list()[0]?.status, "occupied");
 
-  buildings.restoreLegacyProjectionFromV2(Object.freeze([]), lots, compatibility);
+  buildings.restoreLegacyProjectionFromV2(
+    Object.freeze([]),
+    lots,
+    compatibility,
+  );
   assert.deepEqual(buildings.list(), []);
 });
