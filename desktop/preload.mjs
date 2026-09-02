@@ -39,6 +39,8 @@ if (ipcRenderer.sendSync("civic-native:available")) {
       call("rebuildUrbanLegacy", handle.id, requestJson),
     restoreUrbanState: (handle, snapshotJson) =>
       call("restoreUrbanState", handle.id, snapshotJson),
+    applyUrbanCommand: (handle, requestJson) =>
+      call("applyUrbanCommand", handle.id, requestJson),
     getUrbanSnapshot: (handle) => call("getUrbanSnapshot", handle.id),
   });
   contextBridge.exposeInMainWorld("civicNativeAddon", addon);
