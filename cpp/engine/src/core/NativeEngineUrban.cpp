@@ -42,7 +42,7 @@ Result<void> NativeEngine::loadV9Authoritative(std::string_view json_text) {
     auto parsed = parseSaveV9(json_text);
     if (!parsed) return std::unexpected(parsed.error());
 
-    auto authority = NativeUrbanAuthority::restoreV9(*parsed);
+    auto authority = NativeUrbanAuthority::restoreAuthoritativeV9(*parsed);
     if (!authority) return std::unexpected(authority.error());
 
     auto kernel = loadV9(json_text);
@@ -82,7 +82,7 @@ Result<SnapshotBlob> NativeEngine::rebuildUrbanLegacy(std::string_view request_j
 Result<SnapshotBlob> NativeEngine::restoreUrbanState(std::string_view snapshot_json) {
     auto dto = urbanDtoFromSnapshot(snapshot_json);
     if (!dto) return std::unexpected(dto.error());
-    auto authority = NativeUrbanAuthority::restoreV9(*dto);
+    auto authority = NativeUrbanAuthority::restoreAuthoritativeV9(*dto);
     if (!authority) return std::unexpected(authority.error());
     auto snapshot = (*authority)->snapshotJson();
     if (!snapshot) return std::unexpected(snapshot.error());
