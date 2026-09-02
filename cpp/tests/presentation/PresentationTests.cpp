@@ -182,3 +182,40 @@ TEST(InputState, LostFocusCancelsDragAndPointerCapture) {
     EXPECT_FALSE(input.dragging());
     EXPECT_EQ(input.activePointerId(), -1);
 }
+
+TEST(PresentationInterpolation, BlendsMatchingMobilityRecordsWithoutChangingAuthorityIdentity) {
+    auto previous = makeSnapshot();
+    auto current = previous;
+    previous.revision = 20U;
+    current.revision = 21U;
+    previous.vehicles.at(0).position = {2.0, 4.0};
+    previous.vehicles.at(0).heading_radians = 0.0F;
+    current.vehicles.at(0).position = {6.0, 8.0};
+    current.vehicles.at(0).heading_radians = 1.0F;
+    current.vehicles.at(0).occupancy = 3.0F;
+
+    const auto blended = interpolatePresentationSnapshots(previous, current, 0.25);
+    ASSERT_EQ(blended.vehicles.size(), 1U);
+    EXPECT_EQ(blended.revision, current.revision);
+    EXPECT_EQ(blended.vehicles.at(0).id, current.vehicles.at(0).id);
+    EXPECT_EQ(blended.vehicles.at(0).revision, current.vehicles.at(0).revision);
+    EXPECT_DOUBLE_EQ(blended.vehicles.at(0).position.x, 3.0);
+    EXPECT_DOUBLE_EQ(blended.vehicles.at(0).position.y, 5.0);
+    EXPECT_FLOAT_EQ(blended.vehicles.at(0).heading_radians, 0.25F);
+    EXPECT_FLOAT_EQ(blended.vehicles.at(0).occupancy, current.vehicles.at(0).occupancy);
+    EXPECT_DOUBLE_EQ(current.vehicles.at(0).position.x, 6.0);
+}
+
+TEST(PresentationInterpolation, NewOrRemovedVehiclesFollowCurrentAuthoritativeMembership) {
+    auto previous = makeSnapshot();
+    auto current = previous;
+    previous.vehicles.at(0).id = "vehicle:removed";
+    current.vehicles.at(0).id = "vehicle:new";
+    current.vehicles.at(0).position = {9.0, 9.0};
+
+    const auto blended = interpolatePresentationSnapshots(previous, current, 0.5);
+    ASSERT_EQ(blended.vehicles.size(), 1U);
+    EXPECT_EQ(blended.vehicles.at(0).id, "vehicle:new");
+    EXPECT_DOUBLE_EQ(blended.vehicles.at(0).position.x, 9.0);
+    EXPECT_DOUBLE_EQ(blended.vehicles.at(0).position.y, 9.0);
+}
