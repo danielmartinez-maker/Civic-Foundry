@@ -77,6 +77,9 @@ test("native bridge owns lifecycle and normalizes command order before shadow su
 test("native bridge rejects lossy payloads and normalizes JSON numeric semantics", () => {
   const addon = fakeAddon();
   const bridge = new NativeEngineBridge(addon);
+  const sparseArray: unknown[] = Array(3);
+  sparseArray[0] = 1;
+  sparseArray[2] = 3;
   const invalidPayloads: unknown[] = [
     undefined,
     Number.NaN,
@@ -85,7 +88,7 @@ test("native bridge rejects lossy payloads and normalizes JSON numeric semantics
     1n,
     { nested: undefined },
     new Date(0),
-    [1, , 3],
+    sparseArray,
   ];
   for (const [index, payload] of invalidPayloads.entries()) {
     assert.throws(
