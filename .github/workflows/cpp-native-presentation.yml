@@ -36,12 +36,20 @@ jobs:
         run: cmake --build cpp/build-stack4-clang --parallel
       - name: Test
         run: ctest --test-dir cpp/build-stack4-clang --output-on-failure
+      - name: Capture native visual references
+        run: cpp/build-stack4-clang/civic_visual_reference_capture "$RUNNER_TEMP/native-visual-reference"
       - name: Record large-city presentation benchmark
         run: cpp/build-stack4-clang/civic_presentation_benchmark | tee "$RUNNER_TEMP/presentation-benchmark-clang.json"
       - uses: actions/upload-artifact@v6.0.0
         with:
           name: presentation-benchmark-clang-${{ github.sha }}
           path: ${{ runner.temp }}/presentation-benchmark-clang.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v6.0.0
+        with:
+          name: native-visual-reference-${{ github.sha }}
+          path: ${{ runner.temp }}/native-visual-reference
           if-no-files-found: error
           retention-days: 14
 
