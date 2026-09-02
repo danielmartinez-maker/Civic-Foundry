@@ -127,7 +127,9 @@ test("native bridge rejects lossy payloads and normalizes JSON numeric semantics
       payload: { value: -0 },
     },
   ]);
-  const payload = normalized[0].payload as Readonly<{ value: number }>;
+  const normalizedCommand = normalized[0];
+  assert.ok(normalizedCommand);
+  const payload = normalizedCommand.payload as Readonly<{ value: number }>;
   assert.equal(payload.value, 0);
   assert.equal(Object.is(payload.value, -0), false);
   bridge.dispose();
