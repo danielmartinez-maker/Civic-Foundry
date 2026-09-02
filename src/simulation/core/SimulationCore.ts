@@ -34,6 +34,7 @@ const rebuildServices = new WeakMap<
   SimulationCoreBase,
   LegacyCadastreRebuildService
 >();
+const nativeUrbanBridges = new WeakMap<SimulationCoreBase, NativeUrbanBridge>();
 const installedMutationBridges = new WeakSet<SimulationCoreBase>();
 
 class ProtectedCanonicalParcelMutationError extends Error {
@@ -98,6 +99,17 @@ function rebuildServiceFor(
     rebuildServices.set(core, service);
   }
   return service;
+}
+
+function nativeUrbanBridgeFor(
+  core: SimulationCoreBase,
+): NativeUrbanBridge | undefined {
+  const installed = nativeUrbanBridges.get(core);
+  if (installed) return installed;
+  const override = activeNativeUrbanAuthorityOverride();
+  if (!override?.enabled) return undefined;
+  nativeUrbanBridges.set(core, override.bridge);
+  return override.bridge;
 }
 
 function reconcileCanonicalBuildingProjection(core: SimulationCoreBase): void {
@@ -219,10 +231,10 @@ export class SimulationCore extends SimulationCoreBase {
       restore: (snapshot) =>
         restoreAuthoritativeTransactionCheckpoint(this, snapshot),
     });
-    const urbanOverride = activeNativeUrbanAuthorityOverride();
-    if (urbanOverride?.enabled) {
-      commitNativeUrbanState(this, urbanOverride.bridge);
-      installNativeMutationBridge(this, urbanOverride.bridge);
+    const urbanBridge = nativeUrbanBridgeFor(this);
+    if (urbanBridge) {
+      commitNativeUrbanState(this, urbanBridge);
+      installNativeMutationBridge(this, urbanBridge);
     }
   }
 
@@ -260,10 +272,8 @@ export class SimulationCore extends SimulationCoreBase {
     try {
       const result = super.bulldozeAt(x, y);
       if (result.ok && result.kind === 'building') {
-        const urbanOverride = activeNativeUrbanAuthorityOverride();
-        if (urbanOverride?.enabled) {
-          commitNativeUrbanState(this, urbanOverride.bridge);
-        }
+        const urbanBridge = nativeUrbanBridgeFor(this);
+        if (urbanBridge) commitNativeUrbanState(this, urbanBridge);
       }
       return result;
     } catch (error) {
@@ -279,10 +289,8 @@ export class SimulationCore extends SimulationCoreBase {
     const checkpoint = captureAuthoritativeTransactionCheckpoint(this);
     try {
       super.step(ticks);
-      const urbanOverride = activeNativeUrbanAuthorityOverride();
-      if (urbanOverride?.enabled) {
-        commitNativeUrbanState(this, urbanOverride.bridge);
-      }
+      const urbanBridge = nativeUrbanBridgeFor(this);
+      if (urbanBridge) commitNativeUrbanState(this, urbanBridge);
     } catch (error) {
       restoreAuthoritativeTransactionCheckpoint(this, checkpoint);
       throw error;
@@ -290,17 +298,13 @@ export class SimulationCore extends SimulationCoreBase {
   }
 
   override rebuildCadastreFromLegacyState(): void {
-    const urbanOverride = activeNativeUrbanAuthorityOverride();
-    const candidate = urbanOverride?.enabled
-      ? urbanOverride.bridge.rebuildUrbanLegacy(
-          nativeLegacyRebuildRequest(this),
-        ).urbanFabric
+    const urbanBridge = nativeUrbanBridgeFor(this);
+    const candidate = urbanBridge
+      ? urbanBridge.rebuildUrbanLegacy(nativeLegacyRebuildRequest(this)).urbanFabric
       : this.parcelGeneration.rebuild(this.terrain, this.roads, this.zoning);
     const result = rebuildServiceFor(this).rebuild(candidate, this.clock.tick);
     if (!result.committed) throw new ProtectedCanonicalParcelMutationError();
     reconcileCanonicalBuildingProjection(this);
-    if (urbanOverride?.enabled) {
-      commitNativeUrbanState(this, urbanOverride.bridge);
-    }
+    if (urbanBridge) commitNativeUrbanState(this, urbanBridge);
   }
 }
