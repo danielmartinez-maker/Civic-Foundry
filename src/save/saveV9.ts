@@ -1,3 +1,4 @@
+import { bindNativeUrbanMutationsAfterHydration } from '../native/urban/NativeUrbanHydrationBinding.ts';
 import {
   activeNativeUrbanAuthorityOverride,
   withNativeUrbanAuthoritySuspended,
@@ -82,6 +83,7 @@ export function hydrateCoreV9(input: unknown): SimulationCore {
   core.propertyMarket.restore(authoritativeUrban.propertyMarket, {
     isHistoricalParcelId: (parcelId) => historicalParcelIds.has(parcelId),
   });
+  if (native?.enabled) bindNativeUrbanMutationsAfterHydration(core, native.bridge);
   return core;
 }
 
