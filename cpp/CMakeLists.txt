@@ -10,6 +10,8 @@ option(CIVIC_BUILD_WASM "Build WebAssembly bridge" OFF)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Clipper2 CONFIG REQUIRED)
 add_library(civic_engine STATIC
+  engine/src/core/Kernel.cpp
+  engine/src/core/RandomStreamRegistry.cpp
   engine/src/geometry/Geometry.cpp
   engine/src/geometry/BooleanOps.cpp
   engine/src/world/Terrain.cpp
