@@ -23,6 +23,24 @@ export function getSnapshot(handle: NativeHandle): string;
 export function getEvents(handle: NativeHandle): string;
 export function getDomainHash(handle: NativeHandle, domain: string): DomainHash;
 export function createWorld(handle: NativeHandle, requestJson: string): string;
-export function restoreWorld(handle: NativeHandle, snapshotJson: string): string;
-export function createLegacyWorld(handle: NativeHandle, requestJson: string): string;
-export function runDesignStorm(handle: NativeHandle, requestJson: string): string;
+export function restoreWorld(
+  handle: NativeHandle,
+  snapshotJson: string,
+): string;
+export function createLegacyWorld(
+  handle: NativeHandle,
+  requestJson: string,
+): string;
+export function runDesignStorm(
+  handle: NativeHandle,
+  requestJson: string,
+): string;
+export function rebuildUrbanLegacy(
+  handle: NativeHandle,
+  requestJson: string,
+): string;
+export function restoreUrbanState(
+  handle: NativeHandle,
+  snapshotJson: string,
+): string;
+export function getUrbanSnapshot(handle: NativeHandle): string;
