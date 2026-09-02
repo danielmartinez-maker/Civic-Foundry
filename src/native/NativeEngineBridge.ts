@@ -74,7 +74,7 @@ function normalizeJsonValue(
         for (const key of Object.keys(value).sort()) {
           requireUnicodeScalarString(key, `${path} key`);
           const descriptor = descriptors[key];
-          if (!("value" in descriptor))
+          if (!descriptor || !("value" in descriptor))
             throw new Error(`${path} must not contain accessors`);
           normalized[key] = normalizeJsonValue(
             descriptor.value,
