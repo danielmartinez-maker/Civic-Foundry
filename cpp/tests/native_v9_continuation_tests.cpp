@@ -212,4 +212,41 @@ TEST(NativeV9Continuation, SaveLoadContinueMatchesUninterruptedNativeUrbanFuture
   EXPECT_EQ(json::parse(*first_final_save).at("clock").at("tick"), 50);
 }
 
+TEST(NativeV9Continuation, StagingSaveEnvelopeDoesNotMutateLiveKernelOrUrbanState) {
+  const auto empty = base_snapshot();
+  auto engine = civic::NativeEngine::create({.seed = 23, .startTick = 0, .speed = civic::SpeedMode::normal});
+  ASSERT_TRUE(engine.has_value()) << engine.error().message;
+  ASSERT_TRUE((*engine)->loadV9Authoritative(initial_save(empty).dump()).has_value());
+
+  auto admitted = (*engine)->applyUrbanCommand(runtime_command(building(), true).dump());
+  ASSERT_TRUE(admitted.has_value()) << admitted.error().message;
+  ASSERT_TRUE((*engine)->step(25).has_value());
+
+  auto kernel_before = (*engine)->snapshot();
+  auto urban_before = (*engine)->urbanSnapshot();
+  ASSERT_TRUE(kernel_before.has_value());
+  ASSERT_TRUE(urban_before.has_value());
+
+  auto envelope = initial_save(empty);
+  envelope["clock"]["tick"] = 999;
+  envelope["unknownCompatibility"] = {{"staged", true}};
+  auto staged = (*engine)->stageSaveV9Envelope(envelope.dump());
+  ASSERT_TRUE(staged.has_value()) << staged.error().message;
+
+  auto kernel_after = (*engine)->snapshot();
+  auto urban_after = (*engine)->urbanSnapshot();
+  ASSERT_TRUE(kernel_after.has_value());
+  ASSERT_TRUE(urban_after.has_value());
+  EXPECT_EQ(kernel_after->json, kernel_before->json);
+  EXPECT_EQ(json::parse(urban_after->json), json::parse(urban_before->json));
+  EXPECT_EQ((*engine)->tick(), 25U);
+
+  auto saved = (*engine)->saveV9Authoritative();
+  ASSERT_TRUE(saved.has_value()) << saved.error().message;
+  const auto saved_json = json::parse(*saved);
+  EXPECT_EQ(saved_json.at("clock").at("tick"), 25);
+  EXPECT_EQ(saved_json.at("buildingsV2").at(0).at("id"), "building:continuation:1");
+  EXPECT_TRUE(saved_json.at("unknownCompatibility").at("staged").get<bool>());
+}
+
 }  // namespace
