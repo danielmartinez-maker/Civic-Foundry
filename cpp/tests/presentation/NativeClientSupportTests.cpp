@@ -6,6 +6,7 @@
 #include <civic/presentation/NativePanels.hpp>
 #include <civic/presentation/NativeUi.hpp>
 #include <civic/presentation/PresentationIO.hpp>
+#include <civic/presentation/ReleaseGates.hpp>
 
 #include <array>
 #include <cstddef>
@@ -61,6 +62,29 @@ struct RecordingAudioOutput final : IAudioBusOutput {
 std::string readText(const std::filesystem::path& path) {
     std::ifstream input(path, std::ios::binary);
     return std::string((std::istreambuf_iterator<char>(input)), {});
+}
+CutoverEvidence acceptedCutoverEvidence() {
+    return CutoverEvidence{
+        .native_kernel_authority = true,
+        .native_world_cadastre_urban_authority = true,
+        .native_transport_authority = true,
+        .native_personhood_authority = true,
+        .native_economy_authority = true,
+        .native_persistence_replay = true,
+        .native_client_shipping = true,
+        .no_typescript_authority = true,
+        .deterministic_replay = true,
+        .thread_hash_match = true,
+        .large_city_performance_recorded = true,
+        .retained_scene = true,
+        .canonical_building_v2 = true,
+        .spatial_overlays = true,
+        .accessibility = true,
+        .robust_save = true,
+        .long_horizon_soak = true,
+        .reproducible_package = true,
+        .visual_acceptance = true,
+    };
 }
 }
 
@@ -252,4 +276,21 @@ TEST(NativePanels, CarriesInspectorTrendHistoryAndCausalContributorsWithoutAutho
     ASSERT_EQ(economy->diagnostics.size(), 1U);
     EXPECT_EQ(classifyTrend(economy->diagnostics.front()), TrendDirection::Up);
     EXPECT_EQ(economy->diagnostics.front().contributors.front().label, "Congestion");
+}
+
+TEST(CutoverGate, BlocksLegacyRetirementWhenAnyRequiredEvidenceIsMissing) {
+    auto evidence = acceptedCutoverEvidence();
+    evidence.native_world_cadastre_urban_authority = false;
+    evidence.visual_acceptance = false;
+
+    const auto report = evaluateCutover(evidence);
+    EXPECT_FALSE(report.ready);
+    EXPECT_TRUE(report.hasBlocker("native-world-cadastre-urban-authority"));
+    EXPECT_TRUE(report.hasBlocker("native-visual-acceptance"));
+}
+
+TEST(CutoverGate, AllowsRetirementOnlyWhenEveryStack4AcceptanceFactIsTrue) {
+    const auto report = evaluateCutover(acceptedCutoverEvidence());
+    EXPECT_TRUE(report.ready);
+    EXPECT_TRUE(report.blockers.empty());
 }
