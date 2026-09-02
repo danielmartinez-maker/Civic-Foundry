@@ -48,6 +48,7 @@ if(CIVIC_BUILD_TESTS)
   add_executable(civic_engine_tests
     tests/contract_red_tests.cpp
     tests/world_foundation_tests.cpp
+    tests/world_scenario_tests.cpp
     tests/cadastre_mutation_tests.cpp
     tests/parcel_generation_tests.cpp
     tests/legal_history_tests.cpp
