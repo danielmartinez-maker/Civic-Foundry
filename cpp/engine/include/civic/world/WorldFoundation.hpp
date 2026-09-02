@@ -80,14 +80,18 @@ class WorldFoundation final {
 public:
   [[nodiscard]] static civic::core::Result<WorldFoundation> generate(std::uint32_t seed, const WorldConfig& config) noexcept;
   [[nodiscard]] static civic::core::Result<WorldFoundation> generate(std::uint32_t seed, const WorldConfig& config, const ScenarioWorldDefinition& scenario) noexcept;
-  [[nodiscard]] static civic::core::Result<WorldFoundation> restore(WorldSnapshot snapshot) noexcept;
+  [[nodiscard]] static civic::core::Result<WorldFoundation> restore(WorldSnapshot snapshot, std::optional<FloodResult> last_flood_result = std::nullopt) noexcept;
   [[nodiscard]] const TerrainField& terrain() const noexcept { return snapshot_.terrain; }
   [[nodiscard]] const GeographyHierarchy& geography() const noexcept { return snapshot_.geography; }
   [[nodiscard]] const HydrologyState& hydrology() const noexcept { return snapshot_.hydrology; }
   [[nodiscard]] const WorldSnapshot& snapshot() const noexcept { return snapshot_; }
+  [[nodiscard]] const std::optional<FloodResult>& last_flood_result() const noexcept { return last_flood_result_; }
+  [[nodiscard]] civic::core::Result<FloodResult> run_design_storm(const DesignStormEvent&, const std::vector<double>* impervious_fraction = nullptr) noexcept;
   [[nodiscard]] std::uint64_t deterministic_hash() const noexcept;
 private:
-  explicit WorldFoundation(WorldSnapshot snapshot) : snapshot_(std::move(snapshot)) {}
+  explicit WorldFoundation(WorldSnapshot snapshot, std::optional<FloodResult> last_flood_result = std::nullopt)
+      : snapshot_(std::move(snapshot)), last_flood_result_(std::move(last_flood_result)) {}
   WorldSnapshot snapshot_{};
+  std::optional<FloodResult> last_flood_result_{};
 };
 }
