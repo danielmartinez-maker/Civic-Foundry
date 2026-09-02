@@ -271,6 +271,7 @@ public:
     [[nodiscard]] RenderRevision appliedRevision() const noexcept { return applied_revision_; }
 private:
     RenderRevision applied_revision_{};
+    bool initialized_{false};
     std::map<std::string, RenderRevision> terrain_;
     std::map<std::string, RenderRevision> parcels_;
     std::map<std::string, RenderRevision> roads_;
