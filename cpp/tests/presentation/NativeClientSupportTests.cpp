@@ -23,10 +23,11 @@ std::filesystem::path scratch(const char* name) {
     return path;
 }
 std::vector<std::byte> tinyGlb() {
-    const std::string json = R"({"asset":{"version":"2.0"},"meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":0}]}],"materials":[{}],"textures":[{}]})";
+    const std::string json = R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":36}],"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36}],"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":0}]}],"materials":[{}],"textures":[{}]})";
     std::string padded = json;
     while (padded.size() % 4 != 0) padded.push_back(' ');
-    const std::uint32_t total = static_cast<std::uint32_t>(12 + 8 + padded.size());
+    constexpr std::uint32_t binary_size = 36U;
+    const std::uint32_t total = static_cast<std::uint32_t>(12U + 8U + padded.size() + 8U + binary_size);
     std::vector<std::byte> bytes(total);
     auto put32 = [&](std::size_t offset, std::uint32_t value) {
         bytes[offset] = static_cast<std::byte>(value & 0xffU);
@@ -37,6 +38,9 @@ std::vector<std::byte> tinyGlb() {
     put32(0, 0x46546c67U); put32(4, 2U); put32(8, total);
     put32(12, static_cast<std::uint32_t>(padded.size())); put32(16, 0x4e4f534aU);
     for (std::size_t i = 0; i < padded.size(); ++i) bytes[20 + i] = static_cast<std::byte>(static_cast<unsigned char>(padded[i]));
+    const auto bin_header = 20U + padded.size();
+    put32(bin_header, binary_size);
+    put32(bin_header + 4U, 0x004e4942U);
     return bytes;
 }
 struct Sink final : ICommandSink {
@@ -72,7 +76,7 @@ TEST(SaveWorkflow, AtomicWriteLeavesNoTemporaryFileAndPreservesExactPayload) {
 TEST(GlbRuntime, ParsesSupportedContainerAndCountsRuntimeResources) {
     GlbLoader loader{};
     const auto asset = loader.load(tinyGlb(), "fixture.glb");
-    ASSERT_TRUE(asset.has_value());
+    ASSERT_TRUE(asset.has_value()) << asset.error();
     EXPECT_EQ(asset->primitive_count, 1U);
     EXPECT_EQ(asset->material_count, 1U);
     EXPECT_EQ(asset->texture_count, 1U);
