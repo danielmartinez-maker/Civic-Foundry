@@ -23,6 +23,7 @@
     ParkingSystem p; p.restore(s.parking);
     IncidentSystem i; i.restore(s.incidents);
     TrafficFlowState f; f.restore(s.traffic);
+    RoadTrafficState r; r.restore(s.network,s.road_traffic);
     TransitNetwork t; t.restore(s.transit);
     PassengerQueues q; q.restore(s.queues);
     TransitOperations o; o.restore(s.operations);
