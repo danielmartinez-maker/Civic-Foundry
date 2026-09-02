@@ -51,6 +51,12 @@ struct LegacyRoadAuthorityV9 final {
     std::string_view canonicalSaveJson,
     const LegacyRoadAuthorityV9& roads,
     const transport::TransportationSnapshot& transportation);
+[[nodiscard]] Result<std::string> writeNativeEngineV9(
+    std::string_view canonicalSaveJson,
+    const LegacyRoadAuthorityV9& roads,
+    const transport::TransportationSnapshot& transportation,
+    std::uint64_t tick,
+    std::uint32_t speed);
 [[nodiscard]] Result<std::string> transportationSnapshotJson(const transport::TransportationSnapshot& transportation);
 [[nodiscard]] Result<TransportationContinuationV9> parseTransportationContinuationV9(std::string_view canonicalSaveJson);
 [[nodiscard]] Result<transport::CarriagewayId> resolveLegacyEdgeV9(
