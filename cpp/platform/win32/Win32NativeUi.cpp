@@ -37,6 +37,8 @@ struct Win32NativeUi::Impl {
     float applied_style_scale{1.0F};
     bool initialized{};
 
+    ~Impl() { shutdown(); }
+
     static void allocateDescriptor(
         ImGui_ImplDX12_InitInfo* info,
         D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu,
@@ -98,7 +100,7 @@ struct Win32NativeUi::Impl {
 };
 
 Win32NativeUi::Win32NativeUi(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
-Win32NativeUi::~Win32NativeUi() { if (impl_) impl_->shutdown(); }
+Win32NativeUi::~Win32NativeUi() = default;
 Win32NativeUi::Win32NativeUi(Win32NativeUi&&) noexcept = default;
 Win32NativeUi& Win32NativeUi::operator=(Win32NativeUi&&) noexcept = default;
 
