@@ -74,6 +74,7 @@ if(CIVIC_BUILD_TESTS)
     tests/parity/ParityTests.cpp
     tests/parity/WasmReferenceFixtureTests.cpp
     tests/presentation/PresentationTests.cpp
+    tests/presentation/PresentationInvalidationTests.cpp
     tests/presentation/RenderPipelineTests.cpp
     tests/presentation/NativeClientSupportTests.cpp
     tests/presentation/NativeHudTests.cpp
