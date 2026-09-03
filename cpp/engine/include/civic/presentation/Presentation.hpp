@@ -150,6 +150,7 @@ struct ToolPreviewState {
     bool valid{false};
     std::vector<Point2> geometry;
     std::string invalid_reason;
+    std::vector<std::string> target_ids;
 };
 
 struct KeyBindings {
