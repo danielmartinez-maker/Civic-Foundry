@@ -13,6 +13,7 @@
 #include <civic/presentation/NativeWindow.hpp>
 #include <civic/presentation/PresentationIO.hpp>
 #include <civic/presentation/PresentationInvalidation.hpp>
+#include <civic/presentation/ReleaseGates.hpp>
 #include <civic/presentation/RenderPipeline.hpp>
 #include <civic/presentation/SceneGeometry.hpp>
 #include <civic/presentation/Win32NativeUi.hpp>
@@ -22,6 +23,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -706,8 +708,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     auto engine = civic::NativeEngine::create({});
     if (!engine) return showError("Civic Foundry Native Engine Error", engine.error().message, 4);
 
-    const auto world = (*engine)->domainHash("world");
-    const bool authority_cutover_gated = !world || world->ownership == civic::DomainOwnership::unowned;
+    std::array<DomainAuthorityEvidence, kAlphaGameplayAuthorityDomains.size()> authority_evidence{};
+    for (std::size_t index = 0; index < kAlphaGameplayAuthorityDomains.size(); ++index) {
+        const auto domain = kAlphaGameplayAuthorityDomains[index];
+        const auto hash = (*engine)->domainHash(domain);
+        authority_evidence[index] = DomainAuthorityEvidence{
+            .domain = domain,
+            .owned = hash && hash->ownership == civic::DomainOwnership::owned,
+        };
+    }
+    const bool authority_cutover_gated = !alphaGameplayAuthorityReady(authority_evidence);
     if (authority_cutover_gated) {
         SetWindowTextW(static_cast<HWND>((*window)->nativeHandle()), L"Civic Foundry Native Client — presentation active / authority cutover gated");
     }
