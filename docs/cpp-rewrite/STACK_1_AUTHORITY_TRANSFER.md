@@ -119,6 +119,16 @@ Stack 1 remains subject to all existing V9 and 2R invariants plus native parity 
 - Linux GCC/Clang and Windows MSVC native gates;
 - TypeScript fast verification and production/browser acceptance gates.
 
+### Explicit Stack 1 gap-closure gates
+
+The final Stack 1 audit adds focused evidence for plan requirements that were previously covered only indirectly:
+
+- `tests/fixtures/cpp-migration/geometry-v1.json` is a shared TypeScript/C++ legal-geometry contract covering winding, canonical rotation, signed area, centroid, bounds, point containment, segment intersection and deterministic polygon hashing.
+- `tests/cpp-geometry-fixture-parity.test.ts` and `cpp/tests/geometry/GeometryFixtureTests.cpp` consume the same geometry fixture from both runtimes.
+- `tests/native-world-seed-parity.mjs` differentially executes 128 fixed seeds across all six world presets, includes scenario-override cases, compares every terrain field through named domain hashes, compares named hydrology-stage hashes, and reports the first mismatching entity/field path.
+- Native geography now exposes deterministic hierarchy lookup plus a bounds-prefiltered `GeographySpatialIndex`; `cpp/tests/geography_hierarchy_tests.cpp` proves deepest-containing-entity lookup, kind-filtered lookup, deterministic child ordering and snapshot/restore equivalence.
+- The Windows Node-API CI job executes the 128-seed differential parity matrix in addition to the shared migration fixture and V9 cross-language continuation gates.
+
 ## Non-goals
 
 Stack 1 does not transfer authority for:
