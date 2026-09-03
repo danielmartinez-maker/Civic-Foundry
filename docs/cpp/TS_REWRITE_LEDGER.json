@@ -1143,12 +1143,12 @@
       "inventoryId": "CF-TS-0095",
       "path": "src/simulation/kernel/CommandBus.ts",
       "kind": "production",
-      "assignedStack": null,
-      "targetNativeOwner": null,
-      "nativeTestOwner": null,
-      "status": "pending",
+      "assignedStack": "K001",
+      "targetNativeOwner": "civic::CommandQueue",
+      "nativeTestOwner": "cpp/tests/core/CoreTests.cpp",
+      "status": "shadow_complete",
       "currentAuthority": "typescript",
-      "parityClassification": "unclassified",
+      "parityClassification": "parity",
       "cutoverDependencies": []
     },
     {
