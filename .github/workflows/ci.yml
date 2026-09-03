@@ -27,6 +27,11 @@ jobs:
           cache: npm
       - name: Install project dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: C++ rewrite TypeScript monotonicity guard
+        run: |
+          npm run cpp:ts-ledger:verify
+          npm run test:cpp-ts-count-guard
+          npm run cpp:ts-count:guard
       - name: Fast verification
         run: npm run verify:fast
       - name: Dependency security audit
