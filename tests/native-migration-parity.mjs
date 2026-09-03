@@ -124,9 +124,11 @@ function withoutTransportationDomain(result) {
     ...result,
     checkpoints: Object.fromEntries(
       Object.entries(result.checkpoints).map(([tick, checkpoint]) => {
-        const { transportation: _transportation, ...domainHashes } =
+        const { transportation: _transportationHash, ...domainHashes } =
           checkpoint.domainHashes;
-        return [tick, { ...checkpoint, domainHashes }];
+        const { transportation: _transportationSnapshot, ...snapshot } =
+          checkpoint.snapshot;
+        return [tick, { ...checkpoint, snapshot, domainHashes }];
       }),
     ),
   };
