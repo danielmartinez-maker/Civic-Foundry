@@ -14,9 +14,11 @@ const require = createRequire(import.meta.url);
 const addon = require(resolve(process.argv[2]));
 
 const SEED_CASES = Object.freeze(
-  Array.from({ length: 128 }, (_, index) =>
-    // Knuth's multiplicative constant gives a stable spread across uint32.
-    Math.imul(index + 1, 0x9e3779b1) >>> 0,
+  Array.from(
+    { length: 128 },
+    (_, index) =>
+      // Knuth's multiplicative constant gives a stable spread across uint32.
+      Math.imul(index + 1, 0x9e3779b1) >>> 0,
   ),
 );
 
@@ -135,7 +137,10 @@ for (let index = 0; index < SEED_CASES.length; index += 1) {
   executed += 1;
 }
 
-assert.ok(executed >= 100, "Stack 1 differential world parity must cover 100+ fixed seeds");
+assert.ok(
+  executed >= 100,
+  "Stack 1 differential world parity must cover 100+ fixed seeds",
+);
 console.log(
   `Native/TypeScript world differential parity passed for ${executed} fixed seeds across ${WORLD_FORM_PRESETS.length} presets.`,
 );
