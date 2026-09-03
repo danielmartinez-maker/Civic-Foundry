@@ -114,17 +114,20 @@ TEST(SceneGeometry, GeometryOutsideThePixelViewportIsCulledBeforeGpuUpload) {
 }
 
 TEST(SceneGeometry, ValidToolPreviewProducesVisiblePresentationOnlyOverlayGeometry) {
-    SceneGeometryBuilder builder{};
+    RenderPacketBuilder packet_builder{};
+    SceneGeometryBuilder geometry_builder{};
     IsometricCamera camera{};
-    RenderPacket packet{};
-    packet.tool_preview = ToolPreviewState{
+    FrameSnapshot snapshot{};
+    snapshot.world = {20U, 20U};
+    snapshot.tool_preview = ToolPreviewState{
         .tool_id = "road",
         .valid = true,
         .geometry = {{2.0, 7.0}, {8.0, 7.0}},
         .invalid_reason = {},
     };
 
-    const auto scene = builder.build(packet, camera, WorldSize{20,20}, PixelViewport{1280,720});
+    const auto packet = packet_builder.build(snapshot, {0.0, 0.0, 20.0, 20.0});
+    const auto scene = geometry_builder.build(packet, camera, snapshot.world, PixelViewport{1280,720});
 
     EXPECT_FALSE(scene.overlay.empty());
     EXPECT_TRUE(scene.opaque.empty());
