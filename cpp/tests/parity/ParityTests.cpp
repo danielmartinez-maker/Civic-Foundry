@@ -163,3 +163,16 @@ TEST(CAbi, CommandPayloadCanonicalKeysUseJavaScriptUtf16OrdinalOrder) {
     cf_buffer_free(snapshot);
     cf_engine_destroy(engine);
 }
+
+TEST(RandomParity, ListNamesUsesJavaScriptUtf16OrdinalOrder) {
+    civic::RandomStreamRegistry registry(31);
+    ASSERT_TRUE(registry.stream(kPrivateBmp));
+    ASSERT_TRUE(registry.stream("traffic"));
+    ASSERT_TRUE(registry.stream(kSupplementary));
+
+    const auto names = registry.listNames();
+    ASSERT_EQ(names.size(), 3U);
+    EXPECT_EQ(names[0], "traffic");
+    EXPECT_EQ(names[1], kSupplementary);
+    EXPECT_EQ(names[2], kPrivateBmp);
+}
