@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import type { Point2, Polygon2, Segment2 } from "../src/world/geometry/GeometryTypes.ts";
+import type {
+  Point2,
+  Polygon2,
+  Segment2,
+} from "../src/world/geometry/GeometryTypes.ts";
 import {
   pointInPolygon,
   polygonBounds,
@@ -75,9 +79,8 @@ function canonicalVertices(vertices: readonly FixturePoint[]): FixturePoint[] {
     }
   }
   return Array.from({ length: normalized.points.length }, (_, offset) => {
-    const value = normalized.points[
-      (minimumIndex + offset) % normalized.points.length
-    ]!;
+    const value =
+      normalized.points[(minimumIndex + offset) % normalized.points.length]!;
     return [value.x, value.y] as const;
   });
 }
