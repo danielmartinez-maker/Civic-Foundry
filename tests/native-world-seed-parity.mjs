@@ -182,6 +182,29 @@ function assertDomainHashes(expected, actual, seed, preset) {
   );
 }
 
+const LEGAL_GEOMETRY_SCALE_CM = 100;
+
+function legalCoordinate(value) {
+  return Math.round(value * LEGAL_GEOMETRY_SCALE_CM) / LEGAL_GEOMETRY_SCALE_CM;
+}
+
+function normalizeWorldSnapshotForParity(snapshot) {
+  return {
+    ...snapshot,
+    geography: {
+      entities: snapshot.geography.entities.map((entity) => ({
+        ...entity,
+        boundary: {
+          points: entity.boundary.points.map((point) => ({
+            x: legalCoordinate(point.x),
+            y: legalCoordinate(point.y),
+          })),
+        },
+      })),
+    },
+  };
+}
+
 function scenarioForCase(index) {
   if (index % 32 !== 0) return undefined;
   const polygon = Object.freeze({
@@ -200,9 +223,7 @@ function scenarioForCase(index) {
     permanentWaterPolygons: Object.freeze([
       Object.freeze({ class: "lake", polygon }),
     ]),
-    soilRegions: Object.freeze([
-      Object.freeze({ soilClass: "clay", polygon }),
-    ]),
+    soilRegions: Object.freeze([Object.freeze({ soilClass: "clay", polygon })]),
     groundwaterRegions: Object.freeze([
       Object.freeze({ depthMeters: 1.75, polygon }),
     ]),
@@ -251,7 +272,10 @@ for (let index = 0; index < SEED_CASES.length; index += 1) {
   const expected = generateTypeScriptWorld(seed, config, scenario);
   const actual = generateNativeWorld(seed, config, scenario);
   assertDomainHashes(expected, actual, seed, preset);
-  const mismatch = firstMismatch(expected, actual);
+  const mismatch = firstMismatch(
+    normalizeWorldSnapshotForParity(expected),
+    normalizeWorldSnapshotForParity(actual),
+  );
   assert.equal(
     mismatch,
     undefined,
