@@ -1155,12 +1155,12 @@
       "inventoryId": "CF-TS-0096",
       "path": "src/simulation/kernel/DomainEventJournal.ts",
       "kind": "production",
-      "assignedStack": null,
-      "targetNativeOwner": null,
+      "assignedStack": "K002",
+      "targetNativeOwner": "civic::DomainEventJournal",
       "nativeTestOwner": null,
-      "status": "pending",
+      "status": "shadow_complete",
       "currentAuthority": "typescript",
-      "parityClassification": "unclassified",
+      "parityClassification": "parity",
       "cutoverDependencies": []
     },
     {
