@@ -206,19 +206,15 @@ test("Task 20 keeps BuildingV2 native-first after construction override scope en
 test("Task 20 V9 hydration rebinds cadastral mutations to native authority", () => {
   const save = createUrbanFabricV9Save(23);
   const bridge = new FakeNativeUrbanBridge();
-  const core = withNativeUrbanAuthorityOverride(
-    { enabled: true, bridge },
-    () => hydrateCoreV9(save),
+  const core = withNativeUrbanAuthorityOverride({ enabled: true, bridge }, () =>
+    hydrateCoreV9(save),
   );
   const commandsBeforeMutation = bridge.commandCalls.length;
 
   core.cadastralMutations.removeEasement("easement:missing");
 
   assert.equal(bridge.commandCalls.length, commandsBeforeMutation + 1);
-  assert.equal(
-    bridge.commandCalls.at(-1)?.type,
-    "cadastre.remove-easement",
-  );
+  assert.equal(bridge.commandCalls.at(-1)?.type, "cadastre.remove-easement");
 });
 
 test("Task 20 legacy BuildingSystem is rebuilt from native BuildingV2 and cannot retain deleted buildings", () => {
