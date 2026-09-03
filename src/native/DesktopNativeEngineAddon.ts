@@ -5,7 +5,13 @@ import type {
 
 export type DesktopNativeEngineApi = Readonly<{
   available(): boolean;
-  createEngine(config?: Readonly<{ seed?: number; startTick?: number; speed?: 0 | 1 | 2 | 4 }>): boolean;
+  createEngine(
+    config?: Readonly<{
+      seed?: number;
+      startTick?: number;
+      speed?: 0 | 1 | 2 | 4;
+    }>,
+  ): boolean;
   destroyEngine(): boolean;
   submitCommands(commandsJson: string): boolean;
   step(ticks: number): boolean;
@@ -13,14 +19,17 @@ export type DesktopNativeEngineApi = Readonly<{
   saveV9(): string;
   getSnapshot(): string;
   getEvents(): string;
-  getDomainHash(domain: string): Readonly<{ ownership: number; version: number; value: string }>;
+  getDomainHash(
+    domain: string,
+  ): Readonly<{ ownership: number; version: number; value: string }>;
 }>;
 
 const desktopHandle = Object.freeze({ desktopNativeEngine: true });
 
 function apiFromScope(scope: unknown): DesktopNativeEngineApi | undefined {
   if (!scope || typeof scope !== "object") return undefined;
-  const candidate = (scope as Readonly<Record<string, unknown>>).__CIVIC_NATIVE_DESKTOP__;
+  const candidate = (scope as Readonly<Record<string, unknown>>)
+    .__CIVIC_NATIVE_DESKTOP__;
   if (!candidate || typeof candidate !== "object") return undefined;
   const api = candidate as Partial<DesktopNativeEngineApi>;
   if (
@@ -34,7 +43,8 @@ function apiFromScope(scope: unknown): DesktopNativeEngineApi | undefined {
     typeof api.getSnapshot !== "function" ||
     typeof api.getEvents !== "function" ||
     typeof api.getDomainHash !== "function"
-  ) return undefined;
+  )
+    return undefined;
   return api as DesktopNativeEngineApi;
 }
 
@@ -46,8 +56,15 @@ export class DesktopNativeEngineAddon implements NativeEngineAddon {
     this.api = api;
   }
 
-  createEngine(config: Readonly<{ seed?: number; startTick?: number; speed?: 0 | 1 | 2 | 4 }> = {}): NativeEngineHandle {
-    if (this.active) throw new Error("desktop native engine is already initialized");
+  createEngine(
+    config: Readonly<{
+      seed?: number;
+      startTick?: number;
+      speed?: 0 | 1 | 2 | 4;
+    }> = {},
+  ): NativeEngineHandle {
+    if (this.active)
+      throw new Error("desktop native engine is already initialized");
     this.api.createEngine(config);
     this.active = true;
     return desktopHandle;
@@ -89,18 +106,28 @@ export class DesktopNativeEngineAddon implements NativeEngineAddon {
     return this.api.getEvents();
   }
 
-  getDomainHash(handle: NativeEngineHandle, domain: string): Readonly<{ ownership: number; version: number; value: bigint }> {
+  getDomainHash(
+    handle: NativeEngineHandle,
+    domain: string,
+  ): Readonly<{ ownership: number; version: number; value: bigint }> {
     this.requireHandle(handle);
     const result = this.api.getDomainHash(domain);
-    return Object.freeze({ ownership: result.ownership, version: result.version, value: BigInt(result.value) });
+    return Object.freeze({
+      ownership: result.ownership,
+      version: result.version,
+      value: BigInt(result.value),
+    });
   }
 
   private requireHandle(handle: NativeEngineHandle): void {
-    if (!this.active || handle !== desktopHandle) throw new Error("invalid desktop native engine handle");
+    if (!this.active || handle !== desktopHandle)
+      throw new Error("invalid desktop native engine handle");
   }
 }
 
-export function desktopNativeEngineAddonFromGlobal(scope: unknown = globalThis): NativeEngineAddon | undefined {
+export function desktopNativeEngineAddonFromGlobal(
+  scope: unknown = globalThis,
+): NativeEngineAddon | undefined {
   const api = apiFromScope(scope);
   if (!api || !api.available()) return undefined;
   return new DesktopNativeEngineAddon(api);

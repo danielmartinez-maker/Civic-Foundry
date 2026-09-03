@@ -13,22 +13,33 @@ export class NativeBackedTrafficSystem extends TrafficSystem {
     this.native = native;
   }
 
-  override submitTrip(trip: TripRequest, route: RouteResult, tick: number, _freeFlowTicks = route.totalCost): string | null {
+  override submitTrip(
+    trip: TripRequest,
+    route: RouteResult,
+    tick: number,
+    _freeFlowTicks = route.totalCost,
+  ): string | null {
     const start = route.nodeIds[0];
     const end = route.nodeIds.at(-1);
-    if (!start || !end) throw new Error("native traffic trip requires route endpoints");
-    this.native.submitCarTrip({
-      id: trip.id,
-      sourceTripId: trip.id,
-      originBuildingId: trip.originBuildingId,
-      destinationBuildingId: trip.destinationBuildingId,
-      originRoadNodeId: start,
-      destinationRoadNodeId: end,
-      departureTick: tick,
-      travelerWeight: trip.travelerWeight,
-      purpose: trip.purpose,
-    }, trip.travelerWeight);
-    const vehicle = this.native.snapshot().roadTraffic.vehicles.find((candidate) => candidate.tripId === trip.id);
+    if (!start || !end)
+      throw new Error("native traffic trip requires route endpoints");
+    this.native.submitCarTrip(
+      {
+        id: trip.id,
+        sourceTripId: trip.id,
+        originBuildingId: trip.originBuildingId,
+        destinationBuildingId: trip.destinationBuildingId,
+        originRoadNodeId: start,
+        destinationRoadNodeId: end,
+        departureTick: tick,
+        travelerWeight: trip.travelerWeight,
+        purpose: trip.purpose,
+      },
+      trip.travelerWeight,
+    );
+    const vehicle = this.native
+      .snapshot()
+      .roadTraffic.vehicles.find((candidate) => candidate.tripId === trip.id);
     return vehicle?.id ?? null;
   }
 
