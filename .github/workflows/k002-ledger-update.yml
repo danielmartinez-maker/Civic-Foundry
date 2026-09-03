@@ -1,0 +1,45 @@
+name: K002 ledger one-shot
+
+on:
+  push:
+    branches:
+      - feature/k002-domain-event-journal-cpp
+    paths:
+      - .github/workflows/k002-ledger-update.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-ledger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/k002-domain-event-journal-cpp
+          fetch-depth: 0
+      - name: Update K002 ledger entry
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'docs/cpp/TS_REWRITE_LEDGER.json';
+          const ledger = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const entry = ledger.entries.find((candidate) => candidate.path === 'src/simulation/kernel/DomainEventJournal.ts');
+          if (!entry) throw new Error('DomainEventJournal.ts ledger entry not found');
+          Object.assign(entry, {
+            assignedStack: 'K002',
+            targetNativeOwner: 'civic::DomainEventJournal',
+            status: 'shadow_complete',
+            currentAuthority: 'typescript',
+            parityClassification: 'parity',
+          });
+          fs.writeFileSync(path, `${JSON.stringify(ledger, null, 2)}\n`, 'utf8');
+          NODE
+          git diff --check
+          node scripts/cpp/ts-rewrite-ledger.mjs verify
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/cpp/TS_REWRITE_LEDGER.json
+          git commit -m "ledger(k002): record domain event journal shadow parity"
+          git push origin HEAD:feature/k002-domain-event-journal-cpp
