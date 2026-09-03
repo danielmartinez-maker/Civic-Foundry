@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <civic/core/Error.hpp>
 #include <civic/core/Utf16Ordinal.hpp>
@@ -29,6 +30,7 @@ public:
     [[nodiscard]] Result<SeededRandom*> stream(std::string_view name);
     [[nodiscard]] RandomStreamSnapshot snapshot() const;
     [[nodiscard]] Result<void> restore(const RandomStreamSnapshot& snapshot);
+    [[nodiscard]] std::vector<std::string> listNames() const;
 private:
     [[nodiscard]] static Result<std::uint32_t> hashName(std::string_view utf8_name);
     [[nodiscard]] static std::uint32_t mix32(std::uint32_t value) noexcept;
