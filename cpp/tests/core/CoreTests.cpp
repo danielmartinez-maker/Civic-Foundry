@@ -2,6 +2,7 @@
 #include <limits>
 #include <vector>
 #include <civic/core/Kernel.hpp>
+#include <civic/core/KernelTypes.hpp>
 #include <civic/core/NativeEngine.hpp>
 #include <civic/core/RandomStreamRegistry.hpp>
 #include <civic/core/StrongId.hpp>
