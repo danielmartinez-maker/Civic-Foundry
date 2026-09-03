@@ -105,7 +105,21 @@ function normalizedHashValue(value) {
       ? value
       : Math.round(value / ABSOLUTE_FLOAT_TOLERANCE);
   }
+  if (Array.isArray(value)) return value.map(normalizedHashValue);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, normalizedHashValue(value[key])]),
+    );
+  }
   return value;
+}
+
+function domainHash(value) {
+  return createHash("sha256")
+    .update(JSON.stringify(normalizedHashValue(value)))
+    .digest("hex");
 }
 
 function terrainFieldHashes(snapshot) {
@@ -116,54 +130,112 @@ function terrainFieldHashes(snapshot) {
       .sort()
       .map((field) => [
         field,
-        createHash("sha256")
-          .update(
-            JSON.stringify(
-              snapshot.terrain.samples.map((sample) =>
-                normalizedHashValue(sample[field]),
-              ),
-            ),
-          )
-          .digest("hex"),
+        domainHash(snapshot.terrain.samples.map((sample) => sample[field])),
       ]),
   );
 }
 
-function assertTerrainDomainHashes(expected, actual, seed, preset) {
-  const expectedHashes = terrainFieldHashes(expected);
-  const actualHashes = terrainFieldHashes(actual);
+function hydrologyStageHashes(snapshot) {
+  const hydrology = snapshot.hydrology;
+  return Object.freeze({
+    depressionResolution: domainHash(hydrology.conditionedElevationMeters),
+    drainageDirectionGraph: domainHash(hydrology.receiver),
+    watershedAssignment: domainHash({
+      watersheds: hydrology.watersheds,
+      watershedIds: hydrology.watershedIds,
+    }),
+    flowAccumulation: domainHash(hydrology.flowAccumulation),
+    channelGeneration: domainHash(hydrology.channels),
+    floodSusceptibility: domainHash(hydrology.floodSusceptibility),
+  });
+}
+
+function assertNamedHashes(expectedHashes, actualHashes, label, seed, preset) {
   assert.deepEqual(
     Object.keys(actualHashes),
     Object.keys(expectedHashes),
-    `Stack 1 terrain field schema mismatch for seed=${seed} preset=${preset}`,
+    `Stack 1 ${label} schema mismatch for seed=${seed} preset=${preset}`,
   );
   for (const field of Object.keys(expectedHashes)) {
     assert.equal(
       actualHashes[field],
       expectedHashes[field],
-      `Stack 1 terrain domain hash mismatch for seed=${seed} preset=${preset} field=${field}`,
+      `Stack 1 ${label} hash mismatch for seed=${seed} preset=${preset} field=${field}`,
     );
   }
 }
 
-function generateTypeScriptWorld(seed, config) {
+function assertDomainHashes(expected, actual, seed, preset) {
+  assertNamedHashes(
+    terrainFieldHashes(expected),
+    terrainFieldHashes(actual),
+    "terrain field",
+    seed,
+    preset,
+  );
+  assertNamedHashes(
+    hydrologyStageHashes(expected),
+    hydrologyStageHashes(actual),
+    "hydrology stage",
+    seed,
+    preset,
+  );
+}
+
+function scenarioForCase(index) {
+  if (index % 32 !== 0) return undefined;
+  const polygon = Object.freeze({
+    points: Object.freeze([
+      Object.freeze({ x: 0, y: 0 }),
+      Object.freeze({ x: 3, y: 0 }),
+      Object.freeze({ x: 3, y: 3 }),
+      Object.freeze({ x: 0, y: 3 }),
+    ]),
+  });
+  return Object.freeze({
+    id: `seed-matrix-scenario:${index}`,
+    elevationOverrides: Object.freeze([
+      Object.freeze({ x: 1, y: 1, elevationMeters: 73.25 + index }),
+    ]),
+    permanentWaterPolygons: Object.freeze([
+      Object.freeze({ class: "lake", polygon }),
+    ]),
+    soilRegions: Object.freeze([
+      Object.freeze({ soilClass: "clay", polygon }),
+    ]),
+    groundwaterRegions: Object.freeze([
+      Object.freeze({ depthMeters: 1.75, polygon }),
+    ]),
+    contaminationRegions: Object.freeze([
+      Object.freeze({ index: 0.35, polygon }),
+    ]),
+  });
+}
+
+function generateTypeScriptWorld(seed, config, scenario) {
   return WorldFoundation.generate({
     seed,
     config,
     randomRegistry: new RandomStreamRegistry(seed),
+    ...(scenario === undefined ? {} : { scenario }),
   }).snapshotAuthoritative();
 }
 
-function generateNativeWorld(seed, config) {
+function generateNativeWorld(seed, config, scenario) {
   const bridge = new NativeEngineBridge(addon, { seed });
   try {
-    return bridge.createWorld({ seed, config });
+    return bridge.createWorld({
+      seed,
+      config,
+      ...(scenario === undefined ? {} : { scenario }),
+    });
   } finally {
     bridge.dispose();
   }
 }
 
 let executed = 0;
+let scenarioCases = 0;
 for (let index = 0; index < SEED_CASES.length; index += 1) {
   const seed = SEED_CASES[index];
   const preset = WORLD_FORM_PRESETS[index % WORLD_FORM_PRESETS.length];
@@ -173,10 +245,12 @@ for (let index = 0; index < SEED_CASES.length; index += 1) {
     metersPerCell: index % 2 === 0 ? 30 : 20,
     preset,
   });
+  const scenario = scenarioForCase(index);
+  if (scenario !== undefined) scenarioCases += 1;
 
-  const expected = generateTypeScriptWorld(seed, config);
-  const actual = generateNativeWorld(seed, config);
-  assertTerrainDomainHashes(expected, actual, seed, preset);
+  const expected = generateTypeScriptWorld(seed, config, scenario);
+  const actual = generateNativeWorld(seed, config, scenario);
+  assertDomainHashes(expected, actual, seed, preset);
   const mismatch = firstMismatch(expected, actual);
   assert.equal(
     mismatch,
@@ -190,6 +264,10 @@ assert.ok(
   executed >= 100,
   "Stack 1 differential world parity must cover 100+ fixed seeds",
 );
+assert.ok(
+  scenarioCases >= 4,
+  "Stack 1 differential world parity must cover scenario overrides",
+);
 console.log(
-  `Native/TypeScript world differential parity passed for ${executed} fixed seeds across ${WORLD_FORM_PRESETS.length} presets with per-field terrain hashes.`,
+  `Native/TypeScript world differential parity passed for ${executed} fixed seeds across ${WORLD_FORM_PRESETS.length} presets, ${scenarioCases} scenario-override cases, per-field terrain hashes, and named hydrology-stage hashes.`,
 );
