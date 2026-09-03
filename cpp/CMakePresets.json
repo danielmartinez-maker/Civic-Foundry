@@ -1,0 +1,63 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 30,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "round-debug",
+      "displayName": "Civic Foundry native round debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/round-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CIVIC_BUILD_TESTS": "ON",
+        "CIVIC_BUILD_NAPI": "OFF",
+        "CIVIC_BUILD_WASM": "OFF"
+      }
+    },
+    {
+      "name": "round-debug-sanitized",
+      "displayName": "Civic Foundry native round debug sanitized",
+      "inherits": "round-debug",
+      "binaryDir": "${sourceDir}/build/round-debug-sanitized",
+      "cacheVariables": {
+        "CIVIC_ENABLE_SANITIZERS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "round-debug",
+      "configurePreset": "round-debug"
+    },
+    {
+      "name": "round-debug-sanitized",
+      "configurePreset": "round-debug-sanitized"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "round-debug",
+      "configurePreset": "round-debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "round-debug-sanitized",
+      "configurePreset": "round-debug-sanitized",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    }
+  ]
+}

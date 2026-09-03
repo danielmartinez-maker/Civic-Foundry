@@ -47,8 +47,12 @@ if(CIVIC_BUILD_TESTS)
   target_link_libraries(civic_c_abi_smoke PRIVATE civic_engine)
   civic_enable_sanitizers(civic_c_abi_smoke)
   add_test(NAME civic_c_abi_smoke COMMAND civic_c_abi_smoke)
+  set_tests_properties(civic_c_abi_smoke PROPERTIES LABELS "native;smoke;abi")
   include(GoogleTest)
-  gtest_discover_tests(civic_engine_tests)
+  gtest_discover_tests(
+    civic_engine_tests
+    PROPERTIES LABELS "native;engine"
+  )
 endif()
 
 if(CIVIC_BUILD_NAPI)
@@ -90,6 +94,7 @@ if(CIVIC_BUILD_NAPI)
   civic_enable_sanitizers(civic_native)
   if(CIVIC_BUILD_TESTS)
     add_test(NAME civic_napi_smoke COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/bindings/napi/test.mjs $<TARGET_FILE:civic_native>)
+    set_tests_properties(civic_napi_smoke PROPERTIES LABELS "native;smoke;napi")
   endif()
 endif()
 
