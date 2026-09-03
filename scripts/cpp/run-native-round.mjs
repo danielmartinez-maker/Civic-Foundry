@@ -1,36 +1,36 @@
-import { spawnSync } from 'node:child_process';
-import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { spawnSync } from "node:child_process";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 export function buildCommands({
-  preset = 'round-debug',
+  preset = "round-debug",
   regex = null,
-  label = 'native',
+  label = "native",
 } = {}) {
-  const configure = ['cmake', ['--preset', preset]];
-  const build = ['cmake', ['--build', '--preset', preset]];
+  const configure = ["cmake", ["--preset", preset]];
+  const build = ["cmake", ["--build", "--preset", preset]];
 
-  const testArgs = ['--preset', preset, '--output-on-failure'];
+  const testArgs = ["--preset", preset, "--output-on-failure"];
 
   if (label) {
-    testArgs.push('-L', label);
+    testArgs.push("-L", label);
   }
 
   if (regex) {
-    testArgs.push('-R', regex);
+    testArgs.push("-R", regex);
   }
 
   return {
     configure,
     build,
-    test: ['ctest', testArgs],
+    test: ["ctest", testArgs],
   };
 }
 
 function run(command, args) {
   const result = spawnSync(command, args, {
-    cwd: 'cpp',
-    stdio: 'inherit',
+    cwd: "cpp",
+    stdio: "inherit",
     shell: false,
   });
 
@@ -42,21 +42,21 @@ function run(command, args) {
 
 function parseArgs(argv) {
   const options = {
-    preset: 'round-debug',
+    preset: "round-debug",
     regex: null,
-    label: 'native',
+    label: "native",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
 
-    if (arg === '--preset') {
+    if (arg === "--preset") {
       options.preset = argv[++index];
-    } else if (arg === '--regex') {
+    } else if (arg === "--regex") {
       options.regex = argv[++index];
-    } else if (arg === '--label') {
+    } else if (arg === "--label") {
       options.label = argv[++index];
-    } else if (arg === '--all') {
+    } else if (arg === "--all") {
       options.label = null;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
