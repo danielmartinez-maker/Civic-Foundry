@@ -10,10 +10,6 @@ bool validIdentity(std::string_view value) {
     return utf16_detail::validUtf8AndHasNonEcmaTrimCodePoint(value);
 }
 
-bool due(const SystemCadence& cadence, std::uint64_t tick) {
-    return cadence.every > 0 && tick >= cadence.offset && ((tick - cadence.offset) % cadence.every) == 0;
-}
-
 bool overlap(const SystemCadence& left, const SystemCadence& right) {
     const auto g = std::gcd(left.every, right.every);
     const auto hi = std::max(left.offset, right.offset);
@@ -26,6 +22,16 @@ bool intersects(const std::vector<std::string>& a, const std::vector<std::string
     return false;
 }
 } // namespace
+
+Result<void> validateCadence(const SystemCadence& cadence, std::string_view owner) {
+    if (cadence.every == 0 || cadence.offset >= cadence.every) {
+        return std::unexpected(make_error(
+            ErrorCode::invalid_argument,
+            "invalid cadence for " + std::string(owner)
+        ));
+    }
+    return {};
+}
 
 Result<void> SimulationClock::setSpeed(SpeedMode speed) noexcept {
     if (!validSpeed(static_cast<std::uint32_t>(speed))) return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid clock speed"));
@@ -41,9 +47,27 @@ Result<void> SimulationClock::step(std::uint64_t ticks) noexcept {
     return {};
 }
 
+Result<std::uint64_t> CommandQueue::enqueue(
+    std::uint64_t enqueued_tick,
+    std::string type,
+    std::vector<std::byte> payload
+) {
+    if (!validIdentity(type)) return std::unexpected(make_error(ErrorCode::invalid_argument, "command type must not be empty"));
+    if (next_sequence_ == 0 || next_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
+        return std::unexpected(make_error(ErrorCode::invalid_state, "command sequence exhausted"));
+    }
+
+    const auto sequence = next_sequence_;
+    ++next_sequence_;
+    queue_.push_back(CommandEnvelope{sequence, enqueued_tick, std::move(type), std::move(payload)});
+    sequences_.insert(sequence);
+    return sequence;
+}
+
 Result<void> CommandQueue::submit(std::span<const CommandEnvelope> commands, std::uint64_t current_tick) {
     (void)current_tick;
     std::set<std::uint64_t> batch;
+    auto next_sequence = next_sequence_;
     for (const auto& command : commands) {
         if (command.version != command_protocol_version) {
             return std::unexpected(make_error(ErrorCode::invalid_argument, "unsupported command envelope version"));
@@ -51,12 +75,17 @@ Result<void> CommandQueue::submit(std::span<const CommandEnvelope> commands, std
         if (command.sequence == 0 || !batch.insert(command.sequence).second || sequences_.contains(command.sequence)) {
             return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate command sequence"));
         }
+        if (command.sequence == std::numeric_limits<std::uint64_t>::max()) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "command sequence exceeds native sequence range"));
+        }
         if (!validIdentity(command.type)) return std::unexpected(make_error(ErrorCode::invalid_argument, "command type must not be empty"));
+        next_sequence = std::max(next_sequence, command.sequence + 1U);
     }
     for (const auto& command : commands) {
         queue_.push_back(command);
         sequences_.insert(command.sequence);
     }
+    next_sequence_ = next_sequence;
     std::ranges::sort(queue_, [](const auto& a, const auto& b) { return a.sequence < b.sequence; });
     return {};
 }
@@ -76,6 +105,47 @@ std::vector<CommandEnvelope> CommandQueue::takeReady(std::uint64_t tick) {
     return ready;
 }
 
+CommandQueueSnapshot CommandQueue::snapshot() const {
+    auto queue = queue_;
+    std::ranges::sort(queue, [](const auto& a, const auto& b) { return a.sequence < b.sequence; });
+    return CommandQueueSnapshot{std::move(queue), sequences_, next_sequence_};
+}
+
+Result<void> CommandQueue::restore(const CommandQueueSnapshot& snapshot) {
+    if (snapshot.next_sequence < 1) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid command queue snapshot"));
+    }
+
+    for (const auto sequence : snapshot.seen_sequences) {
+        if (sequence == 0 || sequence >= snapshot.next_sequence) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid command sequence"));
+        }
+    }
+
+    std::set<std::uint64_t> queue_sequences;
+    auto queue = snapshot.queue;
+    for (const auto& command : queue) {
+        if (command.version != command_protocol_version) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "unsupported command envelope version"));
+        }
+        if (command.sequence == 0 || command.sequence >= snapshot.next_sequence || !queue_sequences.insert(command.sequence).second) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid command sequence"));
+        }
+        if (!snapshot.seen_sequences.contains(command.sequence)) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "pending command sequence missing from seen set"));
+        }
+        if (!validIdentity(command.type)) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "command type must not be empty"));
+        }
+    }
+
+    std::ranges::sort(queue, [](const auto& a, const auto& b) { return a.sequence < b.sequence; });
+    queue_ = std::move(queue);
+    sequences_ = snapshot.seen_sequences;
+    next_sequence_ = snapshot.next_sequence;
+    return {};
+}
+
 DomainEvent DomainEventJournal::append(std::uint64_t tick, std::string type, std::string source, std::vector<std::byte> payload) {
     DomainEvent event{next_sequence_++, tick, std::move(type), std::move(source), std::move(payload)};
     events_.push_back(event);
@@ -90,7 +160,8 @@ std::vector<DomainEvent> DomainEventJournal::drain() {
 
 Result<void> SystemScheduler::registerSystem(SystemDefinition system) {
     if (!validIdentity(system.id)) return std::unexpected(make_error(ErrorCode::invalid_argument, "kernel system id must not be empty"));
-    if (system.cadence.every == 0 || system.cadence.offset >= system.cadence.every) return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid system cadence"));
+    auto cadence = validateCadence(system.cadence, system.id);
+    if (!cadence) return cadence;
     if (systems_.contains(system.id)) return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate kernel system: " + system.id));
     const auto id = system.id;
     if (std::find(system.after.begin(), system.after.end(), id) != system.after.end() || std::find(system.before.begin(), system.before.end(), id) != system.before.end()) {
@@ -169,14 +240,16 @@ Result<std::vector<SystemDefinition*>> SystemScheduler::dueSystems(std::uint64_t
         if (!compiled) return std::unexpected(compiled.error());
     }
     std::vector<SystemDefinition*> result;
-    for (const auto& id : compiled_) if (due(systems_.at(id).cadence, tick)) result.push_back(&systems_.at(id));
+    for (const auto& id : compiled_) if (isDue(systems_.at(id).cadence, tick)) result.push_back(&systems_.at(id));
     return result;
 }
 
 std::vector<std::string> SystemScheduler::orderedIds() const { return compiled_; }
 
 Result<void> InvariantRunner::registerInvariant(InvariantDefinition invariant) {
-    if (!validIdentity(invariant.id) || invariant.cadence.every == 0 || invariant.cadence.offset >= invariant.cadence.every || !invariant.check) return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid invariant definition"));
+    if (!validIdentity(invariant.id) || !invariant.check) return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid invariant definition"));
+    auto cadence = validateCadence(invariant.cadence, invariant.id);
+    if (!cadence) return cadence;
     if (invariants_.contains(invariant.id)) return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate invariant: " + invariant.id));
     invariants_.emplace(invariant.id, std::move(invariant));
     return {};
@@ -184,7 +257,7 @@ Result<void> InvariantRunner::registerInvariant(InvariantDefinition invariant) {
 
 Result<void> InvariantRunner::runDue(std::uint64_t tick) const {
     for (const auto& [id, invariant] : invariants_) {
-        if (!due(invariant.cadence, tick)) continue;
+        if (!isDue(invariant.cadence, tick)) continue;
         auto result = invariant.check(tick);
         if (!result) {
             return std::unexpected(make_error(
