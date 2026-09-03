@@ -35,11 +35,19 @@ add_library(civic_engine STATIC
   engine/src/transport/RoadTrafficRuntime.cpp
   engine/src/transport/TransportationCommands.cpp
   engine/src/transport/transport_engine.cpp
+  engine/src/socioeconomic/SocioeconomicRuntime.cpp
+  engine/src/socioeconomic/HousingEconomics.cpp
+  engine/src/socioeconomic/SocioeconomicAuthority.cpp
+  engine/src/socioeconomic/SocioeconomicPersistence.cpp
+  engine/src/socioeconomic/SocioeconomicIntegration.cpp
+  engine/src/prism/PrismRuntime.cpp
+  engine/src/prism/PrismBenchmark.cpp
   engine/src/bridge/civic_engine.cpp
 )
 target_include_directories(civic_engine PUBLIC engine/include)
 target_link_libraries(civic_engine PUBLIC ${CIVIC_JSON_TARGET})
 target_compile_definitions(civic_engine PUBLIC CIVIC_ENGINE_STATIC)
+target_precompile_headers(civic_engine PRIVATE <functional>)
 civic_enable_warnings(civic_engine)
 civic_enable_sanitizers(civic_engine)
 
@@ -52,8 +60,15 @@ if(CIVIC_BUILD_TESTS)
     tests/core/TransportationContinuationTests.cpp
     tests/core/TransportationRoadTrafficRuntimeTests.cpp
     tests/core/TransportationTrafficMigrationTests.cpp
+    tests/core/Stack3NativeEngineIntegrationTests.cpp
     tests/persistence/SaveV9Tests.cpp
     tests/parity/ParityTests.cpp
+    tests/socioeconomic/Stack3SocioeconomicTests.cpp
+    tests/socioeconomic/Stack3AuthorityTests.cpp
+    tests/socioeconomic/Stack3PersistenceTests.cpp
+    tests/socioeconomic/Stack3HousingLifecycleTests.cpp
+    tests/socioeconomic/Stack3CompletionTests.cpp
+    tests/prism/Stack3PrismRuntimeTests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main ${CIVIC_JSON_TARGET})
   civic_enable_warnings(civic_engine_tests)
