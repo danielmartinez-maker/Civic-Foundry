@@ -12,6 +12,7 @@
 #include <civic/presentation/NativeUi.hpp>
 #include <civic/presentation/NativeWindow.hpp>
 #include <civic/presentation/PresentationIO.hpp>
+#include <civic/presentation/PresentationInvalidation.hpp>
 #include <civic/presentation/RenderPipeline.hpp>
 #include <civic/presentation/SceneGeometry.hpp>
 #include <civic/presentation/Win32NativeUi.hpp>
@@ -767,11 +768,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     InputState pointer_input{};
     PointerGestureState pointer_gesture{};
     PickingIndex picking_index{};
-    RenderRevision picking_revision = static_cast<RenderRevision>(-1);
+    PresentationInvalidationTracker invalidation_tracker{};
     RenderPacketBuilder packet_builder{};
     SceneGeometryBuilder geometry_builder{};
     std::optional<SceneGeometry> cached_geometry;
-    RenderRevision cached_revision = static_cast<RenderRevision>(-1);
     CameraState cached_camera{};
     PixelViewport cached_viewport{};
     const auto client_start = SteadyClock::now();
@@ -792,9 +792,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         presentation_snapshot.revision = hud.simulation_tick;
         presentation_snapshot.simulation_tick = hud.simulation_tick;
         presentation_snapshot.tool_preview = tools.preview();
-        if (presentation_snapshot.revision != picking_revision) {
+        const auto record_changes = invalidation_tracker.syncRecords(presentation_snapshot);
+        const bool world_changed = invalidation_tracker.syncWorld(presentation_snapshot.world);
+        if (pickingNeedsRebuild(record_changes, world_changed)) {
             picking_index.rebuild(presentation_snapshot);
-            picking_revision = presentation_snapshot.revision;
         }
 
         auto frame = backend.beginFrame();
@@ -813,7 +814,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             .ui_keyboard_capture = ui.wantsKeyboardCapture(),
             .editable_control_active = ui.wantsTextInput(),
         };
-        bool interaction_changed = false;
         for (const auto& event : events) {
             if (event.type != PlatformEventType::KeyDown) continue;
             if (!shortcut_context.ui_keyboard_capture && !shortcut_context.editable_control_active && (event.data1 == 'Q' || event.data1 == 'E')) {
@@ -822,7 +822,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                     direction,
                     presentation_snapshot.world,
                     {static_cast<double>(viewport.width) * 0.5, static_cast<double>(viewport.height) * 0.5});
-                interaction_changed = true;
                 continue;
             }
             applyShortcut(
@@ -833,7 +832,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                 notifications,
                 now_seconds);
         }
-        interaction_changed = applyCameraAndPickingInput(
+        (void)applyCameraAndPickingInput(
             events,
             ui.wantsMouseCapture(),
             camera,
@@ -842,10 +841,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             presentation_settings,
             tools.activeTool(),
             picking_index,
-            presentation_snapshot) || interaction_changed;
-        if (interaction_changed) cached_geometry.reset();
+            presentation_snapshot);
 
         presentation_snapshot.tool_preview = tools.preview();
+        const bool selection_changed = invalidation_tracker.syncSelection(presentation_snapshot.selection);
+        const bool preview_changed = invalidation_tracker.syncToolPreview(presentation_snapshot.tool_preview);
         const auto camera_state = camera.state();
         const bool camera_changed =
             camera_state.zoom != cached_camera.zoom ||
@@ -853,12 +853,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
             camera_state.pan_x != cached_camera.pan_x ||
             camera_state.pan_y != cached_camera.pan_y;
         const bool viewport_changed = viewport.width != cached_viewport.width || viewport.height != cached_viewport.height;
-        if (!cached_geometry || presentation_snapshot.revision != cached_revision || camera_changed || viewport_changed) {
+        const bool scene_changed = geometryNeedsRebuild(record_changes, world_changed, selection_changed, preview_changed);
+        if (!cached_geometry || scene_changed || camera_changed || viewport_changed) {
             const auto packet = packet_builder.build(
                 presentation_snapshot,
                 {0.0, 0.0, static_cast<double>(presentation_snapshot.world.width), static_cast<double>(presentation_snapshot.world.height)});
             cached_geometry = geometry_builder.build(packet, camera, presentation_snapshot.world, viewport);
-            cached_revision = presentation_snapshot.revision;
             cached_camera = camera_state;
             cached_viewport = viewport;
         }
