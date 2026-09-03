@@ -88,9 +88,11 @@ TEST(CommandContracts, RejectsSequenceReuseAfterDispatch) {
 TEST(EventContracts, PreservesAppendSequenceAndDrainOrder) {
     civic::DomainEventJournal journal;
     const auto first = journal.append(5, "first", "source-a");
+    ASSERT_TRUE(first);
     const auto second = journal.append(3, "second", "source-b");
-    EXPECT_EQ(first.sequence, 1U);
-    EXPECT_EQ(second.sequence, 2U);
+    ASSERT_TRUE(second);
+    EXPECT_EQ(first->sequence, 1U);
+    EXPECT_EQ(second->sequence, 2U);
     ASSERT_EQ(journal.list().size(), 2U);
     EXPECT_EQ(journal.list()[0].type, "first");
     EXPECT_EQ(journal.list()[1].type, "second");
