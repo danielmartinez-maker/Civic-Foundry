@@ -1,41 +1,36 @@
-import { createHash } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
-import process from 'node:process';
+import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import process from "node:process";
 
-const MANIFEST_PATH = 'docs/cpp/TS_REWRITE_INVENTORY_BASELINE.txt';
-const BASELINE_DOC_PATH = 'docs/cpp/TS_REWRITE_INVENTORY_BASELINE.md';
-const LEDGER_PATH = 'docs/cpp/TS_REWRITE_LEDGER.json';
+const MANIFEST_PATH = "docs/cpp/TS_REWRITE_INVENTORY_BASELINE.txt";
+const BASELINE_DOC_PATH = "docs/cpp/TS_REWRITE_INVENTORY_BASELINE.md";
+const LEDGER_PATH = "docs/cpp/TS_REWRITE_LEDGER.json";
 
 const STATUS = new Set([
-  'pending',
-  'in_progress',
-  'shadow_complete',
-  'parity_accepted',
-  'native_authoritative',
-  'ts_removed',
+  "pending",
+  "in_progress",
+  "shadow_complete",
+  "parity_accepted",
+  "native_authoritative",
+  "ts_removed",
 ]);
 
-const AUTHORITY = new Set(['typescript', 'shadow', 'native', 'none']);
+const AUTHORITY = new Set(["typescript", "shadow", "native", "none"]);
 
-const PARITY = new Set([
-  'unclassified',
-  'parity',
-  'correction',
-  'deferred',
-]);
+const PARITY = new Set(["unclassified", "parity", "correction", "deferred"]);
 
-const KIND = new Set(['production', 'test', 'declaration', 'support']);
+const KIND = new Set(["production", "test", "declaration", "support"]);
 
 function sha256(text) {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
+  return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
 function parseManifest(text) {
-  if (!text.endsWith('\n')) {
+  if (!text.endsWith("\n")) {
     throw new Error(`${MANIFEST_PATH} must end with LF`);
   }
 
-  const paths = text.slice(0, -1).split('\n');
+  const paths = text.slice(0, -1).split("\n");
 
   if (paths.some((path) => path.length === 0)) {
     throw new Error(`${MANIFEST_PATH} contains blank lines`);
@@ -54,9 +49,7 @@ function parseManifest(text) {
 }
 
 function parseBaselineCommit(markdown) {
-  const match = markdown.match(
-    /\*\*Baseline commit:\*\*\s*`([0-9a-f]{40})`/i,
-  );
+  const match = markdown.match(/\*\*Baseline commit:\*\*\s*`([0-9a-f]{40})`/i);
 
   if (!match) {
     throw new Error(
@@ -68,21 +61,21 @@ function parseBaselineCommit(markdown) {
 }
 
 function classifyKind(path) {
-  if (path.endsWith('.d.ts')) return 'declaration';
-  if (path.startsWith('tests/support/')) return 'support';
-  if (path.startsWith('tests/')) return 'test';
-  if (path.startsWith('src/')) return 'production';
-  return 'support';
+  if (path.endsWith(".d.ts")) return "declaration";
+  if (path.startsWith("tests/support/")) return "support";
+  if (path.startsWith("tests/")) return "test";
+  if (path.startsWith("src/")) return "production";
+  return "support";
 }
 
 function inventoryId(index) {
-  return `CF-TS-${String(index + 1).padStart(4, '0')}`;
+  return `CF-TS-${String(index + 1).padStart(4, "0")}`;
 }
 
 async function readBaseline() {
   const [manifestText, baselineMarkdown] = await Promise.all([
-    readFile(MANIFEST_PATH, 'utf8'),
-    readFile(BASELINE_DOC_PATH, 'utf8'),
+    readFile(MANIFEST_PATH, "utf8"),
+    readFile(BASELINE_DOC_PATH, "utf8"),
   ]);
 
   return {
@@ -102,15 +95,15 @@ function initialEntry(path, index) {
     assignedStack: null,
     targetNativeOwner: null,
     nativeTestOwner: null,
-    status: 'pending',
-    currentAuthority: kind === 'production' ? 'typescript' : 'none',
-    parityClassification: 'unclassified',
+    status: "pending",
+    currentAuthority: kind === "production" ? "typescript" : "none",
+    parityClassification: "unclassified",
     cutoverDependencies: [],
   };
 }
 
 function assertNullableString(value, field, id) {
-  if (value !== null && (typeof value !== 'string' || value.length === 0)) {
+  if (value !== null && (typeof value !== "string" || value.length === 0)) {
     throw new Error(`${id}.${field} must be null or a non-empty string`);
   }
 }
@@ -137,13 +130,13 @@ function verifyEntry(entry, path, index) {
     );
   }
 
-  assertNullableString(entry.assignedStack, 'assignedStack', expectedId);
+  assertNullableString(entry.assignedStack, "assignedStack", expectedId);
   assertNullableString(
     entry.targetNativeOwner,
-    'targetNativeOwner',
+    "targetNativeOwner",
     expectedId,
   );
-  assertNullableString(entry.nativeTestOwner, 'nativeTestOwner', expectedId);
+  assertNullableString(entry.nativeTestOwner, "nativeTestOwner", expectedId);
 
   if (!STATUS.has(entry.status)) {
     throw new Error(`${expectedId}.status is invalid: ${entry.status}`);
@@ -164,8 +157,7 @@ function verifyEntry(entry, path, index) {
   if (
     !Array.isArray(entry.cutoverDependencies) ||
     entry.cutoverDependencies.some(
-      (dependency) =>
-        typeof dependency !== 'string' || dependency.length === 0,
+      (dependency) => typeof dependency !== "string" || dependency.length === 0,
     )
   ) {
     throw new Error(
@@ -173,7 +165,9 @@ function verifyEntry(entry, path, index) {
     );
   }
 
-  if (new Set(entry.cutoverDependencies).size !== entry.cutoverDependencies.length) {
+  if (
+    new Set(entry.cutoverDependencies).size !== entry.cutoverDependencies.length
+  ) {
     throw new Error(`${expectedId}.cutoverDependencies contains duplicates`);
   }
 }
@@ -190,22 +184,22 @@ async function init() {
       fileCount: baseline.paths.length,
     },
     target: {
-      language: 'C++',
+      language: "C++",
       trackedTypeScriptFileCount: 0,
     },
     entries: baseline.paths.map(initialEntry),
   };
 
   try {
-    await readFile(LEDGER_PATH, 'utf8');
+    await readFile(LEDGER_PATH, "utf8");
     throw new Error(
       `${LEDGER_PATH} already exists; refusing to overwrite migration progress`,
     );
   } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
+    if (error?.code !== "ENOENT") throw error;
   }
 
-  await writeFile(LEDGER_PATH, `${JSON.stringify(ledger, null, 2)}\n`, 'utf8');
+  await writeFile(LEDGER_PATH, `${JSON.stringify(ledger, null, 2)}\n`, "utf8");
 
   console.log(
     `Initialized ${LEDGER_PATH} with ${ledger.entries.length} entries.`,
@@ -214,7 +208,7 @@ async function init() {
 
 async function verify() {
   const baseline = await readBaseline();
-  const ledger = JSON.parse(await readFile(LEDGER_PATH, 'utf8'));
+  const ledger = JSON.parse(await readFile(LEDGER_PATH, "utf8"));
 
   if (ledger.schemaVersion !== 1) {
     throw new Error(`ledger.schemaVersion must equal 1`);
@@ -238,7 +232,7 @@ async function verify() {
   }
 
   if (
-    ledger.target?.language !== 'C++' ||
+    ledger.target?.language !== "C++" ||
     ledger.target?.trackedTypeScriptFileCount !== 0
   ) {
     throw new Error(`ledger target must require zero tracked TypeScript files`);
@@ -278,13 +272,11 @@ async function verify() {
 
 const command = process.argv[2];
 
-if (command === 'init') {
+if (command === "init") {
   await init();
-} else if (command === 'verify') {
+} else if (command === "verify") {
   await verify();
 } else {
-  console.error(
-    'Usage: node scripts/cpp/ts-rewrite-ledger.mjs <init|verify>',
-  );
+  console.error("Usage: node scripts/cpp/ts-rewrite-ledger.mjs <init|verify>");
   process.exitCode = 2;
 }
