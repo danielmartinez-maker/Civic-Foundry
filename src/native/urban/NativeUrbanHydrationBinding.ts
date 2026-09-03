@@ -12,7 +12,9 @@ import type { NativeUrbanBridge } from "./NativeUrbanAuthority.ts";
 
 function legacyZoneForParcel(parcel: Parcel) {
   const zone = parcel.zoningDistrictId;
-  return zone === "residential" || zone === "commercial" || zone === "industrial"
+  return zone === "residential" ||
+    zone === "commercial" ||
+    zone === "industrial"
     ? zone
     : undefined;
 }
@@ -50,7 +52,9 @@ export function bindNativeUrbanMutationsAfterHydration(
     removeEasement: CadastralRuntimeMutationService["removeEasement"];
   };
 
-  const apply = (command: NativeUrbanCommand): CadastralRuntimeMutationResult => {
+  const apply = (
+    command: NativeUrbanCommand,
+  ): CadastralRuntimeMutationResult => {
     const response = bridge.applyUrbanCommand(command);
     projectNativeUrbanState(core, response.snapshot);
     return response.result;
