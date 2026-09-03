@@ -104,6 +104,7 @@ class InvariantRunner final {
 public:
     [[nodiscard]] Result<void> registerInvariant(InvariantDefinition invariant);
     [[nodiscard]] Result<void> runDue(std::uint64_t tick) const;
+    [[nodiscard]] std::vector<std::string> listIds() const;
 private:
     std::map<std::string, InvariantDefinition, Utf16OrdinalLess> invariants_;
 };
