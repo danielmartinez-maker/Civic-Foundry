@@ -1,6 +1,7 @@
 #include <civic/presentation/RenderPipeline.hpp>
 
 #include <algorithm>
+#include <utility>
 
 namespace civic::presentation {
 namespace {
