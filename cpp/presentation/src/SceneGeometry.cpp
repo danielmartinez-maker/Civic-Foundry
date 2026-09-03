@@ -251,6 +251,61 @@ void addRoadDetail(
     }
 }
 
+void addPreviewMarker(SceneGeometry& scene, Point2 center, PixelViewport viewport, double radius, Color color) {
+    if (!pointVisible(center, viewport, radius + 2.0)) return;
+    const double inner = radius * 0.48;
+    const std::array<Point2,4> outer{
+        shifted(center,0.0,-radius), shifted(center,radius,0.0), shifted(center,0.0,radius), shifted(center,-radius,0.0)};
+    const std::array<Point2,4> inside{
+        shifted(center,0.0,-inner), shifted(center,inner,0.0), shifted(center,0.0,inner), shifted(center,-inner,0.0)};
+    for (std::size_t i=0;i<outer.size();++i) {
+        const auto next=(i+1U)%outer.size();
+        quad(scene.overlay,
+            vertex(outer[i],viewport,color), vertex(outer[next],viewport,color),
+            vertex(inside[next],viewport,color), vertex(inside[i],viewport,color),
+            scene.stats.overlay_triangles);
+    }
+}
+
+void addToolPreview(
+    SceneGeometry& scene,
+    const ToolPreviewState& preview,
+    const IsometricCamera& camera,
+    WorldSize world,
+    PixelViewport viewport) {
+    if (!preview.valid || preview.geometry.empty()) return;
+    const Color cue{0.20F,0.86F,0.91F,0.90F};
+    const double half_width = std::max(2.5, 3.0 * camera.zoom());
+    if (preview.geometry.size() == 1U) {
+        const auto center = camera.worldToCanvas(preview.geometry.front().x, preview.geometry.front().y, world);
+        addPreviewMarker(scene, center, viewport, std::max(8.0, 9.0 * camera.zoom()), cue);
+        return;
+    }
+    for (std::size_t i=1U; i<preview.geometry.size(); ++i) {
+        const auto a = camera.worldToCanvas(preview.geometry[i-1U].x, preview.geometry[i-1U].y, world);
+        const auto b = camera.worldToCanvas(preview.geometry[i].x, preview.geometry[i].y, world);
+        const double dx = b.x-a.x;
+        const double dy = b.y-a.y;
+        const double length = std::hypot(dx,dy);
+        if (length <= 1e-6) continue;
+        if (!pixelBoundsVisible(
+                std::min(a.x,b.x), std::min(a.y,b.y),
+                std::max(a.x,b.x), std::max(a.y,b.y),
+                viewport, half_width + 4.0)) continue;
+        const double nx = -dy/length*half_width;
+        const double ny = dx/length*half_width;
+        quad(scene.overlay,
+            vertex(shifted(a,nx,ny),viewport,cue), vertex(shifted(b,nx,ny),viewport,cue),
+            vertex(shifted(b,-nx,-ny),viewport,cue), vertex(shifted(a,-nx,-ny),viewport,cue),
+            scene.stats.overlay_triangles);
+    }
+    const auto start = camera.worldToCanvas(preview.geometry.front().x, preview.geometry.front().y, world);
+    const auto end = camera.worldToCanvas(preview.geometry.back().x, preview.geometry.back().y, world);
+    const double marker_radius = std::max(6.0, 7.0 * camera.zoom());
+    addPreviewMarker(scene, start, viewport, marker_radius, cue);
+    addPreviewMarker(scene, end, viewport, marker_radius, cue);
+}
+
 } // namespace
 
 SceneGeometry SceneGeometryBuilder::build(const RenderPacket& packet, const IsometricCamera& camera, WorldSize world, PixelViewport viewport) const {
@@ -361,6 +416,8 @@ SceneGeometry SceneGeometryBuilder::build(const RenderPacket& packet, const Isom
             triangle(scene.overlay,vertex(center,viewport,color),vertex(shifted(center,std::cos(a)*ra,std::sin(a)*ra),viewport,color),vertex(shifted(center,std::cos(b)*rb,std::sin(b)*rb),viewport,color),scene.stats.overlay_triangles);
         }
     }
+
+    addToolPreview(scene, packet.tool_preview, camera, world, viewport);
 
     if (const auto selected = selectedWorldPoint(packet); selected) {
         const auto center = camera.worldToCanvas(selected->x, selected->y, world);
