@@ -1,8 +1,6 @@
 #include <civic/presentation/RenderPipeline.hpp>
 
 #include <algorithm>
-#include <string>
-#include <string_view>
 
 namespace civic::presentation {
 namespace {
@@ -51,62 +49,6 @@ void countVisibility(bool visible, CullingStats& stats) noexcept {
     ++stats.input_records;
     if (visible) ++stats.visible_records;
     else ++stats.culled_records;
-}
-
-EntityKind previewEntityKind(std::string_view tool_id) noexcept {
-    if (tool_id == "road") return EntityKind::Road;
-    if (tool_id == "zone") return EntityKind::Parcel;
-    if (tool_id == "transit" || tool_id == "transit-stop") return EntityKind::TransitStop;
-    if (tool_id == "facility" || tool_id == "utility" || tool_id == "service") return EntityKind::Facility;
-    return EntityKind::Terrain;
-}
-
-OverlayMetric previewMetric(std::string_view tool_id) noexcept {
-    return tool_id == "bulldoze" ? OverlayMetric::TrafficCongestion : OverlayMetric::BuildableEnvelope;
-}
-
-void appendPreviewPoint(
-    RenderPacket& packet,
-    const FrameSnapshot& snapshot,
-    ViewportWorldBounds viewport,
-    Point2 point,
-    std::size_t index) {
-    if (!pointVisible(point, viewport)) return;
-    packet.overlays.push_back({
-        {previewEntityKind(snapshot.tool_preview.tool_id),
-         "tool-preview:" + snapshot.tool_preview.tool_id + ":" + std::to_string(index)},
-        snapshot.revision,
-        previewMetric(snapshot.tool_preview.tool_id),
-        point,
-        1.0F,
-        0.0F});
-}
-
-void appendToolPreview(RenderPacket& packet, const FrameSnapshot& snapshot, ViewportWorldBounds viewport) {
-    const auto& preview = snapshot.tool_preview;
-    if (!preview.valid || preview.geometry.empty()) return;
-
-    if (preview.geometry.size() == 1U) {
-        appendPreviewPoint(packet, snapshot, viewport, preview.geometry.front(), 0U);
-        return;
-    }
-
-    constexpr std::size_t samples_per_segment = 8U;
-    std::size_t preview_index = 0U;
-    for (std::size_t segment = 1U; segment < preview.geometry.size(); ++segment) {
-        const auto from = preview.geometry[segment - 1U];
-        const auto to = preview.geometry[segment];
-        for (std::size_t sample = 0U; sample <= samples_per_segment; ++sample) {
-            if (segment > 1U && sample == 0U) continue;
-            const double t = static_cast<double>(sample) / static_cast<double>(samples_per_segment);
-            appendPreviewPoint(
-                packet,
-                snapshot,
-                viewport,
-                {from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t},
-                preview_index++);
-        }
-    }
 }
 
 } // namespace
@@ -178,7 +120,6 @@ RenderPacket RenderPacketBuilder::build(const FrameSnapshot& snapshot, ViewportW
         if (!visible) continue;
         packet.overlays.push_back({record.entity, record.revision, record.metric, record.position, record.value, record.secondary});
     }
-    appendToolPreview(packet, snapshot, viewport);
     return packet;
 }
 
