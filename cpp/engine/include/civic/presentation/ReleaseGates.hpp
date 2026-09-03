@@ -1,11 +1,44 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace civic::presentation {
+
+inline constexpr std::array<std::string_view, 7> kAlphaGameplayAuthorityDomains{
+    "world",
+    "cadastre",
+    "buildings",
+    "transportation",
+    "population",
+    "economy",
+    "services",
+};
+
+struct DomainAuthorityEvidence {
+    std::string_view domain;
+    bool owned{};
+};
+
+[[nodiscard]] inline bool alphaGameplayAuthorityReady(
+    std::span<const DomainAuthorityEvidence> evidence) noexcept {
+    if (evidence.size() != kAlphaGameplayAuthorityDomains.size()) return false;
+    for (const auto required : kAlphaGameplayAuthorityDomains) {
+        std::size_t matches = 0;
+        bool owned = false;
+        for (const auto& item : evidence) {
+            if (item.domain != required) continue;
+            ++matches;
+            owned = item.owned;
+        }
+        if (matches != 1U || !owned) return false;
+    }
+    return true;
+}
 
 struct CutoverEvidence {
     bool native_kernel_authority{};
