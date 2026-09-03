@@ -16,6 +16,7 @@ ToolPreviewState emptyPreview(NativeTool tool) {
         .valid = false,
         .geometry = {},
         .invalid_reason = {},
+        .target_ids = {},
     };
 }
 
@@ -23,6 +24,7 @@ std::expected<void, std::string> invalidPreview(ToolPreviewState& preview, std::
     preview.valid = false;
     preview.geometry.clear();
     preview.invalid_reason = reason;
+    preview.target_ids.clear();
     return std::unexpected(std::move(reason));
 }
 
@@ -101,6 +103,7 @@ std::expected<void, std::string> NativeToolWorkflow::previewZone(std::string par
     if (parcel_id.empty() || zoning_code.empty()) return invalidPreview(preview_, "zone preview requires parcel and zoning identifiers");
     preview_.valid = true;
     preview_.invalid_reason.clear();
+    preview_.target_ids = {parcel_id};
     draft_ = ZoneToolDraft{.parcel_id = std::move(parcel_id), .zoning_code = std::move(zoning_code)};
     return {};
 }
@@ -164,6 +167,7 @@ std::expected<void, std::string> NativeToolWorkflow::previewTransit(std::vector<
     }
     preview_.valid = true;
     preview_.invalid_reason.clear();
+    preview_.target_ids = stop_ids;
     draft_ = TransitToolDraft{.stop_ids = std::move(stop_ids), .mode = mode};
     return {};
 }
