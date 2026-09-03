@@ -2,13 +2,13 @@
 
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 
 namespace {
-using civic::geometry::Bounds;
 using civic::geometry::Coordinate;
 using civic::geometry::Point;
 using civic::geometry::Polygon;
