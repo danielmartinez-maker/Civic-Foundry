@@ -85,6 +85,16 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$env:VCPKG_DEFAULT_BINARY_CACHE" | Out-Null
           git clone --depth 1 --branch 2026.07.29 https://github.com/microsoft/vcpkg.git "$env:VCPKG_ROOT"
           & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+      - name: K005 focused native round repeat A
+        shell: pwsh
+        run: |
+          $env:CMAKE_TOOLCHAIN_FILE = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+          node scripts/cpp/run-native-round.mjs --regex "RandomParity"
+      - name: K005 focused native round repeat B
+        shell: pwsh
+        run: |
+          $env:CMAKE_TOOLCHAIN_FILE = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+          node scripts/cpp/run-native-round.mjs --regex "RandomParity"
       - name: Fetch exact Node-API headers and import library
         shell: pwsh
         run: |
