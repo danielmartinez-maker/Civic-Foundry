@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 3.30)
-project(civic_foundry_native LANGUAGES C CXX)
-
+if(POLICY CMP0207)
+  cmake_policy(SET CMP0207 NEW)
+endif()
+project(civic_foundry_native VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
 include(cmake/CivicOptions.cmake)
 include(cmake/CivicWarnings.cmake)
 include(cmake/CivicSanitizers.cmake)
-
 find_package(json-c CONFIG QUIET)
 if(TARGET json-c::json-c)
   set(CIVIC_JSON_TARGET json-c::json-c)
@@ -18,20 +18,53 @@ else()
   pkg_check_modules(JSONC REQUIRED IMPORTED_TARGET json-c)
   set(CIVIC_JSON_TARGET PkgConfig::JSONC)
 endif()
-
-add_library(civic_engine STATIC
-  engine/src/core/Kernel.cpp
-  engine/src/core/NativeEngine.cpp
-  engine/src/core/RandomStreamRegistry.cpp
-  engine/src/persistence/SaveV9.cpp
-  engine/src/bridge/civic_engine.cpp
-)
+add_library(civic_engine STATIC engine/src/core/Kernel.cpp engine/src/core/NativeEngine.cpp engine/src/core/RandomStreamRegistry.cpp engine/src/persistence/SaveV9.cpp engine/src/bridge/civic_engine.cpp)
 target_include_directories(civic_engine PUBLIC engine/include)
 target_link_libraries(civic_engine PUBLIC ${CIVIC_JSON_TARGET})
 target_compile_definitions(civic_engine PUBLIC CIVIC_ENGINE_STATIC)
 civic_enable_warnings(civic_engine)
 civic_enable_sanitizers(civic_engine)
+add_library(civic_presentation STATIC presentation/src/Presentation.cpp presentation/src/RenderPipeline.cpp presentation/src/PresentationIO.cpp presentation/src/AssetRuntime.cpp presentation/src/NativeUi.cpp presentation/src/NativeUiRuntime.cpp presentation/src/NativeHud.cpp presentation/src/NativeTools.cpp presentation/src/Audio.cpp presentation/src/Platform.cpp presentation/src/SceneGeometry.cpp presentation/src/NativeRenderer.cpp presentation/src/MiniaturePresentation.cpp presentation/src/VisualAcceptance.cpp presentation/src/VisualReference.cpp)
+target_include_directories(civic_presentation PUBLIC engine/include)
+target_link_libraries(civic_presentation PUBLIC ${CIVIC_JSON_TARGET})
+civic_enable_warnings(civic_presentation)
+civic_enable_sanitizers(civic_presentation)
+if(WIN32 AND CIVIC_BUILD_NATIVE_CLIENT)
+  find_package(imgui CONFIG REQUIRED)
+  add_library(civic_platform_win32 STATIC platform/win32/NativeWindow.cpp platform/win32/Win32NativeUi.cpp platform/win32/XAudio2Output.cpp presentation/d3d12/D3D12BackendNativeUi.cpp)
+  target_include_directories(civic_platform_win32 PUBLIC engine/include)
+  target_compile_definitions(civic_platform_win32 PRIVATE UNICODE _UNICODE NOMINMAX)
+  target_link_libraries(civic_platform_win32 PUBLIC civic_presentation imgui::imgui d3d12 d3dcompiler dxgi dxguid user32 gdi32 xaudio2)
+  civic_enable_warnings(civic_platform_win32)
+  add_executable(civic_foundry_native_client WIN32 client/main.cpp client/civic_foundry.rc)
+  target_compile_definitions(civic_foundry_native_client PRIVATE NOMINMAX)
+  target_link_libraries(civic_foundry_native_client PRIVATE civic_engine civic_presentation civic_platform_win32)
+  if(MSVC)
+    target_link_options(civic_foundry_native_client PRIVATE $<$<CONFIG:Release>:/DEBUG:FULL>)
+  endif()
+  civic_enable_warnings(civic_foundry_native_client)
+  add_executable(civic_d3d12_blank_smoke tests/presentation/d3d12_blank_smoke.cpp)
+  target_link_libraries(civic_d3d12_blank_smoke PRIVATE civic_platform_win32)
+  civic_enable_warnings(civic_d3d12_blank_smoke)
 
+  install(TARGETS civic_foundry_native_client
+    RUNTIME_DEPENDENCIES
+      PRE_EXCLUDE_REGEXES "api-ms-.*" "ext-ms-.*"
+      POST_EXCLUDE_REGEXES ".*[Ww]indows[/\\\\][Ss]ystem32[/\\\\].*"
+    RUNTIME DESTINATION .
+  )
+  install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../assets/runtime/" DESTINATION assets/runtime)
+  if(MSVC)
+    install(FILES "$<TARGET_PDB_FILE:civic_foundry_native_client>" DESTINATION symbols OPTIONAL)
+  endif()
+
+  set(CPACK_PACKAGE_NAME "CivicFoundryNative")
+  set(CPACK_PACKAGE_VENDOR "Civic Foundry")
+  set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+  set(CPACK_PACKAGE_FILE_NAME "CivicFoundryNative-${PROJECT_VERSION}-windows-x64")
+  set(CPACK_GENERATOR "ZIP")
+  include(CPack)
+endif()
 if(CIVIC_BUILD_TESTS)
   enable_testing()
   find_package(GTest CONFIG REQUIRED)
@@ -39,18 +72,48 @@ if(CIVIC_BUILD_TESTS)
     tests/core/CoreTests.cpp
     tests/persistence/SaveV9Tests.cpp
     tests/parity/ParityTests.cpp
-  )
-  target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main ${CIVIC_JSON_TARGET})
+    tests/parity/WasmReferenceFixtureTests.cpp
+    tests/presentation/PresentationTests.cpp
+    tests/presentation/PresentationInvalidationTests.cpp
+    tests/presentation/RenderPipelineTests.cpp
+    tests/presentation/NativeClientSupportTests.cpp
+    tests/presentation/NativeHudTests.cpp
+    tests/presentation/GlbRuntimeTests.cpp
+    tests/presentation/MiniaturePresentationTests.cpp
+    tests/presentation/NativeUiRuntimeTests.cpp
+    tests/presentation/Win32NativeUiTests.cpp
+    tests/presentation/PlatformTests.cpp
+    tests/presentation/SceneGeometryTests.cpp
+    tests/presentation/NativeRendererTests.cpp
+    tests/presentation/NativeVisualAcceptanceTests.cpp
+    tests/release/NativeSoakTests.cpp
+    tests/release/CutoverGateTests.cpp)
+  target_link_libraries(civic_engine_tests PRIVATE civic_engine civic_presentation GTest::gtest_main ${CIVIC_JSON_TARGET})
+  target_compile_definitions(civic_engine_tests PRIVATE CIVIC_REPOSITORY_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
+  if(WIN32 AND CIVIC_BUILD_NATIVE_CLIENT)
+    target_link_libraries(civic_engine_tests PRIVATE civic_platform_win32)
+  endif()
   civic_enable_warnings(civic_engine_tests)
   civic_enable_sanitizers(civic_engine_tests)
   add_executable(civic_c_abi_smoke tests/parity/c_abi_smoke.c)
   target_link_libraries(civic_c_abi_smoke PRIVATE civic_engine)
   civic_enable_sanitizers(civic_c_abi_smoke)
   add_test(NAME civic_c_abi_smoke COMMAND civic_c_abi_smoke)
+
+  add_executable(civic_presentation_benchmark benchmarks/PresentationBenchmark.cpp)
+  target_link_libraries(civic_presentation_benchmark PRIVATE civic_engine civic_presentation)
+  civic_enable_warnings(civic_presentation_benchmark)
+  civic_enable_sanitizers(civic_presentation_benchmark)
+  add_test(NAME civic_presentation_benchmark_contract COMMAND civic_presentation_benchmark)
+
+  add_executable(civic_visual_reference_capture tools/VisualReferenceCapture.cpp)
+  target_link_libraries(civic_visual_reference_capture PRIVATE civic_presentation)
+  civic_enable_warnings(civic_visual_reference_capture)
+  civic_enable_sanitizers(civic_visual_reference_capture)
+
   include(GoogleTest)
   gtest_discover_tests(civic_engine_tests)
 endif()
-
 if(CIVIC_BUILD_NAPI)
   find_program(NODE_EXECUTABLE node REQUIRED)
   set(CIVIC_NODE_INCLUDE_DIR "" CACHE PATH "Explicit Node-API header directory")
@@ -58,11 +121,7 @@ if(CIVIC_BUILD_NAPI)
   if(CIVIC_NODE_INCLUDE_DIR)
     set(NODE_INCLUDE_DIR "${CIVIC_NODE_INCLUDE_DIR}")
   else()
-    execute_process(
-      COMMAND ${NODE_EXECUTABLE} -p "const p=require('path'); const root=process.platform==='win32'?p.dirname(process.execPath):p.resolve(p.dirname(process.execPath),'..'); p.join(root,'include','node')"
-      OUTPUT_VARIABLE NODE_INCLUDE_DIR
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
+    execute_process(COMMAND ${NODE_EXECUTABLE} -p "const p=require('path'); const root=process.platform==='win32'?p.dirname(process.execPath):p.resolve(p.dirname(process.execPath),'..'); p.join(root,'include','node')" OUTPUT_VARIABLE NODE_INCLUDE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
   endif()
   if(NOT EXISTS "${NODE_INCLUDE_DIR}/node_api.h")
     message(FATAL_ERROR "node_api.h not found at ${NODE_INCLUDE_DIR}")
@@ -74,11 +133,7 @@ if(CIVIC_BUILD_NAPI)
     if(CIVIC_NODE_LIBRARY)
       set(NODE_LIBRARY "${CIVIC_NODE_LIBRARY}")
     else()
-      execute_process(
-        COMMAND ${NODE_EXECUTABLE} -p "require('path').join(require('path').dirname(process.execPath),'node.lib')"
-        OUTPUT_VARIABLE NODE_LIBRARY
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-      )
+      execute_process(COMMAND ${NODE_EXECUTABLE} -p "require('path').join(require('path').dirname(process.execPath),'node.lib')" OUTPUT_VARIABLE NODE_LIBRARY OUTPUT_STRIP_TRAILING_WHITESPACE)
     endif()
     if(NOT EXISTS "${NODE_LIBRARY}")
       message(FATAL_ERROR "node.lib not found at ${NODE_LIBRARY}")
@@ -92,12 +147,11 @@ if(CIVIC_BUILD_NAPI)
     add_test(NAME civic_napi_smoke COMMAND ${NODE_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/bindings/napi/test.mjs $<TARGET_FILE:civic_native>)
   endif()
 endif()
-
 if(CIVIC_BUILD_WASM)
   if(NOT EMSCRIPTEN)
     message(FATAL_ERROR "CIVIC_BUILD_WASM requires the Emscripten toolchain")
   endif()
   add_executable(civic_wasm bindings/wasm/civic_wasm.cpp)
   target_link_libraries(civic_wasm PRIVATE civic_engine)
-  set_target_properties(civic_wasm PROPERTIES SUFFIX ".js")
+  set_target_properties(civic_wasm PROPERTIES SUFFIX ".cjs")
 endif()

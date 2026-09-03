@@ -15,6 +15,7 @@ Start with **[Civic Foundry Wiki Home](wiki/Home.md)** for a structured overview
 - [Test Matrix](TEST_MATRIX.md) — local commands and CI ownership.
 - [Engineering Standards](ENGINEERING_STANDARDS.md) — repository engineering rules.
 - [Native Engine — Stack 0](cpp/NATIVE_ENGINE.md) — transitional/shadow C++ migration substrate; TypeScript remains gameplay-authoritative.
+- [C++ WASM Reference Path](cpp-rewrite/WASM_REFERENCE_PATH.md) — deterministic cross-toolchain reference path and native/WASM feature differences.
 - [Balancing](BALANCING.md) — balancing/calibration guidance.
 - [ADRs](adr/) — accepted architecture decisions.
 - [Art documentation](art/) — presentation and asset guidance.

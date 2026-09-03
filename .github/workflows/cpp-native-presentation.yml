@@ -1,0 +1,162 @@
+name: C++ Native Presentation
+
+on:
+  push:
+    branches: [feature/stack-4-cpp-native-presentation-cutover]
+  pull_request:
+    branches: [feat/cpp-stack-0-migration-foundation]
+
+permissions:
+  contents: read
+
+jobs:
+  clang-presentation:
+    runs-on: ubuntu-26.04
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Bootstrap vcpkg
+        run: |
+          git clone --depth 1 --branch 2026.07.29 https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Configure Clang native presentation
+        run: >-
+          cmake -S cpp -B cpp/build-stack4-clang
+          -DCMAKE_TOOLCHAIN_FILE="$RUNNER_TEMP/vcpkg/scripts/buildsystems/vcpkg.cmake"
+          -DCMAKE_C_COMPILER=clang-22
+          -DCMAKE_CXX_COMPILER=clang++-22
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCIVIC_BUILD_TESTS=ON
+          -DCIVIC_BUILD_NATIVE_CLIENT=OFF
+          -DCIVIC_BUILD_NAPI=OFF
+          -DCIVIC_ENABLE_SANITIZERS=ON
+      - name: Build
+        run: cmake --build cpp/build-stack4-clang --parallel
+      - name: Test
+        run: ctest --test-dir cpp/build-stack4-clang --output-on-failure
+      - name: Capture native visual references
+        run: cpp/build-stack4-clang/civic_visual_reference_capture "$RUNNER_TEMP/native-visual-reference"
+      - name: Install native visual comparison dependencies
+        run: >-
+          python -m pip install --disable-pip-version-check --no-input
+          Pillow==12.3.0 CairoSVG==2.8.2
+      - name: Compare native visual references to golden pixels
+        run: >-
+          python tests/smoke/native_visual_reference_compare.py
+          --actual-dir "$RUNNER_TEMP/native-visual-reference"
+          --golden-manifest tests/fixtures/native-visual-golden.json
+          --diff-dir "$RUNNER_TEMP/native-visual-diff"
+          --width 80
+          --height 45
+          --channel-tolerance 8
+          --max-changed-ratio 0.005
+      - name: Record large-city presentation benchmark
+        run: cpp/build-stack4-clang/civic_presentation_benchmark | tee "$RUNNER_TEMP/presentation-benchmark-clang.json"
+      - uses: actions/upload-artifact@v6.0.0
+        with:
+          name: presentation-benchmark-clang-${{ github.sha }}
+          path: ${{ runner.temp }}/presentation-benchmark-clang.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v6.0.0
+        if: always()
+        with:
+          name: native-visual-reference-${{ github.sha }}
+          path: ${{ runner.temp }}/native-visual-reference
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v6.0.0
+        if: failure()
+        with:
+          name: native-visual-diff-${{ github.sha }}
+          path: ${{ runner.temp }}/native-visual-diff
+          if-no-files-found: ignore
+          retention-days: 14
+
+  msvc-native-client:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          git clone --depth 1 --branch 2026.07.29 https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP\vcpkg"
+          & "$env:RUNNER_TEMP\vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+      - name: Configure MSVC native client
+        shell: pwsh
+        run: >-
+          cmake -S cpp -B cpp/build-stack4-msvc
+          "-DCMAKE_TOOLCHAIN_FILE=$env:RUNNER_TEMP\vcpkg\scripts\buildsystems\vcpkg.cmake"
+          -DCIVIC_BUILD_TESTS=ON
+          -DCIVIC_BUILD_NATIVE_CLIENT=ON
+          -DCIVIC_BUILD_NAPI=OFF
+      - name: Debug build
+        run: cmake --build cpp/build-stack4-msvc --config Debug --parallel
+      - name: Unit and contract tests
+        run: ctest --test-dir cpp/build-stack4-msvc -C Debug --output-on-failure
+      - name: Release build
+        run: cmake --build cpp/build-stack4-msvc --config Release --parallel
+      - name: Record release presentation benchmark
+        shell: pwsh
+        run: |
+          & "cpp\build-stack4-msvc\Release\civic_presentation_benchmark.exe" | Tee-Object -FilePath "$env:RUNNER_TEMP\presentation-benchmark-msvc.json"
+          if ($LASTEXITCODE -ne 0) { throw "Presentation benchmark contract failed with exit code $LASTEXITCODE" }
+      - name: Stage native package
+        shell: pwsh
+        run: cmake --install cpp/build-stack4-msvc --config Release --prefix "$env:RUNNER_TEMP\civic-foundry-native"
+      - name: Build reproducible ZIP package
+        shell: pwsh
+        run: cpack --config cpp/build-stack4-msvc/CPackConfig.cmake -C Release -B "$env:RUNNER_TEMP\civic-foundry-cpack"
+      - name: Verify package boundary
+        shell: pwsh
+        run: |
+          $root = "$env:RUNNER_TEMP\civic-foundry-native"
+          $files = Get-ChildItem -Recurse $root
+          $names = $files | Select-Object -ExpandProperty Name
+          $forbidden = $names | Where-Object { $_ -match '(?i)(electron|node\.exe|node\.dll|app\.asar|chrome_elf|pixi)' }
+          if ($forbidden) { throw "Native package contains forbidden web-runtime files: $($forbidden -join ', ')" }
+          if (-not (Test-Path "$root\civic_foundry_native_client.exe")) { throw 'Native executable missing from package.' }
+          if (-not (Test-Path "$root\assets\runtime\manifest.json")) { throw 'Offline runtime asset manifest missing from package.' }
+          if (-not (Test-Path "$root\symbols\civic_foundry_native_client.pdb")) { throw 'Native crash symbols missing from package.' }
+          $zips = Get-ChildItem "$env:RUNNER_TEMP\civic-foundry-cpack" -Filter 'CivicFoundryNative-*-windows-x64.zip'
+          if ($zips.Count -ne 1) { throw "Expected exactly one CPack ZIP, found $($zips.Count)." }
+      - uses: actions/upload-artifact@v6.0.0
+        with:
+          name: civic-foundry-native-windows-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}\civic-foundry-native
+            ${{ runner.temp }}\civic-foundry-cpack\CivicFoundryNative-*-windows-x64.zip
+            ${{ runner.temp }}\presentation-benchmark-msvc.json
+          if-no-files-found: error
+          retention-days: 14
+
+  wasm-reference:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Setup pinned Emscripten SDK
+        uses: emscripten-core/setup-emsdk@v15
+        with:
+          version: 6.0.6
+      - name: Bootstrap vcpkg
+        run: |
+          git clone --depth 1 --branch 2026.07.29 https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Configure WASM reference runtime
+        run: |
+          EMSCRIPTEN_ROOT="$(dirname "$(command -v emcc)")"
+          cmake -S cpp -B cpp/build-stack4-wasm \
+            -DCMAKE_TOOLCHAIN_FILE="$RUNNER_TEMP/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$EMSCRIPTEN_ROOT/cmake/Modules/Platform/Emscripten.cmake" \
+            -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCIVIC_BUILD_TESTS=OFF \
+            -DCIVIC_BUILD_NATIVE_CLIENT=OFF \
+            -DCIVIC_BUILD_NAPI=OFF \
+            -DCIVIC_BUILD_WASM=ON
+      - name: Build WASM reference runtime
+        run: cmake --build cpp/build-stack4-wasm --target civic_wasm --parallel
+      - name: Execute shared deterministic fixture in WASM
+        run: node cpp/build-stack4-wasm/civic_wasm.cjs
