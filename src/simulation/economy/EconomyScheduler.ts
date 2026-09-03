@@ -28,10 +28,16 @@ export type EconomyTickInputs=Readonly<{
   tick:number;buildings?:readonly Building[];population:number;graph:TransportationGraph;pathfinding:PathfindingSystem;roadTravelTime:(edge:TransportationEdge)=>number;
   utilityRatio:number;serviceRatio:number;personAccessibility:number;localDemand:number;width:number;height:number;taxRate:number;
 }>;
+export type EconomyWriteAuthority=Readonly<{
+  inventoryFreight:boolean;
+  firmsProduction:boolean;
+  labor:boolean;
+}>;
 
 type MutableFinancials={revenue:number;inputCost:number;wageCost:number;utilityCost:number;taxCost:number;logisticsCost:number;shortagePenalty:number;operatingMargin:number};
 type RoutedCandidate=Readonly<{originNode:string;destinationNode:string;route:RouteResult}>;
 const CARDINAL=[[0,-1],[1,0],[0,1],[-1,0]] as const;
+const TYPESCRIPT_ECONOMY_AUTHORITY:EconomyWriteAuthority=Object.freeze({inventoryFreight:true,firmsProduction:true,labor:true});
 
 export class EconomyScheduler{
   readonly firms:FirmSystem; readonly labor=new LaborMarketSystem(); readonly inventories=new InventorySystem(); readonly production=new ProductionSystem(); readonly trade=new TradeSystem(); readonly freightDemand=new FreightDemandSystem(); readonly freightVehicles=new FreightVehicleSystem(); readonly lifecycle=new BusinessLifecycleSystem();
@@ -39,14 +45,27 @@ export class EconomyScheduler{
   private financials=new Map<string,MutableFinancials>();
   private industrialOutput=0; private wholesaleThroughput=0; private retailSales=0; private freightDelayTotal=0; private freightDeliveries=0; private logisticsCostTotal=0; private logisticsShipments=0; private businessFormations=0; private businessClosures=0;
   private employment:EmploymentSnapshot;
+  private writeAuthority:EconomyWriteAuthority=TYPESCRIPT_ECONOMY_AUTHORITY;
   constructor(seed:number){this.firms=new FirmSystem(seed);this.employment=this.employmentSystem.evaluate(0,0);}
 
+  setWriteAuthority(authority:EconomyWriteAuthority):void{
+    this.writeAuthority=Object.freeze({
+      inventoryFreight:authority.inventoryFreight===true,
+      firmsProduction:authority.firmsProduction===true,
+      labor:authority.labor===true,
+    });
+  }
+  getWriteAuthority():EconomyWriteAuthority{return this.writeAuthority;}
+
   tick(input:EconomyTickInputs):EconomyDomainSnapshot{
-    if(input.graph.revision!==this.lastGraphRevision){this.trade.rebuildGateways(input.graph,input.width,input.height);this.lastGraphRevision=input.graph.revision;}
-    const events=this.freightVehicles.step(input.graph,input.roadTravelTime,input.tick);this.applyFreightEvents(events);
-    if(input.tick%ECONOMY_CADENCE.lifecycle===0&&input.buildings){this.cachedBuildings=new Map(input.buildings.map(b=>[b.id,{...b}]));this.firms.syncEligibleBuildings(input.buildings,input.tick);this.runLifecycle(input);}
-    if(input.tick%ECONOMY_CADENCE.production===0){this.allocateLabor(input);this.runProduction(input);}
-    if(input.tick%ECONOMY_CADENCE.replenishment===0){this.freightDemand.createReplenishmentOrders(this.firms.list(),this.inventories,input.tick);this.createExportOrders(input);this.dispatchWaitingOrders(input);}
+    const {inventoryFreight,firmsProduction,labor}=this.writeAuthority;
+    if(inventoryFreight){
+      if(input.graph.revision!==this.lastGraphRevision){this.trade.rebuildGateways(input.graph,input.width,input.height);this.lastGraphRevision=input.graph.revision;}
+      const events=this.freightVehicles.step(input.graph,input.roadTravelTime,input.tick);this.applyFreightEvents(events,firmsProduction);
+    }
+    if(firmsProduction&&input.tick%ECONOMY_CADENCE.lifecycle===0&&input.buildings){this.cachedBuildings=new Map(input.buildings.map(b=>[b.id,{...b}]));this.firms.syncEligibleBuildings(input.buildings,input.tick);this.runLifecycle(input,inventoryFreight);}
+    if(input.tick%ECONOMY_CADENCE.production===0){if(labor)this.allocateLabor(input,firmsProduction);if(firmsProduction&&inventoryFreight)this.runProduction(input);}
+    if(inventoryFreight&&input.tick%ECONOMY_CADENCE.replenishment===0){this.freightDemand.createReplenishmentOrders(this.firms.list(),this.inventories,input.tick);this.createExportOrders(input);this.dispatchWaitingOrders(input,firmsProduction);}
     return this.snapshot(input.tick);
   }
 
@@ -57,21 +76,21 @@ export class EconomyScheduler{
     return Object.freeze({activeFirms:active.length,formingFirms:list.filter(f=>f.status==='forming').length,distressedFirms:list.filter(f=>f.status==='distressed').length,closedFirms:list.filter(f=>f.status==='closed').length,employment:{...this.employment},industrialOutput:this.industrialOutput,wholesaleThroughput:this.wholesaleThroughput,retailSales:this.retailSales,shortageRate:shortage,freightVolumeInTransit:inTransit,averageFreightDelay:this.freightDeliveries===0?0:this.freightDelayTotal/this.freightDeliveries,averageLogisticsCost:this.logisticsShipments===0?0:this.logisticsCostTotal/this.logisticsShipments,queuedOrders:this.freightDemand.listOrders().filter(o=>o.status==='waiting').length,queueDelay:this.freightDemand.waitingAge(tick),cumulativeImports:this.trade.cumulativeImports,cumulativeExports:this.trade.cumulativeExports,cumulativeImportValue:this.trade.cumulativeImportValue,cumulativeExportValue:this.trade.cumulativeExportValue,businessFormations:this.businessFormations,businessClosures:this.businessClosures,aggregateFirmHealth:active.length===0?0:active.reduce((s,f)=>s+f.cashHealth,0)/active.length});
   }
 
-  removeBuilding(buildingId:string,tick:number):void{const firm=this.firms.getByBuildingId(buildingId);if(!firm)return;this.firms.update(firm.id,{status:'closed',closureTick:tick,filledJobs:0,vacancies:0,distressReason:'building removed'});this.cleanupClosedFirm(firm.id);this.financials.delete(firm.id);this.businessClosures++;}
+  removeBuilding(buildingId:string,tick:number):void{if(!this.writeAuthority.firmsProduction)return;const firm=this.firms.getByBuildingId(buildingId);if(!firm)return;this.firms.update(firm.id,{status:'closed',closureTick:tick,filledJobs:0,vacancies:0,distressReason:'building removed'});if(this.writeAuthority.inventoryFreight)this.cleanupClosedFirm(firm.id);this.financials.delete(firm.id);this.businessClosures++;}
   getFirmAtBuilding(buildingId:string):Firm|undefined{return this.firms.getByBuildingId(buildingId);}
   getFirmInventories(firmId:string){return this.inventories.listForFirm(firmId);}
   getFirmFinancials(firmId:string):FirmCycleFinancials{const values=this.financials.get(firmId)??this.blankFinancials();return{...values,operatingMargin:values.revenue-values.inputCost-values.wageCost-values.utilityCost-values.taxCost-values.logisticsCost-values.shortagePenalty};}
   snapshotState():EconomySchedulerStateSnapshot{return{firms:this.firms.snapshotState(),inventories:this.inventories.snapshotState(),trade:this.trade.snapshotState(),orders:this.freightDemand.snapshotState(),freightVehicles:this.freightVehicles.snapshotState(),nextShipmentId:this.nextShipmentId,lastGraphRevision:this.lastGraphRevision,financials:[...this.financials.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([firmId,values])=>({firmId,values:{...values}})),businessFormations:this.businessFormations,businessClosures:this.businessClosures,industrialOutput:this.industrialOutput,wholesaleThroughput:this.wholesaleThroughput,retailSales:this.retailSales,freightDelayTotal:this.freightDelayTotal,freightDeliveries:this.freightDeliveries,logisticsCostTotal:this.logisticsCostTotal,logisticsShipments:this.logisticsShipments,employment:{...this.employment}};}
-  restoreState(state:EconomySchedulerStateSnapshot):void{this.firms.restoreState(state.firms);this.inventories.restoreState(state.inventories);this.trade.restoreState(state.trade);this.freightDemand.restoreState(state.orders);this.freightVehicles.restoreState(state.freightVehicles);this.nextShipmentId=state.nextShipmentId;this.lastGraphRevision=state.lastGraphRevision;this.financials=new Map(state.financials.map(item=>[item.firmId,{...item.values}]));this.businessFormations=state.businessFormations;this.businessClosures=state.businessClosures;this.industrialOutput=state.industrialOutput;this.wholesaleThroughput=state.wholesaleThroughput;this.retailSales=state.retailSales;this.freightDelayTotal=state.freightDelayTotal;this.freightDeliveries=state.freightDeliveries;this.logisticsCostTotal=state.logisticsCostTotal;this.logisticsShipments=state.logisticsShipments;this.employment={...state.employment};}
+  restoreState(state:EconomySchedulerStateSnapshot):void{if(!this.writeAuthority.inventoryFreight||!this.writeAuthority.firmsProduction||!this.writeAuthority.labor)return;this.firms.restoreState(state.firms);this.inventories.restoreState(state.inventories);this.trade.restoreState(state.trade);this.freightDemand.restoreState(state.orders);this.freightVehicles.restoreState(state.freightVehicles);this.nextShipmentId=state.nextShipmentId;this.lastGraphRevision=state.lastGraphRevision;this.financials=new Map(state.financials.map(item=>[item.firmId,{...item.values}]));this.businessFormations=state.businessFormations;this.businessClosures=state.businessClosures;this.industrialOutput=state.industrialOutput;this.wholesaleThroughput=state.wholesaleThroughput;this.retailSales=state.retailSales;this.freightDelayTotal=state.freightDelayTotal;this.freightDeliveries=state.freightDeliveries;this.logisticsCostTotal=state.logisticsCostTotal;this.logisticsShipments=state.logisticsShipments;this.employment={...state.employment};}
   restoreDerivedContext(buildings:readonly Building[]):void{this.cachedBuildings=new Map(buildings.map(building=>[building.id,{...building}]));}
 
-  private runLifecycle(input:EconomyTickInputs):void{
+  private runLifecycle(input:EconomyTickInputs,inventoryWritable:boolean):void{
     const gateways=this.trade.listGateways();
     for(const firm of this.firms.list().filter(f=>f.status==='forming')){
       const access=this.accessNodesForFirm(firm,input.graph);
       const reachable=access.some(nodeId=>gateways.some(g=>input.pathfinding.findRoute(input.graph,nodeId,g.nodeId,{costKey:'freight-free-flow'})!==null));
       const score=this.lifecycle.scoreFormation({reachableGateway:reachable,utilityRatio:input.utilityRatio,laborAvailability:this.employment.workforce===0?1:Math.max(0,1-this.employment.unemploymentRate),accessibility:input.personAccessibility,localDemand:Math.min(1,input.localDemand),sectorGap:1,taxRate:input.taxRate});
-      if(score>=0.35){this.firms.update(firm.id,{status:'operating',vacancies:firm.jobCapacity});this.inventories.syncFirm({...firm,status:'operating'});this.financials.set(firm.id,this.blankFinancials());this.businessFormations++;}
+      if(score>=0.35){this.firms.update(firm.id,{status:'operating',vacancies:firm.jobCapacity});if(inventoryWritable)this.inventories.syncFirm({...firm,status:'operating'});this.financials.set(firm.id,this.blankFinancials());this.businessFormations++;}
     }
     for(const firm of this.firms.list().filter(f=>(f.status==='operating'||f.status==='distressed')&&f.formationTick<input.tick)){
       const accrual=this.financials.get(firm.id)??this.blankFinancials();
@@ -79,10 +98,10 @@ export class EconomyScheduler{
       const values={...accrual,taxCost,operatingMargin:accrual.revenue-accrual.inputCost-accrual.wageCost-accrual.utilityCost-taxCost-accrual.logisticsCost-accrual.shortagePenalty};
       const update=this.lifecycle.evaluateFirm(firm,values,input.tick);
       this.firms.update(firm.id,update);
-      if(update.status==='closed'){this.cleanupClosedFirm(firm.id);this.businessClosures++;this.financials.delete(firm.id);}else this.financials.set(firm.id,this.blankFinancials());
+      if(update.status==='closed'){if(inventoryWritable)this.cleanupClosedFirm(firm.id);this.businessClosures++;this.financials.delete(firm.id);}else this.financials.set(firm.id,this.blankFinancials());
     }
   }
-  private allocateLabor(input:EconomyTickInputs):void{const allocation=this.labor.allocateDetailed(this.firms.list(),input.population,{accessibility:input.personAccessibility,utilityRatio:input.utilityRatio});for(const firm of this.firms.list()){const filled=allocation.filledByFirm[firm.id]??0;if(firm.status==='operating'||firm.status==='distressed')this.firms.update(firm.id,{filledJobs:filled,vacancies:Math.max(0,firm.jobCapacity-filled)});}this.employment=allocation.snapshot;}
+  private allocateLabor(input:EconomyTickInputs,firmWritesEnabled:boolean):void{const allocation=this.labor.allocateDetailed(this.firms.list(),input.population,{accessibility:input.personAccessibility,utilityRatio:input.utilityRatio});if(firmWritesEnabled){for(const firm of this.firms.list()){const filled=allocation.filledByFirm[firm.id]??0;if(firm.status==='operating'||firm.status==='distressed')this.firms.update(firm.id,{filledJobs:filled,vacancies:Math.max(0,firm.jobCapacity-filled)});}}this.employment=allocation.snapshot;}
   private runProduction(input:EconomyTickInputs):void{for(const firm of this.firms.list().filter(f=>f.status==='operating'||f.status==='distressed')){const result=this.production.runFirmCycle(firm,this.inventories,{utilityRatio:input.utilityRatio,serviceRatio:input.serviceRatio,localDemand:input.localDemand});const acc=this.accrual(firm.id);acc.wageCost+=firm.filledJobs*ECONOMY_PRICES.wagePerJob;acc.utilityCost+=firm.filledJobs*ECONOMY_PRICES.utilityPerJob*(2-Math.max(0,Math.min(1,input.utilityRatio)));acc.shortagePenalty+=result.lostOutputFromInputShortage*2;if(firm.archetype==='retail_local'){const revenue=result.soldConsumerGoods*ECONOMY_PRICES.consumer_goods;this.retailSales+=revenue;acc.revenue+=revenue;}else if(firm.archetype==='wholesale_logistics')this.wholesaleThroughput+=result.throughput;else this.industrialOutput+=result.throughput;this.financials.set(firm.id,acc);}}
   private createExportOrders(input:EconomyTickInputs):void{
     const gateways=this.trade.listGateways().filter(gateway=>gateway.exportCapacity>0);if(gateways.length===0)return;
@@ -94,7 +113,7 @@ export class EconomyScheduler{
       if(best)this.freightDemand.createExportOrder(firm.id,'manufactured_goods',Math.min(10,surplus),best.gatewayId,input.tick);
     }
   }
-  private dispatchWaitingOrders(input:EconomyTickInputs):void{
+  private dispatchWaitingOrders(input:EconomyTickInputs,firmsWritable:boolean):void{
     for(const order of this.freightDemand.listOrders().filter(o=>o.status==='waiting').sort((a,b)=>b.priority-a.priority||a.id.localeCompare(b.id))){
       if(!this.freightVehicles.hasDispatchCapacity())break;
       const destinationNodes=this.destinationNodes(order,input.graph);if(destinationNodes.length===0)continue;
@@ -102,15 +121,15 @@ export class EconomyScheduler{
       const match=this.freightDemand.matchOrder(order,candidates,candidate=>{const routed=this.bestCandidateRoute(candidate,destinationNodes,input);return routed?this.routeCost(routed.route,input):Infinity;});
       if(!match)continue;
       const routed=this.bestCandidateRoute({kind:match.originKind,id:match.originId,available:match.quantity},destinationNodes,input);if(!routed)continue;
-      this.dispatchMatch(order,match,routed,input);
+      this.dispatchMatch(order,match,routed,input,firmsWritable);
     }
   }
-  private dispatchMatch(order:FreightOrder,match:FreightMatch,routed:RoutedCandidate,input:EconomyTickInputs):void{
+  private dispatchMatch(order:FreightOrder,match:FreightMatch,routed:RoutedCandidate,input:EconomyTickInputs,firmsWritable:boolean):void{
     const shipmentId=`shipment:${this.nextShipmentId++}`;try{if(match.originKind==='firm')this.inventories.dispatchCargo(match.originId,match.commodity,match.quantity,shipmentId);else this.inventories.createExternalCargo(match.commodity,match.quantity,shipmentId);}catch{return;}
     const shipment:FreightShipment={id:shipmentId,orderId:order.id,commodity:match.commodity,quantity:match.quantity,vehicleWeight:Math.max(1,match.quantity/10),originKind:match.originKind,originId:match.originId,destinationKind:match.destinationKind,destinationId:match.destinationId,originNodeId:routed.originNode,destinationNodeId:routed.destinationNode,createdTick:input.tick,generalizedCost:match.generalizedCost};
-    this.freightVehicles.dispatch(shipment,routed.route,input.tick);this.freightDemand.markDispatched(order.id,shipmentId);this.logisticsCostTotal+=match.generalizedCost;this.logisticsShipments++;const costTarget=match.destinationKind==='firm'?match.destinationId:(order.originFirmId??'');if(costTarget){const acc=this.accrual(costTarget);acc.logisticsCost+=match.generalizedCost*0.1;this.financials.set(costTarget,acc);}
+    this.freightVehicles.dispatch(shipment,routed.route,input.tick);this.freightDemand.markDispatched(order.id,shipmentId);this.logisticsCostTotal+=match.generalizedCost;this.logisticsShipments++;const costTarget=match.destinationKind==='firm'?match.destinationId:(order.originFirmId??'');if(firmsWritable&&costTarget){const acc=this.accrual(costTarget);acc.logisticsCost+=match.generalizedCost*0.1;this.financials.set(costTarget,acc);}
   }
-  private applyFreightEvents(events:ReturnType<FreightVehicleSystem['step']>):void{for(const event of events){const token=this.inventories.getCargo(event.shipment.id);if(!token)continue;if(event.type==='delivered'){if(event.shipment.destinationKind==='firm')this.inventories.receiveCargo(event.shipment.destinationId,token);else this.inventories.completeExport(token);if(event.shipment.originKind==='gateway')this.trade.recordImport(event.shipment.quantity,event.shipment.quantity*ECONOMY_PRICES[event.shipment.commodity]);if(event.shipment.destinationKind==='gateway')this.trade.recordExport(event.shipment.quantity,event.shipment.quantity*ECONOMY_PRICES[event.shipment.commodity]);if(event.shipment.originKind==='firm'){const acc=this.accrual(event.shipment.originId);acc.revenue+=event.shipment.quantity*ECONOMY_PRICES[event.shipment.commodity];this.financials.set(event.shipment.originId,acc);}if(event.shipment.destinationKind==='firm'){const acc=this.accrual(event.shipment.destinationId);acc.inputCost+=event.shipment.quantity*ECONOMY_PRICES[event.shipment.commodity];this.financials.set(event.shipment.destinationId,acc);}this.freightDemand.markDelivered(event.shipment.orderId);this.freightDelayTotal+=event.delayTicks;this.freightDeliveries++;}else{this.inventories.cancelCargo(token);this.freightDemand.retry(event.shipment.orderId);}}}
+  private applyFreightEvents(events:ReturnType<FreightVehicleSystem['step']>,firmsWritable:boolean):void{for(const event of events){const token=this.inventories.getCargo(event.shipment.id);if(!token)continue;if(event.type==='delivered'){if(event.shipment.destinationKind==='firm')this.inventories.receiveCargo(event.shipment.destinationId,token);else this.inventories.completeExport(token);if(event.shipment.originKind==='gateway')this.trade.recordImport(event.shipment.quantity,event.shipment.quantity*ECONOMY_PRICES[event.shipment.commodity]);if(event.shipment.destinationKind==='gateway')this.trade.recordExport(event.shipment.quantity,event.shipment.quantity*ECONOMY_PRICES[event.shipment.commodity]);if(firmsWritable&&event.shipment.originKind==='firm'){const acc=this.accrual(event.shipment.originId);acc.revenue+=event.shipment.quantity*ECONOMY_PRICES[event.shipment.commodity];this.financials.set(event.shipment.originId,acc);}if(firmsWritable&&event.shipment.destinationKind==='firm'){const acc=this.accrual(event.shipment.destinationId);acc.inputCost+=event.shipment.quantity*ECONOMY_PRICES[event.shipment.commodity];this.financials.set(event.shipment.destinationId,acc);}this.freightDemand.markDelivered(event.shipment.orderId);this.freightDelayTotal+=event.delayTicks;this.freightDeliveries++;}else{this.inventories.cancelCargo(token);this.freightDemand.retry(event.shipment.orderId);}}}
   private accrual(firmId:string):MutableFinancials{return{...(this.financials.get(firmId)??this.blankFinancials())};}
   private blankFinancials():MutableFinancials{return{revenue:0,inputCost:0,wageCost:0,utilityCost:0,taxCost:0,logisticsCost:0,shortagePenalty:0,operatingMargin:0};}
   private cleanupClosedFirm(firmId:string):void{this.freightDemand.cancelForFirm(firmId);for(const vehicle of this.freightVehicles.listVehicles()){const s=vehicle.shipment;if(s.originId!==firmId&&s.destinationId!==firmId)continue;const token=this.inventories.getCargo(s.id);if(token){try{this.inventories.cancelCargo(token);}catch{}}this.freightVehicles.removeForShipment(s.id);this.freightDemand.cancel(s.orderId);}this.inventories.removeFirm(firmId);}
