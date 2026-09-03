@@ -38,6 +38,20 @@ jobs:
         run: ctest --test-dir cpp/build-stack4-clang --output-on-failure
       - name: Capture native visual references
         run: cpp/build-stack4-clang/civic_visual_reference_capture "$RUNNER_TEMP/native-visual-reference"
+      - name: Install native visual comparison dependencies
+        run: >-
+          python -m pip install --disable-pip-version-check --no-input
+          Pillow==12.3.0 CairoSVG==2.8.2
+      - name: Compare native visual references to golden pixels
+        run: >-
+          python tests/smoke/native_visual_reference_compare.py
+          --actual-dir "$RUNNER_TEMP/native-visual-reference"
+          --golden-manifest tests/fixtures/native-visual-golden.json
+          --diff-dir "$RUNNER_TEMP/native-visual-diff"
+          --width 80
+          --height 45
+          --channel-tolerance 8
+          --max-changed-ratio 0.005
       - name: Record large-city presentation benchmark
         run: cpp/build-stack4-clang/civic_presentation_benchmark | tee "$RUNNER_TEMP/presentation-benchmark-clang.json"
       - uses: actions/upload-artifact@v6.0.0
@@ -47,10 +61,18 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@v6.0.0
+        if: always()
         with:
           name: native-visual-reference-${{ github.sha }}
           path: ${{ runner.temp }}/native-visual-reference
           if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v6.0.0
+        if: failure()
+        with:
+          name: native-visual-diff-${{ github.sha }}
+          path: ${{ runner.temp }}/native-visual-diff
+          if-no-files-found: ignore
           retention-days: 14
 
   msvc-native-client:
