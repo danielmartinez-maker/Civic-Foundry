@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:cpp-parity-evidence": "node --test tests/cpp-parity-evidence.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit",
     "lint": "eslint src tests",
     "policy:check": "node scripts/repository-policy.mjs",
     "architecture:check": "node scripts/check-architecture.mjs",
+    "cpp:parity:evidence:verify": "node scripts/cpp/parity-evidence.mjs",
     "format": "node scripts/format-changed.mjs --write",
     "format:check": "node scripts/format-changed.mjs --check",
     "security:audit": "npm audit --audit-level=high",
