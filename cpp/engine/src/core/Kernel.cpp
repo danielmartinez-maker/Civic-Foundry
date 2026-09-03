@@ -76,7 +76,9 @@ std::vector<CommandEnvelope> CommandQueue::takeReady(std::uint64_t tick) {
     return ready;
 }
 
-DomainEvent DomainEventJournal::append(std::uint64_t tick, std::string type, std::string source, std::vector<std::byte> payload) {
+Result<DomainEvent> DomainEventJournal::append(std::uint64_t tick, std::string type, std::string source, std::vector<std::byte> payload) {
+    if (!validIdentity(type)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event type must not be empty"));
+    if (!validIdentity(source)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event source must not be empty"));
     DomainEvent event{next_sequence_++, tick, std::move(type), std::move(source), std::move(payload)};
     events_.push_back(event);
     return event;
@@ -86,6 +88,47 @@ std::vector<DomainEvent> DomainEventJournal::drain() {
     auto drained = std::move(events_);
     events_.clear();
     return drained;
+}
+
+std::vector<DomainEvent> DomainEventJournal::since(std::uint64_t sequence_exclusive) const {
+    std::vector<DomainEvent> result;
+    for (const auto& event : events_) {
+        if (event.sequence > sequence_exclusive) result.push_back(event);
+    }
+    return result;
+}
+
+DomainEventJournalSnapshot DomainEventJournal::snapshot() const {
+    return DomainEventJournalSnapshot{events_, next_sequence_};
+}
+
+Result<void> DomainEventJournal::restore(const DomainEventJournalSnapshot& snapshot) {
+    if (snapshot.next_sequence == 0) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid event journal snapshot"));
+    }
+
+    std::set<std::uint64_t> seen;
+    auto restored = snapshot.events;
+    for (const auto& event : restored) {
+        if (!validIdentity(event.type)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event type must not be empty"));
+        if (!validIdentity(event.source)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event source must not be empty"));
+        if (event.sequence == 0 || !seen.insert(event.sequence).second) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid event sequence"));
+        }
+    }
+
+    std::ranges::sort(restored, [](const auto& left, const auto& right) { return left.sequence < right.sequence; });
+    if (std::ranges::any_of(restored, [&](const auto& event) { return event.sequence >= snapshot.next_sequence; })) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "event sequence exceeds next sequence"));
+    }
+
+    events_ = std::move(restored);
+    next_sequence_ = snapshot.next_sequence;
+    return {};
+}
+
+void DomainEventJournal::clearDiagnosticHistory() noexcept {
+    events_.clear();
 }
 
 Result<void> SystemScheduler::registerSystem(SystemDefinition system) {
