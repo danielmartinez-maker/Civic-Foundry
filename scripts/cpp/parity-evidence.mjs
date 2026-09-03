@@ -25,10 +25,14 @@ function validateRuntime(runtime, prefix) {
     `${prefix}.eventsSha256 invalid`,
   );
   assert(
-    Number.isInteger(runtime?.domainHashVersion) && runtime.domainHashVersion >= 1,
+    Number.isInteger(runtime?.domainHashVersion) &&
+      runtime.domainHashVersion >= 1,
     `${prefix}.domainHashVersion invalid`,
   );
-  assert(UNSIGNED.test(runtime?.domainHash ?? ""), `${prefix}.domainHash invalid`);
+  assert(
+    UNSIGNED.test(runtime?.domainHash ?? ""),
+    `${prefix}.domainHash invalid`,
+  );
   assert(
     runtime?.invariants === "pass" || runtime?.invariants === "fail",
     `${prefix}.invariants invalid`,
@@ -55,12 +59,18 @@ export function validateEvidence(evidence) {
     Number.isInteger(evidence?.targetTick) && evidence.targetTick >= 0,
     "targetTick invalid",
   );
-  assert(CLASSIFICATION.has(evidence?.classification), "classification invalid");
+  assert(
+    CLASSIFICATION.has(evidence?.classification),
+    "classification invalid",
+  );
   assert(
     Array.isArray(evidence?.domains) && evidence.domains.length > 0,
     "domains required",
   );
-  assert(COMMIT.test(evidence?.generatedAtCommit ?? ""), "generatedAtCommit invalid");
+  assert(
+    COMMIT.test(evidence?.generatedAtCommit ?? ""),
+    "generatedAtCommit invalid",
+  );
 
   assert(
     SHA256.test(evidence?.determinism?.typescriptRepeatSha256 ?? ""),
@@ -103,7 +113,10 @@ export function validateEvidence(evidence) {
         `${entry.domain}: native must be owned for PARITY`,
       );
       for (const value of Object.values(entry.comparison)) {
-        assert(value === "match", `${entry.domain}: PARITY comparison must match`);
+        assert(
+          value === "match",
+          `${entry.domain}: PARITY comparison must match`,
+        );
       }
     }
 
