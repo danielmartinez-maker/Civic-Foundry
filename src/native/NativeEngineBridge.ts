@@ -9,6 +9,21 @@ import {
   type NativeEvent,
   type NativeSnapshot,
 } from "./NativeEngineTypes.ts";
+import {
+  SOCIOECONOMIC_AUTHORITY_GATES,
+  type SocioeconomicAuthorityCutoverAdapter,
+  type SocioeconomicAuthorityGate,
+} from "./SocioeconomicAuthorityCutover.ts";
+
+const SOCIOECONOMIC_DOMAIN_BY_GATE: Readonly<
+  Record<SocioeconomicAuthorityGate, string>
+> = Object.freeze({
+  inventory_freight: "economy.inventory_freight",
+  firms_production: "economy.firms_production",
+  labor: "economy.labor",
+  households_housing: "population.households_housing",
+  personhood_lifecycle: "population.personhood_lifecycle",
+});
 
 function requireNonNegativeInteger(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 0)
@@ -133,6 +148,30 @@ function toWireEnvelopes(
   );
 }
 
+function validateSocioeconomicGateBatch(
+  gates: readonly SocioeconomicAuthorityGate[],
+): void {
+  if (gates.length === 0)
+    throw new Error(
+      "socioeconomic authority transfer requires at least one gate",
+    );
+  const seen = new Set<SocioeconomicAuthorityGate>();
+  let previous = -1;
+  for (const gate of gates) {
+    const index = SOCIOECONOMIC_AUTHORITY_GATES.indexOf(gate);
+    if (index < 0)
+      throw new Error(`unknown socioeconomic authority gate: ${gate}`);
+    if (seen.has(gate))
+      throw new Error(`duplicate socioeconomic authority gate: ${gate}`);
+    if (index <= previous)
+      throw new Error(
+        "socioeconomic authority gates must be supplied in declared order",
+      );
+    seen.add(gate);
+    previous = index;
+  }
+}
+
 export class NativeEngineBridge {
   private readonly addon: NativeEngineAddon;
   private handle: NativeEngineHandle | null;
@@ -166,6 +205,64 @@ export class NativeEngineBridge {
     const envelopes = toWireEnvelopes(normalized);
     this.addon.submitCommands(this.requireHandle(), JSON.stringify(envelopes));
     return normalized;
+  }
+
+  transferSocioeconomicAuthority(
+    gates: readonly SocioeconomicAuthorityGate[],
+    sequenceStart: number,
+    cutover: SocioeconomicAuthorityCutoverAdapter,
+  ): void {
+    validateSocioeconomicGateBatch(gates);
+    requireNonNegativeInteger(sequenceStart, "socioeconomic transfer sequence");
+    if (sequenceStart < 1)
+      throw new Error("socioeconomic transfer sequence must be positive");
+    if (sequenceStart > Number.MAX_SAFE_INTEGER - gates.length + 1)
+      throw new Error(
+        "socioeconomic transfer sequence range exceeds safe integers",
+      );
+
+    for (const gate of gates) {
+      if (!cutover.typescriptWriteEnabled(gate))
+        throw new Error(`TypeScript writes are already disabled for ${gate}`);
+      const native = this.domainHash(SOCIOECONOMIC_DOMAIN_BY_GATE[gate]);
+      if (native.ownership !== "unowned")
+        throw new Error(`native socioeconomic gate is already owned: ${gate}`);
+    }
+
+    const tick = this.snapshot().tick + 1;
+    requireNonNegativeInteger(tick, "socioeconomic transfer tick");
+    const disabled: SocioeconomicAuthorityGate[] = [];
+    try {
+      for (const gate of gates) {
+        cutover.disableTypescriptWrites(gate);
+        disabled.push(gate);
+        if (cutover.typescriptWriteEnabled(gate))
+          throw new Error(`failed to disable TypeScript writes for ${gate}`);
+      }
+
+      const commands = gates.map((gate, index) => ({
+        sequence: sequenceStart + index,
+        tick,
+        type: `native.socioeconomic.transfer.${gate}`,
+        payload: null,
+      }));
+      this.submit(commands);
+    } catch (error) {
+      for (const gate of disabled.reverse())
+        cutover.enableTypescriptWrites(gate);
+      throw error;
+    }
+
+    this.step(1);
+    for (const gate of gates) {
+      const native = this.domainHash(SOCIOECONOMIC_DOMAIN_BY_GATE[gate]);
+      if (native.ownership !== "owned")
+        throw new Error(`native socioeconomic transfer did not claim ${gate}`);
+      if (cutover.typescriptWriteEnabled(gate))
+        throw new Error(
+          `dual socioeconomic writers detected after transfer: ${gate}`,
+        );
+    }
   }
 
   step(ticks = 1): void {
