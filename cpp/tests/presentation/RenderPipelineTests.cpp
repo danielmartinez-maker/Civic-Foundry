@@ -83,6 +83,44 @@ TEST(RenderPipeline, PreservesValidToolPreviewAcrossPresentationBoundary) {
     EXPECT_EQ(packet.tool_preview.geometry, snapshot.tool_preview.geometry);
 }
 
+TEST(RenderPipeline, ResolvesZoneTargetIdToClosedParcelPreviewGeometry) {
+    RenderPacketBuilder builder{};
+    auto snapshot = renderFixture();
+    snapshot.tool_preview = ToolPreviewState{
+        .tool_id = "zone",
+        .valid = true,
+        .geometry = {},
+        .invalid_reason = {},
+        .target_ids = {"parcel:p1"},
+    };
+
+    const auto packet = builder.build(snapshot, ViewportWorldBounds{0.0, 0.0, 10.0, 10.0});
+
+    ASSERT_TRUE(packet.tool_preview.valid);
+    ASSERT_EQ(packet.tool_preview.geometry.size(), snapshot.parcels.front().polygon.size() + 1U);
+    EXPECT_EQ(packet.tool_preview.geometry.front(), packet.tool_preview.geometry.back());
+}
+
+TEST(RenderPipeline, ResolvesTransitStopIdsToRoutePreviewGeometry) {
+    RenderPacketBuilder builder{};
+    auto snapshot = renderFixture();
+    snapshot.transit_stops.push_back({"stop:bus", 7, TransitStopKind::BusStop, {8.0, 6.0}, 320.0F, 0.2F, 0.92F});
+    snapshot.tool_preview = ToolPreviewState{
+        .tool_id = "transit",
+        .valid = true,
+        .geometry = {},
+        .invalid_reason = {},
+        .target_ids = {"stop:metro", "stop:bus"},
+    };
+
+    const auto packet = builder.build(snapshot, ViewportWorldBounds{0.0, 0.0, 10.0, 10.0});
+
+    ASSERT_TRUE(packet.tool_preview.valid);
+    ASSERT_EQ(packet.tool_preview.geometry.size(), 2U);
+    EXPECT_EQ(packet.tool_preview.geometry[0], (Point2{5.0, 6.0}));
+    EXPECT_EQ(packet.tool_preview.geometry[1], (Point2{8.0, 6.0}));
+}
+
 TEST(RenderPipeline, ToolPreviewDoesNotPolluteAuthoritativeSpatialOverlayRecords) {
     RenderPacketBuilder builder{};
     auto snapshot = renderFixture();
