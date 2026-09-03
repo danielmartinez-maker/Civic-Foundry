@@ -51,6 +51,52 @@ void countVisibility(bool visible, CullingStats& stats) noexcept {
     else ++stats.culled_records;
 }
 
+void invalidateResolvedPreview(ToolPreviewState& preview, std::string reason) {
+    preview.valid = false;
+    preview.geometry.clear();
+    preview.invalid_reason = std::move(reason);
+}
+
+void resolveToolPreviewGeometry(const FrameSnapshot& snapshot, ToolPreviewState& preview) {
+    if (!preview.valid || !preview.geometry.empty() || preview.target_ids.empty()) return;
+
+    if (preview.tool_id == "zone") {
+        if (preview.target_ids.size() != 1U) {
+            invalidateResolvedPreview(preview, "zone preview requires exactly one parcel target");
+            return;
+        }
+        const auto& target_id = preview.target_ids.front();
+        const auto parcel = std::ranges::find_if(snapshot.parcels, [&](const ParcelSnapshot& candidate) {
+            return candidate.id == target_id;
+        });
+        if (parcel == snapshot.parcels.end() || parcel->polygon.empty()) {
+            invalidateResolvedPreview(preview, "zone preview target parcel is unavailable");
+            return;
+        }
+        preview.geometry = parcel->polygon;
+        if (preview.geometry.front() != preview.geometry.back()) preview.geometry.push_back(preview.geometry.front());
+        return;
+    }
+
+    if (preview.tool_id == "transit") {
+        if (preview.target_ids.size() < 2U) {
+            invalidateResolvedPreview(preview, "transit preview requires at least two stop targets");
+            return;
+        }
+        preview.geometry.reserve(preview.target_ids.size());
+        for (const auto& target_id : preview.target_ids) {
+            const auto stop = std::ranges::find_if(snapshot.transit_stops, [&](const TransitStopSnapshot& candidate) {
+                return candidate.id == target_id;
+            });
+            if (stop == snapshot.transit_stops.end()) {
+                invalidateResolvedPreview(preview, "transit preview target stop is unavailable");
+                return;
+            }
+            preview.geometry.push_back(stop->position);
+        }
+    }
+}
+
 } // namespace
 
 RenderPacket RenderPacketBuilder::build(const FrameSnapshot& snapshot, ViewportWorldBounds viewport) const {
@@ -58,6 +104,7 @@ RenderPacket RenderPacketBuilder::build(const FrameSnapshot& snapshot, ViewportW
     packet.revision = snapshot.revision;
     packet.selection = snapshot.selection;
     packet.tool_preview = snapshot.tool_preview;
+    resolveToolPreviewGeometry(snapshot, packet.tool_preview);
 
     for (const auto& record : snapshot.terrain) {
         const bool visible = pointVisible({static_cast<double>(record.x), static_cast<double>(record.y)}, viewport);
