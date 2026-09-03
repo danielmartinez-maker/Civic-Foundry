@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "centroidToleranceCm": 0.5,
+  "polygons": [
+    {
+      "id": "clockwise-rectangle",
+      "verticesCm": [[300, 200], [300, 0], [0, 0], [0, 200]],
+      "expected": {
+        "signedDoubleAreaCm2": -120000,
+        "canonicalVerticesCm": [[0, 0], [300, 0], [300, 200], [0, 200]],
+        "centroidCm": [150, 100],
+        "boundsCm": [0, 0, 300, 200],
+        "hash64": "16821474309977355603"
+      },
+      "pointCases": [
+        { "pointCm": [150, 100], "insideOrBoundary": true },
+        { "pointCm": [0, 100], "insideOrBoundary": true },
+        { "pointCm": [301, 100], "insideOrBoundary": false }
+      ]
+    },
+    {
+      "id": "clockwise-triangle",
+      "verticesCm": [[200, 300], [400, 0], [0, 0]],
+      "expected": {
+        "signedDoubleAreaCm2": -120000,
+        "canonicalVerticesCm": [[0, 0], [400, 0], [200, 300]],
+        "centroidCm": [200, 100],
+        "boundsCm": [0, 0, 400, 300],
+        "hash64": "4458709838347510295"
+      },
+      "pointCases": [
+        { "pointCm": [200, 100], "insideOrBoundary": true },
+        { "pointCm": [200, 300], "insideOrBoundary": true },
+        { "pointCm": [399, 299], "insideOrBoundary": false }
+      ]
+    },
+    {
+      "id": "concave-l-shape",
+      "verticesCm": [[100, 400], [100, 100], [400, 100], [400, 0], [0, 0], [0, 400]],
+      "expected": {
+        "signedDoubleAreaCm2": -140000,
+        "canonicalVerticesCm": [[0, 0], [400, 0], [400, 100], [100, 100], [100, 400], [0, 400]],
+        "centroidCm": [136, 136],
+        "boundsCm": [0, 0, 400, 400],
+        "hash64": "12249643593284129795"
+      },
+      "pointCases": [
+        { "pointCm": [50, 350], "insideOrBoundary": true },
+        { "pointCm": [100, 250], "insideOrBoundary": true },
+        { "pointCm": [250, 250], "insideOrBoundary": false }
+      ]
+    }
+  ],
+  "segmentCases": [
+    {
+      "id": "proper-crossing",
+      "lhsCm": [[0, 0], [400, 400]],
+      "rhsCm": [[0, 400], [400, 0]],
+      "intersects": true
+    },
+    {
+      "id": "endpoint-touch",
+      "lhsCm": [[0, 0], [200, 0]],
+      "rhsCm": [[200, 0], [200, 200]],
+      "intersects": true
+    },
+    {
+      "id": "collinear-overlap",
+      "lhsCm": [[0, 0], [300, 0]],
+      "rhsCm": [[100, 0], [400, 0]],
+      "intersects": true
+    },
+    {
+      "id": "parallel-disjoint",
+      "lhsCm": [[0, 0], [300, 0]],
+      "rhsCm": [[0, 100], [300, 100]],
+      "intersects": false
+    }
+  ]
+}
