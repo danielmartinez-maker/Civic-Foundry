@@ -70,6 +70,7 @@ if(CIVIC_BUILD_TESTS)
   add_executable(civic_engine_tests
     tests/core/CoreTests.cpp
     tests/core/NativeWorldAuthorityTests.cpp
+    tests/geometry/GeometryFixtureTests.cpp
     tests/persistence/SaveV9Tests.cpp
     tests/parity/ParityTests.cpp
     tests/parity/WorldBridgeTests.cpp
