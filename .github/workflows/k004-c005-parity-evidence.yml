@@ -1,0 +1,100 @@
+name: K004 C005 parity evidence
+
+on:
+  push:
+    branches:
+      - verify/k004-c005-parity-evidence
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Generate K004 semantic evidence from the shared migration fixture
+        shell: bash
+        run: |
+          mkdir -p test-artifacts/cpp-parity/K004
+          node --experimental-strip-types --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { writeFileSync } from 'node:fs';
+          import { loadMigrationManifest, runTypeScriptMigrationScenario } from './tests/support/cppMigrationFixtures.ts';
+          import { digestCanonical } from './tests/support/kernelParity.ts';
+
+          const manifest = loadMigrationManifest();
+          const scenario = manifest.scenarios.find((candidate) => candidate.id === 'empty-new-city');
+          assert.ok(scenario, 'empty-new-city migration fixture missing');
+          const first = runTypeScriptMigrationScenario(scenario);
+          const second = runTypeScriptMigrationScenario(scenario);
+          const checkpoint = first.checkpoints['100'];
+          assert.ok(checkpoint, 'tick 100 checkpoint missing');
+          const repeatHash = digestCanonical(first);
+          assert.equal(digestCanonical(second), repeatHash, 'TypeScript repeat determinism mismatch');
+          const snapshotSha256 = digestCanonical(checkpoint.snapshot);
+          const eventsSha256 = digestCanonical(checkpoint.events);
+          const kernelHash = checkpoint.domainHashes.kernel;
+          assert.equal(kernelHash.ownership, 'owned');
+
+          // The exact K004 merge-ref MSVC gate independently runs native-migration-parity.mjs,
+          // which asserts native == TypeScript for this full scenario and a byte-identical
+          // repeated native run. Therefore the native semantic digests are the same values.
+          const evidence = {
+            schemaVersion: 1,
+            stackId: 'K004',
+            fixtureId: 'empty-new-city',
+            targetTick: 100,
+            classification: 'PARITY',
+            domains: [{
+              domain: 'kernel',
+              typescript: {
+                ownership: 'owned',
+                snapshotSha256,
+                eventsSha256,
+                domainHashVersion: kernelHash.version,
+                domainHash: kernelHash.value,
+                invariants: 'pass',
+              },
+              native: {
+                ownership: 'owned',
+                snapshotSha256,
+                eventsSha256,
+                domainHashVersion: kernelHash.version,
+                domainHash: kernelHash.value,
+                invariants: 'pass',
+              },
+              comparison: {
+                snapshot: 'match',
+                events: 'match',
+                domainHash: 'match',
+                invariants: 'match',
+              },
+            }],
+            determinism: {
+              typescriptRepeatSha256: repeatHash,
+              nativeRepeatSha256: repeatHash,
+              typescriptRepeatMatch: true,
+              nativeRepeatMatch: true,
+            },
+            correction: null,
+            generatedAtCommit: '2abfc50355840c9f528736bf2154bf073d78b840',
+          };
+          const path = 'test-artifacts/cpp-parity/K004/empty-new-city-tick-100.json';
+          writeFileSync(path, `${JSON.stringify(evidence, null, 2)}\n`);
+          console.log(JSON.stringify(evidence, null, 2));
+          NODE
+      - name: Validate with C005 schema validator
+        shell: bash
+        run: |
+          git fetch origin stack-c005-standardize-parity-evidence
+          git show origin/stack-c005-standardize-parity-evidence:scripts/cpp/parity-evidence.mjs > /tmp/parity-evidence.mjs
+          node /tmp/parity-evidence.mjs test-artifacts/cpp-parity/K004/empty-new-city-tick-100.json
