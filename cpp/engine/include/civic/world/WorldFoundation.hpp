@@ -4,9 +4,11 @@
 #include "civic/geometry/Geometry.hpp"
 #include "civic/world/Hydrology.hpp"
 #include "civic/world/Terrain.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace civic::world {
@@ -25,7 +27,29 @@ struct GeographyEntity final {
   civic::geometry::Polygon boundary;
   std::string sort_key;
 };
-struct GeographyHierarchy final { std::vector<GeographyEntity> entities; };
+struct GeographyHierarchy final {
+  std::vector<GeographyEntity> entities;
+  [[nodiscard]] const GeographyEntity* find(std::string_view id) const noexcept;
+  [[nodiscard]] const GeographyEntity* parent_of(std::string_view id) const noexcept;
+  [[nodiscard]] std::vector<const GeographyEntity*> children_of(std::string_view id) const;
+};
+struct GeographySpatialIndexEntry final {
+  std::size_t entity_index{};
+  civic::geometry::Bounds bounds{};
+};
+class GeographySpatialIndex final {
+public:
+  [[nodiscard]] static civic::core::Result<GeographySpatialIndex> build(const GeographyHierarchy&) noexcept;
+  [[nodiscard]] const GeographyEntity* entity_at(
+      const GeographyHierarchy&,
+      civic::geometry::Point,
+      std::optional<GeographyKind> kind = std::nullopt) const noexcept;
+  [[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
+private:
+  explicit GeographySpatialIndex(std::vector<GeographySpatialIndexEntry> entries)
+      : entries_(std::move(entries)) {}
+  std::vector<GeographySpatialIndexEntry> entries_{};
+};
 
 struct ScenarioPoint final { double x{}; double y{}; };
 struct ScenarioPolygon final { std::vector<ScenarioPoint> points; };
