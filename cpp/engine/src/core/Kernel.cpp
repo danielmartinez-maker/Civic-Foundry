@@ -47,9 +47,27 @@ Result<void> SimulationClock::step(std::uint64_t ticks) noexcept {
     return {};
 }
 
+Result<std::uint64_t> CommandQueue::enqueue(
+    std::uint64_t enqueued_tick,
+    std::string type,
+    std::vector<std::byte> payload
+) {
+    if (!validIdentity(type)) return std::unexpected(make_error(ErrorCode::invalid_argument, "command type must not be empty"));
+    if (next_sequence_ == 0 || next_sequence_ == std::numeric_limits<std::uint64_t>::max()) {
+        return std::unexpected(make_error(ErrorCode::invalid_state, "command sequence exhausted"));
+    }
+
+    const auto sequence = next_sequence_;
+    ++next_sequence_;
+    queue_.push_back(CommandEnvelope{sequence, enqueued_tick, std::move(type), std::move(payload)});
+    sequences_.insert(sequence);
+    return sequence;
+}
+
 Result<void> CommandQueue::submit(std::span<const CommandEnvelope> commands, std::uint64_t current_tick) {
     (void)current_tick;
     std::set<std::uint64_t> batch;
+    auto next_sequence = next_sequence_;
     for (const auto& command : commands) {
         if (command.version != command_protocol_version) {
             return std::unexpected(make_error(ErrorCode::invalid_argument, "unsupported command envelope version"));
@@ -57,12 +75,17 @@ Result<void> CommandQueue::submit(std::span<const CommandEnvelope> commands, std
         if (command.sequence == 0 || !batch.insert(command.sequence).second || sequences_.contains(command.sequence)) {
             return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate command sequence"));
         }
+        if (command.sequence == std::numeric_limits<std::uint64_t>::max()) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "command sequence exceeds native sequence range"));
+        }
         if (!validIdentity(command.type)) return std::unexpected(make_error(ErrorCode::invalid_argument, "command type must not be empty"));
+        next_sequence = std::max(next_sequence, command.sequence + 1U);
     }
     for (const auto& command : commands) {
         queue_.push_back(command);
         sequences_.insert(command.sequence);
     }
+    next_sequence_ = next_sequence;
     std::ranges::sort(queue_, [](const auto& a, const auto& b) { return a.sequence < b.sequence; });
     return {};
 }
@@ -80,6 +103,47 @@ std::vector<CommandEnvelope> CommandQueue::takeReady(std::uint64_t tick) {
     queue_ = std::move(pending);
     std::ranges::sort(ready, [](const auto& a, const auto& b) { return a.sequence < b.sequence; });
     return ready;
+}
+
+CommandQueueSnapshot CommandQueue::snapshot() const {
+    auto queue = queue_;
+    std::ranges::sort(queue, [](const auto& a, const auto& b) { return a.sequence < b.sequence; });
+    return CommandQueueSnapshot{std::move(queue), sequences_, next_sequence_};
+}
+
+Result<void> CommandQueue::restore(const CommandQueueSnapshot& snapshot) {
+    if (snapshot.next_sequence < 1) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid command queue snapshot"));
+    }
+
+    for (const auto sequence : snapshot.seen_sequences) {
+        if (sequence == 0 || sequence >= snapshot.next_sequence) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid command sequence"));
+        }
+    }
+
+    std::set<std::uint64_t> queue_sequences;
+    auto queue = snapshot.queue;
+    for (const auto& command : queue) {
+        if (command.version != command_protocol_version) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "unsupported command envelope version"));
+        }
+        if (command.sequence == 0 || command.sequence >= snapshot.next_sequence || !queue_sequences.insert(command.sequence).second) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid command sequence"));
+        }
+        if (!snapshot.seen_sequences.contains(command.sequence)) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "pending command sequence missing from seen set"));
+        }
+        if (!validIdentity(command.type)) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "command type must not be empty"));
+        }
+    }
+
+    std::ranges::sort(queue, [](const auto& a, const auto& b) { return a.sequence < b.sequence; });
+    queue_ = std::move(queue);
+    sequences_ = snapshot.seen_sequences;
+    next_sequence_ = snapshot.next_sequence;
+    return {};
 }
 
 DomainEvent DomainEventJournal::append(std::uint64_t tick, std::string type, std::string source, std::vector<std::byte> payload) {
