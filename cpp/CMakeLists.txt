@@ -34,6 +34,7 @@ add_library(civic_engine STATIC
   engine/src/geometry/BooleanOps.cpp
   engine/src/world/Terrain.cpp
   engine/src/world/Hydrology.cpp
+  engine/src/world/Geography.cpp
   engine/src/world/WorldFoundation.cpp
   engine/src/world/WorldScenario.cpp
   engine/src/cadastre/Cadastre.cpp
@@ -77,6 +78,7 @@ if(CIVIC_BUILD_TESTS)
     tests/contract_red_tests.cpp
     tests/world_foundation_tests.cpp
     tests/world_scenario_tests.cpp
+    tests/geography_hierarchy_tests.cpp
     tests/cadastre_mutation_tests.cpp
     tests/parcel_generation_tests.cpp
     tests/legal_history_tests.cpp
