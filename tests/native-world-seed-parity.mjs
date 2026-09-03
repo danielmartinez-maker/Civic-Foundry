@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 
@@ -98,6 +99,53 @@ function firstMismatch(expected, actual, path = "$") {
   return `${path}: ${JSON.stringify(expected)} !== ${JSON.stringify(actual)}`;
 }
 
+function normalizedHashValue(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Number.isSafeInteger(value)
+      ? value
+      : Math.round(value / ABSOLUTE_FLOAT_TOLERANCE);
+  }
+  return value;
+}
+
+function terrainFieldHashes(snapshot) {
+  const firstSample = snapshot.terrain.samples[0];
+  assert.ok(firstSample, "generated terrain must contain at least one sample");
+  return Object.fromEntries(
+    Object.keys(firstSample)
+      .sort()
+      .map((field) => [
+        field,
+        createHash("sha256")
+          .update(
+            JSON.stringify(
+              snapshot.terrain.samples.map((sample) =>
+                normalizedHashValue(sample[field]),
+              ),
+            ),
+          )
+          .digest("hex"),
+      ]),
+  );
+}
+
+function assertTerrainDomainHashes(expected, actual, seed, preset) {
+  const expectedHashes = terrainFieldHashes(expected);
+  const actualHashes = terrainFieldHashes(actual);
+  assert.deepEqual(
+    Object.keys(actualHashes),
+    Object.keys(expectedHashes),
+    `Stack 1 terrain field schema mismatch for seed=${seed} preset=${preset}`,
+  );
+  for (const field of Object.keys(expectedHashes)) {
+    assert.equal(
+      actualHashes[field],
+      expectedHashes[field],
+      `Stack 1 terrain domain hash mismatch for seed=${seed} preset=${preset} field=${field}`,
+    );
+  }
+}
+
 function generateTypeScriptWorld(seed, config) {
   return WorldFoundation.generate({
     seed,
@@ -128,6 +176,7 @@ for (let index = 0; index < SEED_CASES.length; index += 1) {
 
   const expected = generateTypeScriptWorld(seed, config);
   const actual = generateNativeWorld(seed, config);
+  assertTerrainDomainHashes(expected, actual, seed, preset);
   const mismatch = firstMismatch(expected, actual);
   assert.equal(
     mismatch,
@@ -142,5 +191,5 @@ assert.ok(
   "Stack 1 differential world parity must cover 100+ fixed seeds",
 );
 console.log(
-  `Native/TypeScript world differential parity passed for ${executed} fixed seeds across ${WORLD_FORM_PRESETS.length} presets.`,
+  `Native/TypeScript world differential parity passed for ${executed} fixed seeds across ${WORLD_FORM_PRESETS.length} presets with per-field terrain hashes.`,
 );
