@@ -13,9 +13,6 @@ permissions:
 jobs:
   finalize:
     runs-on: ubuntu-26.04
-    env:
-      VCPKG_ROOT: ${{ runner.temp }}/vcpkg
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/vcpkg-cache
     steps:
       - name: Checkout K003 branch
         uses: actions/checkout@v7.0.1
@@ -31,6 +28,12 @@ jobs:
 
       - name: Install project dependencies
         run: npm ci
+
+      - name: Define native paths
+        shell: bash
+        run: |
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$RUNNER_TEMP/vcpkg-cache" >> "$GITHUB_ENV"
 
       - name: Record K003 ledger shadow state
         shell: bash
