@@ -113,7 +113,10 @@ export function validateEvidence(evidence) {
         `${entry.domain}: native must be owned for PARITY`,
       );
       for (const value of Object.values(entry.comparison)) {
-        assert(value === "match", `${entry.domain}: PARITY comparison must match`);
+        assert(
+          value === "match",
+          `${entry.domain}: PARITY comparison must match`,
+        );
       }
     }
 
