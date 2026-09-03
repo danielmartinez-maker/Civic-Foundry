@@ -278,6 +278,36 @@ TEST(NativePanels, CarriesInspectorTrendHistoryAndCausalContributorsWithoutAutho
     EXPECT_EQ(economy->diagnostics.front().contributors.front().label, "Congestion");
 }
 
+TEST(CutoverAuthority, RequiresEveryAlphaGameplayDomainToBeOwned) {
+    std::array<DomainAuthorityEvidence, 7> domains{{
+        {"world", true},
+        {"cadastre", true},
+        {"buildings", true},
+        {"transportation", true},
+        {"population", true},
+        {"economy", true},
+        {"services", true},
+    }};
+    EXPECT_TRUE(alphaGameplayAuthorityReady(domains));
+    domains[3].owned = false;
+    EXPECT_FALSE(alphaGameplayAuthorityReady(domains));
+}
+
+TEST(CutoverAuthority, RejectsMissingOrDuplicateDomainEvidence) {
+    const std::array<DomainAuthorityEvidence, 6> missing{{
+        {"world", true}, {"cadastre", true}, {"buildings", true},
+        {"transportation", true}, {"population", true}, {"economy", true},
+    }};
+    EXPECT_FALSE(alphaGameplayAuthorityReady(missing));
+
+    const std::array<DomainAuthorityEvidence, 7> duplicate{{
+        {"world", true}, {"cadastre", true}, {"buildings", true},
+        {"transportation", true}, {"population", true}, {"economy", true},
+        {"economy", true},
+    }};
+    EXPECT_FALSE(alphaGameplayAuthorityReady(duplicate));
+}
+
 TEST(CutoverGate, BlocksLegacyRetirementWhenAnyRequiredEvidenceIsMissing) {
     auto evidence = acceptedCutoverEvidence();
     evidence.native_world_cadastre_urban_authority = false;
