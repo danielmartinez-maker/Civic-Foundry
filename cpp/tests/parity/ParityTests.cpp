@@ -179,6 +179,39 @@ TEST(EventJournalParity, RestoreRejectsOutOfRangeSequenceAndInvalidNextSequence)
     EXPECT_EQ(journal.nextSequence(), 1U);
 }
 
+TEST(EventJournalParity, RestoreSortsEventsBySequence) {
+    civic::DomainEventJournal journal;
+    const civic::DomainEventJournalSnapshot snapshot{
+        {
+            civic::DomainEvent{2, 2, "second", "fixture", {}},
+            civic::DomainEvent{1, 1, "first", "fixture", {}},
+        },
+        3,
+    };
+
+    ASSERT_TRUE(journal.restore(snapshot));
+    ASSERT_EQ(journal.list().size(), 2U);
+    EXPECT_EQ(journal.list()[0].sequence, 1U);
+    EXPECT_EQ(journal.list()[1].sequence, 2U);
+}
+
+TEST(EventJournalParity, RestoreRejectsInvalidIdentityWithoutMutation) {
+    civic::DomainEventJournal journal;
+    ASSERT_TRUE(journal.append(1, "existing", "fixture"));
+    const auto before = journal.snapshot();
+
+    const civic::DomainEventJournalSnapshot invalid{
+        {civic::DomainEvent{1, 1, "valid", kNbsp, {}}},
+        2,
+    };
+    const auto restored = journal.restore(invalid);
+    ASSERT_FALSE(restored);
+    EXPECT_EQ(restored.error().code, civic::ErrorCode::invalid_argument);
+    EXPECT_EQ(journal.list().size(), before.events.size());
+    EXPECT_EQ(journal.list()[0].type, before.events[0].type);
+    EXPECT_EQ(journal.nextSequence(), before.next_sequence);
+}
+
 TEST(EventJournalParity, ClearHistoryDoesNotResetSequence) {
     civic::DomainEventJournal journal;
     ASSERT_TRUE(journal.append(1, "a", "test"));
