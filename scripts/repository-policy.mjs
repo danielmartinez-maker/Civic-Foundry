@@ -21,6 +21,7 @@ const forbiddenTrackedPrefixes = [
 ];
 
 const forbiddenTrackedSegments = ["/__pycache__/", "/.pytest_cache/"];
+const allowedTrackedPaths = new Set(["test-artifacts/cpp-parity/.gitkeep"]);
 const binaryExtensions = new Set([
   ".bin",
   ".blend",
@@ -49,6 +50,8 @@ export function inspectRepositoryPathPolicy(path) {
   const display = normalizeRepositoryPath(path);
   const normalized = display.toLowerCase();
   const wrapped = `/${normalized}`;
+
+  if (allowedTrackedPaths.has(normalized)) return [];
 
   if (
     forbiddenTrackedPrefixes.some((prefix) => normalized.startsWith(prefix)) ||
