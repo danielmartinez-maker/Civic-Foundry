@@ -11,6 +11,7 @@
 #include <vector>
 
 #include <civic/core/Error.hpp>
+#include <civic/core/KernelTypes.hpp>
 #include <civic/core/RandomStreamRegistry.hpp>
 #include <civic/core/Utf16Ordinal.hpp>
 
@@ -32,28 +33,10 @@ private:
     SpeedMode speed_{SpeedMode::normal};
 };
 
-inline constexpr std::uint32_t command_protocol_version = 1U;
-
-struct CommandEnvelope final {
-    std::uint64_t sequence{};
-    std::uint64_t tick{};
-    std::string type;
-    std::vector<std::byte> payload;
-    std::uint32_t version{command_protocol_version};
-};
-
 struct CommandQueueSnapshot final {
     std::vector<CommandEnvelope> queue;
     std::set<std::uint64_t> seen_sequences;
     std::uint64_t next_sequence{1};
-};
-
-struct DomainEvent final {
-    std::uint64_t sequence{};
-    std::uint64_t tick{};
-    std::string type;
-    std::string source;
-    std::vector<std::byte> payload;
 };
 
 class CommandQueue final {
@@ -86,18 +69,6 @@ private:
     std::uint64_t next_sequence_{1};
 };
 
-struct SystemCadence final { std::uint64_t every{1}; std::uint64_t offset{0}; };
-struct SystemDefinition final {
-    std::string id;
-    SystemCadence cadence;
-    std::vector<std::string> after;
-    std::vector<std::string> before;
-    std::vector<std::string> reads;
-    std::vector<std::string> writes;
-    std::int64_t order{};
-    std::function<Result<void>(std::uint64_t)> execute;
-};
-
 class SystemScheduler final {
 public:
     [[nodiscard]] Result<void> registerSystem(SystemDefinition system);
@@ -107,12 +78,6 @@ public:
 private:
     std::map<std::string, SystemDefinition, Utf16OrdinalLess> systems_;
     std::vector<std::string> compiled_;
-};
-
-struct InvariantDefinition final {
-    std::string id;
-    SystemCadence cadence;
-    std::function<Result<void>(std::uint64_t)> check;
 };
 
 class InvariantRunner final {
