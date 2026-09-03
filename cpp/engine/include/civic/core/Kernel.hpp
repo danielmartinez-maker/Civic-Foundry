@@ -42,6 +42,12 @@ struct CommandEnvelope final {
     std::uint32_t version{command_protocol_version};
 };
 
+struct CommandQueueSnapshot final {
+    std::vector<CommandEnvelope> queue;
+    std::set<std::uint64_t> seen_sequences;
+    std::uint64_t next_sequence{1};
+};
+
 struct DomainEvent final {
     std::uint64_t sequence{};
     std::uint64_t tick{};
@@ -52,12 +58,21 @@ struct DomainEvent final {
 
 class CommandQueue final {
 public:
+    [[nodiscard]] Result<std::uint64_t> enqueue(
+        std::uint64_t enqueued_tick,
+        std::string type,
+        std::vector<std::byte> payload = {}
+    );
     [[nodiscard]] Result<void> submit(std::span<const CommandEnvelope> commands, std::uint64_t current_tick);
     [[nodiscard]] std::vector<CommandEnvelope> takeReady(std::uint64_t tick);
+    [[nodiscard]] CommandQueueSnapshot snapshot() const;
+    [[nodiscard]] Result<void> restore(const CommandQueueSnapshot& snapshot);
     [[nodiscard]] const std::vector<CommandEnvelope>& pending() const noexcept { return queue_; }
+    [[nodiscard]] std::uint64_t nextSequence() const noexcept { return next_sequence_; }
 private:
     std::vector<CommandEnvelope> queue_;
     std::set<std::uint64_t> sequences_;
+    std::uint64_t next_sequence_{1};
 };
 
 class DomainEventJournal final {
