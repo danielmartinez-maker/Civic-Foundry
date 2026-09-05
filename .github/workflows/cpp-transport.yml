@@ -1,0 +1,102 @@
+name: C++ Transportation Stack
+
+on:
+  push:
+    branches:
+      - feature/stack-2-cpp-transportation-mobility
+      - feat/cpp-stack-2-transportation-mobility-rewrite
+  pull_request:
+    paths:
+      - "cpp/engine/include/civic/transport/**"
+      - "cpp/engine/include/civic/bridge/transport_c_api.h"
+      - "cpp/engine/src/transport/**"
+      - "cpp/engine/src/bridge/transport_c_api.cpp"
+      - "cpp/tests/transport/**"
+      - "cpp/transport/**"
+      - "tests/fixtures/cpp-transport/**"
+      - "tests/transport-cpp-fixtures.test.ts"
+      - "tests/transport-cpp-shadow.test.ts"
+      - "tests/transport-cpp-deep-shadow.test.ts"
+      - "tests/support/transportCppShadowHarness.ts"
+      - ".github/workflows/cpp-transport.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    strategy:
+      matrix:
+        compiler: [gcc, clang]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Configure
+        env:
+          CC: ${{ matrix.compiler == 'gcc' && 'gcc' || 'clang' }}
+          CXX: ${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }}
+        run: cmake -S cpp/transport -B build/cpp-transport-${{ matrix.compiler }} -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - name: Build
+        run: cmake --build build/cpp-transport-${{ matrix.compiler }} --parallel 2
+      - name: Test
+        run: ctest --test-dir build/cpp-transport-${{ matrix.compiler }} --output-on-failure
+
+  sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Configure ASan/UBSan
+        env:
+          CC: clang
+          CXX: clang++
+        run: cmake -S cpp/transport -B build/cpp-transport-asan -DCMAKE_BUILD_TYPE=Debug -DCIVIC_TRANSPORT_ENABLE_SANITIZERS=ON
+      - name: Build
+        run: cmake --build build/cpp-transport-asan --parallel 2
+      - name: Test
+        run: ctest --test-dir build/cpp-transport-asan --output-on-failure
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Configure MSVC
+        run: cmake -S cpp/transport -B build/cpp-transport-msvc -A x64
+      - name: Build
+        run: cmake --build build/cpp-transport-msvc --config Release --parallel 2
+      - name: Test
+        run: ctest --test-dir build/cpp-transport-msvc -C Release --output-on-failure
+
+  shadow-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Configure native shadow binding
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          NODE_INCLUDE_DIR="$(dirname "$(dirname "$(command -v node)")")/include/node"
+          test -f "$NODE_INCLUDE_DIR/node_api.h"
+          cmake -S cpp/transport -B build/cpp-transport-shadow \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCIVIC_TRANSPORT_BUILD_NAPI=ON \
+            -DCIVIC_NODE_INCLUDE_DIR="$NODE_INCLUDE_DIR"
+      - name: Build native shadow binding
+        run: cmake --build build/cpp-transport-shadow --parallel 2
+      - name: Node-API smoke
+        env:
+          CIVIC_TRANSPORT_NAPI: ${{ github.workspace }}/build/cpp-transport-shadow/civic_transport_napi.node
+        run: node cpp/tests/transport/transport_napi_smoke.mjs
+      - name: TypeScript/native shadow parity
+        env:
+          CIVIC_TRANSPORT_NAPI: ${{ github.workspace }}/build/cpp-transport-shadow/civic_transport_napi.node
+          CIVIC_TRANSPORT_FIXTURE_RUNNER: ${{ github.workspace }}/build/cpp-transport-shadow/civic_transport_fixture_runner
+        run: >-
+          node --experimental-strip-types --test
+          tests/transport-cpp-shadow.test.ts
+          tests/transport-cpp-deep-shadow.test.ts

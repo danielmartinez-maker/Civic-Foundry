@@ -119,13 +119,50 @@ function runNativeScenario(scenario) {
   }
 }
 
+function withoutTransportationDomain(result) {
+  return {
+    ...result,
+    checkpoints: Object.fromEntries(
+      Object.entries(result.checkpoints).map(([tick, checkpoint]) => {
+        const { transportation: _transportationHash, ...domainHashes } =
+          checkpoint.domainHashes;
+        const { transportation: _transportationSnapshot, ...snapshot } =
+          checkpoint.snapshot;
+        return [tick, { ...checkpoint, snapshot, domainHashes }];
+      }),
+    ),
+  };
+}
+
+function assertTransportationOwned(result, scenarioId) {
+  for (const [tick, checkpoint] of Object.entries(result.checkpoints)) {
+    const transportation = checkpoint.domainHashes.transportation;
+    assert.ok(
+      transportation,
+      `${scenarioId}@${tick} must expose transportation domain hash`,
+    );
+    assert.equal(
+      transportation.ownership,
+      "owned",
+      `${scenarioId}@${tick} transportation must be native-owned`,
+    );
+    assert.equal(transportation.version, 1);
+    assert.notEqual(
+      transportation.value,
+      "0",
+      `${scenarioId}@${tick} transportation hash must be real`,
+    );
+  }
+}
+
 for (const scenario of manifest.scenarios) {
   const expected = runTypeScriptMigrationScenario(scenario);
   const actual = runNativeScenario(scenario);
+  assertTransportationOwned(actual, scenario.id);
   assertSame(
-    actual,
-    expected,
-    `${scenario.id} TypeScript/native shadow parity`,
+    withoutTransportationDomain(actual),
+    withoutTransportationDomain(expected),
+    `${scenario.id} Stack 0 TypeScript/native shadow parity`,
   );
   assert.equal(
     canonicalStringify(runNativeScenario(scenario)),
@@ -135,5 +172,5 @@ for (const scenario of manifest.scenarios) {
 }
 
 console.log(
-  `Native migration fixture parity passed for ${manifest.scenarios.length} scenarios.`,
+  `Native migration fixture parity passed for ${manifest.scenarios.length} scenarios with Stack 2 transportation ownership verified separately.`,
 );

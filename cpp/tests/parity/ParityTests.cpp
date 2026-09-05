@@ -50,7 +50,14 @@ TEST(CAbi, DomainHashCanonicalizesSemanticCommandPayloadAndMarksUnownedDomains) 
     EXPECT_EQ(left_hash.ownership, 1U);
     EXPECT_EQ(left_hash.version, 1U);
     EXPECT_EQ(left_hash.value, right_hash.value);
-    for (const auto* domain : {"world", "cadastre", "buildings", "transportation", "population", "economy", "services"}) {
+
+    cf_domain_hash transportation{};
+    ASSERT_EQ(cf_engine_get_domain_hash(left, "transportation", &transportation), CF_ERROR_NONE);
+    EXPECT_EQ(transportation.ownership, 1U);
+    EXPECT_EQ(transportation.version, 1U);
+    EXPECT_NE(transportation.value, 0U);
+
+    for (const auto* domain : {"world", "cadastre", "buildings", "population", "economy", "services"}) {
         cf_domain_hash unowned{};
         ASSERT_EQ(cf_engine_get_domain_hash(left, domain, &unowned), CF_ERROR_NONE);
         EXPECT_EQ(unowned.ownership, 2U) << domain;

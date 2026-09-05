@@ -2,12 +2,22 @@ import { clamp01 } from '../core/types.ts';
 
 export class PopulationSystem {
   population: number;
+  private writeEnabled = true;
 
   constructor(initialPopulation = 0) {
     this.population = Math.max(0, Math.floor(initialPopulation));
   }
 
+  setWriteEnabled(enabled: boolean): void {
+    this.writeEnabled = enabled === true;
+  }
+
+  typescriptWriteEnabled(): boolean {
+    return this.writeEnabled;
+  }
+
   update(residentialCapacity: number, attractiveness: number): void {
+    if (!this.writeEnabled) return;
     const capacity = Math.max(0, Math.floor(residentialCapacity));
     if (this.population > capacity) this.population = capacity;
     if (capacity === 0) {
@@ -23,6 +33,7 @@ export class PopulationSystem {
   }
 
   restore(population: number): void {
+    if (!this.writeEnabled) return;
     if (!Number.isFinite(population) || population < 0) throw new Error('invalid population restore');
     this.population = Math.floor(population);
   }
