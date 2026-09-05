@@ -3,6 +3,7 @@
 #include <cmath>
 #include <compare>
 #include <cstdint>
+#include <functional>
 #include <type_traits>
 
 #include <civic/core/Error.hpp>
@@ -13,6 +14,8 @@ template<class Tag, class Storage = std::uint64_t>
 class StrongId final {
     static_assert(std::is_integral_v<Storage> && std::is_unsigned_v<Storage>);
 public:
+    using storage_type = Storage;
+    constexpr StrongId() = default;
     constexpr explicit StrongId(Storage value) noexcept : value_(value) {}
     [[nodiscard]] constexpr Storage value() const noexcept { return value_; }
     auto operator<=>(const StrongId&) const = default;
@@ -64,4 +67,28 @@ private:
 
 using GeometryCentimeter = std::int64_t;
 
+namespace core {
+template<class Tag, class Storage = std::uint64_t>
+using StrongId = ::civic::StrongId<Tag, Storage>;
+using EntityId = ::civic::EntityId;
+using ParcelId = ::civic::ParcelId;
+using BuildingId = ::civic::BuildingId;
+using FirmId = ::civic::FirmId;
+using HouseholdId = ::civic::HouseholdId;
+using VehicleId = ::civic::VehicleId;
+using NetworkNodeId = ::civic::NetworkNodeId;
+using NetworkEdgeId = ::civic::NetworkEdgeId;
+using MoneyMinor = std::int64_t;
+using LegalCoordinateCm = std::int64_t;
+} // namespace core
+
 } // namespace civic
+
+namespace std {
+template<class Tag, class Storage>
+struct hash<civic::StrongId<Tag, Storage>> {
+    size_t operator()(const civic::StrongId<Tag, Storage>& id) const noexcept {
+        return hash<Storage>{}(id.value());
+    }
+};
+} // namespace std

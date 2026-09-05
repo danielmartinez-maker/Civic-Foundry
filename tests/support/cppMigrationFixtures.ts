@@ -193,7 +193,7 @@ export function createCadastralHistoryV9Save(
         ...save.propertyMarket.transactions,
         {
           ...transaction,
-          id: "property:tx:cpp-migration:2",
+          id: `property:tx:${save.propertyMarket.transactions.length + 1}`,
           parcelIds: [retiredParcelId],
         },
       ],

@@ -14,9 +14,58 @@ import type {
   NativeEngineHandle,
 } from "../src/native/NativeEngineTypes.ts";
 
+function makeWorldSnapshot(
+  seed: number,
+  width = 2,
+  height = 1,
+): Record<string, unknown> {
+  const count = width * height;
+  return {
+    mode: "generated-1r",
+    seed,
+    config: { width, height, metersPerCell: 30, preset: "plain" },
+    scenarioId: null,
+    terrain: {
+      width,
+      height,
+      metersPerCell: 30,
+      samples: Array.from({ length: count }, () => ({
+        elevationMeters: 100,
+        slope: 0,
+        aspectRadians: 0,
+        soilClass: "loam",
+        soilDepthMeters: 2,
+        bearingCapacityKpa: 160,
+        bedrockDepthMeters: 8,
+        groundwaterDepthMeters: 5,
+        vegetationClass: "grass",
+        contaminationIndex: 0,
+        landPreparationMultiplier: 1,
+        surfaceWater: "none",
+        buildable: true,
+      })),
+    },
+    hydrology: {
+      width,
+      height,
+      conditionedElevationMeters: Array(count).fill(100),
+      receiver: Array(count).fill(null),
+      watersheds: [],
+      channels: [],
+      flowAccumulation: Array(count).fill(1),
+      watershedIds: Array(count).fill("watershed:0"),
+      floodSusceptibility: Array(count).fill(0),
+    },
+    geography: { entities: [] },
+    legacyCompatibility: null,
+    lastFloodResult: null,
+  };
+}
+
 function fakeAddon(): NativeEngineAddon & { calls: string[] } {
   const calls: string[] = [];
   const handle = {};
+  let worldSnapshot: Record<string, unknown> = makeWorldSnapshot(1);
   return {
     calls,
     createEngine: () => {
@@ -40,10 +89,67 @@ function fakeAddon(): NativeEngineAddon & { calls: string[] } {
       '{"hashVersion":1,"pendingCommands":[],"randomStreams":{},"seed":1,"speed":1,"tick":0}',
     getEvents: () => "[]",
     getDomainHash: (_handle: NativeEngineHandle, domain: string) => ({
-      ownership: domain === "kernel" ? 1 : 2,
+      ownership: domain === "kernel" || domain === "world" ? 1 : 2,
       version: 1,
       value: 42n,
     }),
+    createWorld: (_handle, json) => {
+      calls.push(`world-create:${json}`);
+      const request = JSON.parse(json) as {
+        seed: number;
+        config: { width: number; height: number };
+      };
+      worldSnapshot = makeWorldSnapshot(
+        request.seed,
+        request.config.width,
+        request.config.height,
+      );
+      return JSON.stringify(worldSnapshot);
+    },
+    restoreWorld: (_handle, json) => {
+      calls.push(`world-restore:${json}`);
+      worldSnapshot = JSON.parse(json) as Record<string, unknown>;
+      return JSON.stringify(worldSnapshot);
+    },
+    createLegacyWorld: (_handle, json) => {
+      calls.push(`world-legacy:${json}`);
+      const request = JSON.parse(json) as {
+        seed: number;
+        terrain: { width: number; height: number };
+      };
+      worldSnapshot = {
+        ...makeWorldSnapshot(
+          request.seed,
+          request.terrain.width,
+          request.terrain.height,
+        ),
+        mode: "legacy-flat",
+      };
+      return JSON.stringify(worldSnapshot);
+    },
+    runDesignStorm: (_handle, json) => {
+      calls.push(`world-storm:${json}`);
+      const request = JSON.parse(json) as {
+        event?: { id: string };
+        id?: string;
+      };
+      const eventId = request.event?.id ?? request.id ?? "storm";
+      const count =
+        Number((worldSnapshot.terrain as { width: number }).width) *
+        Number((worldSnapshot.terrain as { height: number }).height);
+      const result = {
+        eventId,
+        depthMeters: Array(count).fill(0),
+        rainfallVolume: 1,
+        infiltrationVolume: 1,
+        retainedChannelSurfaceVolume: 0,
+        overbankFloodVolume: 0,
+        exportedVolume: 0,
+        balanceError: 0,
+      };
+      worldSnapshot = { ...worldSnapshot, lastFloodResult: result };
+      return JSON.stringify({ result, snapshot: worldSnapshot });
+    },
   };
 }
 
@@ -135,6 +241,46 @@ test("native bridge rejects lossy payloads and normalizes JSON numeric semantics
   bridge.dispose();
 });
 
+test("native engine bridge is the concrete NativeWorldBridge and materializes flood surfaces", () => {
+  const addon = fakeAddon();
+  const bridge = new NativeEngineBridge(addon, { seed: 5 });
+  const created = bridge.createWorld({
+    seed: 5,
+    config: { width: 2, height: 1, metersPerCell: 30, preset: "plain" },
+  });
+  assert.equal(created.seed, 5);
+  assert.equal(created.terrain.width, 2);
+  assert.equal(bridge.domainHash("world").ownership, "owned");
+
+  const storm = bridge.runDesignStorm(
+    { id: "native-storm", rainfallMm: 25, durationHours: 2 },
+    { imperviousFractionAt: (x) => x * 0.5 },
+  );
+  assert.equal(storm.result.eventId, "native-storm");
+  const stormCall = addon.calls.find((call) => call.startsWith("world-storm:"));
+  assert.ok(stormCall);
+  assert.deepEqual(
+    (
+      JSON.parse(stormCall.slice("world-storm:".length)) as {
+        imperviousFraction: number[];
+      }
+    ).imperviousFraction,
+    [0, 0.5],
+  );
+
+  const restored = bridge.restoreWorld(created);
+  assert.equal(restored.seed, 5);
+  assert.throws(
+    () =>
+      bridge.runDesignStorm(
+        { id: "invalid-surface", rainfallMm: 1, durationHours: 1 },
+        { imperviousFractionAt: () => Number.NaN },
+      ),
+    /impervious fraction/,
+  );
+  bridge.dispose();
+});
+
 test("shadow runner feeds identical normalized commands to both runtimes and ignores unowned domains", () => {
   const addon = fakeAddon();
   const bridge = new NativeEngineBridge(addon);
@@ -157,14 +303,14 @@ test("shadow runner feeds identical normalized commands to both runtimes and ign
   assert.deepEqual(received, [[1, 2]]);
   assert.deepEqual(steps, [4]);
   assert.deepEqual(
-    runner.compareDomains(["kernel", "world"]).map((item) => ({
+    runner.compareDomains(["kernel", "services"]).map((item) => ({
       domain: item.domain,
       ownership: item.native.ownership,
       matches: item.matches,
     })),
     [
       { domain: "kernel", ownership: "owned", matches: true },
-      { domain: "world", ownership: "unowned", matches: undefined },
+      { domain: "services", ownership: "unowned", matches: undefined },
     ],
   );
   bridge.dispose();

@@ -1,3 +1,12 @@
+import type { BuildingV2 } from "../simulation/buildings/BuildingTypes.ts";
+import type { PropertyMarketSnapshot } from "../simulation/development/PropertyMarketSystem.ts";
+import type { ParcelZoningAssignment } from "../simulation/zoning/ZoningTypes.ts";
+import type {
+  CadastralSnapshot,
+  EasementKind,
+} from "../world/cadastre/CadastralTypes.ts";
+import type { WorldPoint } from "../world/cadastre/Geometry.ts";
+
 export const NATIVE_COMMAND_PROTOCOL_VERSION = 1 as const;
 
 export const NATIVE_DOMAIN_OWNERSHIP = Object.freeze({
@@ -42,6 +51,124 @@ export type NativeDomainHash = Readonly<{
   value: bigint;
 }>;
 
+export type NativeUrbanLegacyRequest = Readonly<{
+  terrain: readonly Readonly<{ x: number; y: number; buildable: boolean }>[];
+  roads: readonly Readonly<{ x: number; y: number; roadRef: string }>[];
+  zoning: readonly Readonly<{
+    x: number;
+    y: number;
+    zoningDistrictId: string;
+  }>[];
+}>;
+
+export type NativeUrbanState = Readonly<{
+  urbanFabric: CadastralSnapshot;
+  zoningV2: Readonly<{ parcelAssignments: readonly ParcelZoningAssignment[] }>;
+  buildingsV2: readonly BuildingV2[];
+  propertyMarket: PropertyMarketSnapshot;
+}>;
+
+export type NativeUrbanSnapshot = NativeUrbanState &
+  Readonly<{
+    legacyLots: readonly Readonly<{
+      parcelId: string;
+      x: number;
+      y: number;
+      faithful: boolean;
+    }>[];
+    compatibilityDiagnostics: readonly string[];
+  }>;
+
+export type NativeBuildingRuntimeTypology = Readonly<{
+  id: string;
+  name: string;
+  maintenanceCostPerM2: number;
+  complexityFactor: number;
+}>;
+
+export type NativeBuildingLifecycleRuntimeInput = Readonly<{
+  buildingId: string;
+  maintenanceSpend: number;
+  occupancyRatio: number;
+  utilizationRatio: number;
+  environmentalStress: number;
+  serviceStress: number;
+}>;
+
+export type NativeHighestBestUseInput = Readonly<{
+  parcelIds: readonly string[];
+  holdValue: number;
+  buildingCondition: number;
+  developerHurdleRate: number;
+  renovationNetValue: number;
+  renovationExpectedReturn: number;
+  renovationRiskScore: number;
+  conversionNetValue: number;
+  conversionExpectedReturn: number;
+  conversionRiskScore: number;
+  redevelopmentNetValue: number;
+  redevelopmentExpectedReturn: number;
+  redevelopmentRiskScore: number;
+  assemblyNetValue?: number;
+  assemblyExpectedReturn?: number;
+  assemblyRiskScore?: number;
+}>;
+
+export type NativeDevelopmentHbuApproval = Readonly<{
+  buildingId: string;
+  candidateId: string;
+  parcelIds: readonly string[];
+  zoningLegal: boolean;
+  hbuInput: NativeHighestBestUseInput;
+}>;
+
+export type NativeUrbanCommand =
+  | Readonly<{
+      type: "cadastre.split";
+      parcelId: string;
+      cutLine: readonly WorldPoint[];
+    }>
+  | Readonly<{
+      type: "cadastre.assemble";
+      parcelIds: readonly string[];
+    }>
+  | Readonly<{
+      type: "cadastre.dedicate-right-of-way";
+      parcelId: string;
+      dedication: readonly WorldPoint[];
+    }>
+  | Readonly<{
+      type: "cadastre.create-easement";
+      parcelIds: readonly string[];
+      kind: EasementKind;
+      geometry: readonly WorldPoint[];
+    }>
+  | Readonly<{
+      type: "cadastre.remove-easement";
+      easementId: string;
+    }>
+  | Readonly<{
+      type: "buildings.reconcile";
+      buildingsV2: readonly BuildingV2[];
+      typologies: readonly NativeBuildingRuntimeTypology[];
+      lifecycleInputs: readonly NativeBuildingLifecycleRuntimeInput[];
+      requireHbuForNewBuildings?: boolean;
+      hbuApprovals?: readonly NativeDevelopmentHbuApproval[];
+    }>;
+
+export type NativeUrbanMutationResult = Readonly<{
+  committed: boolean;
+  resultingParcelIds: readonly string[];
+  retiredParcelIds: readonly string[];
+  rejectionReasons: readonly string[];
+  parcelReferenceRewrites: Readonly<Record<string, string>>;
+}>;
+
+export type NativeUrbanCommandResponse = Readonly<{
+  result: NativeUrbanMutationResult;
+  snapshot: NativeUrbanSnapshot;
+}>;
+
 export interface NativeEngineAddon {
   createEngine(
     config?: Readonly<{
@@ -61,4 +188,12 @@ export interface NativeEngineAddon {
     handle: NativeEngineHandle,
     domain: string,
   ): Readonly<{ ownership: number; version: number; value: bigint }>;
+  createWorld(handle: NativeEngineHandle, requestJson: string): string;
+  restoreWorld(handle: NativeEngineHandle, snapshotJson: string): string;
+  createLegacyWorld(handle: NativeEngineHandle, requestJson: string): string;
+  runDesignStorm(handle: NativeEngineHandle, requestJson: string): string;
+  rebuildUrbanLegacy?(handle: NativeEngineHandle, requestJson: string): string;
+  restoreUrbanState?(handle: NativeEngineHandle, snapshotJson: string): string;
+  applyUrbanCommand?(handle: NativeEngineHandle, requestJson: string): string;
+  getUrbanSnapshot?(handle: NativeEngineHandle): string;
 }

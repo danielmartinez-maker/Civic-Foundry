@@ -63,6 +63,59 @@ assert.equal(kernel.ownership, 1);
 assert.equal(typeof kernel.value, "bigint");
 const world = addon.getDomainHash(handle, "world");
 assert.equal(world.ownership, 2);
+
+const urbanPreview = JSON.parse(
+  addon.rebuildUrbanLegacy(
+    handle,
+    JSON.stringify({
+      terrain: [{ x: 0, y: 0, buildable: true }],
+      roads: [],
+      zoning: [{ x: 0, y: 0, zoningDistrictId: "residential" }],
+    }),
+  ),
+);
+assert.equal(urbanPreview.urbanFabric.parcels.length, 1);
+assert.equal(urbanPreview.urbanFabric.parcels[0].id, "parcel:0,0");
+assert.equal(urbanPreview.urbanFabric.parcels[0].areaM2, 400);
+assert.equal(addon.getDomainHash(handle, "cadastre").ownership, 1);
+assert.equal(addon.getDomainHash(handle, "buildings").ownership, 1);
+assert.equal(addon.getDomainHash(handle, "zoning").ownership, 1);
+assert.equal(addon.getDomainHash(handle, "property").ownership, 1);
+
+const splitResponse = JSON.parse(
+  addon.applyUrbanCommand(
+    handle,
+    JSON.stringify({
+      type: "cadastre.split",
+      parcelId: "parcel:0,0",
+      cutLine: [
+        { x: 10, y: 0 },
+        { x: 10, y: 20 },
+      ],
+    }),
+  ),
+);
+assert.equal(splitResponse.result.committed, true);
+assert.equal(splitResponse.result.resultingParcelIds.length, 2);
+assert.equal(splitResponse.snapshot.urbanFabric.parcels.length, 2);
+assert.deepEqual(
+  JSON.parse(addon.getUrbanSnapshot(handle)),
+  splitResponse.snapshot,
+);
+
+const committedUrban = JSON.parse(
+  addon.restoreUrbanState(
+    handle,
+    JSON.stringify({
+      urbanFabric: urbanPreview.urbanFabric,
+      zoningV2: urbanPreview.zoningV2,
+      buildingsV2: urbanPreview.buildingsV2,
+      propertyMarket: urbanPreview.propertyMarket,
+    }),
+  ),
+);
+assert.deepEqual(JSON.parse(addon.getUrbanSnapshot(handle)), committedUrban);
+
 const left = addon.createEngine({ seed: 7 });
 const right = addon.createEngine({ seed: 7 });
 addon.submitCommands(

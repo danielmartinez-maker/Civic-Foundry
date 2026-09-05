@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "world": {
+    "seed": 1337,
+    "width": 6,
+    "height": 5,
+    "metersPerCell": 30,
+    "preset": "rolling_uplands"
+  },
+  "cadastre": {
+    "parcels": [
+      {
+        "id": "parcel:a",
+        "blockId": "block:0",
+        "minX": 0,
+        "minY": 0,
+        "maxX": 20,
+        "maxY": 20,
+        "zoningDistrictId": "R2",
+        "ownerId": "owner:a"
+      },
+      {
+        "id": "parcel:b",
+        "blockId": "block:0",
+        "minX": 30,
+        "minY": 0,
+        "maxX": 50,
+        "maxY": 20,
+        "zoningDistrictId": "C1",
+        "ownerId": "owner:b"
+      }
+    ]
+  },
+  "urban": {
+    "typology": {
+      "id": "main_street_mixed_use",
+      "maintenanceCostPerM2": 24,
+      "complexityFactor": 1.1
+    },
+    "building": {
+      "id": "building:lifecycle:1",
+      "parcelId": "parcel:a",
+      "grossFloorAreaM2": 4000,
+      "ageTicks": 5000,
+      "condition": 82,
+      "structuralCondition": 86,
+      "systemsCondition": 80,
+      "exteriorCondition": 78,
+      "maintenanceBacklog": 0,
+      "deferredMaintenanceTicks": 0,
+      "effectiveAge": 20,
+      "vacancyDurationTicks": 0,
+      "distressScore": 15
+    },
+    "short": {
+      "ticks": 16,
+      "input": {
+        "maintenanceSpend": 0,
+        "occupancyRatio": 0.9,
+        "utilizationRatio": 0.75,
+        "environmentalStress": 0.1,
+        "serviceStress": 0.1,
+        "cadenceTicks": 1
+      }
+    },
+    "long": {
+      "ticks": 2500,
+      "stepTicks": 25,
+      "checkpoints": [250, 500, 1000, 2500],
+      "input": {
+        "maintenanceSpend": 0,
+        "occupancyRatio": 0.15,
+        "utilizationRatio": 0.75,
+        "environmentalStress": 0.1,
+        "serviceStress": 0.1,
+        "cadenceTicks": 25
+      }
+    }
+  },
+  "expected": {
+    "worldHash": "c6ce57af2bc52a31",
+    "cadastreHash": "c5b655c623e38a2d",
+    "shortUrbanHashes": [
+      "e6f9783073eaa58e",
+      "718d52238cc59e5a",
+      "ef7724ae6df684e5",
+      "e7fc785cfe79db5c",
+      "911f5c0663295ac1",
+      "f006270ee7ed3c44",
+      "31b37d6c0687537e",
+      "f6afb11b64a2b97f",
+      "77ecddbcbd93db16",
+      "1c33dae30b2647c2",
+      "2ffc872707acd0bf",
+      "a5dd2b7aeb2a51df",
+      "6b7436b4934c7bc2",
+      "eef7dbf2b176f1d8",
+      "f1062918199c8d21",
+      "ae0e92f2c6eae3c2"
+    ],
+    "longUrbanHashes": [
+      "b587f73037d9eac8",
+      "ac53352430a5e415",
+      "4732590fa2c15174",
+      "92119f8675582011"
+    ]
+  }
+}

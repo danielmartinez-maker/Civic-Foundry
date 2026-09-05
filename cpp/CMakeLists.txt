@@ -18,16 +18,49 @@ else()
   pkg_check_modules(JSONC REQUIRED IMPORTED_TARGET json-c)
   set(CIVIC_JSON_TARGET PkgConfig::JSONC)
 endif()
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(Clipper2 CONFIG REQUIRED)
 
 add_library(civic_engine STATIC
   engine/src/core/Kernel.cpp
   engine/src/core/NativeEngine.cpp
+  engine/src/core/NativeEngineUrban.cpp
   engine/src/core/RandomStreamRegistry.cpp
   engine/src/persistence/SaveV9.cpp
   engine/src/bridge/civic_engine.cpp
+  engine/src/bridge/civic_world_bridge.cpp
+  engine/src/bridge/civic_urban_bridge.cpp
+  engine/src/geometry/Geometry.cpp
+  engine/src/geometry/BooleanOps.cpp
+  engine/src/world/Terrain.cpp
+  engine/src/world/Hydrology.cpp
+  engine/src/world/Geography.cpp
+  engine/src/world/WorldFoundation.cpp
+  engine/src/world/WorldScenario.cpp
+  engine/src/cadastre/Cadastre.cpp
+  engine/src/cadastre/CadastreHistory.cpp
+  engine/src/cadastre/CadastreMutation.cpp
+  engine/src/cadastre/ParcelGeneration.cpp
+  engine/src/urban/UrbanFabric.cpp
+  engine/src/urban/NativeUrbanAuthority.cpp
+  engine/src/urban/NativeUrbanCommands.cpp
+  engine/src/urban/NativeUrbanLegacyRebuild.cpp
+  engine/src/urban/NativeUrbanRuntime.cpp
+  engine/src/urban/NativeUrbanTransaction.cpp
+  engine/src/urban/NativeUrbanHistory.cpp
+  engine/src/urban/Zoning.cpp
+  engine/src/urban/BuildableEnvelope.cpp
+  engine/src/urban/BuildingMassing.cpp
+  engine/src/urban/BuildingLifecycle.cpp
+  engine/src/urban/HighestBestUse.cpp
+  engine/src/urban/PropertyMarket.cpp
+  engine/src/urban/PropertyMarketHistory.cpp
+  engine/src/urban/SiteAssembly.cpp
+  engine/src/urban/DevelopmentAuthority.cpp
+  engine/src/snapshot/UrbanFabricSnapshot.cpp
 )
 target_include_directories(civic_engine PUBLIC engine/include)
-target_link_libraries(civic_engine PUBLIC ${CIVIC_JSON_TARGET})
+target_link_libraries(civic_engine PUBLIC ${CIVIC_JSON_TARGET} nlohmann_json::nlohmann_json Clipper2::Clipper2)
 target_compile_definitions(civic_engine PUBLIC CIVIC_ENGINE_STATIC)
 civic_enable_warnings(civic_engine)
 civic_enable_sanitizers(civic_engine)
@@ -37,9 +70,33 @@ if(CIVIC_BUILD_TESTS)
   find_package(GTest CONFIG REQUIRED)
   add_executable(civic_engine_tests
     tests/core/CoreTests.cpp
+    tests/core/NativeWorldAuthorityTests.cpp
+    tests/geometry/GeometryFixtureTests.cpp
     tests/persistence/SaveV9Tests.cpp
     tests/parity/ParityTests.cpp
+    tests/parity/WorldBridgeTests.cpp
+    tests/contract_red_tests.cpp
+    tests/world_foundation_tests.cpp
+    tests/world_scenario_tests.cpp
+    tests/geography_hierarchy_tests.cpp
+    tests/cadastre_mutation_tests.cpp
+    tests/parcel_generation_tests.cpp
+    tests/legal_history_tests.cpp
+    tests/legal_history_row_tests.cpp
+    tests/transactional_mutation_tests.cpp
+    tests/legacy_projection_tests.cpp
+    tests/dimensional_zoning_tests.cpp
+    tests/buildable_envelope_tests.cpp
+    tests/building_v2_massing_tests.cpp
+    tests/building_lifecycle_renovation_tests.cpp
+    tests/development_authority_tests.cpp
+    tests/native_urban_snapshot_tests.cpp
+    tests/native_urban_authority_tests.cpp
+    tests/native_urban_transaction_tests.cpp
+    tests/native_v9_continuation_tests.cpp
+    tests/world_urban_shadow_parity_tests.cpp
   )
+  target_compile_definitions(civic_engine_tests PRIVATE CIVIC_REPO_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/..")
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main ${CIVIC_JSON_TARGET})
   civic_enable_warnings(civic_engine_tests)
   civic_enable_sanitizers(civic_engine_tests)
