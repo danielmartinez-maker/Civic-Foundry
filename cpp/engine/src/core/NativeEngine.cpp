@@ -36,7 +36,19 @@ std::string bytesToString(const std::vector<std::byte>& bytes) {
 }
 } // namespace
 
-NativeEngine::NativeEngine(const EngineConfig& config) : seed_(config.seed), clock_(config.startTick, config.speed), random_(config.seed) {
+EngineConfig EngineConfig::legacyCompatibilityConfig(std::uint32_t seed, std::uint64_t start_tick) {
+    EngineConfig config{};
+    config.seed = seed;
+    config.startTick = start_tick;
+    config.demand_weight_mode = DemandWeightMode::legacy_rounded;
+    return config;
+}
+
+NativeEngine::NativeEngine(const EngineConfig& config)
+    : seed_(config.seed),
+      demand_weight_mode_(config.demand_weight_mode),
+      clock_(config.startTick, config.speed),
+      random_(config.seed) {
     (void)invariants_.registerInvariant(InvariantDefinition{
         "kernel-clock-valid", {1, 0}, [](std::uint64_t) -> Result<void> { return {}; }
     });

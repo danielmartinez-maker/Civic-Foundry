@@ -13,10 +13,21 @@
 
 namespace civic {
 
+enum class DemandWeightMode : std::uint8_t {
+    conservation = 0,
+    legacy_rounded = 1,
+};
+
 struct EngineConfig final {
     std::uint32_t seed{1};
     std::uint64_t startTick{0};
     SpeedMode speed{SpeedMode::normal};
+    DemandWeightMode demand_weight_mode{DemandWeightMode::conservation};
+
+    [[nodiscard]] static EngineConfig legacyCompatibilityConfig(
+        std::uint32_t seed,
+        std::uint64_t start_tick = 0
+    );
 };
 
 struct SnapshotBlob final { std::string json; };
@@ -40,12 +51,14 @@ public:
     [[nodiscard]] Result<void> loadV9(std::string_view json);
     [[nodiscard]] Result<std::string> saveV9() const;
     [[nodiscard]] std::uint64_t tick() const noexcept { return clock_.tick(); }
+    [[nodiscard]] DemandWeightMode demandWeightMode() const noexcept { return demand_weight_mode_; }
 private:
     explicit NativeEngine(const EngineConfig&);
     [[nodiscard]] std::string kernelCanonicalState() const;
     static std::uint64_t fnv1a64(std::string_view bytes) noexcept;
 
     std::uint32_t seed_{};
+    DemandWeightMode demand_weight_mode_{DemandWeightMode::conservation};
     SimulationClock clock_;
     RandomStreamRegistry random_;
     CommandQueue commands_;
