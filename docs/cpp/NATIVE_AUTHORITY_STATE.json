@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "domains": {
+    "kernel": {
+      "state": "native_authoritative",
+      "runtimeNativeOwnership": "owned",
+      "evidence": "docs/cpp/MIGRATION_BASELINE.md",
+      "typescriptMutationAllowed": false
+    },
+    "world": {
+      "state": "typescript_authoritative",
+      "runtimeNativeOwnership": "unowned",
+      "evidence": null,
+      "typescriptMutationAllowed": true
+    },
+    "cadastre": {
+      "state": "typescript_authoritative",
+      "runtimeNativeOwnership": "unowned",
+      "evidence": null,
+      "typescriptMutationAllowed": true
+    },
+    "buildings": {
+      "state": "typescript_authoritative",
+      "runtimeNativeOwnership": "unowned",
+      "evidence": null,
+      "typescriptMutationAllowed": true
+    },
+    "transportation": {
+      "state": "typescript_authoritative",
+      "runtimeNativeOwnership": "unowned",
+      "evidence": null,
+      "typescriptMutationAllowed": true
+    },
+    "population": {
+      "state": "typescript_authoritative",
+      "runtimeNativeOwnership": "unowned",
+      "evidence": null,
+      "typescriptMutationAllowed": true
+    },
+    "economy": {
+      "state": "typescript_authoritative",
+      "runtimeNativeOwnership": "unowned",
+      "evidence": null,
+      "typescriptMutationAllowed": true
+    },
+    "services": {
+      "state": "typescript_authoritative",
+      "runtimeNativeOwnership": "unowned",
+      "evidence": null,
+      "typescriptMutationAllowed": true
+    }
+  }
+}
