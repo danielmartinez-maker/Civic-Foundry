@@ -58,11 +58,20 @@ private:
     std::uint64_t next_sequence_{1};
 };
 
+struct DomainEventJournalSnapshot final {
+    std::vector<DomainEvent> events;
+    std::uint64_t next_sequence{1};
+};
+
 class DomainEventJournal final {
 public:
-    DomainEvent append(std::uint64_t tick, std::string type, std::string source, std::vector<std::byte> payload = {});
+    [[nodiscard]] Result<DomainEvent> append(std::uint64_t tick, std::string type, std::string source, std::vector<std::byte> payload = {});
     [[nodiscard]] std::vector<DomainEvent> drain();
     [[nodiscard]] const std::vector<DomainEvent>& list() const noexcept { return events_; }
+    [[nodiscard]] std::vector<DomainEvent> since(std::uint64_t sequence_exclusive) const;
+    [[nodiscard]] DomainEventJournalSnapshot snapshot() const;
+    [[nodiscard]] Result<void> restore(const DomainEventJournalSnapshot& snapshot);
+    void clearDiagnosticHistory() noexcept;
     [[nodiscard]] std::uint64_t nextSequence() const noexcept { return next_sequence_; }
 private:
     std::vector<DomainEvent> events_;
