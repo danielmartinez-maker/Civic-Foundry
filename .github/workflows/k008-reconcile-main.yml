@@ -44,13 +44,12 @@ jobs:
             expected=(
               "cpp/tests/core/CoreTests.cpp"
               "cpp/tests/parity/ParityTests.cpp"
-              "docs/cpp/TS_REWRITE_LEDGER.json"
             )
             if [ "${conflicts[*]}" != "${expected[*]}" ]; then
               echo "Unexpected reconciliation conflict set" >&2
               exit 1
             fi
-            git checkout --theirs -- cpp/tests/core/CoreTests.cpp cpp/tests/parity/ParityTests.cpp docs/cpp/TS_REWRITE_LEDGER.json
+            git checkout --theirs -- cpp/tests/core/CoreTests.cpp cpp/tests/parity/ParityTests.cpp
             python scripts/cpp/k008_reconcile.py resolve
             git add cpp/tests/core/CoreTests.cpp cpp/tests/parity/ParityTests.cpp docs/cpp/TS_REWRITE_LEDGER.json
           fi
