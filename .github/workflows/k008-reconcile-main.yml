@@ -1,0 +1,54 @@
+name: K008 reconcile main
+
+on:
+  push:
+    branches:
+      - "feat/k008-system-scheduler-cpp-rewrite"
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Node 22
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Native build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libjson-c-dev libgtest-dev
+          python -m pip install --upgrade "cmake>=3.30,<5"
+      - name: Merge current main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge --no-edit origin/main
+      - name: Focused scheduler gate twice
+        run: |
+          node scripts/cpp/run-native-round.mjs --regex "SchedulerContracts|SchedulerParity"
+          node scripts/cpp/run-native-round.mjs --regex "SchedulerContracts|SchedulerParity"
+      - name: Full native and control-plane gates
+        run: |
+          node scripts/cpp/run-native-round.mjs
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run cpp:ts-ledger:verify
+          npm run test:cpp-ts-count-guard
+          npm run cpp:ts-count:guard
+          npm run test:cpp-parity-evidence
+          npm run test:cpp-authority-gate
+          npm run cpp:authority:verify
+          git diff --check origin/main...HEAD
+      - name: Remove temporary workflow and push reconciled branch
+        run: |
+          git rm .github/workflows/k008-reconcile-main.yml
+          git commit -m "chore(k008): remove reconciliation workflow"
+          git push origin HEAD:feat/k008-system-scheduler-cpp-rewrite
