@@ -735,13 +735,13 @@
       "inventoryId": "CF-TS-0061",
       "path": "src/simulation/core/LegacySimulationCore.ts",
       "kind": "production",
-      "assignedStack": null,
-      "targetNativeOwner": null,
-      "nativeTestOwner": null,
-      "status": "pending",
+      "assignedStack": "K010",
+      "targetNativeOwner": "native compatibility configuration",
+      "nativeTestOwner": "cpp/tests/parity/LegacyCompatibilityParityTests.cpp",
+      "status": "shadow_complete",
       "currentAuthority": "typescript",
-      "parityClassification": "unclassified",
-      "cutoverDependencies": []
+      "parityClassification": "deferred",
+      "cutoverDependencies": ["T-series TripGeneration rewrite"]
     },
     {
       "inventoryId": "CF-TS-0062",

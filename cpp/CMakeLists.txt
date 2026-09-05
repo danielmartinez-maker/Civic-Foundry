@@ -37,8 +37,10 @@ if(CIVIC_BUILD_TESTS)
   find_package(GTest CONFIG REQUIRED)
   add_executable(civic_engine_tests
     tests/core/CoreTests.cpp
+    tests/core/LegacyCompatibilityTests.cpp
     tests/persistence/SaveV9Tests.cpp
     tests/parity/ParityTests.cpp
+    tests/parity/LegacyCompatibilityParityTests.cpp
   )
   target_link_libraries(civic_engine_tests PRIVATE civic_engine GTest::gtest_main ${CIVIC_JSON_TARGET})
   civic_enable_warnings(civic_engine_tests)
