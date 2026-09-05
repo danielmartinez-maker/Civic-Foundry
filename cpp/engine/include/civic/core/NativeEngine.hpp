@@ -65,6 +65,7 @@ private:
     DomainEventJournal events_;
     SystemScheduler scheduler_;
     InvariantRunner invariants_;
+    SnapshotRegistry snapshots_;
     std::optional<SaveV9Dto> loaded_save_;
 };
 

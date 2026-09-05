@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <limits>
+#include <string>
 #include <vector>
 #include <civic/core/Kernel.hpp>
 #include <civic/core/KernelTypes.hpp>
@@ -289,6 +290,102 @@ TEST(InvariantContracts, RegistrationStoresStableCopiedDefinition) {
     ASSERT_TRUE(runner.runDue(1));
     EXPECT_EQ(original_calls, 1);
     EXPECT_EQ(mutated_calls, 0);
+}
+
+TEST(SnapshotRegistryParity, RejectsDuplicateAndBlankIds) {
+    civic::SnapshotRegistry registry;
+    const auto provider = []() -> civic::Result<std::string> { return std::string{"{}"}; };
+
+    ASSERT_TRUE(registry.registerProvider("alpha", provider));
+
+    const auto duplicate = registry.registerProvider("alpha", provider);
+    ASSERT_FALSE(duplicate);
+    EXPECT_EQ(duplicate.error().code, civic::ErrorCode::invalid_argument);
+    EXPECT_EQ(duplicate.error().message, "duplicate snapshot provider: alpha");
+
+    const auto blank = registry.registerProvider("   ", provider);
+    ASSERT_FALSE(blank);
+    EXPECT_EQ(blank.error().code, civic::ErrorCode::invalid_argument);
+    EXPECT_EQ(blank.error().message, "snapshot provider id must not be empty");
+
+    const std::string nbsp{"\xC2\xA0"};
+    const auto ecma_blank = registry.registerProvider(nbsp, provider);
+    ASSERT_FALSE(ecma_blank);
+    EXPECT_EQ(ecma_blank.error().code, civic::ErrorCode::invalid_argument);
+}
+
+TEST(SnapshotRegistryParity, UnknownCaptureFails) {
+    civic::SnapshotRegistry registry;
+    const auto captured = registry.capture("missing");
+    ASSERT_FALSE(captured);
+    EXPECT_EQ(captured.error().code, civic::ErrorCode::invalid_argument);
+    EXPECT_EQ(captured.error().message, "unknown snapshot provider: missing");
+}
+
+TEST(SnapshotRegistryParity, CaptureAllUsesUtf16OrdinalOrder) {
+    const std::string supplementary{"\xF0\x90\x80\x80"}; // U+10000 -> UTF-16 D800 DC00
+    const std::string private_bmp{"\xEE\x80\x80"};       // U+E000
+    civic::SnapshotRegistry registry;
+
+    ASSERT_TRUE(registry.registerProvider(private_bmp, []() -> civic::Result<std::string> { return std::string{"bmp"}; }));
+    ASSERT_TRUE(registry.registerProvider(supplementary, []() -> civic::Result<std::string> { return std::string{"supplementary"}; }));
+    ASSERT_TRUE(registry.registerProvider("alpha", []() -> civic::Result<std::string> { return std::string{"ascii"}; }));
+
+    const auto expected = std::vector<std::string>{"alpha", supplementary, private_bmp};
+    EXPECT_EQ(registry.listIds(), expected);
+
+    const auto captured = registry.captureAll();
+    ASSERT_TRUE(captured);
+    std::vector<std::string> captured_ids;
+    for (const auto& [id, value] : *captured) {
+        (void)value;
+        captured_ids.push_back(id);
+    }
+    EXPECT_EQ(captured_ids, expected);
+    EXPECT_EQ(captured->at("alpha"), "ascii");
+    EXPECT_EQ(captured->at(supplementary), "supplementary");
+    EXPECT_EQ(captured->at(private_bmp), "bmp");
+}
+
+TEST(SnapshotRegistryParity, CapturedValueIsIndependentFromLaterProviderMutation) {
+    civic::SnapshotRegistry registry;
+    std::string provider_state = R"({"nested":{"value":1}})";
+    ASSERT_TRUE(registry.registerProvider("state", [&provider_state]() -> civic::Result<std::string> {
+        return provider_state;
+    }));
+
+    const auto first = registry.capture("state");
+    ASSERT_TRUE(first);
+    EXPECT_EQ(*first, R"({"nested":{"value":1}})");
+
+    provider_state = R"({"nested":{"value":8}})";
+    EXPECT_EQ(*first, R"({"nested":{"value":1}})");
+
+    const auto second = registry.capture("state");
+    ASSERT_TRUE(second);
+    EXPECT_EQ(*second, R"({"nested":{"value":8}})");
+}
+
+TEST(SnapshotRegistryParity, CaptureAllFreezesProviderSetBeforeCapture) {
+    civic::SnapshotRegistry registry;
+    bool inserted = false;
+    ASSERT_TRUE(registry.registerProvider("alpha", [&]() -> civic::Result<std::string> {
+        if (!inserted) {
+            inserted = true;
+            auto registered = registry.registerProvider("zeta", []() -> civic::Result<std::string> {
+                return std::string{"late"};
+            });
+            if (!registered) return std::unexpected(registered.error());
+        }
+        return std::string{"initial"};
+    }));
+
+    const auto captured = registry.captureAll();
+    ASSERT_TRUE(captured);
+    EXPECT_EQ(captured->size(), 1U);
+    EXPECT_EQ(captured->at("alpha"), "initial");
+    EXPECT_FALSE(captured->contains("zeta"));
+    EXPECT_EQ(registry.listIds(), (std::vector<std::string>{"alpha", "zeta"}));
 }
 
 TEST(NativeEngineContracts, StepZeroIsSideEffectFreeAndDomainsAreExplicitlyUnowned) {

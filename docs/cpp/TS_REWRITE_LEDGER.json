@@ -1215,12 +1215,12 @@
       "inventoryId": "CF-TS-0101",
       "path": "src/simulation/kernel/SnapshotRegistry.ts",
       "kind": "production",
-      "assignedStack": null,
-      "targetNativeOwner": null,
-      "nativeTestOwner": null,
-      "status": "pending",
+      "assignedStack": "K007",
+      "targetNativeOwner": "civic::SnapshotRegistry",
+      "nativeTestOwner": "cpp/tests/core/CoreTests.cpp",
+      "status": "shadow_complete",
       "currentAuthority": "typescript",
-      "parityClassification": "unclassified",
+      "parityClassification": "parity",
       "cutoverDependencies": []
     },
     {
