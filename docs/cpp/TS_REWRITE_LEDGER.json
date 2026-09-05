@@ -1227,12 +1227,12 @@
       "inventoryId": "CF-TS-0102",
       "path": "src/simulation/kernel/SystemScheduler.ts",
       "kind": "production",
-      "assignedStack": null,
-      "targetNativeOwner": null,
-      "nativeTestOwner": null,
-      "status": "pending",
+      "assignedStack": "K008",
+      "targetNativeOwner": "civic::SystemScheduler",
+      "nativeTestOwner": "cpp/tests/parity/ParityTests.cpp",
+      "status": "parity_accepted",
       "currentAuthority": "typescript",
-      "parityClassification": "unclassified",
+      "parityClassification": "parity",
       "cutoverDependencies": []
     },
     {

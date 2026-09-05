@@ -331,3 +331,98 @@ TEST(RandomParity, RestoreZeroStateUsesSeededRandomFallback) {
     EXPECT_DOUBLE_EQ((*traffic)->next(), expected.next());
 }
 
+TEST(SchedulerContracts, RegistrationValidationMatchesTypeScriptDiagnostics) {
+    civic::SystemScheduler scheduler;
+
+    const auto duplicate_read = scheduler.registerSystem({"dup-read", {1,0}, {}, {}, {"traffic", "traffic"}, {}, 0, {}});
+    ASSERT_FALSE(duplicate_read);
+    EXPECT_EQ(duplicate_read.error().message, "duplicate read domain for system dup-read: traffic");
+
+    const auto duplicate_write = scheduler.registerSystem({"dup-write", {1,0}, {}, {}, {}, {"traffic", "traffic"}, 0, {}});
+    ASSERT_FALSE(duplicate_write);
+    EXPECT_EQ(duplicate_write.error().message, "duplicate write domain for system dup-write: traffic");
+
+    const auto read_write = scheduler.registerSystem({"read-write", {1,0}, {}, {}, {"traffic"}, {"traffic"}, 0, {}});
+    ASSERT_FALSE(read_write);
+    EXPECT_EQ(read_write.error().message, "domain declared as read and write for system read-write: traffic");
+
+    const auto self_after = scheduler.registerSystem({"self-after", {1,0}, {"self-after"}, {}, {}, {}, 0, {}});
+    ASSERT_FALSE(self_after);
+    EXPECT_EQ(self_after.error().message, "self dependency for kernel system self-after");
+
+    const auto invalid_cadence = scheduler.registerSystem({"bad-cadence", {2,2}, {}, {}, {}, {}, 0, {}});
+    ASSERT_FALSE(invalid_cadence);
+    EXPECT_EQ(invalid_cadence.error().message, "invalid cadence for system bad-cadence");
+}
+
+TEST(SchedulerContracts, CadenceOverlapUsesGcdArithmeticAndDependencyPaths) {
+    civic::SystemScheduler disjoint;
+    ASSERT_TRUE(disjoint.registerSystem({"even", {2,0}, {}, {}, {}, {"market"}, 0, {}}));
+    ASSERT_TRUE(disjoint.registerSystem({"odd", {2,1}, {}, {}, {}, {"market"}, 0, {}}));
+    EXPECT_TRUE(disjoint.compile());
+
+    civic::SystemScheduler overlapping;
+    ASSERT_TRUE(overlapping.registerSystem({"four", {4,1}, {}, {}, {}, {"market"}, 0, {}}));
+    ASSERT_TRUE(overlapping.registerSystem({"six", {6,3}, {}, {}, {}, {"market"}, 0, {}}));
+    const auto conflict = overlapping.compile();
+    ASSERT_FALSE(conflict);
+    EXPECT_EQ(conflict.error().message, "ambiguous write conflict on domain market: four, six");
+
+    civic::SystemScheduler ordered;
+    ASSERT_TRUE(ordered.registerSystem({"four", {4,1}, {}, {}, {}, {"market"}, 0, {}}));
+    ASSERT_TRUE(ordered.registerSystem({"six", {6,3}, {"four"}, {}, {}, {"market"}, 0, {}}));
+    ASSERT_TRUE(ordered.compile());
+    EXPECT_EQ(ordered.orderedIds(), (std::vector<std::string>{"four", "six"}));
+}
+
+TEST(SchedulerContracts, OrderFieldBreaksTopologicalTies) {
+    civic::SystemScheduler scheduler;
+    ASSERT_TRUE(scheduler.registerSystem({"beta", {1,0}, {}, {}, {}, {}, 5, {}}));
+    ASSERT_TRUE(scheduler.registerSystem({"gamma", {1,0}, {}, {}, {}, {}, -1, {}}));
+    ASSERT_TRUE(scheduler.registerSystem({"alpha", {1,0}, {}, {}, {}, {}, 5, {}}));
+    ASSERT_TRUE(scheduler.compile());
+    EXPECT_EQ(scheduler.orderedIds(), (std::vector<std::string>{"gamma", "alpha", "beta"}));
+}
+
+TEST(SchedulerContracts, UnknownDependenciesAndCycleParticipantsAreDeterministic) {
+    civic::SystemScheduler unknown_after;
+    ASSERT_TRUE(unknown_after.registerSystem({"traffic", {1,0}, {"roads"}, {}, {}, {}, 0, {}}));
+    const auto after_result = unknown_after.compile();
+    ASSERT_FALSE(after_result);
+    EXPECT_EQ(after_result.error().message, "unknown kernel dependency: roads -> traffic");
+
+    civic::SystemScheduler unknown_before;
+    ASSERT_TRUE(unknown_before.registerSystem({"traffic", {1,0}, {}, {"roads"}, {}, {}, 0, {}}));
+    const auto before_result = unknown_before.compile();
+    ASSERT_FALSE(before_result);
+    EXPECT_EQ(before_result.error().message, "unknown kernel dependency: traffic -> roads");
+
+    civic::SystemScheduler cycle;
+    ASSERT_TRUE(cycle.registerSystem({"c", {1,0}, {"b"}, {}, {}, {}, 0, {}}));
+    ASSERT_TRUE(cycle.registerSystem({"a", {1,0}, {"c"}, {}, {}, {}, 0, {}}));
+    ASSERT_TRUE(cycle.registerSystem({"b", {1,0}, {"a"}, {}, {}, {}, 0, {}}));
+    const auto cycle_result = cycle.compile();
+    ASSERT_FALSE(cycle_result);
+    EXPECT_EQ(cycle_result.error().message, "kernel dependency cycle: a -> b -> c");
+}
+
+TEST(SchedulerContracts, DueFilteringAndListIdsAreIndependentOfCompiledOrder) {
+    civic::SystemScheduler scheduler;
+    ASSERT_TRUE(scheduler.registerSystem({"zeta", {2,0}, {}, {}, {}, {}, -5, {}}));
+    ASSERT_TRUE(scheduler.registerSystem({"alpha", {2,1}, {}, {}, {}, {}, 10, {}}));
+
+    EXPECT_EQ(scheduler.listSystemIds(), (std::vector<std::string>{"alpha", "zeta"}));
+    ASSERT_TRUE(scheduler.compile());
+    EXPECT_EQ(scheduler.orderedIds(), (std::vector<std::string>{"zeta", "alpha"}));
+    EXPECT_EQ(scheduler.listSystemIds(), (std::vector<std::string>{"alpha", "zeta"}));
+
+    const auto tick_one = scheduler.dueSystems(1);
+    ASSERT_TRUE(tick_one);
+    ASSERT_EQ(tick_one->size(), 1U);
+    EXPECT_EQ((*tick_one)[0]->id, "alpha");
+
+    const auto tick_two = scheduler.dueSystems(2);
+    ASSERT_TRUE(tick_two);
+    ASSERT_EQ(tick_two->size(), 1U);
+    EXPECT_EQ((*tick_two)[0]->id, "zeta");
+}

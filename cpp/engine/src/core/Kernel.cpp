@@ -17,9 +17,19 @@ bool overlap(const SystemCadence& left, const SystemCadence& right) {
     return (hi - lo) % g == 0;
 }
 
-bool intersects(const std::vector<std::string>& a, const std::vector<std::string>& b) {
-    for (const auto& item : a) if (std::find(b.begin(), b.end(), item) != b.end()) return true;
-    return false;
+const std::string* firstIntersection(const std::vector<std::string>& a, const std::vector<std::string>& b) {
+    for (const auto& item : a) {
+        if (std::find(b.begin(), b.end(), item) != b.end()) return &item;
+    }
+    return nullptr;
+}
+
+const std::string* firstDuplicate(const std::vector<std::string>& values) {
+    std::set<std::string, std::less<>> seen;
+    for (const auto& value : values) {
+        if (!seen.insert(value).second) return &value;
+    }
+    return nullptr;
 }
 } // namespace
 
@@ -203,19 +213,24 @@ void DomainEventJournal::clearDiagnosticHistory() noexcept {
 
 Result<void> SystemScheduler::registerSystem(SystemDefinition system) {
     if (!validIdentity(system.id)) return std::unexpected(make_error(ErrorCode::invalid_argument, "kernel system id must not be empty"));
-    auto cadence = validateCadence(system.cadence, system.id);
+    auto cadence = validateCadence(system.cadence, "system " + system.id);
     if (!cadence) return cadence;
-    if (systems_.contains(system.id)) return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate kernel system: " + system.id));
+
     const auto id = system.id;
+    if (const auto* duplicate_read = firstDuplicate(system.reads)) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate read domain for system " + id + ": " + *duplicate_read));
+    }
+    if (const auto* duplicate_write = firstDuplicate(system.writes)) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate write domain for system " + id + ": " + *duplicate_write));
+    }
+    if (const auto* read_write = firstIntersection(system.writes, system.reads)) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "domain declared as read and write for system " + id + ": " + *read_write));
+    }
     if (std::find(system.after.begin(), system.after.end(), id) != system.after.end() || std::find(system.before.begin(), system.before.end(), id) != system.before.end()) {
         return std::unexpected(make_error(ErrorCode::invalid_argument, "self dependency for kernel system " + id));
     }
-    auto hasDuplicates = [](const auto& values) {
-        std::set<std::string, std::less<>> seen;
-        return std::ranges::any_of(values, [&](const auto& value) { return !seen.insert(value).second; });
-    };
-    if (hasDuplicates(system.reads) || hasDuplicates(system.writes)) return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate domain declaration for system " + id));
-    if (intersects(system.reads, system.writes)) return std::unexpected(make_error(ErrorCode::invalid_argument, "domain declared as read and write for system " + id));
+    if (systems_.contains(id)) return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate kernel system: " + id));
+
     systems_.emplace(id, std::move(system));
     compiled_.clear();
     return {};
@@ -250,8 +265,16 @@ Result<void> SystemScheduler::compile() {
         for (auto b = std::next(a); b != systems_.end(); ++b) {
             if (!overlap(a->second.cadence, b->second.cadence)) continue;
             const bool ordered = reaches(a->first, b->first) || reaches(b->first, a->first);
-            if (!ordered && intersects(a->second.writes, b->second.writes)) return std::unexpected(make_error(ErrorCode::invalid_state, "ambiguous write conflict: " + a->first + ", " + b->first));
-            if (!ordered && (intersects(a->second.writes, b->second.reads) || intersects(b->second.writes, a->second.reads))) return std::unexpected(make_error(ErrorCode::invalid_state, "ambiguous read/write conflict: " + a->first + ", " + b->first));
+            const auto* shared_write = firstIntersection(a->second.writes, b->second.writes);
+            if (!ordered && shared_write != nullptr) {
+                return std::unexpected(make_error(ErrorCode::invalid_state, "ambiguous write conflict on domain " + *shared_write + ": " + a->first + ", " + b->first));
+            }
+            const auto* a_write_b_read = firstIntersection(a->second.writes, b->second.reads);
+            const auto* b_write_a_read = firstIntersection(b->second.writes, a->second.reads);
+            const auto* read_write_domain = a_write_b_read != nullptr ? a_write_b_read : b_write_a_read;
+            if (!ordered && read_write_domain != nullptr) {
+                return std::unexpected(make_error(ErrorCode::invalid_state, "ambiguous read/write conflict on domain " + *read_write_domain + ": " + a->first + ", " + b->first));
+            }
         }
     }
     const Utf16OrdinalLess ordinal_less{};
@@ -272,7 +295,19 @@ Result<void> SystemScheduler::compile() {
             if (degree == 0) { available.push_back(next); std::ranges::sort(available, priority); }
         }
     }
-    if (result.size() != systems_.size()) return std::unexpected(make_error(ErrorCode::invalid_state, "kernel dependency cycle"));
+    if (result.size() != systems_.size()) {
+        std::vector<std::string> participants;
+        participants.reserve(systems_.size() - result.size());
+        for (const auto& [id, degree] : indegree) {
+            if (degree > 0) participants.push_back(id);
+        }
+        std::string message = "kernel dependency cycle: ";
+        for (std::size_t index = 0; index < participants.size(); ++index) {
+            if (index > 0) message += " -> ";
+            message += participants[index];
+        }
+        return std::unexpected(make_error(ErrorCode::invalid_state, std::move(message)));
+    }
     compiled_ = std::move(result);
     return {};
 }
@@ -288,6 +323,16 @@ Result<std::vector<SystemDefinition*>> SystemScheduler::dueSystems(std::uint64_t
 }
 
 std::vector<std::string> SystemScheduler::orderedIds() const { return compiled_; }
+
+std::vector<std::string> SystemScheduler::listSystemIds() const {
+    std::vector<std::string> ids;
+    ids.reserve(systems_.size());
+    for (const auto& [id, system] : systems_) {
+        (void)system;
+        ids.push_back(id);
+    }
+    return ids;
+}
 
 Result<void> InvariantRunner::registerInvariant(InvariantDefinition invariant) {
     if (!validIdentity(invariant.id) || !invariant.check) return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid invariant definition"));
