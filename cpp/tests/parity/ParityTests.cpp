@@ -133,6 +133,45 @@ TEST(InvariantContracts, UsesJavaScriptUtf16OrdinalExecutionOrder) {
     EXPECT_EQ(order[1], kPrivateBmp);
 }
 
+TEST(InvariantParity, ListsIdsInJavaScriptUtf16OrdinalOrder) {
+    civic::InvariantRunner runner;
+    ASSERT_TRUE(runner.registerInvariant({kPrivateBmp, {1, 0}, [](std::uint64_t) -> civic::Result<void> { return {}; }}));
+    ASSERT_TRUE(runner.registerInvariant({kSupplementary, {1, 0}, [](std::uint64_t) -> civic::Result<void> { return {}; }}));
+    EXPECT_EQ(runner.listIds(), (std::vector<std::string>{kSupplementary, kPrivateBmp}));
+}
+
+TEST(InvariantParity, FailureIncludesInvariantIdTickAndDetail) {
+    civic::InvariantRunner runner;
+    ASSERT_TRUE(runner.registerInvariant({"broken", {1, 0}, [](std::uint64_t) -> civic::Result<void> {
+        return std::unexpected(civic::make_error(civic::ErrorCode::invalid_state, "underlying detail"));
+    }}));
+    const auto result = runner.runDue(7);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, civic::ErrorCode::invariant_failure);
+    EXPECT_EQ(result.error().message, "invariant failed [broken] at tick 7: underlying detail");
+}
+
+TEST(InvariantParity, RejectsDuplicateAndInvalidCadence) {
+    civic::InvariantRunner runner;
+    const auto pass = [](std::uint64_t) -> civic::Result<void> { return {}; };
+    EXPECT_FALSE(runner.registerInvariant({kNbsp, {1, 0}, pass}));
+    ASSERT_TRUE(runner.registerInvariant({"valid", {2, 1}, pass}));
+    EXPECT_FALSE(runner.registerInvariant({"valid", {2, 1}, pass}));
+    EXPECT_FALSE(runner.registerInvariant({"zero", {0, 0}, pass}));
+    EXPECT_FALSE(runner.registerInvariant({"offset", {2, 2}, pass}));
+}
+
+TEST(InvariantParity, HonorsOffsetCadenceExactly) {
+    civic::InvariantRunner runner;
+    std::vector<std::uint64_t> ticks;
+    ASSERT_TRUE(runner.registerInvariant({"periodic", {3, 2}, [&](std::uint64_t tick) -> civic::Result<void> {
+        ticks.push_back(tick);
+        return {};
+    }}));
+    for (std::uint64_t tick = 0; tick <= 8; ++tick) ASSERT_TRUE(runner.runDue(tick));
+    EXPECT_EQ(ticks, (std::vector<std::uint64_t>{2, 5, 8}));
+}
+
 TEST(SaveV9Parity, CanonicalObjectKeysUseJavaScriptUtf16OrdinalOrder) {
     std::string save = R"({"saveVersion":9,"gameVersion":"0.9.0-urban-fabric","seed":7,"clock":{"tick":11,"speed":1},"terrain":{},"world":{},"urbanFabric":{"parcels":[],"lineage":[]},"zoningV2":{"parcelAssignments":[]},"buildingsV2":[],"propertyMarket":{"holdings":[],"transactions":[],"nextTransactionId":1}})";
     save.pop_back();

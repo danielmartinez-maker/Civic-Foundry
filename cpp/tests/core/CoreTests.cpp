@@ -2,6 +2,7 @@
 #include <limits>
 #include <vector>
 #include <civic/core/Kernel.hpp>
+#include <civic/core/KernelTypes.hpp>
 #include <civic/core/NativeEngine.hpp>
 #include <civic/core/RandomStreamRegistry.hpp>
 #include <civic/core/StrongId.hpp>
@@ -85,6 +86,81 @@ TEST(CommandContracts, RejectsSequenceReuseAfterDispatch) {
     EXPECT_FALSE(queue.submit(reused, 0));
 }
 
+TEST(CommandBusParity, NativeEnqueueAssignsMonotonicSequence) {
+    civic::CommandQueue queue;
+    const auto first = queue.enqueue(9, "first");
+    ASSERT_TRUE(first);
+    const auto second = queue.enqueue(3, "second", {std::byte{0x2A}});
+    ASSERT_TRUE(second);
+
+    EXPECT_EQ(*first, 1U);
+    EXPECT_EQ(*second, 2U);
+    EXPECT_EQ(queue.nextSequence(), 3U);
+    ASSERT_EQ(queue.pending().size(), 2U);
+    EXPECT_EQ(queue.pending()[0].sequence, 1U);
+    EXPECT_EQ(queue.pending()[1].sequence, 2U);
+    EXPECT_EQ(queue.pending()[1].payload, (std::vector<std::byte>{std::byte{0x2A}}));
+}
+
+TEST(CommandBusParity, SnapshotRestorePreservesPendingOrderAndNextSequence) {
+    civic::CommandQueue source;
+    ASSERT_TRUE(source.enqueue(10, "later", {std::byte{0x01}, std::byte{0x02}}));
+    ASSERT_TRUE(source.enqueue(4, "earlier"));
+    ASSERT_TRUE(source.enqueue(12, "future"));
+    ASSERT_EQ(source.takeReady(4).size(), 1U);
+
+    const auto snapshot = source.snapshot();
+    civic::CommandQueue restored;
+    ASSERT_TRUE(restored.restore(snapshot));
+
+    EXPECT_EQ(restored.nextSequence(), source.nextSequence());
+    ASSERT_EQ(restored.pending().size(), source.pending().size());
+    for (std::size_t index = 0; index < source.pending().size(); ++index) {
+        EXPECT_EQ(restored.pending()[index].sequence, source.pending()[index].sequence);
+        EXPECT_EQ(restored.pending()[index].tick, source.pending()[index].tick);
+        EXPECT_EQ(restored.pending()[index].type, source.pending()[index].type);
+        EXPECT_EQ(restored.pending()[index].payload, source.pending()[index].payload);
+        EXPECT_EQ(restored.pending()[index].version, source.pending()[index].version);
+    }
+
+    const std::vector<civic::CommandEnvelope> reused{{2, 20, "reused-dispatched-sequence", {}}};
+    EXPECT_FALSE(restored.submit(reused, 0));
+}
+
+TEST(CommandBusParity, ExternalSequenceAdvancesInternalSequenceFloor) {
+    civic::CommandQueue queue;
+    const std::vector<civic::CommandEnvelope> external{{50, 5, "external", {}}};
+    ASSERT_TRUE(queue.submit(external, 0));
+    EXPECT_GE(queue.nextSequence(), 51U);
+
+    const auto internal = queue.enqueue(6, "internal");
+    ASSERT_TRUE(internal);
+    EXPECT_GE(*internal, 51U);
+    EXPECT_EQ(*internal, 51U);
+}
+
+TEST(CommandBusParity, RestoreRejectsDuplicateOrOutOfRangeSequence) {
+    civic::CommandQueue queue;
+
+    civic::CommandQueueSnapshot duplicate{
+        {{1, 0, "a", {}}, {1, 1, "b", {}}},
+        {1},
+        2,
+    };
+    const auto duplicateResult = queue.restore(duplicate);
+    ASSERT_FALSE(duplicateResult);
+    EXPECT_EQ(duplicateResult.error().code, civic::ErrorCode::invalid_argument);
+
+    civic::CommandQueueSnapshot outOfRange{
+        {{2, 0, "a", {}}},
+        {2},
+        2,
+    };
+    const auto outOfRangeResult = queue.restore(outOfRange);
+    ASSERT_FALSE(outOfRangeResult);
+    EXPECT_EQ(outOfRangeResult.error().code, civic::ErrorCode::invalid_argument);
+}
+
 TEST(EventContracts, PreservesAppendSequenceAndDrainOrder) {
     civic::DomainEventJournal journal;
     const auto first = journal.append(5, "first", "source-a");
@@ -110,6 +186,36 @@ TEST(ClockContracts, PreservesAcceptedSpeedModes) {
     ASSERT_TRUE(clock.step(2));
     EXPECT_EQ(clock.tick(), 5U);
     EXPECT_EQ(clock.speed(), civic::SpeedMode::paused);
+}
+
+TEST(KernelTypes, RejectsZeroEveryAndIncludesOwnerLabel) {
+    const auto result = civic::validateCadence({0, 0}, "zero-every-owner");
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, civic::ErrorCode::invalid_argument);
+    EXPECT_NE(result.error().message.find("zero-every-owner"), std::string::npos);
+}
+
+TEST(KernelTypes, RejectsOffsetAtOrBeyondEvery) {
+    EXPECT_FALSE(civic::validateCadence({3, 3}, "offset-owner"));
+    EXPECT_FALSE(civic::validateCadence({3, 4}, "offset-owner"));
+}
+
+TEST(KernelTypes, EveryOneOffsetZeroIsDueEveryTick) {
+    const civic::SystemCadence cadence{1, 0};
+    EXPECT_TRUE(civic::isDue(cadence, 0));
+    EXPECT_TRUE(civic::isDue(cadence, 1));
+    EXPECT_TRUE(civic::isDue(cadence, 2));
+    EXPECT_TRUE(civic::isDue(cadence, 100));
+}
+
+TEST(KernelTypes, CadenceThreeOffsetOneMatchesTypeScriptPattern) {
+    const civic::SystemCadence cadence{3, 1};
+    EXPECT_FALSE(civic::isDue(cadence, 0));
+    EXPECT_TRUE(civic::isDue(cadence, 1));
+    EXPECT_FALSE(civic::isDue(cadence, 2));
+    EXPECT_FALSE(civic::isDue(cadence, 3));
+    EXPECT_TRUE(civic::isDue(cadence, 4));
+    EXPECT_TRUE(civic::isDue(cadence, 7));
 }
 
 TEST(SchedulerContracts, DetectsCyclesConflictsAndInvalidCadence) {
@@ -157,8 +263,30 @@ TEST(InvariantContracts, HonorsCadenceAndMapsFailures) {
     const auto failed = runner.runDue(3);
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, civic::ErrorCode::invariant_failure);
-    EXPECT_NE(failed.error().message.find("periodic"), std::string::npos);
+    EXPECT_EQ(failed.error().message, "invariant failed [periodic] at tick 3: fixture failure");
     EXPECT_EQ(calls, 2);
+}
+
+TEST(InvariantContracts, RegistrationStoresStableCopiedDefinition) {
+    civic::InvariantRunner runner;
+    int original_calls = 0;
+    int mutated_calls = 0;
+    civic::InvariantDefinition definition{
+        "stable",
+        {2, 1},
+        [&](std::uint64_t) -> civic::Result<void> { ++original_calls; return {}; }
+    };
+    ASSERT_TRUE(runner.registerInvariant(definition));
+
+    definition.id = "mutated";
+    definition.cadence = {1, 0};
+    definition.check = [&](std::uint64_t) -> civic::Result<void> { ++mutated_calls; return {}; };
+
+    EXPECT_EQ(runner.listIds(), (std::vector<std::string>{"stable"}));
+    ASSERT_TRUE(runner.runDue(0));
+    ASSERT_TRUE(runner.runDue(1));
+    EXPECT_EQ(original_calls, 1);
+    EXPECT_EQ(mutated_calls, 0);
 }
 
 TEST(NativeEngineContracts, StepZeroIsSideEffectFreeAndDomainsAreExplicitlyUnowned) {
