@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <sstream>
 #include <utility>
@@ -33,7 +34,8 @@ std::string escapeJson(std::string_view value) {
                 }
         }
     }
-    output.push_back('"'); return output;
+    output.push_back('"');
+    return output;
 }
 
 std::string bytesToString(const std::vector<std::byte>& bytes) {
@@ -129,7 +131,11 @@ public:
 
         ByteBuffer value;
         value.reserve(size);
-        value.insert(value.end(), input_.begin() + static_cast<std::ptrdiff_t>(offset_), input_.begin() + static_cast<std::ptrdiff_t>(offset_ + size));
+        value.insert(
+            value.end(),
+            input_.begin() + static_cast<std::ptrdiff_t>(offset_),
+            input_.begin() + static_cast<std::ptrdiff_t>(offset_ + size)
+        );
         offset_ += size;
         return value;
     }
@@ -147,16 +153,17 @@ public:
     [[nodiscard]] std::size_t remaining() const noexcept { return input_.size() - offset_; }
 
 private:
-    template<class T>
-    [[nodiscard]] Result<T> truncated(std::string_view field) const {
+    [[nodiscard]] std::unexpected<Error> truncated(std::string_view field) const {
         return std::unexpected(make_error(
             ErrorCode::serialization_failure,
             "invalid " + participant_ + " transaction checkpoint payload: truncated " + std::string{field}
         ));
     }
 
-    template<class T>
-    [[nodiscard]] Result<T> invalid(std::string_view field, std::string_view reason) const {
+    [[nodiscard]] std::unexpected<Error> invalid(
+        std::string_view field,
+        std::string_view reason
+    ) const {
         return std::unexpected(make_error(
             ErrorCode::serialization_failure,
             "invalid " + participant_ + " transaction checkpoint payload: " + std::string{field} + " " + std::string{reason}
@@ -344,7 +351,8 @@ Result<void> restoreRandom(std::span<const std::byte> payload, RandomStreamRegis
 }
 } // namespace
 
-NativeEngine::NativeEngine(const EngineConfig& config) : seed_(config.seed), clock_(config.startTick, config.speed), random_(config.seed) {
+NativeEngine::NativeEngine(const EngineConfig& config)
+    : seed_(config.seed), clock_(config.startTick, config.speed), random_(config.seed) {
     (void)invariants_.registerInvariant(InvariantDefinition{
         "kernel-clock-valid", {1, 0}, [](std::uint64_t) -> Result<void> { return {}; }
     });
@@ -481,15 +489,20 @@ std::string NativeEngine::kernelCanonicalState() const {
         first = false;
         out << escapeJson(name) << ':' << state;
     }
-    out << "},\"seed\":" << seed_ << ",\"speed\":" << static_cast<std::uint32_t>(clock_.speed()) << ",\"tick\":" << clock_.tick() << '}';
+    out << "},\"seed\":" << seed_
+        << ",\"speed\":" << static_cast<std::uint32_t>(clock_.speed())
+        << ",\"tick\":" << clock_.tick() << '}';
     return out.str();
 }
 
-Result<SnapshotBlob> NativeEngine::snapshot() const { return SnapshotBlob{kernelCanonicalState()}; }
+Result<SnapshotBlob> NativeEngine::snapshot() const {
+    return SnapshotBlob{kernelCanonicalState()};
+}
 
 Result<EventBlob> NativeEngine::drainEvents() {
     auto drained = events_.drain();
-    std::ostringstream out; out << '[';
+    std::ostringstream out;
+    out << '[';
     for (std::size_t i = 0; i < drained.size(); ++i) {
         if (i != 0) out << ',';
         const auto& event = drained[i];
@@ -499,27 +512,41 @@ Result<EventBlob> NativeEngine::drainEvents() {
             << ",\"tick\":" << event.tick
             << ",\"type\":" << escapeJson(event.type) << '}';
     }
-    out << ']'; return EventBlob{out.str()};
+    out << ']';
+    return EventBlob{out.str()};
 }
 
 std::uint64_t NativeEngine::fnv1a64(std::string_view bytes) noexcept {
     std::uint64_t hash = 14695981039346656037ULL;
-    for (const unsigned char byte : bytes) { hash ^= byte; hash *= 1099511628211ULL; }
+    for (const unsigned char byte : bytes) {
+        hash ^= byte;
+        hash *= 1099511628211ULL;
+    }
     return hash;
 }
 
 Result<DomainHash> NativeEngine::domainHash(std::string_view domain) const {
-    if (domain == "kernel") return DomainHash{DomainOwnership::owned, 1, fnv1a64(kernelCanonicalState())};
-    static constexpr std::string_view unowned[] = {"world", "cadastre", "buildings", "transportation", "population", "economy", "services"};
-    if (std::ranges::find(unowned, domain) != std::end(unowned)) return DomainHash{DomainOwnership::unowned, 1, 0};
-    return std::unexpected(make_error(ErrorCode::invalid_argument, "unknown domain hash: " + std::string{domain}));
+    if (domain == "kernel") {
+        return DomainHash{DomainOwnership::owned, 1, fnv1a64(kernelCanonicalState())};
+    }
+    static constexpr std::string_view unowned[] = {
+        "world", "cadastre", "buildings", "transportation", "population", "economy", "services"
+    };
+    if (std::ranges::find(unowned, domain) != std::end(unowned)) {
+        return DomainHash{DomainOwnership::unowned, 1, 0};
+    }
+    return std::unexpected(make_error(
+        ErrorCode::invalid_argument,
+        "unknown domain hash: " + std::string{domain}
+    ));
 }
 
 Result<void> NativeEngine::loadV9(std::string_view json) {
     auto mutable_state = rejectIfFaulted();
     if (!mutable_state) return mutable_state;
 
-    auto parsed = parseSaveV9(json); if (!parsed) return std::unexpected(parsed.error());
+    auto parsed = parseSaveV9(json);
+    if (!parsed) return std::unexpected(parsed.error());
     seed_ = parsed->seed;
     clock_.restore(parsed->tick, parsed->speed);
     random_ = RandomStreamRegistry(seed_);
@@ -530,7 +557,9 @@ Result<void> NativeEngine::loadV9(std::string_view json) {
 }
 
 Result<std::string> NativeEngine::saveV9() const {
-    if (!loaded_save_) return std::unexpected(make_error(ErrorCode::invalid_state, "no Save V9 is loaded"));
+    if (!loaded_save_) {
+        return std::unexpected(make_error(ErrorCode::invalid_state, "no Save V9 is loaded"));
+    }
     return loaded_save_->canonicalJson;
 }
 
