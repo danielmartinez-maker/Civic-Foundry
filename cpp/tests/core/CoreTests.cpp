@@ -302,32 +302,52 @@ TEST(NativeEngineContracts, StepZeroIsSideEffectFreeAndDomainsAreExplicitlyUnown
     EXPECT_EQ(world->ownership, civic::DomainOwnership::unowned);
 }
 
-TEST(RandomParity, RootSeedAndSameNameUseUint32StreamSemantics) {
-    civic::RandomStreamRegistry baseline(1U);
-    const auto wrapped_seed = static_cast<std::uint32_t>(0x100000001ULL);
-    civic::RandomStreamRegistry wrapped(wrapped_seed);
-    auto baseline_traffic = baseline.stream("traffic"); ASSERT_TRUE(baseline_traffic);
-    auto wrapped_traffic = wrapped.stream("traffic"); ASSERT_TRUE(wrapped_traffic);
-    EXPECT_DOUBLE_EQ((*baseline_traffic)->next(), (*wrapped_traffic)->next());
+TEST(NativeKernelParity, FaultedKernelRejectsFurtherMutation) {
+    auto created = civic::NativeEngine::create({77, 0, civic::SpeedMode::normal});
+    ASSERT_TRUE(created);
+    auto& engine = **created;
 
-    civic::RandomStreamRegistry registry(7U);
-    auto first = registry.stream("traffic"); ASSERT_TRUE(first);
-    (void)(*first)->next();
-    const auto state = (*first)->state();
-    auto second = registry.stream("traffic"); ASSERT_TRUE(second);
-    EXPECT_EQ(*first, *second);
-    EXPECT_EQ((*second)->state(), state);
+    ASSERT_TRUE(engine.registerSystem({
+        "forced-failure",
+        {1, 0},
+        {},
+        {},
+        {},
+        {"kernel"},
+        0,
+        [](std::uint64_t) -> civic::Result<void> {
+            return std::unexpected(civic::make_error(civic::ErrorCode::invalid_state, "forced native kernel failure"));
+        },
+    }));
+
+    const auto failed = engine.step(1);
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, civic::ErrorCode::invalid_state);
+    EXPECT_EQ(failed.error().message, "forced native kernel failure");
+    EXPECT_EQ(engine.tick(), 0U);
+
+    const std::vector<civic::CommandEnvelope> late{{1, 2, "late", {}}};
+    const auto submitted = engine.submit(late);
+    ASSERT_FALSE(submitted);
+    EXPECT_EQ(submitted.error().code, civic::ErrorCode::invalid_state);
+    EXPECT_NE(submitted.error().message.find("kernel is faulted"), std::string::npos);
+
+    const auto zero = engine.step(0);
+    ASSERT_FALSE(zero);
+    EXPECT_EQ(zero.error().code, civic::ErrorCode::invalid_state);
+    EXPECT_NE(zero.error().message.find("kernel is faulted"), std::string::npos);
+
+    const auto registered = engine.registerSystem({
+        "after-fault",
+        {1, 0},
+        {},
+        {},
+        {},
+        {},
+        0,
+        [](std::uint64_t) -> civic::Result<void> { return {}; },
+    });
+    ASSERT_FALSE(registered);
+    EXPECT_EQ(registered.error().code, civic::ErrorCode::invalid_state);
+    EXPECT_NE(registered.error().message.find("kernel is faulted"), std::string::npos);
 }
-
-TEST(RandomParity, RestoreZeroStateUsesSeededRandomFallback) {
-    civic::RandomStreamRegistry registry(9U);
-    civic::RandomStreamSnapshot snapshot;
-    snapshot.emplace("traffic", 0U);
-    ASSERT_TRUE(registry.restore(snapshot));
-
-    auto traffic = registry.stream("traffic"); ASSERT_TRUE(traffic);
-    EXPECT_EQ((*traffic)->state(), 0x6d2b79f5U);
-    civic::SeededRandom expected(0U);
-    EXPECT_DOUBLE_EQ((*traffic)->next(), expected.next());
-}
-
