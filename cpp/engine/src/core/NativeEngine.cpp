@@ -70,7 +70,10 @@ Result<void> NativeEngine::step(std::uint64_t ticks) {
         auto advanced = clock_.step(1);
         if (!advanced) { rollback(); return advanced; }
         auto ready = commands_.takeReady(clock_.tick());
-        for (const auto& command : ready) events_.append(clock_.tick(), command.type, "shadow-command", command.payload);
+        for (const auto& command : ready) {
+            auto appended = events_.append(clock_.tick(), command.type, "shadow-command", command.payload);
+            if (!appended) { rollback(); return std::unexpected(appended.error()); }
+        }
         auto due = scheduler_.dueSystems(clock_.tick());
         if (!due) { rollback(); return std::unexpected(due.error()); }
         for (auto* system : *due) {

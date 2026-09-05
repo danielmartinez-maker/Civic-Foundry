@@ -111,6 +111,138 @@ TEST(CommandContracts, RejectsEcmaWhitespaceOnlyCommandType) {
     EXPECT_FALSE(queue.submit(commands, 0));
 }
 
+
+TEST(EventJournalParity, SinceReturnsOnlyStrictlyNewerSequence) {
+    civic::DomainEventJournal journal;
+    ASSERT_TRUE(journal.append(1, "a", "test"));
+    ASSERT_TRUE(journal.append(2, "b", "test"));
+    ASSERT_TRUE(journal.append(3, "c", "test"));
+
+    const auto newer = journal.since(1);
+    ASSERT_EQ(newer.size(), 2U);
+    EXPECT_EQ(newer[0].sequence, 2U);
+    EXPECT_EQ(newer[1].sequence, 3U);
+    EXPECT_TRUE(journal.since(3).empty());
+}
+
+TEST(EventJournalParity, SnapshotRestorePreservesNextSequence) {
+    civic::DomainEventJournal original;
+    auto first = original.append(5, "created", "fixture", {std::byte{0x2A}});
+    ASSERT_TRUE(first);
+
+    const auto snapshot = original.snapshot();
+    EXPECT_EQ(snapshot.next_sequence, 2U);
+
+    civic::DomainEventJournal restored;
+    ASSERT_TRUE(restored.restore(snapshot));
+    ASSERT_EQ(restored.list().size(), 1U);
+    EXPECT_EQ(restored.list()[0].sequence, 1U);
+    EXPECT_EQ(restored.list()[0].tick, 5U);
+    EXPECT_EQ(restored.list()[0].type, "created");
+    EXPECT_EQ(restored.list()[0].source, "fixture");
+    ASSERT_EQ(restored.list()[0].payload.size(), 1U);
+    EXPECT_EQ(restored.list()[0].payload[0], std::byte{0x2A});
+    EXPECT_EQ(restored.nextSequence(), 2U);
+
+    auto second = restored.append(6, "continued", "fixture");
+    ASSERT_TRUE(second);
+    EXPECT_EQ(second->sequence, 2U);
+}
+
+TEST(EventJournalParity, RestoreRejectsDuplicateSequence) {
+    civic::DomainEventJournal journal;
+    const civic::DomainEventJournalSnapshot snapshot{
+        {
+            civic::DomainEvent{1, 1, "first", "fixture", {}},
+            civic::DomainEvent{1, 2, "duplicate", "fixture", {}},
+        },
+        3,
+    };
+
+    const auto restored = journal.restore(snapshot);
+    ASSERT_FALSE(restored);
+    EXPECT_EQ(restored.error().code, civic::ErrorCode::invalid_argument);
+    EXPECT_TRUE(journal.list().empty());
+    EXPECT_EQ(journal.nextSequence(), 1U);
+}
+
+TEST(EventJournalParity, RestoreRejectsOutOfRangeSequenceAndInvalidNextSequence) {
+    civic::DomainEventJournal journal;
+    const civic::DomainEventJournalSnapshot out_of_range{
+        {civic::DomainEvent{2, 1, "future", "fixture", {}}},
+        2,
+    };
+    EXPECT_FALSE(journal.restore(out_of_range));
+
+    const civic::DomainEventJournalSnapshot invalid_next{{}, 0};
+    EXPECT_FALSE(journal.restore(invalid_next));
+    EXPECT_TRUE(journal.list().empty());
+    EXPECT_EQ(journal.nextSequence(), 1U);
+}
+
+TEST(EventJournalParity, RestoreSortsEventsBySequence) {
+    civic::DomainEventJournal journal;
+    const civic::DomainEventJournalSnapshot snapshot{
+        {
+            civic::DomainEvent{2, 2, "second", "fixture", {}},
+            civic::DomainEvent{1, 1, "first", "fixture", {}},
+        },
+        3,
+    };
+
+    ASSERT_TRUE(journal.restore(snapshot));
+    ASSERT_EQ(journal.list().size(), 2U);
+    EXPECT_EQ(journal.list()[0].sequence, 1U);
+    EXPECT_EQ(journal.list()[1].sequence, 2U);
+}
+
+TEST(EventJournalParity, RestoreRejectsInvalidIdentityWithoutMutation) {
+    civic::DomainEventJournal journal;
+    ASSERT_TRUE(journal.append(1, "existing", "fixture"));
+    const auto before = journal.snapshot();
+
+    const civic::DomainEventJournalSnapshot invalid{
+        {civic::DomainEvent{1, 1, "valid", kNbsp, {}}},
+        2,
+    };
+    const auto restored = journal.restore(invalid);
+    ASSERT_FALSE(restored);
+    EXPECT_EQ(restored.error().code, civic::ErrorCode::invalid_argument);
+    EXPECT_EQ(journal.list().size(), before.events.size());
+    EXPECT_EQ(journal.list()[0].type, before.events[0].type);
+    EXPECT_EQ(journal.nextSequence(), before.next_sequence);
+}
+
+TEST(EventJournalParity, ClearHistoryDoesNotResetSequence) {
+    civic::DomainEventJournal journal;
+    ASSERT_TRUE(journal.append(1, "a", "test"));
+    ASSERT_TRUE(journal.append(2, "b", "test"));
+    EXPECT_EQ(journal.nextSequence(), 3U);
+
+    journal.clearDiagnosticHistory();
+    EXPECT_TRUE(journal.list().empty());
+    EXPECT_EQ(journal.nextSequence(), 3U);
+
+    auto next = journal.append(3, "c", "test");
+    ASSERT_TRUE(next);
+    EXPECT_EQ(next->sequence, 3U);
+}
+
+TEST(EventJournalParity, RejectsEmptyTypeAndSource) {
+    civic::DomainEventJournal journal;
+
+    const auto empty_type = journal.append(1, "   ", "fixture");
+    ASSERT_FALSE(empty_type);
+    EXPECT_EQ(empty_type.error().code, civic::ErrorCode::invalid_argument);
+
+    const auto empty_source = journal.append(1, "valid", kNbsp);
+    ASSERT_FALSE(empty_source);
+    EXPECT_EQ(empty_source.error().code, civic::ErrorCode::invalid_argument);
+
+    EXPECT_TRUE(journal.list().empty());
+    EXPECT_EQ(journal.nextSequence(), 1U);
+}
+
 TEST(SchedulerContracts, UsesJavaScriptUtf16OrdinalOrderForTies) {
     civic::SystemScheduler scheduler;
     ASSERT_TRUE(scheduler.registerSystem({kPrivateBmp, {1, 0}, {}, {}, {}, {}, 0, {}}));
@@ -253,3 +385,4 @@ TEST(RandomParity, NonBmpStreamNameMatchesTypeScriptFixture) {
     EXPECT_DOUBLE_EQ((*stream)->next(), 0.42440165276639163);
     EXPECT_DOUBLE_EQ((*stream)->next(), 0.07056768285110593);
 }
+

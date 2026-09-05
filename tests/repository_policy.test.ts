@@ -52,6 +52,10 @@ test("repository policy rejects generated and temporary repository paths", async
   assert.deepEqual(inspect("target/debug/prism"), [
     "target/debug/prism: generated/build output must not be tracked",
   ]);
+  assert.deepEqual(inspect("test-artifacts/cpp-parity/.gitkeep"), []);
+  assert.deepEqual(inspect("test-artifacts/cpp-parity/K001/example.json"), [
+    "test-artifacts/cpp-parity/K001/example.json: generated/build output must not be tracked",
+  ]);
   assert.deepEqual(inspect("src/cache.ts"), []);
 });
 
