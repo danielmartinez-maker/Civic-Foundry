@@ -1,0 +1,56 @@
+name: K005 focused native parity repeats
+
+on:
+  push:
+    branches:
+      - feature/k005-random-stream-registry-cpp
+
+permissions:
+  contents: write
+
+jobs:
+  focused-native:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Confirm Clang 22
+        run: |
+          clang-22 --version
+          clang++-22 --version
+      - name: Bootstrap pinned vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$RUNNER_TEMP/vcpkg-cache" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/vcpkg-cache"
+          git clone --depth 1 --branch 2026.07.29 https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Focused RandomParity repeat A
+        shell: bash
+        run: |
+          export CC=clang-22
+          export CXX=clang++-22
+          export CMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          node scripts/cpp/run-native-round.mjs --regex "RandomParity"
+      - name: Focused RandomParity repeat B
+        shell: bash
+        run: |
+          export CC=clang-22
+          export CXX=clang++-22
+          export CMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          node scripts/cpp/run-native-round.mjs --regex "RandomParity"
+      - name: Remove one-shot verification workflow
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/k005-focused-native-one-shot.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/k005-focused-native-one-shot.yml
+          git commit -m "chore(k005): remove focused verification helper"
+          git push origin HEAD:feature/k005-random-stream-registry-cpp
