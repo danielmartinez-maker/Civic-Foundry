@@ -1,0 +1,49 @@
+name: K009 ledger edit
+
+on:
+  push:
+    branches:
+      - feature/k009-authoritative-transaction-checkpoint-cpp-rewrite
+
+permissions:
+  contents: write
+
+jobs:
+  update-ledger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/k009-authoritative-transaction-checkpoint-cpp-rewrite
+      - name: Update K009 rewrite ledger entry
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('docs/cpp/TS_REWRITE_LEDGER.json')
+          ledger = json.loads(path.read_text(encoding='utf-8'))
+          matches = [entry for entry in ledger['entries'] if entry['path'] == 'src/simulation/core/AuthoritativeTransactionCheckpoint.ts']
+          if len(matches) != 1:
+              raise SystemExit(f'expected one K009 ledger entry, found {len(matches)}')
+          entry = matches[0]
+          entry['assignedStack'] = 'K009'
+          entry['targetNativeOwner'] = 'civic::AuthoritativeTransactionCheckpoint'
+          entry['nativeTestOwner'] = 'cpp/tests/core/CoreTests.cpp'
+          entry['status'] = 'shadow_complete'
+          entry['currentAuthority'] = 'typescript'
+          entry['parityClassification'] = 'deferred'
+          path.write_text(json.dumps(ledger, indent=2) + '\n', encoding='utf-8')
+          PY
+      - name: Commit ledger update
+        shell: bash
+        run: |
+          if git diff --quiet -- docs/cpp/TS_REWRITE_LEDGER.json; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/cpp/TS_REWRITE_LEDGER.json
+          git commit -m 'docs(K009): record deferred cross-domain checkpoint parity'
+          git push origin HEAD:feature/k009-authoritative-transaction-checkpoint-cpp-rewrite
