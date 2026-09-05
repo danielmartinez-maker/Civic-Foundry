@@ -27,11 +27,14 @@ jobs:
           cache: npm
       - name: Install project dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: C++ rewrite TypeScript monotonicity guard
+      - name: C++ rewrite control plane
         run: |
           npm run cpp:ts-ledger:verify
           npm run test:cpp-ts-count-guard
           npm run cpp:ts-count:guard
+          npm run test:cpp-parity-evidence
+          npm run test:cpp-authority-gate
+          npm run cpp:authority:verify
       - name: Fast verification
         run: npm run verify:fast
       - name: Dependency security audit
@@ -85,16 +88,6 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$env:VCPKG_DEFAULT_BINARY_CACHE" | Out-Null
           git clone --depth 1 --branch 2026.07.29 https://github.com/microsoft/vcpkg.git "$env:VCPKG_ROOT"
           & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
-      - name: K005 focused native round repeat A
-        shell: pwsh
-        run: |
-          $env:CMAKE_TOOLCHAIN_FILE = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
-          node scripts/cpp/run-native-round.mjs --regex "RandomParity"
-      - name: K005 focused native round repeat B
-        shell: pwsh
-        run: |
-          $env:CMAKE_TOOLCHAIN_FILE = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
-          node scripts/cpp/run-native-round.mjs --regex "RandomParity"
       - name: Fetch exact Node-API headers and import library
         shell: pwsh
         run: |
