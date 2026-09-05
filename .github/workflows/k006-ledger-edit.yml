@@ -1,0 +1,50 @@
+name: K006 ledger edit
+
+on:
+  push:
+    branches:
+      - feature/k006-simulation-kernel-cpp-rewrite
+
+permissions:
+  contents: write
+
+jobs:
+  update-ledger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/k006-simulation-kernel-cpp-rewrite
+      - name: Update K006 rewrite ledger entry
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('docs/cpp/TS_REWRITE_LEDGER.json')
+          ledger = json.loads(path.read_text(encoding='utf-8'))
+          matches = [entry for entry in ledger['entries'] if entry['path'] == 'src/simulation/kernel/SimulationKernel.ts']
+          if len(matches) != 1:
+              raise SystemExit(f'expected one K006 ledger entry, found {len(matches)}')
+          entry = matches[0]
+          entry['assignedStack'] = 'K006'
+          entry['targetNativeOwner'] = 'civic::NativeEngine'
+          entry['nativeTestOwner'] = 'cpp/tests/core/K006KernelTests.cpp'
+          entry['status'] = 'parity_accepted'
+          entry['currentAuthority'] = 'typescript'
+          entry['parityClassification'] = 'parity'
+          entry['cutoverDependencies'] = []
+          path.write_text(json.dumps(ledger, indent=2) + '\n', encoding='utf-8')
+          PY
+      - name: Commit ledger update
+        shell: bash
+        run: |
+          if git diff --quiet -- docs/cpp/TS_REWRITE_LEDGER.json; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/cpp/TS_REWRITE_LEDGER.json
+          git commit -m 'docs(K006): record kernel parity acceptance'
+          git push origin HEAD:feature/k006-simulation-kernel-cpp-rewrite
