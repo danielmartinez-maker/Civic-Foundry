@@ -33,6 +33,7 @@ class NativeEngine final {
 public:
     [[nodiscard]] static Result<std::unique_ptr<NativeEngine>> create(const EngineConfig&);
     [[nodiscard]] Result<void> submit(std::span<const CommandEnvelope>);
+    [[nodiscard]] Result<void> registerSystem(SystemDefinition system);
     [[nodiscard]] Result<void> step(std::uint64_t ticks);
     [[nodiscard]] Result<SnapshotBlob> snapshot() const;
     [[nodiscard]] Result<EventBlob> drainEvents();
@@ -42,6 +43,7 @@ public:
     [[nodiscard]] std::uint64_t tick() const noexcept { return clock_.tick(); }
 private:
     explicit NativeEngine(const EngineConfig&);
+    [[nodiscard]] Result<void> rejectIfFaulted() const;
     [[nodiscard]] std::string kernelCanonicalState() const;
     static std::uint64_t fnv1a64(std::string_view bytes) noexcept;
 
@@ -53,6 +55,7 @@ private:
     SystemScheduler scheduler_;
     InvariantRunner invariants_;
     std::optional<SaveV9Dto> loaded_save_;
+    std::optional<Error> fault_;
 };
 
 } // namespace civic
