@@ -410,6 +410,19 @@ TEST(TransactionCheckpoint, RejectsDuplicateParticipant) {
     EXPECT_EQ(duplicate.error().message, "duplicate transaction participant: kernel");
 }
 
+TEST(TransactionCheckpoint, RejectsEmptyParticipantId) {
+    civic::AuthoritativeTransactionCheckpoint checkpoint;
+    const auto empty = checkpoint.registerParticipant({
+        "",
+        []() -> civic::Result<std::vector<std::byte>> { return {}; },
+        [](std::span<const std::byte>) -> civic::Result<void> { return {}; },
+    });
+
+    ASSERT_FALSE(empty);
+    EXPECT_EQ(empty.error().code, civic::ErrorCode::invalid_argument);
+    EXPECT_EQ(empty.error().message, "transaction participant id must not be empty");
+}
+
 TEST(TransactionCheckpoint, MissingParticipantFailsRestore) {
     civic::AuthoritativeTransactionCheckpoint checkpoint;
     const std::vector<civic::TransactionSnapshot> snapshots{{"missing", checkpointBytes({0x01})}};
@@ -422,20 +435,35 @@ TEST(TransactionCheckpoint, MissingParticipantFailsRestore) {
 
 TEST(TransactionCheckpoint, RestoreFailureIsSurfaced) {
     civic::AuthoritativeTransactionCheckpoint checkpoint;
+    std::vector<std::string> restored;
+
     ASSERT_TRUE(checkpoint.registerParticipant({
-        "kernel",
-        []() -> civic::Result<std::vector<std::byte>> { return checkpointBytes({0x7F}); },
-        [](std::span<const std::byte>) -> civic::Result<void> {
-            return std::unexpected(civic::make_error(civic::ErrorCode::serialization_failure, "fixture restore failure"));
+        "alpha",
+        []() -> civic::Result<std::vector<std::byte>> { return checkpointBytes({0x01}); },
+        [&restored](std::span<const std::byte>) -> civic::Result<void> {
+            restored.emplace_back("alpha");
+            return {};
+        },
+    }));
+    ASSERT_TRUE(checkpoint.registerParticipant({
+        "beta",
+        []() -> civic::Result<std::vector<std::byte>> { return checkpointBytes({0x02}); },
+        [&restored](std::span<const std::byte>) -> civic::Result<void> {
+            restored.emplace_back("beta");
+            return std::unexpected(civic::make_error(
+                civic::ErrorCode::serialization_failure,
+                "fixture restore failure"
+            ));
         },
     }));
 
     const auto captured = checkpoint.capture();
     ASSERT_TRUE(captured);
-    const auto restored = checkpoint.restore(*captured);
-    ASSERT_FALSE(restored);
-    EXPECT_EQ(restored.error().code, civic::ErrorCode::serialization_failure);
-    EXPECT_EQ(restored.error().message, "fixture restore failure");
+    const auto result = checkpoint.restore(*captured);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, civic::ErrorCode::serialization_failure);
+    EXPECT_EQ(result.error().message, "fixture restore failure");
+    EXPECT_EQ(restored, (std::vector<std::string>{"beta", "alpha"}));
 }
 
 TEST(TransactionCheckpoint, SnapshotPayloadOwnsCapturedBytes) {
