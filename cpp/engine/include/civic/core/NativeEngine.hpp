@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 
+#include <civic/core/AuthoritativeTransactionCheckpoint.hpp>
 #include <civic/core/Error.hpp>
 #include <civic/core/Kernel.hpp>
 #include <civic/persistence/SaveV9.hpp>
@@ -47,6 +48,7 @@ private:
     friend struct NativeEngineTestAccess;
 
     explicit NativeEngine(const EngineConfig&);
+    [[nodiscard]] Result<void> registerKernelCheckpointParticipants();
     [[nodiscard]] Result<void> rejectIfFaulted() const;
     [[nodiscard]] std::string kernelCanonicalState() const;
     static std::uint64_t fnv1a64(std::string_view bytes) noexcept;
@@ -58,6 +60,7 @@ private:
     DomainEventJournal events_;
     SystemScheduler scheduler_;
     InvariantRunner invariants_;
+    AuthoritativeTransactionCheckpoint transaction_checkpoint_;
     std::optional<SaveV9Dto> loaded_save_;
     bool dirty_{true};
     std::optional<Error> fault_;
