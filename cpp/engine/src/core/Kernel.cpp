@@ -259,9 +259,23 @@ Result<void> InvariantRunner::runDue(std::uint64_t tick) const {
     for (const auto& [id, invariant] : invariants_) {
         if (!isDue(invariant.cadence, tick)) continue;
         auto result = invariant.check(tick);
-        if (!result) return std::unexpected(make_error(ErrorCode::invariant_failure, id + ": " + result.error().message));
+        if (!result) {
+            return std::unexpected(make_error(
+                ErrorCode::invariant_failure,
+                "invariant failed [" + id + "] at tick " + std::to_string(tick) + ": " + result.error().message));
+        }
     }
     return {};
+}
+
+std::vector<std::string> InvariantRunner::listIds() const {
+    std::vector<std::string> ids;
+    ids.reserve(invariants_.size());
+    for (const auto& [id, invariant] : invariants_) {
+        (void)invariant;
+        ids.push_back(id);
+    }
+    return ids;
 }
 
 } // namespace civic

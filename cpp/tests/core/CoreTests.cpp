@@ -263,8 +263,30 @@ TEST(InvariantContracts, HonorsCadenceAndMapsFailures) {
     const auto failed = runner.runDue(3);
     ASSERT_FALSE(failed);
     EXPECT_EQ(failed.error().code, civic::ErrorCode::invariant_failure);
-    EXPECT_NE(failed.error().message.find("periodic"), std::string::npos);
+    EXPECT_EQ(failed.error().message, "invariant failed [periodic] at tick 3: fixture failure");
     EXPECT_EQ(calls, 2);
+}
+
+TEST(InvariantContracts, RegistrationStoresStableCopiedDefinition) {
+    civic::InvariantRunner runner;
+    int original_calls = 0;
+    int mutated_calls = 0;
+    civic::InvariantDefinition definition{
+        "stable",
+        {2, 1},
+        [&](std::uint64_t) -> civic::Result<void> { ++original_calls; return {}; }
+    };
+    ASSERT_TRUE(runner.registerInvariant(definition));
+
+    definition.id = "mutated";
+    definition.cadence = {1, 0};
+    definition.check = [&](std::uint64_t) -> civic::Result<void> { ++mutated_calls; return {}; };
+
+    EXPECT_EQ(runner.listIds(), (std::vector<std::string>{"stable"}));
+    ASSERT_TRUE(runner.runDue(0));
+    ASSERT_TRUE(runner.runDue(1));
+    EXPECT_EQ(original_calls, 1);
+    EXPECT_EQ(mutated_calls, 0);
 }
 
 TEST(NativeEngineContracts, StepZeroIsSideEffectFreeAndDomainsAreExplicitlyUnowned) {
