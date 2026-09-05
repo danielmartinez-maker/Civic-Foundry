@@ -40,6 +40,9 @@ NativeEngine::NativeEngine(const EngineConfig& config) : seed_(config.seed), clo
     (void)invariants_.registerInvariant(InvariantDefinition{
         "kernel-clock-valid", {1, 0}, [](std::uint64_t) -> Result<void> { return {}; }
     });
+    (void)snapshots_.registerProvider("kernel", [this]() -> Result<std::string> {
+        return kernelCanonicalState();
+    });
 }
 
 Result<std::unique_ptr<NativeEngine>> NativeEngine::create(const EngineConfig& config) {
@@ -110,7 +113,11 @@ std::string NativeEngine::kernelCanonicalState() const {
     return out.str();
 }
 
-Result<SnapshotBlob> NativeEngine::snapshot() const { return SnapshotBlob{kernelCanonicalState()}; }
+Result<SnapshotBlob> NativeEngine::snapshot() const {
+    auto captured = snapshots_.capture("kernel");
+    if (!captured) return std::unexpected(captured.error());
+    return SnapshotBlob{std::move(*captured)};
+}
 
 Result<EventBlob> NativeEngine::drainEvents() {
     auto drained = events_.drain();
@@ -134,7 +141,11 @@ std::uint64_t NativeEngine::fnv1a64(std::string_view bytes) noexcept {
 }
 
 Result<DomainHash> NativeEngine::domainHash(std::string_view domain) const {
-    if (domain == "kernel") return DomainHash{DomainOwnership::owned, 1, fnv1a64(kernelCanonicalState())};
+    if (domain == "kernel") {
+        auto captured = snapshots_.capture("kernel");
+        if (!captured) return std::unexpected(captured.error());
+        return DomainHash{DomainOwnership::owned, 1, fnv1a64(*captured)};
+    }
     static constexpr std::string_view unowned[] = {"world", "cadastre", "buildings", "transportation", "population", "economy", "services"};
     if (std::ranges::find(unowned, domain) != std::end(unowned)) return DomainHash{DomainOwnership::unowned, 1, 0};
     return std::unexpected(make_error(ErrorCode::invalid_argument, "unknown domain hash: " + std::string{domain}));
