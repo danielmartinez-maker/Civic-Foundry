@@ -4,6 +4,7 @@
 #include <cstring>
 #include <limits>
 #include <sstream>
+#include <utility>
 
 namespace civic {
 namespace {
@@ -67,37 +68,99 @@ Result<std::unique_ptr<NativeEngine>> NativeEngine::create(const EngineConfig& c
     }
 }
 
-Result<void> NativeEngine::submit(std::span<const CommandEnvelope> commands) { return commands_.submit(commands, clock_.tick()); }
+Result<void> NativeEngine::rejectIfFaulted() const {
+    if (!fault_) return {};
+    return std::unexpected(make_error(
+        ErrorCode::invalid_state,
+        "kernel is faulted: " + fault_->message
+    ));
+}
+
+Result<void> NativeEngine::submit(std::span<const CommandEnvelope> commands) {
+    auto mutable_state = rejectIfFaulted();
+    if (!mutable_state) return mutable_state;
+    return commands_.submit(commands, clock_.tick());
+}
+
+Result<void> NativeEngine::registerSystem(SystemDefinition system) {
+    auto mutable_state = rejectIfFaulted();
+    if (!mutable_state) return mutable_state;
+    auto registered = scheduler_.registerSystem(std::move(system));
+    if (!registered) return registered;
+    dirty_ = true;
+    return {};
+}
 
 Result<void> NativeEngine::step(std::uint64_t ticks) {
+    auto mutable_state = rejectIfFaulted();
+    if (!mutable_state) return mutable_state;
     if (ticks == 0) return {};
+
+    if (dirty_) {
+        auto compiled = scheduler_.compile();
+        if (!compiled) return compiled;
+        dirty_ = false;
+    }
+
     for (std::uint64_t index = 0; index < ticks; ++index) {
-        const auto checkpoint_clock = clock_;
-        const auto checkpoint_commands = commands_;
-        const auto checkpoint_events = events_;
-        const auto checkpoint_random = random_;
-        auto rollback = [&] {
-            clock_ = checkpoint_clock;
-            commands_ = checkpoint_commands;
-            events_ = checkpoint_events;
-            random_ = checkpoint_random;
+        const auto checkpoint_tick = clock_.tick();
+        const auto checkpoint_speed = clock_.speed();
+        const auto checkpoint_commands = commands_.snapshot();
+        const auto checkpoint_events = events_.snapshot();
+        const auto checkpoint_random = random_.snapshot();
+
+        auto rollback = [&]() -> Result<void> {
+            std::optional<Error> rollback_error;
+            const auto remember_failure = [&](const Result<void>& result) {
+                if (!result && !rollback_error) rollback_error = result.error();
+            };
+
+            remember_failure(random_.restore(checkpoint_random));
+            remember_failure(events_.restore(checkpoint_events));
+            remember_failure(commands_.restore(checkpoint_commands));
+            clock_.restore(checkpoint_tick, checkpoint_speed);
+
+            if (rollback_error) return std::unexpected(*rollback_error);
+            return {};
         };
+
+        auto fail_tick = [&](const Error& error) -> Result<void> {
+            auto restored = rollback();
+            if (!restored) {
+                fault_ = make_error(
+                    ErrorCode::internal_error,
+                    error.message + "; kernel rollback failed: " + restored.error().message
+                );
+                return std::unexpected(*fault_);
+            }
+            fault_ = error;
+            return std::unexpected(error);
+        };
+
         auto advanced = clock_.step(1);
-        if (!advanced) { rollback(); return advanced; }
+        if (!advanced) return fail_tick(advanced.error());
+
         auto ready = commands_.takeReady(clock_.tick());
         for (const auto& command : ready) {
-            auto appended = events_.append(clock_.tick(), command.type, "shadow-command", command.payload);
-            if (!appended) { rollback(); return std::unexpected(appended.error()); }
+            auto appended = events_.append(
+                clock_.tick(),
+                command.type,
+                "shadow-command",
+                command.payload
+            );
+            if (!appended) return fail_tick(appended.error());
         }
+
         auto due = scheduler_.dueSystems(clock_.tick());
-        if (!due) { rollback(); return std::unexpected(due.error()); }
+        if (!due) return fail_tick(due.error());
         for (auto* system : *due) {
             if (!system->execute) continue;
             auto executed = system->execute(clock_.tick());
-            if (!executed) { rollback(); return executed; }
+            if (!executed) return fail_tick(executed.error());
         }
+
         auto valid = invariants_.runDue(clock_.tick());
-        if (!valid) { rollback(); return valid; }
+        if (!valid) return fail_tick(valid.error());
     }
     return {};
 }
@@ -121,7 +184,9 @@ std::string NativeEngine::kernelCanonicalState() const {
         first = false;
         out << escapeJson(name) << ':' << state;
     }
-    out << "},\"seed\":" << seed_ << ",\"speed\":" << static_cast<std::uint32_t>(clock_.speed()) << ",\"tick\":" << clock_.tick() << '}';
+    out << "},\"seed\":" << seed_
+        << ",\"speed\":" << static_cast<std::uint32_t>(clock_.speed())
+        << ",\"tick\":" << clock_.tick() << '}';
     return out.str();
 }
 
@@ -133,7 +198,8 @@ Result<SnapshotBlob> NativeEngine::snapshot() const {
 
 Result<EventBlob> NativeEngine::drainEvents() {
     auto drained = events_.drain();
-    std::ostringstream out; out << '[';
+    std::ostringstream out;
+    out << '[';
     for (std::size_t i = 0; i < drained.size(); ++i) {
         if (i != 0) out << ',';
         const auto& event = drained[i];
@@ -143,12 +209,16 @@ Result<EventBlob> NativeEngine::drainEvents() {
             << ",\"tick\":" << event.tick
             << ",\"type\":" << escapeJson(event.type) << '}';
     }
-    out << ']'; return EventBlob{out.str()};
+    out << ']';
+    return EventBlob{out.str()};
 }
 
 std::uint64_t NativeEngine::fnv1a64(std::string_view bytes) noexcept {
     std::uint64_t hash = 14695981039346656037ULL;
-    for (const unsigned char byte : bytes) { hash ^= byte; hash *= 1099511628211ULL; }
+    for (const unsigned char byte : bytes) {
+        hash ^= byte;
+        hash *= 1099511628211ULL;
+    }
     return hash;
 }
 
@@ -158,13 +228,24 @@ Result<DomainHash> NativeEngine::domainHash(std::string_view domain) const {
         if (!captured) return std::unexpected(captured.error());
         return DomainHash{DomainOwnership::owned, 1, fnv1a64(*captured)};
     }
-    static constexpr std::string_view unowned[] = {"world", "cadastre", "buildings", "transportation", "population", "economy", "services"};
-    if (std::ranges::find(unowned, domain) != std::end(unowned)) return DomainHash{DomainOwnership::unowned, 1, 0};
-    return std::unexpected(make_error(ErrorCode::invalid_argument, "unknown domain hash: " + std::string{domain}));
+    static constexpr std::string_view unowned[] = {
+        "world", "cadastre", "buildings", "transportation", "population", "economy", "services"
+    };
+    if (std::ranges::find(unowned, domain) != std::end(unowned)) {
+        return DomainHash{DomainOwnership::unowned, 1, 0};
+    }
+    return std::unexpected(make_error(
+        ErrorCode::invalid_argument,
+        "unknown domain hash: " + std::string{domain}
+    ));
 }
 
 Result<void> NativeEngine::loadV9(std::string_view json) {
-    auto parsed = parseSaveV9(json); if (!parsed) return std::unexpected(parsed.error());
+    auto mutable_state = rejectIfFaulted();
+    if (!mutable_state) return mutable_state;
+
+    auto parsed = parseSaveV9(json);
+    if (!parsed) return std::unexpected(parsed.error());
     seed_ = parsed->seed;
     clock_.restore(parsed->tick, parsed->speed);
     random_ = RandomStreamRegistry(seed_);
@@ -175,7 +256,9 @@ Result<void> NativeEngine::loadV9(std::string_view json) {
 }
 
 Result<std::string> NativeEngine::saveV9() const {
-    if (!loaded_save_) return std::unexpected(make_error(ErrorCode::invalid_state, "no Save V9 is loaded"));
+    if (!loaded_save_) {
+        return std::unexpected(make_error(ErrorCode::invalid_state, "no Save V9 is loaded"));
+    }
     return loaded_save_->canonicalJson;
 }
 

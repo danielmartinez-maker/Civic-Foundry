@@ -1203,12 +1203,12 @@
       "inventoryId": "CF-TS-0100",
       "path": "src/simulation/kernel/SimulationKernel.ts",
       "kind": "production",
-      "assignedStack": null,
-      "targetNativeOwner": null,
-      "nativeTestOwner": null,
-      "status": "pending",
+      "assignedStack": "K006",
+      "targetNativeOwner": "civic::NativeEngine",
+      "nativeTestOwner": "cpp/tests/core/K006KernelTests.cpp",
+      "status": "parity_accepted",
       "currentAuthority": "typescript",
-      "parityClassification": "unclassified",
+      "parityClassification": "parity",
       "cutoverDependencies": []
     },
     {
