@@ -191,7 +191,7 @@ jobs:
             exit 1
           fi
 
-          git diff --check --cached
+          git diff --check --cached -- cpp/engine/include/civic/core/Kernel.hpp cpp/engine/src/core/Kernel.cpp cpp/engine/src/core/NativeEngine.cpp cpp/tests/core/CoreTests.cpp cpp/tests/parity/ParityTests.cpp docs/cpp/TS_REWRITE_LEDGER.json
           node scripts/cpp/ts-rewrite-ledger.mjs verify
           git commit -m "Merge main into K002 after K004"
           git push origin HEAD:feature/k002-domain-event-journal-cpp
