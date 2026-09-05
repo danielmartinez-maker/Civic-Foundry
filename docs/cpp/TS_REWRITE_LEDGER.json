@@ -1191,12 +1191,12 @@
       "inventoryId": "CF-TS-0099",
       "path": "src/simulation/kernel/RandomStreamRegistry.ts",
       "kind": "production",
-      "assignedStack": null,
-      "targetNativeOwner": null,
-      "nativeTestOwner": null,
-      "status": "pending",
+      "assignedStack": "K005",
+      "targetNativeOwner": "cpp/engine/src/core/RandomStreamRegistry.cpp",
+      "nativeTestOwner": "cpp/tests/parity/ParityTests.cpp",
+      "status": "parity_accepted",
       "currentAuthority": "typescript",
-      "parityClassification": "unclassified",
+      "parityClassification": "parity",
       "cutoverDependencies": []
     },
     {
