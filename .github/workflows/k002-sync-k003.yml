@@ -1,0 +1,349 @@
+name: K002 reconcile K003 main
+
+on:
+  push:
+    branches:
+      - feature/k002-domain-event-journal-cpp
+    paths:
+      - .github/workflows/k002-sync-k003.yml
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/k002-domain-event-journal-cpp
+          fetch-depth: 0
+
+      - name: Merge current main and layer K002 over K003
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+
+          set +e
+          git merge --no-ff --no-commit origin/main
+          merge_status=$?
+          set -e
+          if [ "$merge_status" -ne 0 ]; then
+            echo "Resolving expected K002/K003 overlap explicitly."
+          fi
+
+          git checkout origin/main -- cpp/engine/include/civic/core/Kernel.hpp
+          git checkout origin/main -- cpp/engine/src/core/Kernel.cpp
+          git checkout origin/main -- cpp/tests/core/CoreTests.cpp
+          git checkout origin/main -- cpp/tests/parity/ParityTests.cpp
+          git checkout origin/main -- docs/cpp/TS_REWRITE_LEDGER.json
+
+          python3 <<'PY'
+          from pathlib import Path
+          import json
+
+          # Kernel.hpp: keep K004/K003 definitions and add only K002 journal contract.
+          path = Path('cpp/engine/include/civic/core/Kernel.hpp')
+          text = path.read_text()
+          marker = 'class DomainEventJournal final {'
+          snapshot = '''struct DomainEventJournalSnapshot final {
+    std::vector<DomainEvent> events;
+    std::uint64_t next_sequence{1};
+};
+
+'''
+          if 'struct DomainEventJournalSnapshot final' not in text:
+              if marker not in text:
+                  raise RuntimeError('DomainEventJournal anchor missing in Kernel.hpp')
+              text = text.replace(marker, snapshot + marker, 1)
+          start = text.index(marker)
+          end = text.index('\n\nclass SystemScheduler final', start)
+          journal_class = '''class DomainEventJournal final {
+public:
+    [[nodiscard]] Result<DomainEvent> append(std::uint64_t tick, std::string type, std::string source, std::vector<std::byte> payload = {});
+    [[nodiscard]] std::vector<DomainEvent> drain();
+    [[nodiscard]] const std::vector<DomainEvent>& list() const noexcept { return events_; }
+    [[nodiscard]] std::vector<DomainEvent> since(std::uint64_t sequence_exclusive) const;
+    [[nodiscard]] DomainEventJournalSnapshot snapshot() const;
+    [[nodiscard]] Result<void> restore(const DomainEventJournalSnapshot& snapshot);
+    void clearDiagnosticHistory() noexcept;
+    [[nodiscard]] std::uint64_t nextSequence() const noexcept { return next_sequence_; }
+private:
+    std::vector<DomainEvent> events_;
+    std::uint64_t next_sequence_{1};
+};'''
+          text = text[:start] + journal_class + text[end:]
+          path.write_text(text)
+
+          # Kernel.cpp: replace only the DomainEventJournal implementation block.
+          path = Path('cpp/engine/src/core/Kernel.cpp')
+          text = path.read_text()
+          start = text.index('DomainEvent DomainEventJournal::append(')
+          end = text.index('Result<void> SystemScheduler::registerSystem', start)
+          journal_impl = '''Result<DomainEvent> DomainEventJournal::append(std::uint64_t tick, std::string type, std::string source, std::vector<std::byte> payload) {
+    if (!validIdentity(type)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event type must not be empty"));
+    if (!validIdentity(source)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event source must not be empty"));
+    DomainEvent event{next_sequence_++, tick, std::move(type), std::move(source), std::move(payload)};
+    events_.push_back(event);
+    return event;
+}
+
+std::vector<DomainEvent> DomainEventJournal::drain() {
+    auto drained = std::move(events_);
+    events_.clear();
+    return drained;
+}
+
+std::vector<DomainEvent> DomainEventJournal::since(std::uint64_t sequence_exclusive) const {
+    std::vector<DomainEvent> result;
+    for (const auto& event : events_) {
+        if (event.sequence > sequence_exclusive) result.push_back(event);
+    }
+    return result;
+}
+
+DomainEventJournalSnapshot DomainEventJournal::snapshot() const {
+    return DomainEventJournalSnapshot{events_, next_sequence_};
+}
+
+Result<void> DomainEventJournal::restore(const DomainEventJournalSnapshot& snapshot) {
+    if (snapshot.next_sequence == 0) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid event journal snapshot"));
+    }
+
+    std::set<std::uint64_t> seen;
+    auto restored = snapshot.events;
+    for (const auto& event : restored) {
+        if (!validIdentity(event.type)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event type must not be empty"));
+        if (!validIdentity(event.source)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event source must not be empty"));
+        if (event.sequence == 0 || !seen.insert(event.sequence).second) {
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid event sequence"));
+        }
+    }
+
+    std::ranges::sort(restored, [](const auto& left, const auto& right) { return left.sequence < right.sequence; });
+    if (std::ranges::any_of(restored, [&](const auto& event) { return event.sequence >= snapshot.next_sequence; })) {
+        return std::unexpected(make_error(ErrorCode::invalid_argument, "event sequence exceeds next sequence"));
+    }
+
+    events_ = std::move(restored);
+    next_sequence_ = snapshot.next_sequence;
+    return {};
+}
+
+void DomainEventJournal::clearDiagnosticHistory() noexcept {
+    events_.clear();
+}
+
+'''
+          text = text[:start] + journal_impl + text[end:]
+          path.write_text(text)
+
+          # CoreTests: update only the pre-existing event contract for Result-returning append.
+          path = Path('cpp/tests/core/CoreTests.cpp')
+          text = path.read_text()
+          start = text.index('TEST(EventContracts, PreservesAppendSequenceAndDrainOrder) {')
+          end = text.index('TEST(ClockContracts, PreservesAcceptedSpeedModes)', start)
+          event_test = '''TEST(EventContracts, PreservesAppendSequenceAndDrainOrder) {
+    civic::DomainEventJournal journal;
+    const auto first = journal.append(5, "first", "source-a");
+    ASSERT_TRUE(first);
+    const auto second = journal.append(3, "second", "source-b");
+    ASSERT_TRUE(second);
+    EXPECT_EQ(first->sequence, 1U);
+    EXPECT_EQ(second->sequence, 2U);
+    ASSERT_EQ(journal.list().size(), 2U);
+    EXPECT_EQ(journal.list()[0].type, "first");
+    EXPECT_EQ(journal.list()[1].type, "second");
+    const auto drained = journal.drain();
+    ASSERT_EQ(drained.size(), 2U);
+    EXPECT_EQ(drained[0].sequence, 1U);
+    EXPECT_EQ(drained[1].sequence, 2U);
+    EXPECT_TRUE(journal.list().empty());
+    EXPECT_EQ(journal.nextSequence(), 3U);
+}
+
+'''
+          text = text[:start] + event_test + text[end:]
+          path.write_text(text)
+
+          # ParityTests: preserve all K003 tests and insert the K002 journal suite after command identity coverage.
+          path = Path('cpp/tests/parity/ParityTests.cpp')
+          text = path.read_text()
+          anchor = '''TEST(CommandContracts, RejectsEcmaWhitespaceOnlyCommandType) {
+    civic::CommandQueue queue;
+    const std::vector<civic::CommandEnvelope> commands{{1, 0, kNbsp, {}}};
+    EXPECT_FALSE(queue.submit(commands, 0));
+}
+'''
+          if anchor not in text:
+              raise RuntimeError('CommandContracts parity anchor missing')
+          k002_tests = r'''
+
+TEST(EventJournalParity, SinceReturnsOnlyStrictlyNewerSequence) {
+    civic::DomainEventJournal journal;
+    ASSERT_TRUE(journal.append(1, "a", "test"));
+    ASSERT_TRUE(journal.append(2, "b", "test"));
+    ASSERT_TRUE(journal.append(3, "c", "test"));
+
+    const auto newer = journal.since(1);
+    ASSERT_EQ(newer.size(), 2U);
+    EXPECT_EQ(newer[0].sequence, 2U);
+    EXPECT_EQ(newer[1].sequence, 3U);
+    EXPECT_TRUE(journal.since(3).empty());
+}
+
+TEST(EventJournalParity, SnapshotRestorePreservesNextSequence) {
+    civic::DomainEventJournal original;
+    auto first = original.append(5, "created", "fixture", {std::byte{0x2A}});
+    ASSERT_TRUE(first);
+
+    const auto snapshot = original.snapshot();
+    EXPECT_EQ(snapshot.next_sequence, 2U);
+
+    civic::DomainEventJournal restored;
+    ASSERT_TRUE(restored.restore(snapshot));
+    ASSERT_EQ(restored.list().size(), 1U);
+    EXPECT_EQ(restored.list()[0].sequence, 1U);
+    EXPECT_EQ(restored.list()[0].tick, 5U);
+    EXPECT_EQ(restored.list()[0].type, "created");
+    EXPECT_EQ(restored.list()[0].source, "fixture");
+    ASSERT_EQ(restored.list()[0].payload.size(), 1U);
+    EXPECT_EQ(restored.list()[0].payload[0], std::byte{0x2A});
+    EXPECT_EQ(restored.nextSequence(), 2U);
+
+    auto second = restored.append(6, "continued", "fixture");
+    ASSERT_TRUE(second);
+    EXPECT_EQ(second->sequence, 2U);
+}
+
+TEST(EventJournalParity, RestoreRejectsDuplicateSequence) {
+    civic::DomainEventJournal journal;
+    const civic::DomainEventJournalSnapshot snapshot{
+        {
+            civic::DomainEvent{1, 1, "first", "fixture", {}},
+            civic::DomainEvent{1, 2, "duplicate", "fixture", {}},
+        },
+        3,
+    };
+
+    const auto restored = journal.restore(snapshot);
+    ASSERT_FALSE(restored);
+    EXPECT_EQ(restored.error().code, civic::ErrorCode::invalid_argument);
+    EXPECT_TRUE(journal.list().empty());
+    EXPECT_EQ(journal.nextSequence(), 1U);
+}
+
+TEST(EventJournalParity, RestoreRejectsOutOfRangeSequenceAndInvalidNextSequence) {
+    civic::DomainEventJournal journal;
+    const civic::DomainEventJournalSnapshot out_of_range{
+        {civic::DomainEvent{2, 1, "future", "fixture", {}}},
+        2,
+    };
+    EXPECT_FALSE(journal.restore(out_of_range));
+
+    const civic::DomainEventJournalSnapshot invalid_next{{}, 0};
+    EXPECT_FALSE(journal.restore(invalid_next));
+    EXPECT_TRUE(journal.list().empty());
+    EXPECT_EQ(journal.nextSequence(), 1U);
+}
+
+TEST(EventJournalParity, RestoreSortsEventsBySequence) {
+    civic::DomainEventJournal journal;
+    const civic::DomainEventJournalSnapshot snapshot{
+        {
+            civic::DomainEvent{2, 2, "second", "fixture", {}},
+            civic::DomainEvent{1, 1, "first", "fixture", {}},
+        },
+        3,
+    };
+
+    ASSERT_TRUE(journal.restore(snapshot));
+    ASSERT_EQ(journal.list().size(), 2U);
+    EXPECT_EQ(journal.list()[0].sequence, 1U);
+    EXPECT_EQ(journal.list()[1].sequence, 2U);
+}
+
+TEST(EventJournalParity, RestoreRejectsInvalidIdentityWithoutMutation) {
+    civic::DomainEventJournal journal;
+    ASSERT_TRUE(journal.append(1, "existing", "fixture"));
+    const auto before = journal.snapshot();
+
+    const civic::DomainEventJournalSnapshot invalid{
+        {civic::DomainEvent{1, 1, "valid", kNbsp, {}}},
+        2,
+    };
+    const auto restored = journal.restore(invalid);
+    ASSERT_FALSE(restored);
+    EXPECT_EQ(restored.error().code, civic::ErrorCode::invalid_argument);
+    EXPECT_EQ(journal.list().size(), before.events.size());
+    EXPECT_EQ(journal.list()[0].type, before.events[0].type);
+    EXPECT_EQ(journal.nextSequence(), before.next_sequence);
+}
+
+TEST(EventJournalParity, ClearHistoryDoesNotResetSequence) {
+    civic::DomainEventJournal journal;
+    ASSERT_TRUE(journal.append(1, "a", "test"));
+    ASSERT_TRUE(journal.append(2, "b", "test"));
+    EXPECT_EQ(journal.nextSequence(), 3U);
+
+    journal.clearDiagnosticHistory();
+    EXPECT_TRUE(journal.list().empty());
+    EXPECT_EQ(journal.nextSequence(), 3U);
+
+    auto next = journal.append(3, "c", "test");
+    ASSERT_TRUE(next);
+    EXPECT_EQ(next->sequence, 3U);
+}
+
+TEST(EventJournalParity, RejectsEmptyTypeAndSource) {
+    civic::DomainEventJournal journal;
+
+    const auto empty_type = journal.append(1, "   ", "fixture");
+    ASSERT_FALSE(empty_type);
+    EXPECT_EQ(empty_type.error().code, civic::ErrorCode::invalid_argument);
+
+    const auto empty_source = journal.append(1, "valid", kNbsp);
+    ASSERT_FALSE(empty_source);
+    EXPECT_EQ(empty_source.error().code, civic::ErrorCode::invalid_argument);
+
+    EXPECT_TRUE(journal.list().empty());
+    EXPECT_EQ(journal.nextSequence(), 1U);
+}
+'''
+          if 'TEST(EventJournalParity, SinceReturnsOnlyStrictlyNewerSequence)' in text:
+              raise RuntimeError('K002 tests unexpectedly already present in main')
+          text = text.replace(anchor, anchor + k002_tests, 1)
+          path.write_text(text)
+
+          # Ledger: preserve K003/K004/C006 current state and update only K002 inventory row.
+          path = Path('docs/cpp/TS_REWRITE_LEDGER.json')
+          ledger = json.loads(path.read_text())
+          entry = next((e for e in ledger['entries'] if e['path'] == 'src/simulation/kernel/DomainEventJournal.ts'), None)
+          if entry is None:
+              raise RuntimeError('DomainEventJournal ledger entry missing')
+          entry.update({
+              'assignedStack': 'K002',
+              'targetNativeOwner': 'civic::DomainEventJournal',
+              'status': 'shadow_complete',
+              'currentAuthority': 'typescript',
+              'parityClassification': 'parity',
+          })
+          path.write_text(json.dumps(ledger, indent=2) + '\n')
+          PY
+
+          git add cpp/engine/include/civic/core/Kernel.hpp cpp/engine/src/core/Kernel.cpp cpp/engine/src/core/NativeEngine.cpp cpp/tests/core/CoreTests.cpp cpp/tests/parity/ParityTests.cpp docs/cpp/TS_REWRITE_LEDGER.json
+
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "Unresolved conflicts remain:"
+            git diff --name-only --diff-filter=U
+            exit 1
+          fi
+
+          git diff --check --cached -- cpp/engine/include/civic/core/Kernel.hpp cpp/engine/src/core/Kernel.cpp cpp/engine/src/core/NativeEngine.cpp cpp/tests/core/CoreTests.cpp cpp/tests/parity/ParityTests.cpp docs/cpp/TS_REWRITE_LEDGER.json
+          node scripts/cpp/ts-rewrite-ledger.mjs verify
+          git commit -m "Merge main into K002 after K003"
+          git push origin HEAD:feature/k002-domain-event-journal-cpp
