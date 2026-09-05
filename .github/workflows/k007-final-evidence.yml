@@ -1,0 +1,56 @@
+name: K007 final evidence
+
+on:
+  push:
+    branches:
+      - feature/k007-snapshot-registry-cpp-rewrite
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libjson-c-dev libgtest-dev
+      - name: Run exact K007 focused gate
+        run: node scripts/cpp/run-native-round.mjs --regex "SnapshotRegistryParity|NativeEngineContracts"
+      - name: Fetch matching Node headers
+        run: |
+          NODE_VERSION="$(node -p 'process.versions.node')"
+          curl -fsSLo "$RUNNER_TEMP/node-headers.tar.gz" "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-headers.tar.gz"
+          tar -xzf "$RUNNER_TEMP/node-headers.tar.gz" -C "$RUNNER_TEMP"
+          echo "CIVIC_NODE_HEADERS=$RUNNER_TEMP/node-v${NODE_VERSION}/include/node" >> "$GITHUB_ENV"
+      - name: Configure native bridge
+        run: >-
+          cmake -S cpp -B cpp/build-k007-evidence -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCIVIC_NODE_INCLUDE_DIR="$CIVIC_NODE_HEADERS"
+          -DCIVIC_BUILD_TESTS=ON
+          -DCIVIC_BUILD_NAPI=ON
+      - name: Build native bridge
+        run: cmake --build cpp/build-k007-evidence --parallel
+      - name: Confirm shared TypeScript/native parity
+        run: node --experimental-strip-types tests/native-migration-parity.mjs cpp/build-k007-evidence/civic_native.node
+      - name: Generate K007 C005 evidence
+        run: node --experimental-strip-types scripts/cpp/k007-generate-evidence.mjs cpp/build-k007-evidence/civic_native.node
+      - name: Validate K007 C005 evidence
+        run: node scripts/cpp/parity-evidence.mjs test-artifacts/cpp-parity/K007/empty-new-city-snapshot-registry-tick-250.json
+      - name: Upload K007 evidence
+        uses: actions/upload-artifact@v6.0.0
+        with:
+          name: k007-final-evidence-${{ github.sha }}
+          path: test-artifacts/cpp-parity/K007/*.json
+          if-no-files-found: error
+          retention-days: 30
