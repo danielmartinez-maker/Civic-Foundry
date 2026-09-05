@@ -29,6 +29,8 @@ struct DomainHash final {
     std::uint64_t value{};
 };
 
+struct NativeEngineTestAccess;
+
 class NativeEngine final {
 public:
     [[nodiscard]] static Result<std::unique_ptr<NativeEngine>> create(const EngineConfig&);
@@ -42,6 +44,8 @@ public:
     [[nodiscard]] Result<std::string> saveV9() const;
     [[nodiscard]] std::uint64_t tick() const noexcept { return clock_.tick(); }
 private:
+    friend struct NativeEngineTestAccess;
+
     explicit NativeEngine(const EngineConfig&);
     [[nodiscard]] Result<void> rejectIfFaulted() const;
     [[nodiscard]] std::string kernelCanonicalState() const;
