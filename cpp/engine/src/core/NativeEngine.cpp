@@ -52,9 +52,26 @@ Result<std::unique_ptr<NativeEngine>> NativeEngine::create(const EngineConfig& c
     }
 }
 
-Result<void> NativeEngine::submit(std::span<const CommandEnvelope> commands) { return commands_.submit(commands, clock_.tick()); }
+Result<void> NativeEngine::rejectIfFaulted() const {
+    if (!fault_) return {};
+    return std::unexpected(make_error(ErrorCode::invalid_state, "kernel is faulted: " + fault_->message));
+}
+
+Result<void> NativeEngine::submit(std::span<const CommandEnvelope> commands) {
+    auto mutable_state = rejectIfFaulted();
+    if (!mutable_state) return mutable_state;
+    return commands_.submit(commands, clock_.tick());
+}
+
+Result<void> NativeEngine::registerSystem(SystemDefinition system) {
+    auto mutable_state = rejectIfFaulted();
+    if (!mutable_state) return mutable_state;
+    return scheduler_.registerSystem(std::move(system));
+}
 
 Result<void> NativeEngine::step(std::uint64_t ticks) {
+    auto mutable_state = rejectIfFaulted();
+    if (!mutable_state) return mutable_state;
     if (ticks == 0) return {};
     for (std::uint64_t index = 0; index < ticks; ++index) {
         const auto checkpoint_clock = clock_;
@@ -67,22 +84,27 @@ Result<void> NativeEngine::step(std::uint64_t ticks) {
             events_ = checkpoint_events;
             random_ = checkpoint_random;
         };
+        auto fail_tick = [&](const Error& error) -> Result<void> {
+            rollback();
+            fault_ = error;
+            return std::unexpected(error);
+        };
         auto advanced = clock_.step(1);
-        if (!advanced) { rollback(); return advanced; }
+        if (!advanced) return fail_tick(advanced.error());
         auto ready = commands_.takeReady(clock_.tick());
         for (const auto& command : ready) {
             auto appended = events_.append(clock_.tick(), command.type, "shadow-command", command.payload);
-            if (!appended) { rollback(); return std::unexpected(appended.error()); }
+            if (!appended) return fail_tick(appended.error());
         }
         auto due = scheduler_.dueSystems(clock_.tick());
-        if (!due) { rollback(); return std::unexpected(due.error()); }
+        if (!due) return fail_tick(due.error());
         for (auto* system : *due) {
             if (!system->execute) continue;
             auto executed = system->execute(clock_.tick());
-            if (!executed) { rollback(); return executed; }
+            if (!executed) return fail_tick(executed.error());
         }
         auto valid = invariants_.runDue(clock_.tick());
-        if (!valid) { rollback(); return valid; }
+        if (!valid) return fail_tick(valid.error());
     }
     return {};
 }
