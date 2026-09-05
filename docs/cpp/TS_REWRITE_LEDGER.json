@@ -741,9 +741,7 @@
       "status": "shadow_complete",
       "currentAuthority": "typescript",
       "parityClassification": "deferred",
-      "cutoverDependencies": [
-        "T-series TripGeneration rewrite"
-      ]
+      "cutoverDependencies": ["T-series TripGeneration rewrite"]
     },
     {
       "inventoryId": "CF-TS-0062",
