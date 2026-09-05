@@ -55,6 +55,7 @@ private:
     SystemScheduler scheduler_;
     InvariantRunner invariants_;
     std::optional<SaveV9Dto> loaded_save_;
+    bool dirty_{true};
     std::optional<Error> fault_;
 };
 
