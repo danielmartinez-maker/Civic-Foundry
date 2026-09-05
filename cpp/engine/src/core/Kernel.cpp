@@ -10,10 +10,6 @@ bool validIdentity(std::string_view value) {
     return utf16_detail::validUtf8AndHasNonEcmaTrimCodePoint(value);
 }
 
-bool due(const SystemCadence& cadence, std::uint64_t tick) {
-    return cadence.every > 0 && tick >= cadence.offset && ((tick - cadence.offset) % cadence.every) == 0;
-}
-
 bool overlap(const SystemCadence& left, const SystemCadence& right) {
     const auto g = std::gcd(left.every, right.every);
     const auto hi = std::max(left.offset, right.offset);
@@ -26,6 +22,16 @@ bool intersects(const std::vector<std::string>& a, const std::vector<std::string
     return false;
 }
 } // namespace
+
+Result<void> validateCadence(const SystemCadence& cadence, std::string_view owner) {
+    if (cadence.every == 0 || cadence.offset >= cadence.every) {
+        return std::unexpected(make_error(
+            ErrorCode::invalid_argument,
+            "invalid cadence for " + std::string(owner)
+        ));
+    }
+    return {};
+}
 
 Result<void> SimulationClock::setSpeed(SpeedMode speed) noexcept {
     if (!validSpeed(static_cast<std::uint32_t>(speed))) return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid clock speed"));
@@ -177,7 +183,7 @@ Result<void> DomainEventJournal::restore(const DomainEventJournalSnapshot& snaps
         if (!validIdentity(event.type)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event type must not be empty"));
         if (!validIdentity(event.source)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event source must not be empty"));
         if (event.sequence == 0 || !seen.insert(event.sequence).second) {
-            return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid event sequence"));
+  return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid event sequence"));
         }
     }
 
@@ -197,7 +203,8 @@ void DomainEventJournal::clearDiagnosticHistory() noexcept {
 
 Result<void> SystemScheduler::registerSystem(SystemDefinition system) {
     if (!validIdentity(system.id)) return std::unexpected(make_error(ErrorCode::invalid_argument, "kernel system id must not be empty"));
-    if (system.cadence.every == 0 || system.cadence.offset >= system.cadence.every) return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid system cadence"));
+    auto cadence = validateCadence(system.cadence, system.id);
+    if (!cadence) return cadence;
     if (systems_.contains(system.id)) return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate kernel system: " + system.id));
     const auto id = system.id;
     if (std::find(system.after.begin(), system.after.end(), id) != system.after.end() || std::find(system.before.begin(), system.before.end(), id) != system.before.end()) {
@@ -276,14 +283,16 @@ Result<std::vector<SystemDefinition*>> SystemScheduler::dueSystems(std::uint64_t
         if (!compiled) return std::unexpected(compiled.error());
     }
     std::vector<SystemDefinition*> result;
-    for (const auto& id : compiled_) if (due(systems_.at(id).cadence, tick)) result.push_back(&systems_.at(id));
+    for (const auto& id : compiled_) if (isDue(systems_.at(id).cadence, tick)) result.push_back(&systems_.at(id));
     return result;
 }
 
 std::vector<std::string> SystemScheduler::orderedIds() const { return compiled_; }
 
 Result<void> InvariantRunner::registerInvariant(InvariantDefinition invariant) {
-    if (!validIdentity(invariant.id) || invariant.cadence.every == 0 || invariant.cadence.offset >= invariant.cadence.every || !invariant.check) return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid invariant definition"));
+    if (!validIdentity(invariant.id) || !invariant.check) return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid invariant definition"));
+    auto cadence = validateCadence(invariant.cadence, invariant.id);
+    if (!cadence) return cadence;
     if (invariants_.contains(invariant.id)) return std::unexpected(make_error(ErrorCode::invalid_argument, "duplicate invariant: " + invariant.id));
     invariants_.emplace(invariant.id, std::move(invariant));
     return {};
@@ -291,7 +300,7 @@ Result<void> InvariantRunner::registerInvariant(InvariantDefinition invariant) {
 
 Result<void> InvariantRunner::runDue(std::uint64_t tick) const {
     for (const auto& [id, invariant] : invariants_) {
-        if (!due(invariant.cadence, tick)) continue;
+        if (!isDue(invariant.cadence, tick)) continue;
         auto result = invariant.check(tick);
         if (!result) return std::unexpected(make_error(ErrorCode::invariant_failure, id + ": " + result.error().message));
     }

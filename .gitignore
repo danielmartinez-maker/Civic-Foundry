@@ -3,7 +3,10 @@ dist/
 target/
 cpp/build*/
 .worktrees/
-test-artifacts/
+test-artifacts/*
+!test-artifacts/cpp-parity/
+test-artifacts/cpp-parity/*
+!test-artifacts/cpp-parity/.gitkeep
 playwright-report/
 coverage/
 .tmp/

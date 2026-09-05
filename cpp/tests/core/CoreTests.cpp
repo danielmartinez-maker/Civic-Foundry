@@ -2,6 +2,7 @@
 #include <limits>
 #include <vector>
 #include <civic/core/Kernel.hpp>
+#include <civic/core/KernelTypes.hpp>
 #include <civic/core/NativeEngine.hpp>
 #include <civic/core/RandomStreamRegistry.hpp>
 #include <civic/core/StrongId.hpp>
@@ -187,6 +188,36 @@ TEST(ClockContracts, PreservesAcceptedSpeedModes) {
     ASSERT_TRUE(clock.step(2));
     EXPECT_EQ(clock.tick(), 5U);
     EXPECT_EQ(clock.speed(), civic::SpeedMode::paused);
+}
+
+TEST(KernelTypes, RejectsZeroEveryAndIncludesOwnerLabel) {
+    const auto result = civic::validateCadence({0, 0}, "zero-every-owner");
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, civic::ErrorCode::invalid_argument);
+    EXPECT_NE(result.error().message.find("zero-every-owner"), std::string::npos);
+}
+
+TEST(KernelTypes, RejectsOffsetAtOrBeyondEvery) {
+    EXPECT_FALSE(civic::validateCadence({3, 3}, "offset-owner"));
+    EXPECT_FALSE(civic::validateCadence({3, 4}, "offset-owner"));
+}
+
+TEST(KernelTypes, EveryOneOffsetZeroIsDueEveryTick) {
+    const civic::SystemCadence cadence{1, 0};
+    EXPECT_TRUE(civic::isDue(cadence, 0));
+    EXPECT_TRUE(civic::isDue(cadence, 1));
+    EXPECT_TRUE(civic::isDue(cadence, 2));
+    EXPECT_TRUE(civic::isDue(cadence, 100));
+}
+
+TEST(KernelTypes, CadenceThreeOffsetOneMatchesTypeScriptPattern) {
+    const civic::SystemCadence cadence{3, 1};
+    EXPECT_FALSE(civic::isDue(cadence, 0));
+    EXPECT_TRUE(civic::isDue(cadence, 1));
+    EXPECT_FALSE(civic::isDue(cadence, 2));
+    EXPECT_FALSE(civic::isDue(cadence, 3));
+    EXPECT_TRUE(civic::isDue(cadence, 4));
+    EXPECT_TRUE(civic::isDue(cadence, 7));
 }
 
 TEST(SchedulerContracts, DetectsCyclesConflictsAndInvalidCadence) {
