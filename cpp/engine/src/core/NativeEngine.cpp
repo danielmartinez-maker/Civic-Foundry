@@ -81,29 +81,51 @@ Result<void> NativeEngine::step(std::uint64_t ticks) {
         if (!compiled) return compiled;
         dirty_ = false;
     }
+
     for (std::uint64_t index = 0; index < ticks; ++index) {
-        const auto checkpoint_clock = clock_;
-        const auto checkpoint_commands = commands_;
-        const auto checkpoint_events = events_;
-        const auto checkpoint_random = random_;
-        auto rollback = [&] {
-            clock_ = checkpoint_clock;
-            commands_ = checkpoint_commands;
-            events_ = checkpoint_events;
-            random_ = checkpoint_random;
+        const auto checkpoint_tick = clock_.tick();
+        const auto checkpoint_speed = clock_.speed();
+        const auto checkpoint_commands = commands_.snapshot();
+        const auto checkpoint_events = events_.snapshot();
+        const auto checkpoint_random = random_.snapshot();
+
+        auto rollback = [&]() -> Result<void> {
+            std::optional<Error> rollback_error;
+            const auto remember_failure = [&](const Result<void>& result) {
+                if (!result && !rollback_error) rollback_error = result.error();
+            };
+
+            remember_failure(random_.restore(checkpoint_random));
+            remember_failure(events_.restore(checkpoint_events));
+            remember_failure(commands_.restore(checkpoint_commands));
+            clock_.restore(checkpoint_tick, checkpoint_speed);
+
+            if (rollback_error) return std::unexpected(*rollback_error);
+            return {};
         };
+
         auto fail_tick = [&](const Error& error) -> Result<void> {
-            rollback();
+            auto restored = rollback();
+            if (!restored) {
+                fault_ = make_error(
+                    ErrorCode::internal_error,
+                    error.message + "; kernel rollback failed: " + restored.error().message
+                );
+                return std::unexpected(*fault_);
+            }
             fault_ = error;
             return std::unexpected(error);
         };
+
         auto advanced = clock_.step(1);
         if (!advanced) return fail_tick(advanced.error());
+
         auto ready = commands_.takeReady(clock_.tick());
         for (const auto& command : ready) {
             auto appended = events_.append(clock_.tick(), command.type, "shadow-command", command.payload);
             if (!appended) return fail_tick(appended.error());
         }
+
         auto due = scheduler_.dueSystems(clock_.tick());
         if (!due) return fail_tick(due.error());
         for (auto* system : *due) {
@@ -111,6 +133,7 @@ Result<void> NativeEngine::step(std::uint64_t ticks) {
             auto executed = system->execute(clock_.tick());
             if (!executed) return fail_tick(executed.error());
         }
+
         auto valid = invariants_.runDue(clock_.tick());
         if (!valid) return fail_tick(valid.error());
     }
@@ -171,6 +194,9 @@ Result<DomainHash> NativeEngine::domainHash(std::string_view domain) const {
 }
 
 Result<void> NativeEngine::loadV9(std::string_view json) {
+    auto mutable_state = rejectIfFaulted();
+    if (!mutable_state) return mutable_state;
+
     auto parsed = parseSaveV9(json); if (!parsed) return std::unexpected(parsed.error());
     seed_ = parsed->seed;
     clock_.restore(parsed->tick, parsed->speed);
