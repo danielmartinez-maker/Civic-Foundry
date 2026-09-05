@@ -1,5 +1,6 @@
 #include <civic/core/AuthoritativeTransactionCheckpoint.hpp>
 
+#include <optional>
 #include <utility>
 
 namespace civic {
@@ -51,18 +52,22 @@ Result<void> AuthoritativeTransactionCheckpoint::restore(
     std::span<const TransactionSnapshot> snapshots
 ) const {
     for (auto iterator = snapshots.rbegin(); iterator != snapshots.rend(); ++iterator) {
-        const auto participant = participants_.find(iterator->participant_id);
-        if (participant == participants_.end()) {
+        if (!participants_.contains(iterator->participant_id)) {
             return std::unexpected(make_error(
                 ErrorCode::invalid_state,
                 "missing transaction participant during restore: " + iterator->participant_id
             ));
         }
-
-        const auto restored = participant->second.restore(iterator->payload);
-        if (!restored) return std::unexpected(restored.error());
     }
 
+    std::optional<Error> first_failure;
+    for (auto iterator = snapshots.rbegin(); iterator != snapshots.rend(); ++iterator) {
+        const auto& participant = participants_.at(iterator->participant_id);
+        const auto restored = participant.restore(iterator->payload);
+        if (!restored && !first_failure) first_failure = restored.error();
+    }
+
+    if (first_failure) return std::unexpected(*first_failure);
     return {};
 }
 
