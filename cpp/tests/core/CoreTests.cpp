@@ -366,6 +366,28 @@ TEST(SnapshotRegistryParity, CapturedValueIsIndependentFromLaterProviderMutation
     EXPECT_EQ(*second, R"({"nested":{"value":8}})");
 }
 
+TEST(SnapshotRegistryParity, CaptureAllFreezesProviderSetBeforeCapture) {
+    civic::SnapshotRegistry registry;
+    bool inserted = false;
+    ASSERT_TRUE(registry.registerProvider("alpha", [&]() -> civic::Result<std::string> {
+        if (!inserted) {
+            inserted = true;
+            auto registered = registry.registerProvider("zeta", []() -> civic::Result<std::string> {
+                return std::string{"late"};
+            });
+            if (!registered) return std::unexpected(registered.error());
+        }
+        return std::string{"initial"};
+    }));
+
+    const auto captured = registry.captureAll();
+    ASSERT_TRUE(captured);
+    EXPECT_EQ(captured->size(), 1U);
+    EXPECT_EQ(captured->at("alpha"), "initial");
+    EXPECT_FALSE(captured->contains("zeta"));
+    EXPECT_EQ(registry.listIds(), (std::vector<std::string>{"alpha", "zeta"}));
+}
+
 TEST(NativeEngineContracts, StepZeroIsSideEffectFreeAndDomainsAreExplicitlyUnowned) {
     auto created = civic::NativeEngine::create({42, 7, civic::SpeedMode::fast}); ASSERT_TRUE(created);
     auto before = (*created)->snapshot(); ASSERT_TRUE(before);

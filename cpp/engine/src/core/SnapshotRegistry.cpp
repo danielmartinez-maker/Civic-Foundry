@@ -25,8 +25,9 @@ Result<std::string> SnapshotRegistry::capture(std::string_view id) const {
 
 Result<std::map<std::string, std::string, Utf16OrdinalLess>> SnapshotRegistry::captureAll() const {
     std::map<std::string, std::string, Utf16OrdinalLess> output;
-    for (const auto& [id, provider] : providers_) {
-        auto captured = provider();
+    const auto ids = listIds();
+    for (const auto& id : ids) {
+        auto captured = capture(id);
         if (!captured) return std::unexpected(captured.error());
         output.emplace(id, std::move(*captured));
     }
