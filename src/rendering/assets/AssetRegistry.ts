@@ -52,6 +52,7 @@ export class AssetRegistry {
     const key = JSON.stringify({
       category: query.category ?? null, subcategory: query.subcategory ?? null,
       zone: query.zone ?? null, intensity: query.intensity ?? null,
+      qualityTier: query.qualityTier ?? null, condition: query.condition ?? null,
       constructionStage: query.constructionStage ?? null, variantKey: query.variantKey ?? null,
       orientation: query.orientation ?? null, tags: query.tags ? [...query.tags].sort() : null,
     });
@@ -62,6 +63,8 @@ export class AssetRegistry {
       if (query.subcategory !== undefined && entry.subcategory !== query.subcategory) return false;
       if (query.zone !== undefined && entry.zone !== query.zone) return false;
       if (query.intensity !== undefined && entry.intensity !== query.intensity) return false;
+      if (query.qualityTier !== undefined && entry.qualityTier !== query.qualityTier) return false;
+      if (query.condition !== undefined && entry.condition !== query.condition) return false;
       if (query.constructionStage !== undefined && entry.constructionStage !== query.constructionStage) return false;
       if (query.variantKey !== undefined && entry.variantKey !== query.variantKey) return false;
       if (query.orientation !== undefined && entry.orientation !== query.orientation) return false;
