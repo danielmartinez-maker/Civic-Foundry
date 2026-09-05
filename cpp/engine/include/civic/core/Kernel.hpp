@@ -13,6 +13,7 @@
 #include <civic/core/Error.hpp>
 #include <civic/core/KernelTypes.hpp>
 #include <civic/core/RandomStreamRegistry.hpp>
+#include <civic/core/SnapshotRegistry.hpp>
 #include <civic/core/Utf16Ordinal.hpp>
 
 namespace civic {
