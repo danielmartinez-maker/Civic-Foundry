@@ -66,13 +66,21 @@ Result<void> NativeEngine::submit(std::span<const CommandEnvelope> commands) {
 Result<void> NativeEngine::registerSystem(SystemDefinition system) {
     auto mutable_state = rejectIfFaulted();
     if (!mutable_state) return mutable_state;
-    return scheduler_.registerSystem(std::move(system));
+    auto registered = scheduler_.registerSystem(std::move(system));
+    if (!registered) return registered;
+    dirty_ = true;
+    return {};
 }
 
 Result<void> NativeEngine::step(std::uint64_t ticks) {
     auto mutable_state = rejectIfFaulted();
     if (!mutable_state) return mutable_state;
     if (ticks == 0) return {};
+    if (dirty_) {
+        auto compiled = scheduler_.compile();
+        if (!compiled) return compiled;
+        dirty_ = false;
+    }
     for (std::uint64_t index = 0; index < ticks; ++index) {
         const auto checkpoint_clock = clock_;
         const auto checkpoint_commands = commands_;
