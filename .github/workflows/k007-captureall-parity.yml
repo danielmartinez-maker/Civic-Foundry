@@ -1,0 +1,127 @@
+name: K007 captureAll parity refinement
+
+on:
+  push:
+    branches:
+      - feature/k007-snapshot-registry-cpp-rewrite
+    paths:
+      - .github/workflows/k007-captureall-parity.yml
+
+permissions:
+  contents: write
+
+jobs:
+  red-green-refinement:
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout K007 branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/k007-snapshot-registry-cpp-rewrite
+          fetch-depth: 0
+
+      - name: Node 22
+        uses: actions/setup-node@v6.1.0
+        with:
+          node-version: 22
+
+      - name: Install native round dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtest-dev libjson-c-dev
+
+      - name: Add captureAll fixed-provider-set regression test
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("cpp/tests/core/CoreTests.cpp")
+          text = path.read_text(encoding="utf-8")
+          marker = '''TEST(NativeEngineContracts, StepZeroIsSideEffectFreeAndDomainsAreExplicitlyUnowned) {'''
+          if marker not in text:
+              raise SystemExit("NativeEngineContracts insertion marker not found")
+          test = r'''TEST(SnapshotRegistryParity, CaptureAllFreezesProviderSetBeforeCapture) {
+    civic::SnapshotRegistry registry;
+    bool inserted = false;
+    ASSERT_TRUE(registry.registerProvider("alpha", [&]() -> civic::Result<std::string> {
+        if (!inserted) {
+            inserted = true;
+            auto registered = registry.registerProvider("zeta", []() -> civic::Result<std::string> {
+                return std::string{"late"};
+            });
+            if (!registered) return std::unexpected(registered.error());
+        }
+        return std::string{"initial"};
+    }));
+
+    const auto captured = registry.captureAll();
+    ASSERT_TRUE(captured);
+    EXPECT_EQ(captured->size(), 1U);
+    EXPECT_EQ(captured->at("alpha"), "initial");
+    EXPECT_FALSE(captured->contains("zeta"));
+    EXPECT_EQ(registry.listIds(), (std::vector<std::string>{"alpha", "zeta"}));
+}
+
+'''
+          path.write_text(text.replace(marker, test + marker, 1), encoding="utf-8")
+
+      - name: RED - prove live-map captureAll diverges from TypeScript
+        shell: bash
+        run: |
+          set +e
+          node scripts/cpp/run-native-round.mjs --regex "SnapshotRegistryParity.CaptureAllFreezesProviderSetBeforeCapture" 2>&1 | tee /tmp/k007-red.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "Expected RED regression test to fail before the parity fix."
+            exit 1
+          fi
+          grep -q "CaptureAllFreezesProviderSetBeforeCapture" /tmp/k007-red.log
+          grep -q "Failed" /tmp/k007-red.log
+
+      - name: Implement TypeScript fixed-ID-set captureAll semantics
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("cpp/engine/src/core/SnapshotRegistry.cpp")
+          text = path.read_text(encoding="utf-8")
+          old = '''Result<std::map<std::string, std::string, Utf16OrdinalLess>> SnapshotRegistry::captureAll() const {
+    std::map<std::string, std::string, Utf16OrdinalLess> output;
+    for (const auto& [id, provider] : providers_) {
+        auto captured = provider();
+        if (!captured) return std::unexpected(captured.error());
+        output.emplace(id, std::move(*captured));
+    }
+    return output;
+}
+'''
+          new = '''Result<std::map<std::string, std::string, Utf16OrdinalLess>> SnapshotRegistry::captureAll() const {
+    std::map<std::string, std::string, Utf16OrdinalLess> output;
+    const auto ids = listIds();
+    for (const auto& id : ids) {
+        auto captured = capture(id);
+        if (!captured) return std::unexpected(captured.error());
+        output.emplace(id, std::move(*captured));
+    }
+    return output;
+}
+'''
+          if old not in text:
+              raise SystemExit("SnapshotRegistry captureAll implementation marker not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+      - name: GREEN - exact K007 focused native round
+        run: node scripts/cpp/run-native-round.mjs --regex "SnapshotRegistryParity|NativeEngineContracts"
+
+      - name: Reconfirm C005 native parity evidence
+        run: node scripts/cpp/run-native-round.mjs --regex "CAbi|RandomParity"
+
+      - name: Commit refinement and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/k007-captureall-parity.yml
+          git add cpp/tests/core/CoreTests.cpp cpp/engine/src/core/SnapshotRegistry.cpp
+          git commit -m "fix(k007): match captureAll provider-set semantics"
+          git push origin HEAD:feature/k007-snapshot-registry-cpp-rewrite
