@@ -20,6 +20,7 @@ else()
 endif()
 
 add_library(civic_engine STATIC
+  engine/src/core/AuthoritativeTransactionCheckpoint.cpp
   engine/src/core/Kernel.cpp
   engine/src/core/NativeEngine.cpp
   engine/src/core/RandomStreamRegistry.cpp
