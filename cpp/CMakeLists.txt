@@ -38,6 +38,7 @@ if(CIVIC_BUILD_TESTS)
   add_executable(civic_engine_tests
     tests/core/CoreTests.cpp
     tests/core/K006KernelTests.cpp
+    tests/core/K009TransactionCheckpointTests.cpp
     tests/persistence/SaveV9Tests.cpp
     tests/parity/ParityTests.cpp
   )
