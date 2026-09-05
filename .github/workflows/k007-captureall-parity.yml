@@ -31,7 +31,7 @@ jobs:
           sudo apt-get install -y ninja-build libgtest-dev libjson-c-dev
 
       - name: Add captureAll fixed-provider-set regression test
-        shell: python
+        shell: python {0}
         run: |
           from pathlib import Path
 
@@ -80,7 +80,7 @@ jobs:
           grep -q "Failed" /tmp/k007-red.log
 
       - name: Implement TypeScript fixed-ID-set captureAll semantics
-        shell: python
+        shell: python {0}
         run: |
           from pathlib import Path
 
