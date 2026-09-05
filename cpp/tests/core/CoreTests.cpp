@@ -301,3 +301,33 @@ TEST(NativeEngineContracts, StepZeroIsSideEffectFreeAndDomainsAreExplicitlyUnown
     auto world = (*created)->domainHash("world"); ASSERT_TRUE(world);
     EXPECT_EQ(world->ownership, civic::DomainOwnership::unowned);
 }
+
+TEST(RandomParity, RootSeedAndSameNameUseUint32StreamSemantics) {
+    civic::RandomStreamRegistry baseline(1U);
+    const auto wrapped_seed = static_cast<std::uint32_t>(0x100000001ULL);
+    civic::RandomStreamRegistry wrapped(wrapped_seed);
+    auto baseline_traffic = baseline.stream("traffic"); ASSERT_TRUE(baseline_traffic);
+    auto wrapped_traffic = wrapped.stream("traffic"); ASSERT_TRUE(wrapped_traffic);
+    EXPECT_DOUBLE_EQ((*baseline_traffic)->next(), (*wrapped_traffic)->next());
+
+    civic::RandomStreamRegistry registry(7U);
+    auto first = registry.stream("traffic"); ASSERT_TRUE(first);
+    (void)(*first)->next();
+    const auto state = (*first)->state();
+    auto second = registry.stream("traffic"); ASSERT_TRUE(second);
+    EXPECT_EQ(*first, *second);
+    EXPECT_EQ((*second)->state(), state);
+}
+
+TEST(RandomParity, RestoreZeroStateUsesSeededRandomFallback) {
+    civic::RandomStreamRegistry registry(9U);
+    civic::RandomStreamSnapshot snapshot;
+    snapshot.emplace("traffic", 0U);
+    ASSERT_TRUE(registry.restore(snapshot));
+
+    auto traffic = registry.stream("traffic"); ASSERT_TRUE(traffic);
+    EXPECT_EQ((*traffic)->state(), 0x6d2b79f5U);
+    civic::SeededRandom expected(0U);
+    EXPECT_DOUBLE_EQ((*traffic)->next(), expected.next());
+}
+

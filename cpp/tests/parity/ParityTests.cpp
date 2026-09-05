@@ -334,3 +334,55 @@ TEST(CAbi, CommandPayloadCanonicalKeysUseJavaScriptUtf16OrdinalOrder) {
     cf_buffer_free(snapshot);
     cf_engine_destroy(engine);
 }
+
+TEST(RandomParity, ListNamesUsesJavaScriptUtf16OrdinalOrder) {
+    civic::RandomStreamRegistry registry(31);
+    ASSERT_TRUE(registry.stream(kPrivateBmp));
+    ASSERT_TRUE(registry.stream("traffic"));
+    ASSERT_TRUE(registry.stream(kSupplementary));
+
+    const auto names = registry.listNames();
+    ASSERT_EQ(names.size(), 3U);
+    EXPECT_EQ(names[0], "traffic");
+    EXPECT_EQ(names[1], kSupplementary);
+    EXPECT_EQ(names[2], kPrivateBmp);
+}
+
+TEST(RandomParity, RestoreReplacesRatherThanMergesStreams) {
+    civic::RandomStreamRegistry source(31);
+    auto traffic = source.stream("traffic"); ASSERT_TRUE(traffic);
+    (void)(*traffic)->next();
+    const auto snapshot = source.snapshot();
+
+    civic::RandomStreamRegistry restored(31);
+    ASSERT_TRUE(restored.stream("obsolete"));
+    ASSERT_TRUE(restored.restore(snapshot));
+
+    const auto names = restored.listNames();
+    ASSERT_EQ(names.size(), 1U);
+    EXPECT_EQ(names[0], "traffic");
+}
+
+TEST(RandomParity, SnapshotRestoreContinuesExactSequence) {
+    civic::RandomStreamRegistry original(31);
+    auto traffic = original.stream("traffic"); ASSERT_TRUE(traffic);
+    (void)(*traffic)->next();
+    (void)(*traffic)->next();
+    const auto snapshot = original.snapshot();
+    const auto expected_first = (*traffic)->next();
+    const auto expected_second = (*traffic)->next();
+
+    civic::RandomStreamRegistry restored(31);
+    ASSERT_TRUE(restored.restore(snapshot));
+    auto restored_traffic = restored.stream("traffic"); ASSERT_TRUE(restored_traffic);
+    EXPECT_DOUBLE_EQ((*restored_traffic)->next(), expected_first);
+    EXPECT_DOUBLE_EQ((*restored_traffic)->next(), expected_second);
+}
+
+TEST(RandomParity, NonBmpStreamNameMatchesTypeScriptFixture) {
+    civic::RandomStreamRegistry registry(31);
+    auto stream = registry.stream(kSupplementary); ASSERT_TRUE(stream);
+    EXPECT_DOUBLE_EQ((*stream)->next(), 0.42440165276639163);
+    EXPECT_DOUBLE_EQ((*stream)->next(), 0.07056768285110593);
+}
+

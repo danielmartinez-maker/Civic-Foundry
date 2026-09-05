@@ -128,4 +128,14 @@ Result<void> RandomStreamRegistry::restore(const RandomStreamSnapshot& snapshot)
     return {};
 }
 
+std::vector<std::string> RandomStreamRegistry::listNames() const {
+    std::vector<std::string> names;
+    names.reserve(streams_.size());
+    for (const auto& [name, stream] : streams_) {
+        (void)stream;
+        names.push_back(name);
+    }
+    return names;
+}
+
 } // namespace civic
