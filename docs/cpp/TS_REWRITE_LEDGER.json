@@ -1167,12 +1167,12 @@
       "inventoryId": "CF-TS-0097",
       "path": "src/simulation/kernel/InvariantRunner.ts",
       "kind": "production",
-      "assignedStack": null,
-      "targetNativeOwner": null,
-      "nativeTestOwner": null,
-      "status": "pending",
+      "assignedStack": "K003",
+      "targetNativeOwner": "civic::InvariantRunner",
+      "nativeTestOwner": "cpp/tests/parity/ParityTests.cpp",
+      "status": "shadow_complete",
       "currentAuthority": "typescript",
-      "parityClassification": "unclassified",
+      "parityClassification": "parity",
       "cutoverDependencies": []
     },
     {

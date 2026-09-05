@@ -183,7 +183,7 @@ Result<void> DomainEventJournal::restore(const DomainEventJournalSnapshot& snaps
         if (!validIdentity(event.type)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event type must not be empty"));
         if (!validIdentity(event.source)) return std::unexpected(make_error(ErrorCode::invalid_argument, "event source must not be empty"));
         if (event.sequence == 0 || !seen.insert(event.sequence).second) {
-  return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid event sequence"));
+            return std::unexpected(make_error(ErrorCode::invalid_argument, "invalid event sequence"));
         }
     }
 
@@ -302,9 +302,23 @@ Result<void> InvariantRunner::runDue(std::uint64_t tick) const {
     for (const auto& [id, invariant] : invariants_) {
         if (!isDue(invariant.cadence, tick)) continue;
         auto result = invariant.check(tick);
-        if (!result) return std::unexpected(make_error(ErrorCode::invariant_failure, id + ": " + result.error().message));
+        if (!result) {
+            return std::unexpected(make_error(
+                ErrorCode::invariant_failure,
+                "invariant failed [" + id + "] at tick " + std::to_string(tick) + ": " + result.error().message));
+        }
     }
     return {};
+}
+
+std::vector<std::string> InvariantRunner::listIds() const {
+    std::vector<std::string> ids;
+    ids.reserve(invariants_.size());
+    for (const auto& [id, invariant] : invariants_) {
+        (void)invariant;
+        ids.push_back(id);
+    }
+    return ids;
 }
 
 } // namespace civic
