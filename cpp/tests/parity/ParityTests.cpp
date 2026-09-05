@@ -334,3 +334,38 @@ TEST(CAbi, CommandPayloadCanonicalKeysUseJavaScriptUtf16OrdinalOrder) {
     cf_buffer_free(snapshot);
     cf_engine_destroy(engine);
 }
+
+
+TEST(SchedulerParity, ConflictDiagnosticsMatchTypeScript) {
+    civic::SystemScheduler write_conflict;
+    ASSERT_TRUE(write_conflict.registerSystem({"a", {1,0}, {}, {}, {}, {"traffic"}, 0, {}}));
+    ASSERT_TRUE(write_conflict.registerSystem({"b", {1,0}, {}, {}, {}, {"traffic"}, 0, {}}));
+    const auto write_result = write_conflict.compile();
+    ASSERT_FALSE(write_result);
+    EXPECT_EQ(write_result.error().message, "ambiguous write conflict on domain traffic: a, b");
+
+    civic::SystemScheduler read_write_conflict;
+    ASSERT_TRUE(read_write_conflict.registerSystem({"a", {1,0}, {}, {}, {}, {"traffic"}, 0, {}}));
+    ASSERT_TRUE(read_write_conflict.registerSystem({"b", {1,0}, {}, {}, {"traffic"}, {}, 0, {}}));
+    const auto read_write_result = read_write_conflict.compile();
+    ASSERT_FALSE(read_write_result);
+    EXPECT_EQ(read_write_result.error().message, "ambiguous read/write conflict on domain traffic: a, b");
+}
+
+TEST(SchedulerParity, Utf16OrdinalBreaksEqualOrderTiesAndListsIds) {
+    civic::SystemScheduler scheduler;
+    ASSERT_TRUE(scheduler.registerSystem({kPrivateBmp, {1,0}, {}, {}, {}, {}, 0, {}}));
+    ASSERT_TRUE(scheduler.registerSystem({kSupplementary, {1,0}, {}, {}, {}, {}, 0, {}}));
+    ASSERT_TRUE(scheduler.compile());
+    EXPECT_EQ(scheduler.orderedIds(), (std::vector<std::string>{kSupplementary, kPrivateBmp}));
+    EXPECT_EQ(scheduler.listSystemIds(), (std::vector<std::string>{kSupplementary, kPrivateBmp}));
+}
+
+TEST(SchedulerParity, CycleParticipantsUseTypeScriptUtf16OrdinalOrder) {
+    civic::SystemScheduler scheduler;
+    ASSERT_TRUE(scheduler.registerSystem({kPrivateBmp, {1,0}, {kSupplementary}, {}, {}, {}, 0, {}}));
+    ASSERT_TRUE(scheduler.registerSystem({kSupplementary, {1,0}, {kPrivateBmp}, {}, {}, {}, 0, {}}));
+    const auto result = scheduler.compile();
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().message, "kernel dependency cycle: " + kSupplementary + " -> " + kPrivateBmp);
+}

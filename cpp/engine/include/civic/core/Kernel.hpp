@@ -84,6 +84,7 @@ public:
     [[nodiscard]] Result<void> compile();
     [[nodiscard]] Result<std::vector<SystemDefinition*>> dueSystems(std::uint64_t tick);
     [[nodiscard]] std::vector<std::string> orderedIds() const;
+    [[nodiscard]] std::vector<std::string> listSystemIds() const;
 private:
     std::map<std::string, SystemDefinition, Utf16OrdinalLess> systems_;
     std::vector<std::string> compiled_;
