@@ -25,6 +25,7 @@ Result<std::string> SnapshotRegistry::capture(std::string_view id) const {
 
 Result<std::map<std::string, std::string, Utf16OrdinalLess>> SnapshotRegistry::captureAll() const {
     std::map<std::string, std::string, Utf16OrdinalLess> output;
+    // Freeze the provider set before invoking providers so capture-all matches the TypeScript registry semantics.
     const auto ids = listIds();
     for (const auto& id : ids) {
         auto captured = capture(id);
