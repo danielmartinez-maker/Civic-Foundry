@@ -2,6 +2,7 @@
 #include <limits>
 #include <string>
 #include <vector>
+#include <civic/core/AuthoritativeTransactionCheckpoint.hpp>
 #include <civic/core/Kernel.hpp>
 #include <civic/core/KernelTypes.hpp>
 #include <civic/core/NativeEngine.hpp>
@@ -522,4 +523,188 @@ TEST(SchedulerContracts, DueFilteringAndListIdsAreIndependentOfCompiledOrder) {
     ASSERT_TRUE(tick_two);
     ASSERT_EQ(tick_two->size(), 1U);
     EXPECT_EQ((*tick_two)[0]->id, "zeta");
+}
+
+
+TEST(TransactionCheckpoint, CapturesParticipantsInDeterministicOrder) {
+    civic::AuthoritativeTransactionCheckpoint checkpoint;
+    const std::string emoji{"\xF0\x9F\x98\x80"};
+    const std::string private_use{"\xEE\x80\x80"};
+    const auto no_op_restore = [](std::span<const std::byte>) -> civic::Result<void> {
+        return {};
+    };
+
+    ASSERT_TRUE(checkpoint.registerParticipant({
+        private_use,
+        []() -> civic::Result<std::vector<std::byte>> {
+            return std::vector<std::byte>{std::byte{0x03}};
+        },
+        no_op_restore,
+    }));
+    ASSERT_TRUE(checkpoint.registerParticipant({
+        "z",
+        []() -> civic::Result<std::vector<std::byte>> {
+            return std::vector<std::byte>{std::byte{0x01}};
+        },
+        no_op_restore,
+    }));
+    ASSERT_TRUE(checkpoint.registerParticipant({
+        emoji,
+        []() -> civic::Result<std::vector<std::byte>> {
+            return std::vector<std::byte>{std::byte{0x02}};
+        },
+        no_op_restore,
+    }));
+
+    auto captured = checkpoint.capture();
+    ASSERT_TRUE(captured);
+    ASSERT_EQ(captured->size(), 3U);
+    EXPECT_EQ((*captured)[0].participant_id, "z");
+    EXPECT_EQ((*captured)[1].participant_id, emoji);
+    EXPECT_EQ((*captured)[2].participant_id, private_use);
+}
+
+TEST(TransactionCheckpoint, RestoresInReverseOrder) {
+    civic::AuthoritativeTransactionCheckpoint checkpoint;
+    std::vector<std::string> restore_order;
+    int a = 1;
+    int b = 2;
+    int c_value = 3;
+
+    const auto register_value = [&](const std::string& id, int& value) {
+        return checkpoint.registerParticipant({
+            id,
+            [&value]() -> civic::Result<std::vector<std::byte>> {
+                return std::vector<std::byte>{
+                    std::byte{static_cast<unsigned char>(value)}
+                };
+            },
+            [&restore_order, &value, id](
+                std::span<const std::byte> payload
+            ) -> civic::Result<void> {
+                if (payload.size() != 1U) {
+                    return std::unexpected(civic::make_error(
+                        civic::ErrorCode::serialization_failure,
+                        "invalid test transaction payload"
+                    ));
+                }
+                value = static_cast<int>(
+                    std::to_integer<unsigned char>(payload.front())
+                );
+                restore_order.push_back(id);
+                return {};
+            },
+        });
+    };
+
+    ASSERT_TRUE(register_value("a", a));
+    ASSERT_TRUE(register_value("b", b));
+    ASSERT_TRUE(register_value("c", c_value));
+
+    auto captured = checkpoint.capture();
+    ASSERT_TRUE(captured);
+
+    a = 10;
+    b = 20;
+    c_value = 30;
+    ASSERT_TRUE(checkpoint.restore(*captured));
+
+    EXPECT_EQ(a, 1);
+    EXPECT_EQ(b, 2);
+    EXPECT_EQ(c_value, 3);
+    EXPECT_EQ(
+        restore_order,
+        (std::vector<std::string>{"c", "b", "a"})
+    );
+}
+
+TEST(TransactionCheckpoint, RejectsDuplicateParticipant) {
+    civic::AuthoritativeTransactionCheckpoint checkpoint;
+    const auto snapshot = []() -> civic::Result<std::vector<std::byte>> {
+        return std::vector<std::byte>{};
+    };
+    const auto restore = [](std::span<const std::byte>) -> civic::Result<void> {
+        return {};
+    };
+
+    ASSERT_TRUE(checkpoint.registerParticipant({"duplicate", snapshot, restore}));
+    const auto duplicate = checkpoint.registerParticipant({
+        "duplicate",
+        snapshot,
+        restore,
+    });
+
+    ASSERT_FALSE(duplicate);
+    EXPECT_EQ(duplicate.error().code, civic::ErrorCode::invalid_argument);
+}
+
+TEST(TransactionCheckpoint, MissingParticipantFailsRestore) {
+    civic::AuthoritativeTransactionCheckpoint source;
+    ASSERT_TRUE(source.registerParticipant({
+        "alpha",
+        []() -> civic::Result<std::vector<std::byte>> {
+            return std::vector<std::byte>{std::byte{0x2A}};
+        },
+        [](std::span<const std::byte>) -> civic::Result<void> { return {}; },
+    }));
+    auto captured = source.capture();
+    ASSERT_TRUE(captured);
+
+    civic::AuthoritativeTransactionCheckpoint target;
+    ASSERT_TRUE(target.registerParticipant({
+        "beta",
+        []() -> civic::Result<std::vector<std::byte>> {
+            return std::vector<std::byte>{};
+        },
+        [](std::span<const std::byte>) -> civic::Result<void> { return {}; },
+    }));
+
+    const auto restored = target.restore(*captured);
+    ASSERT_FALSE(restored);
+    EXPECT_EQ(restored.error().code, civic::ErrorCode::invalid_state);
+    EXPECT_NE(
+        restored.error().message.find("not registered"),
+        std::string::npos
+    );
+}
+
+TEST(TransactionCheckpoint, RestoreFailureIsSurfaced) {
+    civic::AuthoritativeTransactionCheckpoint checkpoint;
+    std::vector<std::string> restore_order;
+
+    ASSERT_TRUE(checkpoint.registerParticipant({
+        "a",
+        []() -> civic::Result<std::vector<std::byte>> {
+            return std::vector<std::byte>{};
+        },
+        [&restore_order](std::span<const std::byte>) -> civic::Result<void> {
+            restore_order.push_back("a");
+            return {};
+        },
+    }));
+    ASSERT_TRUE(checkpoint.registerParticipant({
+        "b",
+        []() -> civic::Result<std::vector<std::byte>> {
+            return std::vector<std::byte>{};
+        },
+        [&restore_order](std::span<const std::byte>) -> civic::Result<void> {
+            restore_order.push_back("b");
+            return std::unexpected(civic::make_error(
+                civic::ErrorCode::invalid_state,
+                "forced restore failure"
+            ));
+        },
+    }));
+
+    auto captured = checkpoint.capture();
+    ASSERT_TRUE(captured);
+    const auto restored = checkpoint.restore(*captured);
+
+    ASSERT_FALSE(restored);
+    EXPECT_EQ(restored.error().code, civic::ErrorCode::invalid_state);
+    EXPECT_EQ(restored.error().message, "forced restore failure");
+    EXPECT_EQ(
+        restore_order,
+        (std::vector<std::string>{"b", "a"})
+    );
 }
