@@ -723,12 +723,12 @@
       "inventoryId": "CF-TS-0060",
       "path": "src/simulation/core/AuthoritativeTransactionCheckpoint.ts",
       "kind": "production",
-      "assignedStack": null,
-      "targetNativeOwner": null,
-      "nativeTestOwner": null,
-      "status": "pending",
+      "assignedStack": "K009",
+      "targetNativeOwner": "civic::AuthoritativeTransactionCheckpoint",
+      "nativeTestOwner": "cpp/tests/core/CoreTests.cpp",
+      "status": "shadow_complete",
       "currentAuthority": "typescript",
-      "parityClassification": "unclassified",
+      "parityClassification": "deferred",
       "cutoverDependencies": []
     },
     {

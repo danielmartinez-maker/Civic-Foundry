@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 
+#include <civic/core/AuthoritativeTransactionCheckpoint.hpp>
 #include <civic/core/Error.hpp>
 #include <civic/core/Kernel.hpp>
 #include <civic/persistence/SaveV9.hpp>
@@ -73,6 +74,7 @@ private:
     SystemScheduler scheduler_;
     InvariantRunner invariants_;
     SnapshotRegistry snapshots_;
+    AuthoritativeTransactionCheckpoint transaction_checkpoint_;
     std::optional<SaveV9Dto> loaded_save_;
     bool dirty_{true};
     std::optional<Error> fault_;
