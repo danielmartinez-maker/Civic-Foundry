@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <civic/core/AuthoritativeTransactionCheckpoint.hpp>
@@ -708,3 +709,65 @@ TEST(TransactionCheckpoint, RestoreFailureIsSurfaced) {
         (std::vector<std::string>{"b", "a"})
     );
 }
+
+TEST(TransactionCheckpoint, SnapshotCallbackExceptionIsReturned) {
+    civic::AuthoritativeTransactionCheckpoint checkpoint;
+    ASSERT_TRUE(checkpoint.registerParticipant({
+        "throwing-snapshot",
+        []() -> civic::Result<std::vector<std::byte>> {
+            throw 17;
+        },
+        [](std::span<const std::byte>) -> civic::Result<void> { return {}; },
+    }));
+
+    civic::Result<std::vector<civic::TransactionSnapshot>> captured;
+    EXPECT_NO_THROW(captured = checkpoint.capture());
+
+    ASSERT_FALSE(captured);
+    EXPECT_EQ(captured.error().code, civic::ErrorCode::internal_error);
+    EXPECT_EQ(
+        captured.error().message,
+        "transaction checkpoint snapshot callback threw a non-standard exception"
+    );
+}
+
+TEST(TransactionCheckpoint, RestoreCallbackExceptionDoesNotStopLaterRestores) {
+    civic::AuthoritativeTransactionCheckpoint checkpoint;
+    std::vector<std::string> restore_order;
+
+    ASSERT_TRUE(checkpoint.registerParticipant({
+        "a",
+        []() -> civic::Result<std::vector<std::byte>> {
+            return std::vector<std::byte>{};
+        },
+        [&restore_order](std::span<const std::byte>) -> civic::Result<void> {
+            restore_order.push_back("a");
+            return {};
+        },
+    }));
+    ASSERT_TRUE(checkpoint.registerParticipant({
+        "b",
+        []() -> civic::Result<std::vector<std::byte>> {
+            return std::vector<std::byte>{};
+        },
+        [&restore_order](std::span<const std::byte>) -> civic::Result<void> {
+            restore_order.push_back("b");
+            throw std::runtime_error("restore callback failure");
+        },
+    }));
+
+    auto captured = checkpoint.capture();
+    ASSERT_TRUE(captured);
+
+    civic::Result<void> restored;
+    EXPECT_NO_THROW(restored = checkpoint.restore(*captured));
+
+    ASSERT_FALSE(restored);
+    EXPECT_EQ(restored.error().code, civic::ErrorCode::internal_error);
+    EXPECT_EQ(
+        restored.error().message,
+        "transaction checkpoint restore callback threw: restore callback failure"
+    );
+    EXPECT_EQ(restore_order, (std::vector<std::string>{"b", "a"}));
+}
+
