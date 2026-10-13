@@ -1,6 +1,9 @@
 #include <civic/core/AuthoritativeTransactionCheckpoint.hpp>
 
+#include <exception>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace civic {
@@ -8,6 +11,26 @@ namespace {
 
 bool validParticipantId(std::string_view id) {
     return utf16_detail::validUtf8AndHasNonEcmaTrimCodePoint(id);
+}
+
+template <typename Callback>
+auto invokeCheckpointCallback(Callback&& callback, std::string_view operation)
+    -> decltype(callback()) {
+    try {
+        return callback();
+    } catch (const std::exception& exception) {
+        return std::unexpected(make_error(
+            ErrorCode::internal_error,
+            "transaction checkpoint " + std::string{operation} +
+                " callback threw: " + exception.what()
+        ));
+    } catch (...) {
+        return std::unexpected(make_error(
+            ErrorCode::internal_error,
+            "transaction checkpoint " + std::string{operation} +
+                " callback threw a non-standard exception"
+        ));
+    }
 }
 
 } // namespace
@@ -48,7 +71,10 @@ AuthoritativeTransactionCheckpoint::capture() const {
     snapshots.reserve(participants_.size());
 
     for (const auto& [id, participant] : participants_) {
-        auto payload = participant.snapshot();
+        auto payload = invokeCheckpointCallback(
+            [&participant] { return participant.snapshot(); },
+            "snapshot"
+        );
         if (!payload) return std::unexpected(payload.error());
         snapshots.push_back(TransactionSnapshot{id, std::move(*payload)});
     }
@@ -107,7 +133,12 @@ Result<void> AuthoritativeTransactionCheckpoint::restore(
     std::optional<Error> first_error;
     for (auto iterator = participants_.rbegin(); iterator != participants_.rend(); ++iterator) {
         const auto payload = payloads.find(iterator->first);
-        auto restored = iterator->second.restore(payload->second);
+        auto restored = invokeCheckpointCallback(
+            [&participant = iterator->second, &payload] {
+                return participant.restore(payload->second);
+            },
+            "restore"
+        );
         if (!restored && !first_error) first_error = restored.error();
     }
 
@@ -116,3 +147,4 @@ Result<void> AuthoritativeTransactionCheckpoint::restore(
 }
 
 } // namespace civic
+
