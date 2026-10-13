@@ -67,3 +67,32 @@ test('required civic, utility, and vehicle families resolve in the manifest', ()
     assert.deepEqual(orientations, [0,1,2,3]);
   }
 });
+
+test('asset registry filters building condition metadata', () => {
+  const manifest: AssetManifest = {
+    schemaVersion: 1,
+    atlases: [{ atlasId: 'buildings', url: './buildings.png', width: 384, height: 192 }],
+    entries: [
+      { assetId: 'building_new', variantKey: 'building', atlasId: 'buildings', sourceRect: { x: 0, y: 0, width: 128, height: 192 }, footprint: { width: 1, height: 1 }, anchor: { x: 64, y: 160 }, category: 'building', condition: 'new' },
+      { assetId: 'building_aging', variantKey: 'building', atlasId: 'buildings', sourceRect: { x: 128, y: 0, width: 128, height: 192 }, footprint: { width: 1, height: 1 }, anchor: { x: 64, y: 160 }, category: 'building', condition: 'aging' },
+      { assetId: 'building_neglected', variantKey: 'building', atlasId: 'buildings', sourceRect: { x: 256, y: 0, width: 128, height: 192 }, footprint: { width: 1, height: 1 }, anchor: { x: 64, y: 160 }, category: 'building', condition: 'neglected' },
+    ],
+  };
+  const registry = new AssetRegistry(manifest);
+  const result = registry.query({ condition: 'aging' } as never);
+  assert.deepEqual(result.map((entry) => entry.assetId), ['building_aging']);
+});
+
+test('asset registry filters building quality tier metadata', () => {
+  const manifest: AssetManifest = {
+    schemaVersion: 1,
+    atlases: [{ atlasId: 'buildings', url: './buildings.png', width: 256, height: 192 }],
+    entries: [
+      { assetId: 'building_standard', variantKey: 'building_standard', atlasId: 'buildings', sourceRect: { x: 0, y: 0, width: 128, height: 192 }, footprint: { width: 1, height: 1 }, anchor: { x: 64, y: 160 }, category: 'building', qualityTier: 'standard' },
+      { assetId: 'building_premium', variantKey: 'building_premium', atlasId: 'buildings', sourceRect: { x: 128, y: 0, width: 128, height: 192 }, footprint: { width: 1, height: 1 }, anchor: { x: 64, y: 160 }, category: 'building', qualityTier: 'premium' },
+    ],
+  };
+  const registry = new AssetRegistry(manifest);
+  const result = registry.query({ qualityTier: 'premium' } as never);
+  assert.deepEqual(result.map((entry) => entry.assetId), ['building_premium']);
+});

@@ -39,6 +39,8 @@ export type AssetQuery = Readonly<{
   subcategory?: string;
   zone?: AssetManifestEntry['zone'];
   intensity?: AssetManifestEntry['intensity'];
+  qualityTier?: AssetManifestEntry['qualityTier'];
+  condition?: AssetManifestEntry['condition'];
   constructionStage?: string;
   variantKey?: string;
   orientation?: AssetOrientation;

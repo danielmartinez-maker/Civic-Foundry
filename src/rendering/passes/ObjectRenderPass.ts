@@ -1,6 +1,8 @@
 import type { SimulationCore } from '../../simulation/core/SimulationCore.ts';
 import { definitionForBuilding } from '../../simulation/buildings/BuildingSystem.ts';
 import { AssetRegistry } from '../assets/AssetRegistry.ts';
+import { selectBuildingVisualEntry } from '../assets/BuildingVisualResolver.ts';
+import { indexCanonicalBuildingsByLegacyCell, legacyCellKey } from '../assets/CanonicalBuildingVisualIndex.ts';
 import { constructionStageFor } from '../assets/ConstructionVisuals.ts';
 import { SpritePainter } from '../assets/SpritePainter.ts';
 import { selectBuildingVariantEntry, selectCoordinateVariantEntry, selectStableVariantEntry } from '../assets/VariantSelector.ts';
@@ -31,6 +33,7 @@ export class ObjectRenderPass {
     const commands: DrawCommand[] = [];
     const buildingEntries = this.assets.query({ category: 'building' });
     const buildings = core.buildings.list();
+    const canonicalByCell = indexCanonicalBuildingsByLegacyCell(core.buildings.listV2());
     const services = core.services.listFacilities();
     const utilities = core.utilities.listFacilities();
     const roads = core.roads.list();
@@ -44,7 +47,10 @@ export class ObjectRenderPass {
         const entry = selectStableVariantEntry(`${building.id}|construction|${stage}`, candidates, camera.quarterTurns);
         commands.push({ depth: makeDepthKey('construction', rotated.x, rotated.y, 0, building.id), entry, assetId: entry?.assetId ?? `construction_${intensity}_${stage}`, x: building.x, y: building.y, label: 'CN' });
       } else {
-        const entry = selectBuildingVariantEntry(building, camera.quarterTurns, buildingEntries);
+        const canonical = canonicalByCell.get(legacyCellKey(building.x, building.y));
+        const entry = canonical
+          ? selectBuildingVisualEntry(canonical, camera.quarterTurns, buildingEntries)
+          : selectBuildingVariantEntry(building, camera.quarterTurns, buildingEntries);
         commands.push({ depth: makeDepthKey('objects', rotated.x, rotated.y, 0, building.id), entry, assetId: entry?.assetId ?? `building:${building.definitionId}`, x: building.x, y: building.y, label: building.zone.slice(0, 1) });
       }
     }

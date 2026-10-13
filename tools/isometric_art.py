@@ -6,6 +6,7 @@ DIMS = {
     'terrain': (1024, 64), 'roads': (2048, 192), 'buildings': (4096, 2048),
     'construction': (2048, 768), 'civic': (2048, 768), 'utilities': (1024, 512),
     'vegetation': (1024, 512), 'vehicles': (4096, 768),
+    'urban_depth_buildings': (2048, 1728),
 }
 
 
@@ -156,7 +157,119 @@ def vehicles() -> str:
     return _root('vehicles', body)
 
 
+B1_LEGACY_CONDITIONS = ('new', 'aging', 'neglected', 'abandoned')
+B1_MIXED_CONDITIONS = ('new', 'maintained', 'aging', 'neglected', 'abandoned')
+B1_MIXED_FAMILIES = (
+    ('mix_mainstreet_corner_01', 'medium'),
+    ('mix_mainstreet_row_01', 'medium'),
+    ('mix_mainstreet_courtyard_01', 'medium'),
+    ('mix_podium_slab_01', 'high'),
+    ('mix_podium_tower_01', 'high'),
+    ('mix_podium_courtyard_01', 'high'),
+)
+
+
+def _b1_frame_origin(slot: int) -> tuple[int, int]:
+    return (slot % 16) * 128, (slot // 16) * 192
+
+
+def _b1_condition_palette(zone: str, condition: str) -> tuple[str, str, str, str, str]:
+    base = {
+        'residential': ('#d7d1c5', '#b9afa0', '#ece8df', '#526774'),
+        'commercial': ('#bdc9cd', '#8d9da3', '#dbe3e5', '#587786'),
+        'industrial': ('#bbb9b0', '#8f8e87', '#d1cec2', '#545b5e'),
+        'mixed': ('#c8c2b7', '#9ca6a4', '#d8d2c7', '#597481'),
+    }[zone]
+    left, right, roof, window = base
+    ground = '#76906b'
+    if condition == 'new':
+        return left, right, '#eee9dd', '#658594', '#7f9e72'
+    if condition == 'aging':
+        return '#aaa79f', '#85877f', '#b9b5aa', '#53646b', '#718268'
+    if condition == 'neglected':
+        return '#8f8c83', '#6f726c', '#9a978e', '#414d52', '#65725d'
+    if condition == 'abandoned':
+        return '#77766f', '#5f625d', '#838078', '#273238', '#586b52'
+    return left, right, roof, window, ground
+
+
+def _b1_building_sprite(zone: str, intensity: str, condition: str, design: int, mixed: bool) -> str:
+    left, right, roof, window, ground = _b1_condition_palette('mixed' if mixed else zone, condition)
+    height = {'low': 38, 'medium': 72, 'high': 124}[intensity]
+    if mixed and intensity == 'medium': height = 84 + design * 3
+    if mixed and intensity == 'high': height = 126 + design * 5
+    top = max(12, 146 - height)
+    half = 35 if intensity == 'low' else 42 if intensity == 'medium' else 39
+    if design % 3 == 1: half -= 4
+    if design % 3 == 2: half += 3
+    parts = [
+        '<ellipse cx="68" cy="156" rx="49" ry="15" fill="#263036" opacity=".20"/>',
+        f'<polygon points="64,{top} {64+half},{top+18} 64,{top+36} {64-half},{top+18}" fill="{roof}"/>',
+        f'<polygon points="{64-half},{top+18} 64,{top+36} 64,146 {64-half},128" fill="{left}"/>',
+        f'<polygon points="64,{top+36} {64+half},{top+18} {64+half},128 64,146" fill="{right}"/>',
+    ]
+    floors = max(1, height // 16)
+    for floor in range(1, floors):
+        yy = 146 - floor * 14
+        if yy <= top + 22: break
+        opacity = '.42' if condition == 'abandoned' else '.72'
+        parts += [
+            f'<path d="M{64-half+8},{yy-8}L59,{yy-1}" stroke="{window}" stroke-width="4" opacity="{opacity}"/>',
+            f'<path d="M69,{yy-1}L{64+half-8},{yy-8}" stroke="{window}" stroke-width="4" opacity="{opacity}"/>',
+        ]
+    if mixed:
+        storefront = '#40545c' if condition != 'abandoned' else '#30383a'
+        awning = '#8e5e4c' if design % 2 == 0 else '#5d7387'
+        parts += [
+            f'<polygon points="{64-half+2},121 64,139 64,146 {64-half+2},128" fill="{storefront}" opacity=".92"/>',
+            f'<polygon points="64,139 {64+half-2},121 {64+half-2},128 64,146" fill="{storefront}" opacity=".82"/>',
+            f'<path d="M{64-half+5},121L60,136M68,136L{64+half-5},121" stroke="{awning}" stroke-width="5"/>',
+        ]
+        if intensity == 'high':
+            parts += [f'<polygon points="38,{top+35} 64,{top+47} 90,{top+35} 90,{top+53} 64,{top+65} 38,{top+53}" fill="#697d83" opacity=".55"/>']
+    elif zone == 'residential' and intensity == 'low':
+        parts += [f'<path d="M42,{top+17}L64,{top+4}L86,{top+17}" fill="none" stroke="#806e60" stroke-width="5"/>']
+    elif zone == 'industrial':
+        parts += [f'<rect x="53" y="{top+7}" width="22" height="7" rx="1" fill="#666d6d"/>']
+    else:
+        parts += [f'<rect x="57" y="{top+7}" width="14" height="5" rx="1" fill="#68777c"/>']
+
+    if condition == 'new':
+        parts += ['<ellipse cx="31" cy="143" rx="7" ry="10" fill="#66865d"/><ellipse cx="96" cy="147" rx="6" ry="9" fill="#719065"/>']
+    elif condition == 'aging':
+        parts += [f'<path d="M{64-half+8},{top+42}l15,8m36,21l13,-6" stroke="#77766f" stroke-width="2" opacity=".55"/>']
+    elif condition == 'neglected':
+        parts += [f'<path d="M{64-half+7},{top+39}l17,10m-7,18l20,8M77,{top+54}l14,-8" stroke="#625f59" stroke-width="2.5" opacity=".75"/>', '<path d="M24,153q8,-16 13,0m47,4q8,-18 14,0" stroke="#536c4d" stroke-width="4" fill="none"/>']
+    elif condition == 'abandoned':
+        parts += ['<path d="M36,118l18,9m-17,0l18,-9M75,123l18,9m-17,0l18,-9" stroke="#5d493a" stroke-width="4"/><path d="M19,157q11,-24 17,0m46,3q13,-28 19,0m-62,-1q9,-17 14,0" stroke="#496345" stroke-width="5" fill="none"/>']
+
+    parts += [f'<polygon points="64,144 105,164 64,184 23,164" fill="{ground}" opacity=".24"/>']
+    return ''.join(parts)
+
+
+def urban_depth_buildings() -> str:
+    body: list[str] = []
+    slot = 0
+    for index, (_, zone, intensity) in enumerate(BUILDINGS):
+        for condition in B1_LEGACY_CONDITIONS:
+            x, y = _b1_frame_origin(slot)
+            body += [f'<g transform="translate({x},{y})">', _b1_building_sprite(zone, intensity, condition, index % 3, False), '</g>']
+            slot += 1
+    for index, (_, intensity) in enumerate(B1_MIXED_FAMILIES):
+        for condition in B1_MIXED_CONDITIONS:
+            x, y = _b1_frame_origin(slot)
+            body += [f'<g transform="translate({x},{y})">', _b1_building_sprite('mixed', intensity, condition, index % 3, True), '</g>']
+            slot += 1
+    if slot != 138:
+        raise AssertionError(f'urban depth sheet expected 138 frames, got {slot}')
+    return _root('urban_depth_buildings', body)
+
+
 def build_svg_sheet(name: str) -> str:
-    builders = {'terrain':terrain,'roads':roads,'buildings':buildings,'construction':construction,'civic':civic,'utilities':utilities,'vegetation':vegetation,'vehicles':vehicles}
+    builders = {
+        'terrain': terrain, 'roads': roads, 'buildings': buildings, 'construction': construction,
+        'civic': civic, 'utilities': utilities, 'vegetation': vegetation, 'vehicles': vehicles,
+        'urban_depth_buildings': urban_depth_buildings,
+    }
     if name not in builders: raise KeyError(name)
     return builders[name]()
